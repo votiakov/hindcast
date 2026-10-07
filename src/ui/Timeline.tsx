@@ -3,6 +3,32 @@ import { useSim, recorders } from '../sim/store';
 
 const fmt = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 
+/** the recorded run as a postmortem-style timeline */
+export function timelineMarkdown(): string {
+  const s = useSim.getState();
+  const rec = recorders.main;
+  const fr = rec.frames;
+  if (!fr.length) return '';
+  const slo = { err: s.settings.sloErrorRate, p99: s.settings.sloP99Ms };
+  const peakErr = fr.reduce((a, f) => (f.global.errorRate > a.global.errorRate ? f : a), fr[0]);
+  const peakP99 = fr.reduce((a, f) => (f.global.p99 > a.global.p99 ? f : a), fr[0]);
+  const out = fr.filter((f) => f.global.rps > 0.5 && (f.global.errorRate > slo.err || f.global.p99 > slo.p99)).length * 0.25;
+  const failed = fr.reduce((a, f) => a + f.global.rps * f.global.errorRate * 0.25, 0);
+  const lines = [
+    `# Incident timeline — ${s.boards.main.title}`,
+    '',
+    `Recorded ${fmt(fr[0].t)}–${fmt(fr[fr.length - 1].t)} (simulated). SLO: errors ≤ ${+(slo.err * 100).toFixed(2)}%, p99 ≤ ${slo.p99} ms.`,
+    '',
+    `- Out of SLO for **${out.toFixed(1)} s**; about **${Math.round(failed).toLocaleString('en-US')}** requests failed`,
+    `- Peak errors **${(peakErr.global.errorRate * 100).toFixed(1)}%** at ${fmt(peakErr.t)}; peak p99 **${Math.round(peakP99.global.p99)} ms** at ${fmt(peakP99.t)}`,
+    '',
+    '| time | event |',
+    '|---|---|',
+    ...rec.marks.filter((m) => m.t >= fr[0].t).map((m) => `| ${fmt(m.t)} | ${m.text.replace(/\|/g, '/')} |`),
+  ];
+  return lines.join('\n');
+}
+
 /**
  * Flight-recorder track: error rate (red) and throughput (faint) over the whole run, with every
  * event as a tick. Drag to scrub — the board shows exactly what it looked like at that moment.
@@ -93,9 +119,21 @@ export function Timeline() {
             </button>
           </>
         ) : (
-          <span>
-            {fmt(t0)}–{fmt(t1)} recorded · drag to rewind
-          </span>
+          <>
+            <span>
+              {fmt(t0)}–{fmt(t1)} recorded · drag to rewind
+            </span>
+            <button
+              className="tl-live"
+              title="Copy the run as an incident timeline (Markdown) — events, peaks, time out of SLO"
+              onClick={() => {
+                navigator.clipboard?.writeText(timelineMarkdown());
+                useSim.getState().toast('good', 'Incident timeline copied (Markdown)');
+              }}
+            >
+              copy timeline
+            </button>
+          </>
         )}
       </div>
     </div>
