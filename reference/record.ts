@@ -27,6 +27,8 @@ export interface ReferenceConfig {
   project: string;
   base: string;
   timeout?: string;
+  /** seconds between starting the system and recording (JVMs need longer) */
+  warmupS?: number;
   /** k6 Poisson thinning factor (default 20; lower for high request rates) */
   thin?: number;
   mix: string;
@@ -59,8 +61,8 @@ async function main() {
   // 1. fresh trace file for this run, fresh system
   sh(`docker compose -f ${join(ROOT, 'stack/docker-compose.yml')} up -d --force-recreate otel-collector`, { RUN_DIR: resolve(out, 'raw') });
   sh(`docker compose -f ${join(sysDir, 'docker-compose.yml')} up -d --force-recreate --remove-orphans`, env);
-  console.log('warming up 45 s…');
-  await sleep(45_000);
+  console.log(`warming up ${cfg.warmupS ?? 45} s…`);
+  await sleep((cfg.warmupS ?? 45) * 1000);
   // drop warm-up spans: restart the collector into the run directory
   rmSync(join(out, 'raw', 'traces.jsonl'), { force: true });
   sh(`docker compose -f ${join(ROOT, 'stack/docker-compose.yml')} up -d --force-recreate otel-collector`, { RUN_DIR: resolve(out, 'raw') });

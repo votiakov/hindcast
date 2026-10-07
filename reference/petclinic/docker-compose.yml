@@ -18,7 +18,7 @@ services:
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: petclinic
       SPRING_SQL_INIT_MODE: always
-      JAVA_TOOL_OPTIONS: -javaagent:/otel/opentelemetry-javaagent.jar -XX:MaxRAMPercentage=70
+      JAVA_TOOL_OPTIONS: -javaagent:/otel/opentelemetry-javaagent.jar -Xms512m -Xmx768m -XX:+UseG1GC
       OTEL_SERVICE_NAME: app
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
@@ -27,7 +27,7 @@ services:
       OTEL_INSTRUMENTATION_COMMON_PEER_SERVICE_MAPPING: postgres=postgres
     volumes: ["./otel:/otel:ro"]
     cpus: ${APP_CPUS:-1.0}
-    mem_limit: 768m
+    mem_limit: 1280m
     depends_on: [postgres]
     deploy: { replicas: "${APP_REPLICAS:-1}" }
     networks: [ref]
