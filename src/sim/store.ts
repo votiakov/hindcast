@@ -136,6 +136,8 @@ interface State {
   moveNodes: (b: BoardId, positions: Record<string, XYPosition>) => void;
   removeNode: (b: BoardId, id: string) => void;
   removeEdge: (b: BoardId, id: string) => void;
+  /** link properties (network latency) */
+  updateEdge: (b: BoardId, id: string, data: { latencyMs?: number }) => void;
   killNode: (b: BoardId, id: string) => void;
   reviveNode: (b: BoardId, id: string) => void;
   setZoneFailed: (b: BoardId, id: string, failed: boolean) => void;
@@ -313,6 +315,7 @@ export const useSim = create<State>()((set, get) => {
     moveNodes: (b, positions) => setNodes(b, (nodes) => nodes.map((n) => (positions[n.id] ? { ...n, position: positions[n.id] } : n))),
     removeNode: (b, id) => patch(b, { nodes: board(b).nodes.filter((n) => n.id !== id), edges: board(b).edges.filter((e) => e.source !== id && e.target !== id) }),
     removeEdge: (b, id) => patch(b, { edges: board(b).edges.filter((e) => e.id !== id) }),
+    updateEdge: (b, id, data) => patch(b, { edges: board(b).edges.map((e) => (e.id === id ? { ...e, data: { ...e.data, ...data } } : e)) }),
     killNode: (b, id) => {
       const n = board(b).nodes.find((x) => x.id === id);
       if (!n || !isSystem(n)) return;
@@ -344,7 +347,7 @@ export const useSim = create<State>()((set, get) => {
       const r = applyAction(nodes, a, { inRps: (id) => nodeStats[id]?.inRps ?? 0, zoneMembers: (zid) => nodesInZone(nodes, zid) });
       patch(b, { nodes: r.nodes });
       // zone/global notes come from the caller's own message; per-node ones become toasts
-      if (a.type === 'kill' || a.type === 'kill-id') for (const n of r.notes) get().toast(n.tone, `${label(b)}${n.text}`);
+      if (a.type === 'kill' || a.type === 'kill-id' || a.type === 'inject-errors' || a.type === 'inject-latency' || a.type === 'flush-cache' || a.type === 'degrade') for (const n of r.notes) get().toast(n.tone, `${label(b)}${n.text}`);
       return r.target;
     },
     loadGraph: (b, g, title) => patch(b, makeBoard(b, title ?? board(b).title, g, board(b).version + 1)),
@@ -530,6 +533,8 @@ export const useSim = create<State>()((set, get) => {
         if (e.kind === 'failover') get().toast('good', `${label(b)}🔁 ${e.name}: replica promoted to primary`);
         if (e.kind === 'breaker-open') get().toast('info', `${label(b)}⛔ ${e.name}: circuit breaker OPEN`);
         if (e.kind === 'breaker-closed') get().toast('good', `${label(b)}✅ ${e.name}: circuit breaker closed`);
+        if (e.kind === 'scale-out') get().toast('info', `${label(b)}⤴ ${e.name}: scaling out ${e.detail ?? ''}`);
+        if (e.kind === 'scale-in') get().toast('info', `${label(b)}⤵ ${e.name}: scaling in ${e.detail ?? ''}`);
       }
       const next = { ...get().boards };
       for (const b of boards) {

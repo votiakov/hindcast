@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import { LinkLatency } from '../../canvas/LinkLatency';
 import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, type EdgeProps } from '@xyflow/react';
 import { X } from 'lucide-react';
 
@@ -64,6 +65,7 @@ function RefEdgeImpl({ id, sourceX, sourceY, targetX, targetY, sourcePosition, t
               {failing && <b> · {Math.round(err * 100)}% err</b>}
             </span>
           )}
+          <LinkLatency id={id} selected={selected} />
           {selected && (
             <button className="edge-x" onClick={onRemove} title="Delete connection">
               <X size={12} />

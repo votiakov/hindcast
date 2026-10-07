@@ -122,7 +122,7 @@ function SystemNodeImpl({ id, data, selected }: NodeProps<SystemNodeT>) {
             <div className="meter-label">
               <span>INSTANCES</span>
               <span>
-                {v.instancesUp}/{v.instances} up
+                {v.instancesUp}/{v.instances} up{v.booting > 0 && ` · +${v.booting} booting`}
               </span>
             </div>
             <div className="instance-grid">
@@ -136,6 +136,11 @@ function SystemNodeImpl({ id, data, selected }: NodeProps<SystemNodeT>) {
                   </div>
                 );
               })}
+              {Array.from({ length: v.booting }, (_, i) => (
+                <div key={`b${i}`} className="inst inst-boot" title="Booting — billed, not serving yet">
+                  <span className="inst-n">…</span>
+                </div>
+              ))}
             </div>
           </div>
         )}

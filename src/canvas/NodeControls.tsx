@@ -11,7 +11,7 @@ const CALLERS = new Set(['client', 'server', 'worker', 'function', 'gateway', 'l
 /** Station control panel shown above a selected node (both themes). */
 export function NodeControls({ id, data, selected }: { id: string; data: SystemNodeData; selected: boolean }) {
   const b = useBoardId();
-  const { updateNode, killNode, reviveNode, removeNode } = useSim.getState();
+  const { updateNode, killNode, reviveNode, removeNode, apply } = useSim.getState();
   const spec = KINDS[data.kind];
   const instances = data.instances ?? 1;
   const set = (patch: Partial<SystemNodeData>) => updateNode(b, id, patch);
@@ -39,6 +39,36 @@ export function NodeControls({ id, data, selected }: { id: string; data: SystemN
             <button className="tb-btn" onClick={() => set({ instances: Math.min(24, instances + 1) })} title="Add instance">
               <Plus size={14} />
             </button>
+          </div>
+        )}
+        {spec.scalable && (
+          <div className="tb-group" title="Target-tracking autoscaling: adds instances when utilisation passes the target, after a warm-up">
+            <button
+              className={`tb-chip wide ${data.autoscale ? 'on' : ''}`}
+              onClick={() => set({ autoscale: data.autoscale ? undefined : { min: instances, max: Math.min(24, Math.max(instances * 4, 4)), targetUtil: 0.6, warmupS: 30, cooldownS: 60 } })}
+            >
+              autoscale
+            </button>
+            {data.autoscale && (
+              <>
+                <span className="tb-label">max</span>
+                <select className="tb-select" value={data.autoscale.max} onChange={(e) => set({ autoscale: { ...data.autoscale!, max: Math.max(+e.target.value, data.autoscale!.min) } })}>
+                  {[2, 4, 6, 8, 12, 16, 24].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+                <span className="tb-label">warm-up</span>
+                <select className="tb-select" value={data.autoscale.warmupS ?? 30} onChange={(e) => set({ autoscale: { ...data.autoscale!, warmupS: +e.target.value } })} title="Launch → serving. k8s pod 5–20 s · Fargate 30–60 s · EC2 ASG 90–180 s">
+                  {[5, 15, 30, 60, 120, 180].map((n) => (
+                    <option key={n} value={n}>
+                      {n}s
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
           </div>
         )}
         {RUNTIME_KINDS.includes(data.kind) && (
@@ -85,6 +115,33 @@ export function NodeControls({ id, data, selected }: { id: string; data: SystemN
               <HeartPulse size={14} />
             </button>
           ) : null}
+          {data.kind !== 'client' && isUp(data) && (
+            <select
+              className="tb-select"
+              value=""
+              title="Inject a gray failure — the node stays up but misbehaves"
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === 'restore') apply(b, { type: 'restore', id });
+                else if (v === 'flush') apply(b, { type: 'flush-cache', id });
+                else if (v.startsWith('err')) apply(b, { type: 'inject-errors', id, rate: +v.slice(3) });
+                else if (v.startsWith('lat')) apply(b, { type: 'inject-latency', id, ms: +v.slice(3) });
+                else if (v.startsWith('deg')) apply(b, { type: 'degrade', id, factor: +v.slice(3) });
+              }}
+            >
+              <option value="" disabled>
+                fault…
+              </option>
+              <option value="err0.1">10% errors</option>
+              <option value="err0.5">50% errors</option>
+              <option value="lat100">+100 ms</option>
+              <option value="lat500">+500 ms</option>
+              <option value="lat2000">+2 s</option>
+              <option value="deg0.5">50% capacity</option>
+              {(data.kind === 'cache' || data.kind === 'cdn') && <option value="flush">flush cache</option>}
+              {(data.faultRate || data.faultLatencyMs || data.degraded !== undefined) && <option value="restore">restore</option>}
+            </select>
+          )}
           <button className="tb-btn" onClick={() => removeNode(b, id)} title="Delete">
             <Trash2 size={14} />
           </button>

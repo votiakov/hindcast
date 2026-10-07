@@ -70,14 +70,17 @@ export function RefNode({ data, st, v, selected, showCost, running, explainOn }:
         </div>
       )}
 
-      {spec.scalable && v.instances > 1 && (
+      {spec.scalable && (v.instances > 1 || v.booting > 0 || data.autoscale) && (
         <div className="ref-instances">
           {Array.from({ length: v.instances }, (_, i) => {
             const s = i >= v.instancesUp ? 'dead' : i >= reachable ? 'idle' : healthOf(util, st?.dropRps ?? 0, st?.inRps ?? 0, true);
             return <span key={i} className={`ri-${s}`} />;
           })}
+          {Array.from({ length: v.booting }, (_, i) => (
+            <span key={`b${i}`} className="ri-boot" title="Booting" />
+          ))}
           <em>
-            {v.instancesUp}/{v.instances} up
+            {v.instancesUp}/{v.instances} up{v.booting > 0 && ` · +${v.booting} booting`}
           </em>
         </div>
       )}

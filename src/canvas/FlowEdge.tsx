@@ -4,6 +4,7 @@ import { X } from 'lucide-react';
 import { useSim } from '../sim/store';
 import type { Kind, SystemNode } from '../sim/catalog';
 import { useBoardId } from './BoardContext';
+import { LinkLatency } from './LinkLatency';
 import { TransitEdge } from '../theme/transit/TransitEdge';
 import { RefEdge } from '../theme/reference/RefEdge';
 
@@ -81,6 +82,7 @@ function FlowEdgeImpl(props: EdgeProps) {
       <EdgeLabelRenderer>
         <div className="edge-label nodrag nopan" style={{ transform: `translate(-50%, -50%) translate(${lx}px, ${ly}px)` }}>
           {rps >= 0.5 && <span className={`edge-rps ${err > 0.05 ? 'bad' : ''}`}>{rps >= 1000 ? `${(rps / 1000).toFixed(1)}k` : rps.toFixed(0)}/s</span>}
+          <LinkLatency id={id} selected={selected} />
           {selected && (
             <button className="edge-x" onClick={() => removeEdge(b, id)} title="Delete connection">
               <X size={12} />

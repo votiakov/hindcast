@@ -220,6 +220,8 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .inst-warm { --inst: var(--amber); }
 .inst-hot { --inst: var(--red); animation: blink 0.6s steps(2) infinite; }
 .inst-idle { --inst: #475569; border-style: dashed; }
+.inst-boot { --inst: #22d3ee; border-style: dashed; animation: inst-boot 0.9s ease-in-out infinite alternate; }
+@keyframes inst-boot { from { opacity: 0.3; } to { opacity: 1; } }
 .inst-idle .inst-n { color: var(--dim); }
 .inst-dead { --inst: var(--red); background: repeating-linear-gradient(45deg, rgba(244, 63, 94, 0.25) 0 4px, rgba(2, 6, 23, 0.7) 4px 8px); }
 .inst-dead .inst-n { color: #fda4af; }
@@ -271,6 +273,10 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 }
 .edge-rps.bad { color: #fecdd3; border-color: rgba(244, 63, 94, 0.5); }
 .edge-x { width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--border-strong); background: var(--panel-solid); display: grid; place-items: center; }
+.edge-link { font-family: var(--mono); font-size: 10px; padding: 1px 5px; border-radius: 4px; color: #93c5fd; background: rgba(15, 23, 42, 0.85); border: 1px dashed rgba(147, 197, 253, 0.5); }
+.edge-link-select { font-family: var(--mono); font-size: 11px; padding: 2px 4px; border-radius: 6px; background: var(--panel-solid); color: var(--text); border: 1px solid var(--border-strong); }
+[data-theme='reference'] .edge-link { color: var(--r-ink-2); background: var(--r-surface); border-color: var(--r-line-strong); }
+[data-theme='reference'] .edge-link-select { background: var(--r-surface); color: var(--r-ink); border-color: var(--r-line-strong); border-radius: 4px; }
 .edge-x:hover { color: var(--red); border-color: var(--red); }
 .react-flow__connection-path { stroke: var(--cyan); stroke-width: 2; stroke-dasharray: 6 4; }
 

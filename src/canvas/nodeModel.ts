@@ -23,6 +23,8 @@ export interface NodeView {
   electing: boolean;
   instances: number;
   instancesUp: number;
+  /** autoscaled: instances still booting */
+  booting: number;
   unreachable: boolean;
   noOrigin: boolean;
   cost: number;
@@ -35,8 +37,10 @@ export interface NodeView {
 }
 
 /** everything a node renderer needs, theme-agnostic */
-export function nodeView(d: SystemNodeData, st: NodeStats | undefined, running: boolean, hasOutgoing: boolean): NodeView {
-  const spec = KINDS[d.kind];
+export function nodeView(d0: SystemNodeData, st: NodeStats | undefined, running: boolean, hasOutgoing: boolean): NodeView {
+  const spec = KINDS[d0.kind];
+  // an autoscaled node shows the instances the scaler is running right now
+  const d = st?.scaling ? { ...d0, instances: st.scaling.live, down: Math.min(d0.down ?? 0, st.scaling.live) } : d0;
   const failover = st?.failover ?? 'none';
   const up = isUp(d) || (d.kind === 'db' && failover === 'electing');
   const util = st?.util ?? 0;
@@ -96,6 +100,7 @@ export function nodeView(d: SystemNodeData, st: NodeStats | undefined, running: 
         { label: 'hits', value: `${fmt(st?.hitRps ?? 0)}/s` },
         { label: 'cap', value: `${fmt(capacityOf(d))}/s` },
       ];
+      if (st && st.warmth < 0.98) meter = { label: 'WARMTH', value: `${Math.round(st.warmth * 100)}%`, fill: st.warmth };
       break;
     default:
       stats = [
@@ -117,6 +122,10 @@ export function nodeView(d: SystemNodeData, st: NodeStats | undefined, running: 
   if (st?.breaker) tags.push({ text: `BREAKER ${st.breaker.toUpperCase()}${d.fallback ? ' +FALLBACK' : ''}`, tone: st.breaker === 'open' ? 'bad' : st.breaker === 'half' ? 'warn' : 'good' });
   if (d.routing && d.routing !== 'split') tags.push({ text: d.routing.toUpperCase() });
   if ((d.fanout ?? 1) > 1) tags.push({ text: `FAN-OUT ×${d.fanout}` });
+  if (d.autoscale) tags.push({ text: `AUTOSCALE ${d.autoscale.min}–${d.autoscale.max}${st?.scaling && st.scaling.desired !== st.scaling.live ? ` · want ${st.scaling.desired}` : ''}`, tone: st?.scaling?.pending ? 'warn' : undefined });
+  if (st && st.warmth < 0.98 && (d.kind === 'cache' || d.kind === 'cdn')) tags.push({ text: `COLD ${Math.round(st.warmth * 100)}%`, tone: 'bad' });
+  if (d.faultRate) tags.push({ text: `FAULT ${Math.round(d.faultRate * 100)}% errors`, tone: 'bad' });
+  if (d.faultLatencyMs) tags.push({ text: `FAULT +${fmtMs(d.faultLatencyMs)}`, tone: 'bad' });
   if (d.stallRate) tags.push({ text: `STALLS ${+(d.stallRate * 100).toFixed(2)}% × ${d.stallMs ?? 0}ms`, tone: 'warn' });
 
   return {
@@ -127,6 +136,7 @@ export function nodeView(d: SystemNodeData, st: NodeStats | undefined, running: 
     electing: failover === 'electing',
     instances: d.instances ?? 1,
     instancesUp: instancesUp(d),
+    booting: st?.scaling?.pending ?? 0,
     unreachable: !!spec.scalable && d.kind !== 'llm' && instancesUp(d) > 1 && (st?.reachable ?? 1) < instancesUp(d) && running,
     noOrigin: (d.kind === 'cache' || d.kind === 'cdn') && !hasOutgoing,
     cost: st?.costPerHour ?? costOf(d),
@@ -147,6 +157,10 @@ export function explain(d: SystemNodeData, st: NodeStats | undefined, v: NodeVie
   if (v.failedOver) return { tone: 'info', text: 'Primary is down. A replica was promoted and now takes writes; this node only forwards.' };
   if (v.electing) return { tone: 'bad', text: 'Primary lost. Electing a replica — writes fail until one is promoted; reads continue on replicas.' };
   if (!v.up) return { tone: 'bad', text: 'Unavailable. Every request routed here fails unless an upstream load balancer can route around it.' };
+  if (d.faultRate) return { tone: 'bad', text: `Injected fault: ${Math.round(d.faultRate * 100)}% of requests here fail — a bad deploy looks exactly like this. Callers with retries amplify it.` };
+  if (d.faultLatencyMs) return { tone: 'bad', text: `Gray failure: +${fmtMs(d.faultLatencyMs)} on every request. It is still "up", so health checks pass — but each worker is busy longer, so throughput drops too.` };
+  if ((d.kind === 'cache' || d.kind === 'cdn') && st.warmth < 0.9) return { tone: 'bad', text: `Cold cache: only ${Math.round(st.warmth * 100)}% warm, so misses that used to be hits stampede the origin until it refills.` };
+  if (st.scaling && st.scaling.pending > 0) return { tone: 'warn', text: `Scaling out: ${st.scaling.pending} instance${st.scaling.pending > 1 ? 's' : ''} booting (warm-up ${d.autoscale?.warmupS ?? 30}s). Capacity arrives after the demand did — that gap is where errors happen.` };
   if (st.breaker === 'open') return { tone: 'warn', text: `Circuit breaker open: calls to the failing dependency are cut off${d.fallback ? ' and a fallback response is served' : ' and fail fast'}, giving it room to recover.` };
   if (st.retryAmp > 1.5) return { tone: 'bad', text: `Retry amplification ×${st.retryAmp.toFixed(1)}: failed calls are retried, multiplying the load on an already struggling dependency.` };
   if (st.lateFrac > 0.05) return { tone: 'bad', text: `${Math.round(st.lateFrac * 100)}% of responses arrive after the ${fmtMs(d.timeoutMs ?? 0)} timeout — the work was done, but the caller had already given up.` };
