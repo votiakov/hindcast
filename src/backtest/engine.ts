@@ -23,6 +23,8 @@ export interface AutoscalePolicy {
   cooldownS: number;
   /** how often the policy evaluates, s */
   intervalS: number;
+  /** the metric it reads is averaged over this window, s (Prometheus rate[30s], CloudWatch 60 s) */
+  metricWindowS?: number;
 }
 
 /** a time-boxed fault on one service, for incident and public-outage replays */
@@ -215,7 +217,7 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
       const s = plan.services[id];
       const first = s.observedReplicas?.find((x) => x !== null) ?? null;
       const live = s.replicas ?? first ?? 1;
-      return [id, { backlog: 0, live: s.autoscale ? Math.max(s.autoscale.min, Math.min(s.autoscale.max, live)) : live, pending: [] as { at: number; n: number }[], lastScale: -Infinity, nextEval: 0, blockedSaid: false }];
+      return [id, { backlog: 0, live: s.autoscale ? Math.max(s.autoscale.min, Math.min(s.autoscale.max, live)) : live, pending: [] as { at: number; n: number }[], lastScale: -Infinity, nextEval: 0, blockedSaid: false, util: 0 }];
     }),
   );
   const epFail = Object.fromEntries(epIds.map((id) => [id, 0]));
@@ -439,10 +441,13 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
           out.events.push({ t: traffic.start + t, what: `${id}: ${p.n} new replica${p.n > 1 ? 's' : ''} serving (${S.live})` });
         }
         S.pending = S.pending.filter((p) => p.at > t);
+        // what the metric shows: utilisation averaged over its window
+        const perRepNow = S.live > 0 ? svcLam[id] / S.live : 0;
+        const utilNow = s.cpu && s.cpuLimit ? (s.cpu.base + s.cpu.perReq * Math.min(perRepNow, s.perReplicaRps)) / s.cpuLimit : isFinite(s.perReplicaRps) ? Math.min(perRepNow, s.perReplicaRps) / s.perReplicaRps : 0;
+        S.util += (utilNow - S.util) * (1 - Math.exp(-dt / Math.max(dt, (a.metricWindowS ?? 30) / 2)));
         if (t + 1e-9 < S.nextEval) continue;
         S.nextEval = t + a.intervalS;
-        const perRep = S.live > 0 ? svcLam[id] / S.live : 0;
-        const util = s.cpu && s.cpuLimit ? (s.cpu.base + s.cpu.perReq * Math.min(perRep, s.perReplicaRps)) / s.cpuLimit : isFinite(s.perReplicaRps) ? perRep / s.perReplicaRps : 0;
+        const util = S.util;
         const booting = S.pending.reduce((x, p) => x + p.n, 0);
         const desired = Math.min(a.max, Math.max(a.min, Math.ceil((S.live * util) / a.target - 1e-9)));
         if (desired > S.live + booting && fx[id].noScaleOut) {

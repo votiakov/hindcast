@@ -28,6 +28,7 @@ const ServiceChange = z
         warmupS: z.number().min(0).optional().describe('launch → serving (default 60 s)'),
         cooldownS: z.number().min(0).optional().describe('wait before scaling in (default 300 s)'),
         intervalS: z.number().min(1).optional().describe('evaluation period (default 15 s)'),
+        metricWindowS: z.number().min(0).optional().describe('window the CPU metric is averaged over (default 30 s; CloudWatch 60)'),
       })
       .optional(),
     cpu: z.number().positive().optional().describe('cores per replica (resize)'),
@@ -96,7 +97,7 @@ export function applyStrategy(model: Model, base: Plan, input: unknown): Applied
     }
     if (ch.autoscale) {
       const a = ch.autoscale;
-      s.autoscale = { min: a.min, max: a.max, target: a.targetCpu ?? 0.6, warmupS: a.warmupS ?? 60, cooldownS: a.cooldownS ?? 300, intervalS: a.intervalS ?? 15 };
+      s.autoscale = { min: a.min, max: a.max, target: a.targetCpu ?? 0.6, warmupS: a.warmupS ?? 60, cooldownS: a.cooldownS ?? 300, intervalS: a.intervalS ?? 15, metricWindowS: a.metricWindowS ?? 30 };
       s.replicas = null;
       if (!m.cpu) notes.push(`${ch.service}: no CPU data — autoscaling tracks load as a share of fitted capacity instead of CPU`);
       notes.push(`${ch.service}: autoscale ${a.min}–${a.max} replicas at ${Math.round((a.targetCpu ?? 0.6) * 100)}% CPU, ${a.warmupS ?? 60} s warm-up, ${a.cooldownS ?? 300} s cool-down`);
