@@ -335,4 +335,60 @@ const elasticity: Scenario = {
   },
 };
 
-export const ADVANCED: Scenario[] = [recovery, retryLayers, cells, shed, tail, llmFailover, elasticity];
+/** Losing a whole region: one region vs active-passive across two, with the latency of failing over far away. */
+const regionB = graph(
+  [
+    ['users', 'client', X[0], 330],
+    ['dns', 'gateway', X[1], 330, { limit: 20000, routing: 'failover' }],
+    ['lb-eu', 'lb', X[2], 60],
+    ['api-eu', 'server', X[3], 30, { instances: 4 }],
+    ['db-eu', 'db', X[4], 60, { tier: 'M' }],
+    ['lb-us', 'lb', X[2], 600],
+    ['api-us', 'server', X[3], 570, { instances: 4 }],
+    ['db-us', 'db', X[4], 600, { tier: 'M' }],
+  ],
+  [['users', 'dns'], ['dns', 'lb-eu'], ['dns', 'lb-us'], ['lb-eu', 'api-eu'], ['api-eu', 'db-eu'], ['lb-us', 'api-us'], ['api-us', 'db-us']],
+  [
+    ['eu', 'eu-west-1', X[2] - 40, -40, 1040, 380],
+    ['us', 'us-east-1 (standby)', X[2] - 40, 500, 1040, 380],
+  ],
+);
+// the standby region is an ocean away
+regionB.edges = regionB.edges.map((e) => (e.source === 'dns' && e.target === 'lb-us' ? { ...e, data: { latencyMs: 80 } } : e));
+
+const regions: Scenario = {
+  id: 'region-failover',
+  title: 'One Region vs Two',
+  tagline: 'eu-west-1 goes dark. Do your users notice — and what does the insurance cost?',
+  watch: 'A is down for as long as the region is. B fails over to us-east-1 and keeps serving, ~80 ms slower, at roughly twice the bill.',
+  readRatio: 0.85,
+  a: {
+    title: 'eu-west-1 only',
+    graph: graph(
+      [
+        ['users', 'client', X[0], 200],
+        ['lb-eu', 'lb', X[1], 200],
+        ['api-eu', 'server', X[2], 160, { instances: 4 }],
+        ['db-eu', 'db', X[3], 200, { tier: 'M' }],
+      ],
+      [['users', 'lb-eu'], ['lb-eu', 'api-eu'], ['api-eu', 'db-eu']],
+      [['eu', 'eu-west-1', X[1] - 40, 90, 1000, 420]],
+    ),
+  },
+  b: { title: 'Active-passive, 2 regions', graph: regionB },
+  timeline: [
+    { at: 0, rps: 600, caption: 'Both serve European traffic from eu-west-1.' },
+    { at: 36, rps: 600 },
+  ],
+  events: [
+    { at: 10, message: '⚡ eu-west-1 is down', a: { type: 'fail-zone', id: 'eu' }, b: { type: 'fail-zone', id: 'eu' } },
+    { at: 28, message: '🛠 eu-west-1 is back', a: { type: 'restore-zone', id: 'eu' }, b: { type: 'restore-zone', id: 'eu' } },
+  ],
+  takeaway: {
+    a: 'Down for exactly as long as the region was. Nothing to fail over to.',
+    b: 'Kept serving from us-east-1, ~80 ms slower per request while failed over, for about twice the infrastructure. Data replication between regions is assumed, not modelled.',
+    lesson: 'Multi-region is insurance: you pay for a second copy every month to buy back the hours a regional outage would cost. Price both before you decide.',
+  },
+};
+
+export const ADVANCED: Scenario[] = [recovery, retryLayers, cells, shed, tail, llmFailover, elasticity, regions];

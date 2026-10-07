@@ -134,6 +134,8 @@ const COMPARE_HOOKS: Record<string, { hook: string; series?: string; metrics?: E
   'queue-vs-shed': { hook: '“Never drop a request”\nis how you drop all of them.', series: 'Failure modes at scale', metrics: ['errors', 'p99'] },
   'tail-at-scale': { hook: 'Every shard is fast.\nYour users still wait.', series: 'Failure modes at scale', metrics: ['errors', 'p99'] },
   'llm-provider-outage': { hook: 'Your AI feature has a single point\nof failure you don\'t even run.', series: 'Failure modes at scale', metrics: ['errors', 'p99', 'cost'] },
+  'fleet-vs-autoscale': { hook: 'Ten servers all day,\nor two that grow at lunch?', series: 'Cloud cost, made visible', metrics: ['errors', 'p99', 'cost'] },
+  'region-failover': { hook: 'A whole AWS region goes dark.\nWhat does staying up cost?', series: 'Failure modes at scale', metrics: ['errors', 'p99', 'cost'] },
   'node-vs-go': { hook: 'We rewrote it in Go.\nHow much did we save?', series: 'Cloud cost, made visible', metrics: ['errors', 'p99', 'cost'] },
 };
 
