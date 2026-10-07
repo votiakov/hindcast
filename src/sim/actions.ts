@@ -10,6 +10,13 @@ export type SimAction =
   | { type: 'restore-zone'; id: string }
   /** brownout: node keeps running at `factor` × capacity until restored */
   | { type: 'degrade'; id: string; factor: number }
+  /** gray failure: the node fails `rate` of its requests until restored */
+  | { type: 'inject-errors'; id: string; rate: number }
+  /** gray failure: every request through the node takes `ms` longer until restored */
+  | { type: 'inject-latency'; id: string; ms: number }
+  /** cache / cdn: drop every key — hit rate starts again from zero */
+  | { type: 'flush-cache'; id: string }
+  /** clears degrade and injected faults */
   | { type: 'restore'; id: string };
 
 import { KINDS, instancesUp, isSystem, type AppNode, type SystemNodeData } from './catalog';
@@ -44,7 +51,7 @@ export function applyAction(nodes: AppNode[], a: SimAction, ctx: ActionContext):
   switch (a.type) {
     case 'revive-all':
       return {
-        nodes: nodes.map((n) => (isSystem(n) ? { ...n, data: { ...n.data, alive: true, down: 0, degraded: undefined } } : n.type === 'zone' ? ({ ...n, data: { ...n.data, failed: false } } as AppNode) : n)),
+        nodes: nodes.map((n) => (isSystem(n) ? { ...n, data: { ...n.data, alive: true, down: 0, degraded: undefined, faultRate: undefined, faultLatencyMs: undefined } } : n.type === 'zone' ? ({ ...n, data: { ...n.data, failed: false } } as AppNode) : n)),
         notes: [{ tone: 'good', text: '✅ Everything restored' }],
         target: 'all',
       };
@@ -55,7 +62,16 @@ export function applyAction(nodes: AppNode[], a: SimAction, ctx: ActionContext):
     case 'degrade':
       return { nodes: setData(nodes, a.id, { degraded: a.factor }), notes: [{ tone: 'bad', text: `🐢 ${a.id} degraded to ${Math.round(a.factor * 100)}% capacity` }], target: a.id };
     case 'restore':
-      return { nodes: setData(nodes, a.id, { degraded: undefined }), notes: [], target: a.id };
+      return { nodes: setData(nodes, a.id, { degraded: undefined, faultRate: undefined, faultLatencyMs: undefined }), notes: [], target: a.id };
+    case 'inject-errors':
+      return { nodes: setData(nodes, a.id, { faultRate: a.rate }), notes: [{ tone: 'bad', text: `☣ ${a.id} fails ${Math.round(a.rate * 100)}% of requests` }], target: a.id };
+    case 'inject-latency':
+      return { nodes: setData(nodes, a.id, { faultLatencyMs: a.ms }), notes: [{ tone: 'bad', text: `🐌 ${a.id} +${a.ms} ms per request` }], target: a.id };
+    case 'flush-cache': {
+      const n = nodes.find((x) => x.id === a.id);
+      if (!n || !isSystem(n)) return { nodes, notes: [], target: null };
+      return { nodes: setData(nodes, a.id, { flushes: (n.data.flushes ?? 0) + 1 }), notes: [{ tone: 'bad', text: `🧊 ${n.data.name} flushed — cold cache` }], target: a.id };
+    }
     case 'fail-zone':
     case 'restore-zone': {
       const failed = a.type === 'fail-zone';

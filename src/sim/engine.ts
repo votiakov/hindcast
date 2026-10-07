@@ -1,4 +1,5 @@
-import { KINDS, costOf, isUp, requestPrice, type RetryPolicy, type SystemEdge, type SystemNode, type SystemNodeData } from './catalog';
+import { KINDS, baseLatencyOf, cacheWarmth, costOf, isUp, perInstanceCapacity, requestPrice, type RetryPolicy, type SystemEdge, type SystemNode, type SystemNodeData } from './catalog';
+import { billedInstances, effectiveData, newScaler, stepScaler, type ScalerState } from './autoscale';
 import { BEHAVIORS, type Route } from './components';
 
 /**
@@ -61,6 +62,10 @@ export interface NodeStats {
   /** share of responses that arrived after this caller's deadline */
   lateFrac: number;
   history: number[];
+  /** autoscaled nodes: serving / booting / wanted */
+  scaling: { live: number; pending: number; desired: number } | null;
+  /** cache / cdn: 0 (cold) … 1 (warm) */
+  warmth: number;
 }
 
 export interface EdgeStats {
@@ -79,9 +84,10 @@ export interface GlobalStats {
 }
 
 export interface SimEvent {
-  kind: 'overload' | 'recovered' | 'failover' | 'breaker-open' | 'breaker-closed';
+  kind: 'overload' | 'recovered' | 'failover' | 'breaker-open' | 'breaker-closed' | 'scale-out' | 'scale-in';
   nodeId: string;
   name: string;
+  detail?: string;
 }
 
 export interface NodeState {
@@ -110,6 +116,10 @@ export interface NodeState {
   /** pass-through fraction the breaker allowed this tick */
   breakerPass: number;
   lateFrac: number;
+  /** cache: when it went cold (null = warm), and the flush counter last seen */
+  coldAt: number | null;
+  flushSeen: number;
+  warmth: number;
 }
 
 interface Local {
@@ -126,7 +136,21 @@ const fresh = (): NodeState => ({
   queue: 0, inRps: 0, dropRps: 0, hitRps: 0, util: 0, success: 1, latencyMs: 0, dropRatio: 0, history: [],
   overloaded: false, reachable: 1, drainRps: 0, warm: 0, coldFrac: 0, downFor: 0, costPerHour: 0, failover: 'none',
   attemptFail: 0, retryAmp: 1, breaker: 'closed', breakerT: 0, breakerPass: 1, lateFrac: 0,
+  coldAt: null, flushSeen: 0, warmth: 1,
 });
+
+/**
+ * Node data with dynamic effects applied: autoscaled instance count, and the throughput lost to
+ * injected latency (a pool of workers that each take longer serves fewer requests per second).
+ */
+export function dynamicData(d: SystemNodeData, scaler: ScalerState | undefined): SystemNodeData {
+  let e = effectiveData(d, scaler);
+  if (e.faultLatencyMs && d.kind !== 'gateway' && d.kind !== 'llmapi' && d.kind !== 'client' && d.kind !== 'queue') {
+    const base = Math.max(0.05, baseLatencyOf(d));
+    e = { ...e, degraded: (e.degraded ?? 1) * (base / (base + e.faultLatencyMs)) };
+  }
+  return e;
+}
 
 /** outgoing attempts per original call, given per-attempt failure rate f */
 export function retryAmp(f: number, retries: number, policy: RetryPolicy): number {
@@ -166,6 +190,7 @@ export class Engine {
   t = 0;
   private nodes = new Map<string, NodeState>();
   private edges = new Map<string, { rps: number }>();
+  private scalers = new Map<string, ScalerState>();
   private global: GlobalStats = { t: 0, rps: 0, errorRate: 0, p99: 0, cost: 0, history: [] };
   private sinceHistory = 0;
 
@@ -173,6 +198,7 @@ export class Engine {
     this.t = 0;
     this.nodes.clear();
     this.edges.clear();
+    this.scalers.clear();
     this.global = { t: 0, rps: 0, errorRate: 0, p99: 0, cost: 0, history: [] };
     this.sinceHistory = 0;
   }
@@ -213,6 +239,17 @@ export class Engine {
   step(nodes: SystemNode[], edges: SystemEdge[], trafficRps: number, readRatio: number, dt: number, cfg: EngineConfig = DEFAULT_ENGINE_CONFIG): SimEvent[] {
     this.t += dt;
     const events: SimEvent[] = [];
+    const now = this.t;
+    const original = new Map(nodes.map((n) => [n.id, n.data]));
+    nodes = nodes.map((n) => {
+      if (n.data.autoscale && KINDS[n.data.kind].scalable) {
+        if (!this.scalers.has(n.id)) this.scalers.set(n.id, newScaler(n.data));
+      } else this.scalers.delete(n.id);
+      const e = dynamicData(n.data, this.scalers.get(n.id));
+      return e === n.data ? n : { ...n, data: e };
+    });
+    const edgeLat = new Map<string, number>();
+    for (const e of edges) if (e.data?.latencyMs) edgeLat.set(e.id, Number(e.data.latencyMs));
     const byId = new Map(nodes.map((n) => [n.id, n]));
     const out = new Map<string, Route[]>();
     const indeg = new Map<string, number>(nodes.map((n) => [n.id, 0]));
@@ -260,6 +297,13 @@ export class Engine {
       const routes = out.get(id) ?? [];
       const arrivals = d.kind === 'client' ? (d.alive ? perClient : 0) : inflow.get(id) ?? 0;
       if (d.kind === 'replica') st.failover = promotedReplicas.has(id) ? 'promoted' : 'none';
+      if (d.kind === 'cache' || d.kind === 'cdn') {
+        // a dead or flushed cache comes back empty and re-warms from misses
+        if (!isUp(d) || (d.flushes ?? 0) !== st.flushSeen) st.coldAt = now;
+        st.flushSeen = d.flushes ?? 0;
+        st.warmth = cacheWarmth(st.coldAt, now, d.warmupS);
+        if (st.warmth > 0.999) st.coldAt = null;
+      }
 
       // a dead node fails everything (databases handle their own failover)
       let r;
@@ -267,6 +311,12 @@ export class Engine {
         st.queue = 0;
         r = { processed: 0, failed: arrivals, forward: 0, util: 0, up: false } as const;
       } else r = BEHAVIORS[d.kind].process({ id, d, spec, st, arrivals, dt, cfg, readRatio, routes, pooled: pooled.has(id), emit: arrivals });
+
+      // gray failure: the node answers a share of what it handles with errors, without calling on
+      if (d.faultRate && r.up && d.kind !== 'client') {
+        const bad = r.processed * d.faultRate;
+        r = { ...r, failed: r.failed + bad, forward: r.forward * (1 - d.faultRate), hits: ('hits' in r ? r.hits ?? 0 : 0) * (1 - d.faultRate) };
+      }
 
       if (d.kind === 'db' && st.failover === 'promoted' && r.routes?.length) promotedReplicas.add(r.routes[0].target);
 
@@ -322,7 +372,11 @@ export class Engine {
       let succ = 1;
       let lat = 0;
       if (hasKids) {
-        const kids = routes.map((k) => ({ s: this.state(k.target), f: flows.get(k.edgeId) ?? 0 }));
+        const kids = routes.map((k) => {
+          const s = this.state(k.target);
+          const link = edgeLat.get(k.edgeId) ?? 0;
+          return { s: link ? { ...s, latencyMs: s.latencyMs + link } : s, f: flows.get(k.edgeId) ?? 0 };
+        });
         if (mode === 'fanout') {
           succ = kids.reduce((p, k) => p * k.s.success, 1);
           lat = Math.max(...kids.map((k) => k.s.latencyMs));
@@ -381,16 +435,26 @@ export class Engine {
 
       const keep = 1 - st.dropRatio;
       const res = up ? BEHAVIORS[d.kind].fold({ d, spec, st, up, keep, localShare, childSucc, childLat, hasKids, cfg }) : { success: 0, latencyMs: 0 };
+      if (up && d.faultLatencyMs) res.latencyMs += d.faultLatencyMs;
       st.success = ema(st.success, res.success, dt, 0.3);
       st.latencyMs = ema(st.latencyMs, res.latencyMs, dt, 0.3);
       const usage = BEHAVIORS[d.kind].usageCostPerHour;
-      st.costPerHour = costOf(d) + (usage ? usage(d, st) : st.inRps * 3600 * requestPrice(d));
+      const scaler = this.scalers.get(id);
+      st.costPerHour = costOf(scaler ? { ...d, instances: billedInstances(scaler) } : d) + (usage ? usage(d, st) : st.inRps * 3600 * requestPrice(d));
 
       const over = up && d.kind !== 'client' && d.kind !== 'queue' && st.dropRps > Math.max(1, st.inRps * 0.02);
       if (over && !st.overloaded) events.push({ kind: 'overload', nodeId: id, name: d.name });
       if (!over && st.overloaded) events.push({ kind: 'recovered', nodeId: id, name: d.name });
       st.overloaded = over;
       if (d.kind === 'db' && st.failover === 'promoted' && cfg.failoverS !== null && st.downFor - dt < cfg.failoverS) events.push({ kind: 'failover', nodeId: id, name: d.name });
+    }
+
+    // autoscalers react to the demand they saw this tick
+    for (const [id, sc] of this.scalers) {
+      const orig = original.get(id);
+      if (!orig) continue;
+      for (const ev of stepScaler(sc, orig, now, this.state(id).inRps, perInstanceCapacity(orig)))
+        if (ev.kind !== 'scaled') events.push({ kind: ev.kind, nodeId: id, name: orig.name, detail: `${ev.from} → ${ev.to}` });
     }
 
     const live = new Set(edges.map((e) => e.id));
@@ -451,6 +515,8 @@ export class Engine {
         breaker: n.data.breaker ? st.breaker : null,
         lateFrac: st.lateFrac,
         history: st.history,
+        scaling: this.scalers.has(n.id) ? { live: this.scalers.get(n.id)!.live, pending: this.scalers.get(n.id)!.pending.length, desired: this.scalers.get(n.id)!.desired } : null,
+        warmth: st.warmth,
       };
     }
     const edgeStats: Record<string, EdgeStats> = {};

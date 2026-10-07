@@ -28,6 +28,17 @@ export const ComponentSpec = z
     stallMs: z.number().min(0).optional().describe('stall duration in ms'),
     fanout: z.number().int().min(1).max(1000).optional().describe('each call goes to N partitions of the callee in parallel; the caller waits for the slowest (scatter-gather)'),
     queueS: z.number().positive().optional().describe('bounded queue length in seconds of work'),
+    autoscale: z
+      .object({
+        min: z.number().int().min(1).max(500),
+        max: z.number().int().min(1).max(500),
+        targetUtil: z.number().min(0.1).max(0.95).optional().describe('utilisation to aim for (default 0.6)'),
+        warmupS: z.number().min(0).max(900).optional().describe('launch → serving, seconds (default 30; EC2 ASG 90–180, k8s pod 5–20)'),
+        cooldownS: z.number().min(0).max(3600).optional().describe('wait after scaling before scaling in (default 60)'),
+      })
+      .optional()
+      .describe('server/worker/llm: target-tracking autoscaling; `instances` is the starting size'),
+    warmupS: z.number().positive().optional().describe('cache/cdn: re-warm time constant after a restart or flush (default 20 s)'),
     capacity: z.number().positive().optional().describe('override: req/s per size-S instance'),
     latencyMs: z.number().nonnegative().optional().describe('override: base service time'),
     costPerHour: z.number().nonnegative().optional().describe('override: $/h per size-S instance'),
@@ -47,8 +58,17 @@ export const ArchitectureSpec = z.object({
   pricing: z.enum(['illustrative', 'aws-us-east-1']).optional().describe('cost model: illustrative teaching defaults, or cited AWS us-east-1 on-demand prices'),
   components: z.array(ComponentSpec).min(1),
   connections: z
-    .array(z.union([z.tuple([z.string(), z.string()]), z.object({ from: z.string(), to: z.string() })]))
-    .describe('caller → callee pairs, e.g. ["lb","api"]; order matters for failover routing'),
+    .array(
+      z.union([
+        z.tuple([z.string(), z.string()]),
+        z.object({
+          from: z.string(),
+          to: z.string(),
+          latencyMs: z.number().min(0).max(1000).optional().describe('network round trip added to every call over this link (cross-AZ ≈ 1, cross-region ≈ 60–150)'),
+        }),
+      ]),
+    )
+    .describe('caller → callee pairs, e.g. ["lb","api"] or { from, to, latencyMs }; order matters for failover routing'),
   zones: z.array(ZoneSpec).optional(),
 });
 
@@ -61,6 +81,9 @@ export const ActionSpec = z.discriminatedUnion('type', [
   z.object({ type: z.literal('restore-zone'), id: z.string() }),
   z.object({ type: z.literal('degrade'), id: z.string(), factor: z.number().min(0).max(1) }),
   z.object({ type: z.literal('restore'), id: z.string() }),
+  z.object({ type: z.literal('inject-errors'), id: z.string(), rate: z.number().min(0).max(1) }),
+  z.object({ type: z.literal('inject-latency'), id: z.string(), ms: z.number().min(0) }),
+  z.object({ type: z.literal('flush-cache'), id: z.string() }),
 ]);
 
 export const ScenarioSpec = z.object({

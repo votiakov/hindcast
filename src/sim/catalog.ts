@@ -1,5 +1,6 @@
 import type { Node, Edge } from '@xyflow/react';
 import { kindPricing } from './pricing';
+import type { AutoscaleSpec } from './autoscale';
 
 /**
  * Component catalog: the *numbers* (capacity, latency, price) and node data shape.
@@ -81,6 +82,20 @@ export interface SystemNodeData extends Record<string, unknown> {
   queueS?: number;
   /** brownout multiplier on capacity (1 = healthy) */
   degraded?: number;
+
+  // --- dynamics ---
+  /** server / worker / llm: target-tracking autoscaling (instances = starting size) */
+  autoscale?: AutoscaleSpec;
+  /** cache / cdn: seconds to re-warm after a restart or flush (time constant) */
+  warmupS?: number;
+  /** cache / cdn: bumped by the flush action — the engine empties the cache when it changes */
+  flushes?: number;
+
+  // --- gray failures (set by inject actions, cleared by restore) ---
+  /** share of requests this node fails outright (bad deploy, poisoned config) */
+  faultRate?: number;
+  /** extra latency on every request (slow disk, noisy neighbour, GC) */
+  faultLatencyMs?: number;
 }
 
 export interface ZoneData extends Record<string, unknown> {
@@ -206,6 +221,19 @@ export const CATEGORIES: { id: string; label: string; kinds: Kind[] }[] = [
 ];
 
 export const QUEUE_MAX_BACKLOG = 200_000;
+/** default cache re-warm time constant (s) */
+export const CACHE_WARMUP_S = 20;
+
+/** hit-rate multiplier of a cache that went cold at `coldAt` (null = warm) */
+export function cacheWarmth(coldAt: number | null, now: number, warmupS = CACHE_WARMUP_S): number {
+  if (coldAt === null) return 1;
+  return 1 - Math.exp(-Math.max(0, now - coldAt) / Math.max(0.1, warmupS));
+}
+
+/** capacity of one healthy instance (for autoscaling decisions) */
+export function perInstanceCapacity(d: SystemNodeData): number {
+  return capacityOf({ ...d, instances: 1, down: 0, degraded: 1 }, 1);
+}
 /** continuous batching multipliers for GPU inference */
 export const BATCHING = { capacity: 4, latencyMs: 400 };
 

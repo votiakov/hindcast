@@ -1,4 +1,5 @@
-import { KINDS, baseLatencyOf, capacityOf, costOf, requestPrice, instancesUp, isSystem, RUNTIMES, type AppNode, type SystemEdge, type SystemNode, type SystemNodeData } from '../catalog';
+import { billedInstances, effectiveData, newScaler, stepScaler, type ScalerState } from '../autoscale';
+import { KINDS, baseLatencyOf, cacheWarmth, capacityOf, perInstanceCapacity, costOf, requestPrice, instancesUp, isSystem, RUNTIMES, type AppNode, type SystemEdge, type SystemNode, type SystemNodeData } from '../catalog';
 import { applyAction } from '../actions';
 import { explain, nodeView } from '../../canvas/nodeModel';
 import { failoverOrder, type NodeStats } from '../engine';
@@ -140,7 +141,14 @@ interface Win {
 interface DNode {
   idx: number;
   id: string;
+  /** node data as configured / changed by actions */
+  raw: SystemNodeData;
+  /** with dynamics applied (autoscaled instance count) */
   data: SystemNodeData;
+  scaler: ScalerState | null;
+  /** cache: when it went cold (null = warm) */
+  coldAt: number | null;
+  flushSeen: number;
   children: number[];
   edgeIds: string[];
   pooled: boolean;
@@ -243,7 +251,8 @@ function runDes(spec: ArchitectureSpec, scenarioInput: unknown, cfgIn: Partial<D
   const nodes: DNode[] = sys().map((n, i) => {
     index.set(n.id, i);
     return {
-      idx: i, id: n.id, data: n.data, children: [], edgeIds: [], pooled: false,
+      idx: i, id: n.id, raw: n.data, data: n.data, children: [], edgeIds: [], pooled: false,
+      scaler: n.data.autoscale && KINDS[n.data.kind].scalable ? newScaler(n.data) : null, coldAt: null, flushSeen: n.data.flushes ?? 0,
       workers: 1, svcMeanMs: 1, busy: 0, queue: [], qHead: 0, queueMax: 0, lastBusyT: 0,
       rate: Infinity, tokens: 0, lastRefill: 0, warm: 0, downSince: null,
       br: 'closed', brUntil: 0, brOk: 0, brFail: 0, retryTokens: RETRY_BUDGET.cap,
@@ -251,10 +260,12 @@ function runDes(spec: ArchitectureSpec, scenarioInput: unknown, cfgIn: Partial<D
       win: newWin(), peakUtil: 0, utilSum: 0, utilN: 0, dropsTotal: 0, worst: -1, worstNote: null, lastStats: null,
     };
   });
+  const linkMs = new Map<number, number>();
   for (const e of edges) {
     const a = index.get(e.source);
     const b = index.get(e.target);
     if (a === undefined || b === undefined || a === b) continue;
+    if (e.data?.latencyMs) linkMs.set(a * 100_000 + b, Number(e.data.latencyMs));
     nodes[a].children.push(b);
     nodes[a].edgeIds.push(e.id);
     const k = nodes[a].data.kind;
@@ -265,6 +276,9 @@ function runDes(spec: ArchitectureSpec, scenarioInput: unknown, cfgIn: Partial<D
 
   /** derive pool size, service time and limits from the node's (possibly changed) data */
   function configure(n: DNode) {
+    n.data = effectiveData(n.raw, n.scaler ?? undefined);
+    if ((n.raw.kind === 'cache' || n.raw.kind === 'cdn') && (!up(n) || (n.raw.flushes ?? 0) !== n.flushSeen)) n.coldAt = now;
+    n.flushSeen = n.raw.flushes ?? 0;
     const d = n.data;
     const reach = n.pooled || d.kind === 'llm' ? instancesUp(d) : Math.min(1, instancesUp(d));
     const cap = Math.max(1e-6, capacityOf(d, reach));
@@ -334,8 +348,9 @@ function runDes(spec: ArchitectureSpec, scenarioInput: unknown, cfgIn: Partial<D
     }
     if (kind === 'llmapi') {
       // provider capacity is not your problem — only its rate limit and latency are
-      at(rng.lognormal(n.svcMeanMs, cfg.serviceCv * 0.5), () => {
+      at(rng.lognormal(n.svcMeanMs, cfg.serviceCv * 0.5) + (d.faultLatencyMs ?? 0), () => {
         n.win.usageReqs++;
+        if (d.faultRate && rng.next() < d.faultRate) return fail(n, done, 0);
         done(true);
       });
       return;
@@ -349,18 +364,19 @@ function runDes(spec: ArchitectureSpec, scenarioInput: unknown, cfgIn: Partial<D
       n.downSince = null;
       if (read && replicas.length) {
         const pick = Math.floor(rng.next() * (replicas.length + 1));
-        if (pick > 0) return hop(replicas[pick - 1], read, done);
+        if (pick > 0) return hop(replicas[pick - 1], read, done, n.idx);
       }
       return enqueue(n, { read, tIn: now, done });
     }
     if (n.downSince === null) n.downSince = now;
     if (!replicas.length) return fail(n, done);
     const promoted = cfg.failoverS !== null && now - n.downSince >= cfg.failoverS;
-    if (!read) return promoted ? hop(replicas[0], read, done) : fail(n, done);
-    return hop(replicas[Math.floor(rng.next() * replicas.length)], read, done);
+    if (!read) return promoted ? hop(replicas[0], read, done, n.idx) : fail(n, done);
+    return hop(replicas[Math.floor(rng.next() * replicas.length)], read, done, n.idx);
   }
 
-  const hop = (i: number, read: boolean, done: Done) => at(cfg.hopMs, () => arrive(i, read, done));
+  /** one call over the network: a hop plus the link's round trip, if it has one */
+  const hop = (i: number, read: boolean, done: Done, from = -1) => at(cfg.hopMs + (from >= 0 ? (linkMs.get(from * 100_000 + i) ?? 0) : 0), () => arrive(i, read, done));
 
   // ---- service pool ----
   function enqueue(n: DNode, job: Job) {
@@ -375,6 +391,7 @@ function runDes(spec: ArchitectureSpec, scenarioInput: unknown, cfgIn: Partial<D
     setBusy(n, 1);
     let svc = rng.lognormal(n.svcMeanMs, cfg.serviceCv);
     if (n.data.stallRate && rng.next() < n.data.stallRate) svc += n.data.stallMs ?? 0;
+    svc += n.data.faultLatencyMs ?? 0;
     if (n.data.kind === 'function') {
       if (n.busy > n.warm) {
         n.warm = n.busy;
@@ -406,8 +423,9 @@ function runDes(spec: ArchitectureSpec, scenarioInput: unknown, cfgIn: Partial<D
 
   function afterService(n: DNode, job: Job) {
     const kind = n.data.kind;
+    if (n.data.faultRate && rng.next() < n.data.faultRate) return fail(n, job.done, 0);
     if (kind === 'cache' || kind === 'cdn') {
-      if (rng.next() < (n.data.hitRate ?? 0.85)) {
+      if (rng.next() < (n.data.hitRate ?? 0.85) * cacheWarmth(n.coldAt, now, n.data.warmupS)) {
         n.win.hits++;
         return job.done(true);
       }
@@ -484,12 +502,12 @@ function runDes(spec: ArchitectureSpec, scenarioInput: unknown, cfgIn: Partial<D
         hop(c, read, (ok) => {
           allOk &&= ok;
           if (--pending === 0) done(allOk);
-        });
+        }, n.idx);
       return;
     }
     if (mode === 'failover') {
       const ordered = failoverOrder(kids.map((k) => ({ k, up: up(nodes[k]), data: nodes[k].data }))).map((x) => x.k);
-      const tryAt = (i: number) => hop(ordered[i], read, (ok) => (ok || i + 1 >= ordered.length ? done(ok) : tryAt(i + 1)));
+      const tryAt = (i: number) => hop(ordered[i], read, (ok) => (ok || i + 1 >= ordered.length ? done(ok) : tryAt(i + 1)), n.idx);
       return tryAt(0);
     }
     const degree = Math.max(1, n.data.fanout ?? 1);
@@ -501,10 +519,10 @@ function runDes(spec: ArchitectureSpec, scenarioInput: unknown, cfgIn: Partial<D
         hop(kids[Math.floor(rng.next() * kids.length)], read, (ok) => {
           allOk &&= ok;
           if (--pending === 0) done(allOk);
-        });
+        }, n.idx);
       return;
     }
-    hop(kids[Math.floor(rng.next() * kids.length)], read, done);
+    hop(kids[Math.floor(rng.next() * kids.length)], read, done, n.idx);
   }
 
   // ---- traffic ----
@@ -558,7 +576,7 @@ function runDes(spec: ArchitectureSpec, scenarioInput: unknown, cfgIn: Partial<D
       appNodes = r.nodes;
       for (const an of sys()) {
         const n = nodes[index.get(an.id)!];
-        n.data = an.data;
+        n.raw = an.data;
         configure(n);
       }
       evLog.push({ t: r3(now), what: ev.note ?? `${ev.action.type}${'id' in ev.action ? ` ${ev.action.id}` : ''}${r.target && !('id' in ev.action) ? ` → ${r.target}` : ''}` });
@@ -579,7 +597,7 @@ function runDes(spec: ArchitectureSpec, scenarioInput: unknown, cfgIn: Partial<D
       const util = n.data.kind === 'queue' ? (n.backlog.length - n.bHead) / QUEUE_BACKLOG_MAX : isFinite(n.rate) ? w.arrivals / Math.max(1e-9, n.rate * winS) : w.busyArea / (workers * winS);
       const billed = n.data.kind === 'function' || n.data.kind === 'llmapi' ? w.usageReqs : n.data.kind === 'client' ? 0 : w.arrivals;
       const usage = billed * requestPrice(n.data) * 3600;
-      const costH = costOf(n.data) + usage;
+      const costH = costOf(n.scaler ? { ...n.data, instances: billedInstances(n.scaler) } : n.data) + usage;
       cost += costH;
       const stats: NodeStats = {
         inRps: w.arrivals / winS,
@@ -598,7 +616,15 @@ function runDes(spec: ArchitectureSpec, scenarioInput: unknown, cfgIn: Partial<D
         breaker: n.data.breaker ? n.br : null,
         lateFrac: w.attempts ? w.late / w.attempts : 0,
         history: [],
+        scaling: n.scaler ? { live: n.scaler.live, pending: n.scaler.pending.length, desired: n.scaler.desired } : null,
+        warmth: cacheWarmth(n.coldAt, now, n.data.warmupS),
       };
+      if ((n.data.kind === 'cache' || n.data.kind === 'cdn') && !up(n)) n.coldAt = now;
+      if (n.scaler) {
+        const evs = stepScaler(n.scaler, n.raw, now, w.arrivals / winS, perInstanceCapacity(n.raw));
+        for (const ev of evs) if (ev.kind !== 'scaled') evLog.push({ t: r3(now), what: `${ev.kind}: ${n.id} ${ev.from} → ${ev.to}` });
+        if (evs.length) configure(n);
+      }
       n.lastStats = stats;
       n.peakUtil = Math.max(n.peakUtil, util);
       n.utilSum += util;

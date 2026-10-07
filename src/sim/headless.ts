@@ -108,7 +108,7 @@ function simulateParsed(spec: ArchitectureSpec, scenarioInput: unknown, opts: Si
       events.push({ t: round(t, 2), what: ev.note ?? `${ev.action.type}${'id' in ev.action ? ` ${ev.action.id}` : ''}${r.target && r.target !== ('id' in ev.action ? ev.action.id : '') ? ` → ${r.target}` : ''}` });
     }
     const sys = nodes.filter(isSystem) as SystemNode[];
-    for (const e of engine.step(sys, edges, traffic(t), sc.readRatio, dt, cfg)) events.push({ t: round(t + dt, 2), what: `${e.kind}: ${e.name}` });
+    for (const e of engine.step(sys, edges, traffic(t), sc.readRatio, dt, cfg)) events.push({ t: round(t + dt, 2), what: `${e.kind}: ${e.name}${e.detail ? ` ${e.detail}` : ""}` });
     const snap = engine.snapshot(sys, edges);
     lastStats = snap.nodeStats;
     const gl = snap.global;

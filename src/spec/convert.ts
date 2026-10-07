@@ -8,9 +8,12 @@ const NODE_W = 240;
 const NODE_H = 190;
 const ZONE_PAD = 44;
 
-const DATA_KEYS = ['tier', 'instances', 'runtime', 'hitRate', 'limit', 'batching', 'retries', 'retryPolicy', 'timeoutMs', 'breaker', 'fallback', 'routing', 'fanout', 'stallRate', 'stallMs', 'queueS', 'capacity', 'latencyMs', 'costPerHour'] as const;
+const DATA_KEYS = ['tier', 'instances', 'runtime', 'hitRate', 'limit', 'batching', 'retries', 'retryPolicy', 'timeoutMs', 'breaker', 'fallback', 'routing', 'fanout', 'stallRate', 'stallMs', 'queueS', 'capacity', 'latencyMs', 'costPerHour', 'autoscale', 'warmupS'] as const;
 
 export const pairs = (spec: ArchitectureSpec): [string, string][] => spec.connections.map((c) => (Array.isArray(c) ? [c[0], c[1]] : [c.from, c.to]));
+/** connections with their link properties */
+export const links = (spec: ArchitectureSpec): { from: string; to: string; latencyMs?: number }[] =>
+  spec.connections.map((c) => (Array.isArray(c) ? { from: c[0], to: c[1] } : c));
 
 export function componentData(c: ComponentSpec): SystemNodeData {
   const d = defaultData(c.kind, c.name ?? c.id);
@@ -71,7 +74,7 @@ export function specToGraph(input: unknown): Graph {
     nodes.push({ id: z.id, type: 'zone', position: { x: x0, y: y0 }, width: x1 - x0, height: y1 - y0, zIndex: -1, data: { label: z.label ?? z.id } });
   }
   for (const c of spec.components) nodes.push({ id: c.id, type: 'system', position: pos.get(c.id)!, data: componentData(c) });
-  const edges: SystemEdge[] = pairs(spec).map(([source, target]) => ({ id: `e-${source}-${target}`, source, target, type: 'flow' }));
+  const edges: SystemEdge[] = links(spec).map(({ from: source, to: target, latencyMs }) => ({ id: `e-${source}-${target}`, source, target, type: 'flow', ...(latencyMs ? { data: { latencyMs } } : {}) }));
   return { nodes, edges };
 }
 
@@ -107,7 +110,9 @@ export function graphToSpec(nodes: AppNode[], edges: SystemEdge[], name?: string
     version: 1,
     ...(name ? { name } : {}),
     components,
-    connections: edges.filter((e) => ids.has(e.source) && ids.has(e.target)).map((e) => [e.source, e.target] as [string, string]),
+    connections: edges
+      .filter((e) => ids.has(e.source) && ids.has(e.target))
+      .map((e) => (e.data?.latencyMs ? { from: e.source, to: e.target, latencyMs: Number(e.data.latencyMs) } : ([e.source, e.target] as [string, string]))),
     ...(zones.length ? { zones } : {}),
   };
 }
@@ -137,16 +142,16 @@ function applyChange(spec: ArchitectureSpec, ch: ChangeSpec) {
     case 'remove':
       find(ch.id);
       spec.components = spec.components.filter((x) => x.id !== ch.id);
-      spec.connections = pairs(spec).filter(([a, b]) => a !== ch.id && b !== ch.id);
+      spec.connections = spec.connections.filter((c) => !(Array.isArray(c) ? c.includes(ch.id) : c.from === ch.id || c.to === ch.id));
       for (const z of spec.zones ?? []) z.members = z.members.filter((m) => m !== ch.id);
       break;
     case 'connect':
       find(ch.from);
       find(ch.to);
-      spec.connections = [...pairs(spec), [ch.from, ch.to]];
+      spec.connections = [...spec.connections, [ch.from, ch.to]];
       break;
     case 'disconnect':
-      spec.connections = pairs(spec).filter(([a, b]) => !(a === ch.from && b === ch.to));
+      spec.connections = spec.connections.filter((c) => (Array.isArray(c) ? !(c[0] === ch.from && c[1] === ch.to) : !(c.from === ch.from && c.to === ch.to)));
       break;
   }
 }
