@@ -205,11 +205,25 @@ function regress(x: number[], y: number[]) {
 
 /** endpoint ids from different sources ("frontend GET /dispatch" vs "frontend HTTP GET /dispatch") */
 export function sameEndpoint(a: string, b: string) {
-  const norm = (s: string) => s.toLowerCase().replace(/\bhttp\b/g, '').replace(/\s+/g, ' ').trim();
+  // path parameters are spelled {id}, [id] or :id depending on the framework; query strings and
+  // trailing slashes don't name a different endpoint
+  const norm = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/\bhttp\b/g, '')
+      .replace(/\{[^}]*\}|\[[^\]]*\]|:[a-z_]\w*/g, '*')
+      .replace(/\?\S*/g, '')
+      .replace(/\/(\s|$)/g, '$1')
+      .replace(/\s+/g, ' ')
+      .trim();
   if (norm(a) === norm(b)) return true;
-  const pa = norm(a).split(' ');
-  const pb = norm(b).split(' ');
-  return pa[0] === pb[0] && pa[pa.length - 1] === pb[pb.length - 1];
+  const parse = (s: string) => {
+    const t = norm(s).split(' ');
+    return { svc: t[0], path: t[t.length - 1], method: t.find((x) => /^(get|post|put|patch|delete|head|options)$/.test(x)) };
+  };
+  const pa = parse(a);
+  const pb = parse(b);
+  return pa.svc === pb.svc && pa.path === pb.path && (!pa.method || !pb.method || pa.method === pb.method);
 }
 
 export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {

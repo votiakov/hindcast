@@ -397,3 +397,14 @@ describe('accuracy measurement', () => {
     expect(bp.measured).toBe(bp.plateaus[1].rps); // never broke: the last plateau
   });
 });
+
+describe('endpoint matching', () => {
+  it('matches the same route across frameworks and sources', async () => {
+    const { sameEndpoint } = await import('../src/backtest/calibrate');
+    expect(sameEndpoint('frontend GET /api/products/{productId}', 'frontend GET /api/products/[productId]')).toBe(true);
+    expect(sameEndpoint('app GET /owners/:id', 'app GET /owners/{ownerId}')).toBe(true);
+    expect(sameEndpoint('frontend GET /api/data/', 'frontend GET /api/data')).toBe(true);
+    expect(sameEndpoint('frontend HTTP GET /dispatch', 'frontend GET /dispatch')).toBe(true);
+    expect(sameEndpoint('frontend GET /api/cart', 'frontend POST /api/cart')).toBe(false);
+  });
+});
