@@ -9,6 +9,8 @@ export interface RefEdgeData {
   util: number;
   running: boolean;
   onRemove: () => void;
+  /** max particles per edge (board-wide budget) */
+  cap?: number;
 }
 
 /** Small, quiet request dots — present, not decorative. */
@@ -40,7 +42,7 @@ function RefEdgeImpl({ id, sourceX, sourceY, targetX, targetY, sourcePosition, t
   const live = rps >= 0.5;
   const failing = err > 0.05;
   const width = live ? 1.5 + Math.min(2, Math.log10(rps + 1) * 0.6) : 1.25;
-  const total = !live ? 0 : Math.min(12, Math.max(2, Math.round(Math.log2(rps + 1) * 1.2)));
+  const total = !live ? 0 : Math.min(Math.min(12, data.cap ?? 12), Math.max(2, Math.round(Math.log2(rps + 1) * 1.2)));
   const failN = err > 0.02 ? Math.max(1, Math.round(total * err)) : 0;
   const okN = Math.max(0, total - failN);
   const dur = Math.round((1.6 + Math.min(2.4, util * 1.8)) * 4) / 4;

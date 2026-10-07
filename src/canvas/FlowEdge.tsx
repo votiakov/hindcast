@@ -56,15 +56,17 @@ function FlowEdgeImpl(props: EdgeProps) {
   const theme = useSim((s) => s.settings.theme);
   const removeEdge = useSim((s) => s.removeEdge);
   const src = useInternalNode<SystemNode>(source);
+  // SVG particles are the most expensive thing on screen: share a fixed budget across the board
+  const cap = useSim((s) => Math.max(2, Math.min(16, Math.floor(220 / Math.max(1, s.boards[b].edges.length)))));
 
   if (theme !== 'neon') {
-    const data = { rps: es?.rps ?? 0, err: Math.min(1, Math.max(0, es?.errRatio ?? 0)), util: es?.util ?? 0, running, onRemove: () => removeEdge(b, id) };
+    const data = { rps: es?.rps ?? 0, err: Math.min(1, Math.max(0, es?.errRatio ?? 0)), util: es?.util ?? 0, running, cap, onRemove: () => removeEdge(b, id) };
     return theme === 'transit' ? <TransitEdge {...props} data={data} /> : <RefEdge {...props} data={data} />;
   }
 
   const rps = es?.rps ?? 0;
   const err = Math.min(1, Math.max(0, es?.errRatio ?? 0));
-  const total = rps < 0.5 ? 0 : Math.min(16, Math.max(2, Math.round(Math.log2(rps + 1) * 1.5)));
+  const total = rps < 0.5 ? 0 : Math.min(cap, Math.max(2, Math.round(Math.log2(rps + 1) * 1.5)));
   const failN = err > 0.02 ? Math.max(1, Math.round(total * err)) : 0;
   const okN = Math.max(0, total - failN);
   // slower particles on congested links

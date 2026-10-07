@@ -37,6 +37,7 @@ export interface TransitEdgeData {
   util: number;
   running: boolean;
   onRemove: () => void;
+  cap?: number;
 }
 
 function TransitEdgeImpl({ id, source, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, selected, data }: EdgeProps & { data: TransitEdgeData }) {
@@ -46,7 +47,7 @@ function TransitEdgeImpl({ id, source, sourceX, sourceY, targetX, targetY, sourc
   const color = src?.data.kind ? kindColor('transit', src.data.kind) : '#16161a';
   const live = rps >= 0.5;
   const width = live ? 6 + Math.min(6, Math.log10(rps + 1) * 1.6) : 5;
-  const total = !live ? 0 : Math.min(10, Math.max(1, Math.round(Math.log2(rps + 1) * 0.9)));
+  const total = !live ? 0 : Math.min(Math.min(10, data.cap ?? 10), Math.max(1, Math.round(Math.log2(rps + 1) * 0.9)));
   const failN = err > 0.02 ? Math.max(1, Math.round(total * err)) : 0;
   const okN = Math.max(0, total - failN);
   const dur = Math.round((2 + Math.min(2.5, util * 1.8)) * 4) / 4;
