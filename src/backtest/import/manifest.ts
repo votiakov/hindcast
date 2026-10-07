@@ -134,6 +134,17 @@ export function importBundle(manifestInput: unknown, fs: FileAccess): { dataset:
   const dataset = b.build({ name: m.name, stepS: m.step, start: ws, end: we });
   if (topology) {
     dataset.topology = topology;
+    // span metrics count SERVER spans: where a framework adds its own (Next.js, some Spring setups)
+    // every request counts twice — divide by what the traces show
+    const corrected: Record<string, number> = {};
+    for (const [id, shape] of Object.entries(topology.services)) {
+      const k = shape.serverSpansPerVisit;
+      const sv = dataset.services[id];
+      if (!k || !sv?.rps || filledFromTraces.has(id)) continue;
+      sv.rps = sv.rps.map((v) => (v === null ? null : v / k));
+      corrected[id] = Math.round(k * 100) / 100;
+    }
+    if (Object.keys(corrected).length) topology.rateCorrected = corrected;
     // a sampler's real share drifts from its setting: where request metrics count the same requests,
     // measure it, and rescale the rates that only traces provide
     const ratios: number[] = [];

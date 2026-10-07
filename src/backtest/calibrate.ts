@@ -328,9 +328,37 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
         }
       }
       const simple = Math.min(none, cpuFit.err);
+      // CPU that reached its limit in the history is capacity seen directly — even when the waiting
+      // happens before a span starts (an event loop too busy to accept), where self time can't see it
+      let cpuPeak = 0;
+      if (cpu && cpuLimit && s.cpuCores)
+        for (let i = 0; i < d.n; i++) {
+          const c = vals(s.cpuCores, i);
+          const r = vals(reps, i) ?? replicas;
+          if (c !== null && r > 0) cpuPeak = Math.max(cpuPeak, c / (r * cpuLimit));
+        }
       let chosen: Fitted | null = null;
+      let cpuSaturated = false;
       if (ov?.perReplicaRps) capacity = { limit: 'concurrency', servers: ov.servers ?? 1, perReplicaRps: ov.perReplicaRps };
-      else if (queue.err < simple * 0.85 && isFinite(queue.K) && queue.K < maxLam * 40) {
+      else if (cpuPeak >= 0.9 && isFinite(cpuK) && cpuK < (isFinite(queue.K) ? queue.K * 1.5 : Infinity)) {
+        // what finished per second while CPU was pinned is the capacity; CPU per request measured at
+        // low load can drift (runtimes get more efficient when busy)
+        let seen = 0;
+        const doneS = s.doneRps ?? s.rps;
+        if (doneS && cpu && cpuLimit)
+          for (let i = 0; i < d.n; i++) {
+            const c = vals(s.cpuCores, i);
+            const r = vals(reps, i) ?? replicas;
+            const k = vals(doneS, i);
+            if (c !== null && k !== null && r > 0 && c / (r * cpuLimit) >= 0.95) seen = Math.max(seen, k / r);
+          }
+        const K = seen > 0 ? seen : cpuK;
+        capacity = { limit: 'cpu', servers: cpuC, perReplicaRps: K };
+        // the queue may sit outside the spans, so self time can't tell how bursty it is: no less than M/M/c
+        chosen = { ...cpuFit, K, v: Math.max(1, cpuFit.v) };
+        cpuSaturated = true;
+        notes.push(`CPU reached ${Math.round(cpuPeak * 100)}% of its limit in the history; ${seen > 0 ? `${seen.toFixed(1)} req/s per replica finished while it was pinned` : `capacity ${cpuK.toFixed(1)} req/s per replica from CPU per request`}`);
+      } else if (queue.err < simple * 0.85 && isFinite(queue.K) && queue.K < maxLam * 40) {
         const limitedByCpu = isFinite(cpuK) && Math.abs(queue.K - cpuK) / cpuK < 0.25;
         capacity = { limit: limitedByCpu ? 'cpu' : 'concurrency', servers: queue.c, perReplicaRps: queue.K };
         chosen = queue;
@@ -351,8 +379,13 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
       }
       const tiedK = chosen && 'tied' in chosen && (chosen as Fitted & { tied: boolean }).tied;
 
-      const cpuOnly = capacity.limit === 'cpu' && chosen === cpuFit && cpu && cpuLimit && isFinite(cpuSe);
-      if (cpuOnly && B > 0) {
+      const cpuOnly = capacity.limit === 'cpu' && (chosen === cpuFit || cpuSaturated) && cpu && cpuLimit && isFinite(cpuSe);
+      if (cpuSaturated && B > 0) {
+        // seen directly at saturation: a narrow band around it, widened by how well CPU per request is known
+        const rel = cpu && isFinite(cpuSe) && cpu.perReq > 0 ? Math.min(0.15, cpuSe / cpu.perReq) : 0.05;
+        capacity.band = [capacity.perReplicaRps * (1 - 1.28 * rel - 0.03), capacity.perReplicaRps * (1 + 1.28 * rel + 0.03)];
+        capacity.samples = Array.from({ length: B }, () => capacity.perReplicaRps * (1 + (rand() * 2 - 1) * (1.28 * rel + 0.03)));
+      } else if (cpuOnly && B > 0) {
         // the latency history says little about a limit it never reached: the band comes from how
         // well CPU per request is known (slope ± its standard error)
         const draws: number[] = [];

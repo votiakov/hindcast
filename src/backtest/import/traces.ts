@@ -194,6 +194,8 @@ interface Visit {
   spanKind: Span['kind'];
   bytes: number | null;
   children: Visit[];
+  /** SERVER/CONSUMER spans that make up this visit */
+  serverSpans: number;
   /** set by critical-path pass */
   self: number;
 }
@@ -247,6 +249,7 @@ function visitsOf(spans: Span[], ignore: Set<string>): Visit[] {
           spanKind: sp.kind,
           bytes: payloadBytes(viaClient, sp),
           children: [],
+          serverSpans: 0,
           self: 0,
         };
         if (owner) owner.children.push(v);
@@ -259,6 +262,7 @@ function visitsOf(spans: Span[], ignore: Set<string>): Visit[] {
         if (r) current.route = r;
       }
     }
+    if (current && !ignored && (sp.kind === 'server' || sp.kind === 'consumer') && sp.service === current.service) current.serverSpans++;
     for (const c of kids.get(sp.spanId) ?? []) walk(c, current, sp.kind === 'client' || sp.kind === 'producer' ? sp : undefined);
   };
   for (const r of roots) walk(r, null, undefined);
@@ -337,7 +341,7 @@ export function buildTopology(spans: Span[], b: DatasetBuilder | null, opts: Tra
   const byTrace = new Map<string, Span[]>();
   for (const s of spans) (byTrace.get(s.traceId) ?? byTrace.set(s.traceId, []).get(s.traceId)!).push(s);
 
-  const svc = new Map<string, { n: number; self: number[]; incl: number[]; kind: ServiceShape['kind']; system?: string }>();
+  const svc = new Map<string, { n: number; self: number[]; incl: number[]; kind: ServiceShape['kind']; system?: string; serverSpans: number }>();
   const edges = new Map<string, { calls: number; bytes: number; bytesN: number }>();
   const eps = new Map<string, { service: string; n: number; err: number; dur: number[]; calls: Map<string, number>; visits: Map<string, number>; cp: Map<string, number>; bytes: Map<string, number> }>();
   // per-bucket accumulators
@@ -367,9 +371,10 @@ export function buildTopology(spans: Span[], b: DatasetBuilder | null, opts: Tra
       const walk = (v: Visit, parent: Visit | null) => {
         failed ||= v === root && v.error;
         ep.visits.set(v.service, (ep.visits.get(v.service) ?? 0) + 1);
-        const s = svc.get(v.service) ?? { n: 0, self: [], incl: [], kind: v.kind, system: v.system };
+        const s = svc.get(v.service) ?? { n: 0, self: [], incl: [], kind: v.kind, system: v.system, serverSpans: 0 };
         svc.set(v.service, s);
         s.n++;
+        s.serverSpans += v.serverSpans;
         s.self.push(v.self);
         s.incl.push(v.end - v.start);
         const bucket = Math.floor(v.start / 1000 / step) * step;
@@ -424,6 +429,7 @@ export function buildTopology(spans: Span[], b: DatasetBuilder | null, opts: Tra
       p99Ms: quantile(incl, 0.99),
       kind: s.kind,
       ...(s.system ? { system: s.system } : {}),
+      ...(s.serverSpans > s.n * 1.05 ? { serverSpansPerVisit: s.serverSpans / s.n } : {}),
     };
   }
   const endpoints: Record<string, EndpointShape> = {};

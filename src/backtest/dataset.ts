@@ -93,6 +93,8 @@ export interface ServiceShape {
   kind: 'server' | 'db' | 'cache' | 'queue' | 'external' | 'client';
   /** technology hint, e.g. "redis", "mysql" */
   system?: string;
+  /** SERVER spans per visit (> 1 when a framework adds its own, e.g. Next.js): span metrics overcount by this */
+  serverSpansPerVisit?: number;
 }
 
 export interface Topology {
@@ -107,6 +109,8 @@ export interface Topology {
   sampling?: number;
   /** traced ÷ measured requests where metrics also count them (1 = the stated sampling was exact) */
   samplingCheck?: number;
+  /** services whose span-metric rates were divided by their SERVER spans per visit */
+  rateCorrected?: Record<string, number>;
 }
 
 export type CostCategory = 'compute' | 'requests' | 'transfer' | 'storage' | 'other';

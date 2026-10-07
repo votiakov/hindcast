@@ -1,0 +1,16 @@
+{
+  "system": "shop",
+  "run": "history",
+  "start": 1791398774,
+  "end": 1791401175,
+  "env": {},
+  "shape": [
+    "history",
+    170,
+    290,
+    40
+  ],
+  "autoscale": null,
+  "sampling": 0.2,
+  "recordedAt": "2026-10-07T19:26:47.061Z"
+}
