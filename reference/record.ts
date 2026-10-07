@@ -14,7 +14,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 import { exportPlan, runExport } from '../src/backtest/import/promExport';
-import { k6ToLongCsv } from './k6';
+import { clientCsv, readK6, requestsCsv } from './k6';
 import { synthesiseCur } from './bill';
 import { autoscaleLoop } from './autoscaler';
 import { writeManifest } from './manifest';
@@ -88,7 +88,9 @@ async function main() {
   const memRes = await fetch(`${PROM}/api/v1/query_range?${new URLSearchParams({ query: `max by (container_label_com_docker_compose_service) (container_spec_memory_limit_bytes{container_label_com_docker_compose_project="${cfg.project}"})`, start: String(start), end: String(end), step: '10s' })}`);
   writeFileSync(join(out, 'metrics', 'memory-limit.json'), await memRes.text());
 
-  writeFileSync(join(out, 'client.csv'), k6ToLongCsv(readFileSync(join(out, 'raw', 'k6.csv'), 'utf8'), { stepS: 10 }));
+  const reqs = readK6(join(out, 'raw', 'k6.csv'));
+  writeFileSync(join(out, 'requests.csv'), requestsCsv(reqs));
+  writeFileSync(join(out, 'client.csv'), clientCsv(reqs, 10));
   writeFileSync(join(out, 'bill.csv'), synthesiseCur(join(out, 'metrics'), { start, end, placement: cfg.placement ?? {}, edge: cfg.edge }));
   const sampling = Number(/sampling_percentage:\s*(\d+)/.exec(readFileSync(join(ROOT, 'stack/otel-collector.yaml'), 'utf8'))?.[1] ?? 100) / 100;
   writeFileSync(join(out, 'run.json'), JSON.stringify({ system, run, start, end, env, shape: r.shape, autoscale: r.autoscale ?? null, sampling, recordedAt: new Date().toISOString() }, null, 2));

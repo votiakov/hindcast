@@ -1,7 +1,7 @@
 import type { Dataset, Num } from './dataset';
-import { sliceDataset } from './dataset';
+import { quantile, sliceDataset } from './dataset';
 import type { AccuracyCheck, AccuracyRecord, Model } from './model';
-import { basePlan, runPlan, type Plan, type Traffic } from './engine';
+import { basePlan, mixtureQuantile, runPlan, type Plan, type Traffic } from './engine';
 import { calibrate, observedReplicas, trafficOf, type CalibrateOptions } from './calibrate';
 import { applyStrategy } from './strategy';
 
@@ -102,17 +102,102 @@ export function breakingPointOf(s: Obs, slo: { p99Ms: number; errorRate: number 
     cur.push(i);
   }
   flush();
-  plateaus.sort((a, b) => a.rps - b.rps);
+  return { rps: crossing(plateaus), plateaus };
+}
+
+/** where the SLO score (≤ 1 = within SLO) crosses 1, interpolated log-linearly between plateaus */
+export function crossing(plateausIn: { rps: number; score: number }[]): number {
+  const plateaus = [...plateausIn].sort((a, b) => a.rps - b.rps);
   const first = plateaus.findIndex((p) => p.score > 1);
-  if (first < 0) return { rps: plateaus.at(-1)?.rps ?? 0, plateaus };
-  if (first === 0) return { rps: plateaus[0].rps, plateaus };
+  if (first < 0) return plateaus.at(-1)?.rps ?? 0;
+  if (first === 0) return plateaus[0].rps;
   const a = plateaus[first - 1];
   const b = plateaus[first];
-  // log-linear interpolation of the score between the last good and first bad plateau
   const la = Math.log(Math.max(1e-6, a.score));
   const lb = Math.log(Math.max(1e-6, b.score));
   const f = lb > la ? (0 - la) / (lb - la) : 0;
-  return { rps: a.rps + Math.max(0, Math.min(1, f)) * (b.rps - a.rps), plateaus };
+  return a.rps + Math.max(0, Math.min(1, f)) * (b.rps - a.rps);
+}
+
+/** every request a load generator (or an access log) recorded */
+export interface RequestLog {
+  t: number[];
+  ms: number[];
+  failed: boolean[];
+}
+
+export function parseRequestLog(csv: string): RequestLog {
+  const out: RequestLog = { t: [], ms: [], failed: [] };
+  for (const line of csv.split('\n').slice(1)) {
+    if (!line) continue;
+    const [t, ms, failed] = line.split(',');
+    out.t.push(Number(t));
+    out.ms.push(Number(ms));
+    out.failed.push(failed === '1');
+  }
+  return out;
+}
+
+/** the model's p99 over a span of buckets: the traffic-weighted mixture of every endpoint's latency */
+function predictedP99(r: ReturnType<typeof runPlan>, i0: number, i1: number): number {
+  const parts: { w: number; mean: number; p99: number }[] = [];
+  for (const e of Object.values(r.endpoints)) for (let i = i0; i < i1; i++) if (e.rps[i] > 0) parts.push({ w: e.rps[i], mean: e.meanMs[i], p99: e.p99Ms[i] });
+  return mixtureQuantile(parts);
+}
+
+function predictedErr(r: ReturnType<typeof runPlan>, i0: number, i1: number): number {
+  let n = 0;
+  let f = 0;
+  for (let i = i0; i < i1; i++) (n += r.rps[i]), (f += r.rps[i] * r.errorRate[i]);
+  return n > 0 ? f / n : 0;
+}
+
+function measuredIn(log: RequestLog, a: number, b: number) {
+  const ms: number[] = [];
+  let failed = 0;
+  for (let k = 0; k < log.t.length; k++)
+    if (log.t[k] >= a && log.t[k] < b) {
+      ms.push(log.ms[k]);
+      if (log.failed[k]) failed++;
+    }
+  ms.sort((x, y) => x - y);
+  return { n: ms.length, p99: ms.length ? quantile(ms, 0.99) : NaN, err: ms.length ? failed / ms.length : NaN, dur: b - a };
+}
+
+/** p99 over every request in each window (pooled, so a window holds hundreds of requests), predicted vs measured */
+export function windowP99(r: ReturnType<typeof runPlan>, log: RequestLog, start: number, stepS: number, windowS = 300) {
+  const per = Math.max(1, Math.round(windowS / stepS));
+  const rows: { t: number; measured: number; predicted: number; n: number; ape: number }[] = [];
+  for (let i0 = 0; i0 + per <= r.t.length; i0 += per) {
+    const a = start + i0 * stepS;
+    const m = measuredIn(log, a, a + per * stepS);
+    if (m.n < 200) continue;
+    const p = predictedP99(r, i0, i0 + per);
+    rows.push({ t: a, measured: m.p99, predicted: p, n: m.n, ape: Math.abs(p - m.p99) / m.p99 });
+  }
+  const apes = rows.map((x) => x.ape).sort((a, b) => a - b);
+  return { rows, median: apes.length ? quantile(apes, 0.5) : NaN, max: apes.length ? apes[apes.length - 1] : NaN };
+}
+
+/** plateaus of a step load test (flat stretches of the offered load), scored predicted and measured */
+export function plateauBreakingPoint(r: ReturnType<typeof runPlan>, log: RequestLog, start: number, stepS: number, shape: { t: number; rps: number }[], slo: { p99Ms: number; errorRate: number }) {
+  const measured: { rps: number; score: number }[] = [];
+  const predicted: { rps: number; score: number }[] = [];
+  for (let k = 1; k < shape.length; k++) {
+    if (shape[k].rps !== shape[k - 1].rps || shape[k].t - shape[k - 1].t < 30) continue;
+    // the second half of each plateau, once the queue has settled
+    const a = start + (shape[k - 1].t + shape[k].t) / 2;
+    const b = start + shape[k].t;
+    const m = measuredIn(log, a, b);
+    if (!m.n) continue;
+    const i0 = Math.max(0, Math.floor((a - start) / stepS));
+    const i1 = Math.min(r.t.length, Math.ceil((b - start) / stepS));
+    const p99 = predictedP99(r, i0, i1);
+    const err = predictedErr(r, i0, i1);
+    measured.push({ rps: m.n / m.dur, score: Math.max(m.p99 / slo.p99Ms, m.err / slo.errorRate) });
+    predicted.push({ rps: m.n / m.dur, score: Math.max(p99 / slo.p99Ms, err / slo.errorRate) });
+  }
+  return { measured: crossing(measured), predicted: crossing(predicted), plateaus: measured.map((m, k) => ({ rps: m.rps, measured: m.score, predicted: predicted[k].score })) };
 }
 
 /** predicted series → Obs */
@@ -187,6 +272,12 @@ export function holdoutAccuracy(d: Dataset, opts: CalibrateOptions & { holdout?:
 export interface ReferenceRun {
   label: string;
   dataset: Dataset;
+  /** every request the load generator made — pooled p99s instead of noisy per-bucket ones */
+  requests?: RequestLog;
+  /** step load test: the offered-load keyframes, seconds from `start` */
+  shape?: { t: number; rps: number }[];
+  /** epoch s the shape's t = 0 refers to */
+  start?: number;
   /** the change that was really applied for this run (none = the system as calibrated) */
   strategy?: unknown;
   /** this run is a step load test: check the breaking point */
@@ -208,7 +299,19 @@ export function referenceAccuracy(model: Model, runs: ReferenceRun[], label: str
     }
     const r = runPlan(plan, trafficOf(run.dataset, model));
     const obs = clientSeries(run.dataset);
-    if (run.stress) {
+    if (run.stress && run.requests && run.shape) {
+      const bp = plateauBreakingPoint(r, run.requests, run.start ?? run.dataset.start, run.dataset.stepS, run.shape, model.slo);
+      // the shape's t is relative to the recording start, the dataset grid to its first bucket
+      checks.push(check('breaking-point', bp.predicted, bp.measured, TOLERANCE.breakingPoint, `${run.label}: step load test, p99 and errors over every request of each plateau (SLO p99 ≤ ${model.slo.p99Ms} ms, errors ≤ ${(model.slo.errorRate * 100).toFixed(0)}%)`));
+    } else if (!run.stress && run.requests) {
+      const w = windowP99(r, run.requests, run.dataset.start, run.dataset.stepS);
+      const pm = w.rows.reduce((a, x) => a + x.predicted, 0) / Math.max(1, w.rows.length);
+      const mm = w.rows.reduce((a, x) => a + x.measured, 0) / Math.max(1, w.rows.length);
+      checks.push({ metric: 'p99', predicted: pm, measured: mm, error: w.median, tolerance: TOLERANCE.p99, pass: w.median <= TOLERANCE.p99, note: `${run.label}: p99 over every request in each 5-minute window, ${w.rows.length} windows — typical error ${(w.median * 100).toFixed(0)}%, worst ${(w.max * 100).toFixed(0)}%` });
+      const failedPred = r.rps.reduce((a, x, i) => a + x * r.errorRate[i] * run.dataset.stepS, 0);
+      const failedObs = run.requests.failed.filter(Boolean).length;
+      checks.push({ metric: 'errors', predicted: failedPred, measured: failedObs, error: failedObs > 0 ? Math.abs(failedPred - failedObs) / failedObs : failedPred > 0 ? 1 : 0, tolerance: Infinity, pass: true, note: `${run.label}: failed requests (informational)` });
+    } else if (run.stress) {
       const m = breakingPointOf(obs, model.slo);
       const p = breakingPointOf(asObs(r), model.slo);
       checks.push(check('breaking-point', p.rps, m.rps, TOLERANCE.breakingPoint, `${run.label}: step load test, SLO p99 ≤ ${model.slo.p99Ms} ms and errors ≤ ${(model.slo.errorRate * 100).toFixed(0)}%`));

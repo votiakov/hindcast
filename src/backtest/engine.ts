@@ -165,7 +165,7 @@ export function effectiveVisits(ep: EndpointPlan, services: Record<string, Servi
 }
 
 /** P(latency > t) for a latency summarised by (mean, p99) with an exponential tail */
-function exceed(mean: number, p99: number, t: number): number {
+export function exceed(mean: number, p99: number, t: number): number {
   if (!isFinite(mean)) return 1;
   const ex = Math.max(1e-6, p99 - mean);
   if (t >= mean) return Math.min(1, 0.01 ** ((t - mean) / ex));
@@ -173,7 +173,7 @@ function exceed(mean: number, p99: number, t: number): number {
 }
 
 /** p-quantile of a traffic-weighted mixture of endpoint latencies */
-function mixtureQuantile(parts: { w: number; mean: number; p99: number }[], tail = 0.01): number {
+export function mixtureQuantile(parts: { w: number; mean: number; p99: number }[], tail = 0.01): number {
   const tot = parts.reduce((s, p) => s + p.w, 0);
   if (tot <= 0) return 0;
   const f = (x: number) => parts.reduce((s, p) => s + (p.w / tot) * exceed(p.mean, p.p99, x), 0) - tail;

@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 import { importBundle } from '../src/backtest/import/manifest';
 import { calibrate } from '../src/backtest/calibrate';
-import { accuracyLines, holdoutAccuracy, referenceAccuracy, type ReferenceRun } from '../src/backtest/accuracy';
+import { accuracyLines, holdoutAccuracy, parseRequestLog, referenceAccuracy, type ReferenceRun } from '../src/backtest/accuracy';
 import type { Dataset } from '../src/backtest/dataset';
 import { fileAccess } from '../cli/files';
 import { writeManifest } from './manifest';
@@ -51,7 +51,17 @@ function main() {
       console.log(`  (run ${v.run} not recorded yet — skipped)`);
       continue;
     }
-    runs.push({ label: v.run, dataset: importRun(system, v.run), strategy: v.strategy ? parse(readFileSync(join(sysDir, v.strategy), 'utf8')) : undefined, stress: v.stress });
+    const dir = join(sysDir, 'runs', v.run);
+    const meta = JSON.parse(readFileSync(join(dir, 'run.json'), 'utf8')) as { start: number };
+    runs.push({
+      label: v.run,
+      dataset: importRun(system, v.run),
+      strategy: v.strategy ? parse(readFileSync(join(sysDir, v.strategy), 'utf8')) : undefined,
+      stress: v.stress,
+      requests: existsSync(join(dir, 'requests.csv')) ? parseRequestLog(readFileSync(join(dir, 'requests.csv'), 'utf8')) : undefined,
+      shape: JSON.parse(readFileSync(join(dir, 'shape.json'), 'utf8')),
+      start: meta.start,
+    });
   }
   if (runs.length) model.accuracy.push(referenceAccuracy(model, runs, `recorded runs the model never saw: ${runs.map((r) => r.label).join(', ')}`));
   model.accuracy.push(holdoutAccuracy(history, { holdout: 0.3 }));
