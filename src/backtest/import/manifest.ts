@@ -141,7 +141,7 @@ export function importBundle(manifestInput: unknown, fs: FileAccess): { dataset:
       const metric = dataset.services[id]?.rps;
       if (!metric || filledFromTraces.has(id)) continue;
       const counted = metric.reduce<number>((a, v) => a + (v ?? 0), 0) * dataset.stepS;
-      if (counted > 50) ratios.push(shape.spans / (topology.sampling ?? 1) / counted);
+      if (counted >= 10) ratios.push(shape.spans / (topology.sampling ?? 1) / counted);
     }
     if (ratios.length) {
       const k = ratios.sort((a, b) => a - b)[Math.floor(ratios.length / 2)];

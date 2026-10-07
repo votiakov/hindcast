@@ -104,6 +104,17 @@ describe('importers', () => {
     expect(d.endpoints['web GET /checkout'].rps?.[0]).toBeCloseTo(2 / 60, 6);
   });
 
+  it('measures the real trace sampling against request metrics and rescales trace-only rates', () => {
+    const traces = Array.from({ length: 20 }, (_, k) => traceDoc(`s${k}`, ms + k * 2000)).join('\n');
+    // metrics say web served 20 requests in the minute; traces claim sampling 0.5 but hold all 20
+    const files: Record<string, string> = { 'rps.json': JSON.stringify({ data: { result: [{ metric: { service_name: 'web' }, values: [[T0, String(20 / 60)]] }] } }), 't.jsonl': traces };
+    const { dataset } = importBundle({ name: 's', step: '1m', metrics: [{ prometheus: 'rps.json', metric: 'rps', by: 'service_name' }], traces: [{ file: 't.jsonl', sampling: 0.5 }] }, { read: (p) => files[p], glob: (p) => (files[p] ? [p] : []) });
+    expect(dataset.topology!.samplingCheck).toBeCloseTo(2, 5);
+    // the database is only seen in traces: 20 calls in the minute, not 40
+    expect(dataset.services['orders-db'].rps![0]).toBeCloseTo(20 / 60, 5);
+    expect(dataset.services['orders-db'].doneRps![0]).toBeCloseTo(20 / 60, 5);
+  });
+
   it('reads Jaeger JSON', () => {
     const doc = { data: [{ traceID: 'x', spans: [{ traceID: 'x', spanID: '1', operationName: 'HTTP GET /dispatch', startTime: T0 * 1e6, duration: 50_000, tags: [{ key: 'span.kind', value: 'server' }], processID: 'p1' }, { traceID: 'x', spanID: '2', operationName: 'SQL SELECT', references: [{ refType: 'CHILD_OF', spanID: '1' }], startTime: T0 * 1e6 + 1000, duration: 30_000, tags: [], processID: 'p2' }], processes: { p1: { serviceName: 'frontend' }, p2: { serviceName: 'mysql' } } }] };
     const topo = buildTopology(parseTraceFile(JSON.stringify(doc)), null, { stepS: 10 });
