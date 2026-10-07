@@ -1,0 +1,72 @@
+# Backtest every infrastructure change against recorded production traffic before it merges.
+#
+# What it needs in the repository:
+#   .bottleneck/bottleneck.mjs   the Bottleneck CLI, one file (npm run build:cli in Bottleneck)
+#   .bottleneck/model.json       the calibrated model (bottleneck calibrate)
+#   .bottleneck/dataset.json     recent history (bottleneck import), refreshed by the job at the bottom
+#
+# On a pull request that touches deploy/, it turns the manifest diff into a strategy, replays the
+# last 14 days through the model with that strategy, posts the result on the PR and fails the
+# check if the change would have added time out of SLO.
+name: Backtest infrastructure changes
+on:
+  pull_request:
+    paths: ['deploy/**']
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Manifests before this pull request
+        run: git worktree add ../base ${{ github.event.pull_request.base.sha }}
+      - name: Strategy from the diff
+        run: node .bottleneck/bottleneck.mjs diff-strategy --base ../base/deploy --head deploy --model .bottleneck/model.json --out strategy.yaml
+      - name: Backtest against the last 14 days
+        id: backtest
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ ! -s strategy.yaml ]; then
+            echo "### Bottleneck backtest" > comment.md
+            echo "No change here that the model can backtest (replicas, CPU/memory limits, autoscalers, CPU architecture)." >> comment.md
+            exit 0
+          fi
+          cat strategy.yaml
+          node .bottleneck/bottleneck.mjs backtest .bottleneck/model.json .bottleneck/dataset.json strategy.yaml \
+            --last 14d --draws 30 --comment comment.md --md report.md --html report.html --run-url "$RUN_URL" --gate
+      - name: Full report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backtest-report
+          path: |
+            report.html
+            report.md
+            strategy.yaml
+          if-no-files-found: ignore
+      - name: Comment on the pull request
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          [ -f comment.md ] || exit 0
+          gh pr comment "$PR" --body-file comment.md --edit-last 2>/dev/null || gh pr comment "$PR" --body-file comment.md
+
+# Keeping the history fresh (run nightly with access to your Prometheus):
+#
+#  refresh:
+#    runs-on: [self-hosted]
+#    steps:
+#      - uses: actions/checkout@v4
+#      - run: |
+#          node .bottleneck/bottleneck.mjs export-prometheus --url "$PROM_URL" --start "$(date -u -d '-14 days' +%FT%TZ)" --end "$(date -u +%FT%TZ)" --step 60 --out telemetry
+#          node .bottleneck/bottleneck.mjs import .bottleneck/import.yaml --out .bottleneck/dataset.json
+#          node .bottleneck/bottleneck.mjs calibrate .bottleneck/dataset.json --holdout 0.3 --out .bottleneck/model.json
+#      - commit and push .bottleneck/

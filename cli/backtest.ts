@@ -86,7 +86,7 @@ function printBacktest(r: BacktestResult) {
   for (const k of r.ranking) {
     const s = r.strategies.find((x) => x.name === k.name)!;
     const good = k.minutesOutOfSloDelta <= 0.5;
-    console.log(`  ${(good ? c.green : c.yellow)(s.name.padEnd(30))} ${f$(s.delta.monthly.p50)}/month ${c.dim(`(${f$(s.delta.monthly.lo)} … ${f$(s.delta.monthly.hi)})`)}   ${Math.round(s.summary.minutesOutOfSlo.p50)} min out of SLO   ${Math.round(s.summary.failedRequests.p50).toLocaleString()} failed`);
+    console.log(`  ${(good ? c.green : c.yellow)(s.name.padEnd(30))} ${f$(s.delta.monthly.p50)}/month ${Math.abs(s.delta.monthly.hi - s.delta.monthly.lo) > 0.005 ? c.dim(`(${f$(s.delta.monthly.lo)} … ${f$(s.delta.monthly.hi)})`) : ''}   ${Math.round(s.summary.minutesOutOfSlo.p50)} min out of SLO   ${Math.round(s.summary.failedRequests.p50).toLocaleString()} failed`);
     console.log(`  ${''.padEnd(30)} ${c.dim(headline(s, r.baseline))}`);
   }
   console.log('');
