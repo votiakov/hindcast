@@ -90,7 +90,7 @@ async function main() {
 
   const reqs = readK6(join(out, 'raw', 'k6.csv'));
   writeFileSync(join(out, 'requests.csv'), requestsCsv(reqs));
-  writeFileSync(join(out, 'client.csv'), clientCsv(reqs, 10));
+  writeFileSync(join(out, 'client.csv'), clientCsv(reqs, 30));
   writeFileSync(join(out, 'bill.csv'), synthesiseCur(join(out, 'metrics'), { start, end, placement: cfg.placement ?? {}, edge: cfg.edge }));
   const sampling = Number(/sampling_percentage:\s*(\d+)/.exec(readFileSync(join(ROOT, 'stack/otel-collector.yaml'), 'utf8'))?.[1] ?? 100) / 100;
   writeFileSync(join(out, 'run.json'), JSON.stringify({ system, run, start, end, env, shape: r.shape, autoscale: r.autoscale ?? null, sampling, recordedAt: new Date().toISOString() }, null, 2));

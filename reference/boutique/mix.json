@@ -1,0 +1,8 @@
+[
+  { "name": "frontend GET /", "method": "GET", "path": "/", "weight": 10 },
+  { "name": "frontend GET /product/{id}", "method": "GET", "path": "/product/{id}", "weight": 40, "vars": { "id": ["0PUK6V6EV0", "1YMWWN1N4O", "2ZYFJ3GM2N", "66VCHSJNUP", "6E92ZMYYFZ", "9SIQT8TOJO", "L9ECAV7KIM", "LS4PSXUNUM", "OLJCESPC7Z"] } },
+  { "name": "frontend POST /setCurrency", "method": "POST", "path": "/setCurrency", "weight": 8, "headers": { "Content-Type": "application/x-www-form-urlencoded" }, "body": "currency_code=EUR" },
+  { "name": "frontend POST /cart", "method": "POST", "path": "/cart", "weight": 10, "headers": { "Content-Type": "application/x-www-form-urlencoded" }, "body": "product_id=OLJCESPC7Z&quantity=1" },
+  { "name": "frontend GET /cart", "method": "GET", "path": "/cart", "weight": 12 },
+  { "name": "frontend POST /cart/checkout", "method": "POST", "path": "/cart/checkout", "weight": 4, "headers": { "Content-Type": "application/x-www-form-urlencoded" }, "body": "email=someone%40example.com&street_address=1600+Amphitheatre+Parkway&zip_code=94043&city=Mountain+View&state=CA&country=United+States&credit_card_number=4432801561520454&credit_card_expiration_month=1&credit_card_expiration_year=2039&credit_card_cvv=672" }
+]

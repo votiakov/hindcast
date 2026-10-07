@@ -22,7 +22,7 @@ export function writeManifest(system: string, run: string) {
   const traces = existsSync(join(dir, 'traces.jsonl')) ? 'traces.jsonl' : 'raw/traces.jsonl';
   const manifest = {
     name: `${cfg.name} — ${run}`,
-    step: '10s',
+    step: '30s',
     metrics: [...manifestMetrics(plan, 'metrics'), { csv: 'client.csv' }],
     traces: [{ file: traces, sampling: meta.sampling ?? 1, series: { rps: false, latency: false, endpoints: false } }],
     billing: [{ cur: 'bill.csv', tag: 'user:service' }],

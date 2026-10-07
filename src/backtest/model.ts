@@ -52,6 +52,8 @@ export interface ServiceModel {
   self: { mean: number; p99: number };
   /** latency tail multiplier fitted on queueing excess */
   tail: number;
+  /** service-time variability: queueing waits are this × the M/M/c wait (0.5 ≈ constant service times) */
+  variability?: number;
   cost: {
     /** $ per replica-hour (compute) */
     perReplicaHour: number;

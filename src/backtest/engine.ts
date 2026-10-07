@@ -59,6 +59,8 @@ export interface ServicePlan {
   selfMean: number;
   selfP99: number;
   tail: number;
+  /** waits are this × the M/M/c wait */
+  variability?: number;
   cpu: { base: number; perReq: number } | null;
   cpuLimit: number | null;
   /** $ per replica-hour and per request */
@@ -334,8 +336,9 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
           S.backlog = Math.max(0, S.backlog + (perRep - served) * dt);
           const w = mmcWait(Math.min(perRep, K * RHO_MAX), s.servers, K);
           const drain = (S.backlog / K) * 1000;
-          waitMean = w.meanMs + drain;
-          waitP99 = w.p99Ms + drain;
+          const v = s.variability ?? 1;
+          waitMean = v * w.meanMs + drain;
+          waitP99 = v * w.p99Ms + drain;
         }
         const ex0 = Math.max(0, s.selfP99 - s.selfMean);
         const extra = fx[id].extraMs;
@@ -477,6 +480,7 @@ export function basePlan(model: Model, observed?: Record<string, Num[] | undefin
       selfMean: s.self.mean,
       selfP99: s.self.p99,
       tail: s.tail,
+      variability: s.variability,
       cpu: s.cpu ? { base: s.cpu.base, perReq: s.cpu.perReq } : null,
       cpuLimit: s.cpuLimit,
       replicaHour: s.cost.perReplicaHour,

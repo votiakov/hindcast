@@ -64,7 +64,7 @@ function rng(seed: number) {
 }
 
 /** replay per-replica load through one queue; predicted self mean and p99 per bucket */
-export function replayQueue(perRep: number[], stepS: number, c: number, K: number, S: number, S99: number, tail: number) {
+export function replayQueue(perRep: number[], stepS: number, c: number, K: number, S: number, S99: number, tail: number, v = 1) {
   const sub = Math.max(1, Math.ceil(stepS / 5));
   const dt = stepS / sub;
   let backlog = 0;
@@ -80,8 +80,8 @@ export function replayQueue(perRep: number[], stepS: number, c: number, K: numbe
         const served = Math.min(K, lam + backlog / dt);
         backlog = Math.max(0, backlog + (lam - served) * dt);
         const w = mmcWait(Math.min(lam, K * 0.97), c, K);
-        wm = w.meanMs + (backlog / K) * 1000;
-        wp = w.p99Ms + (backlog / K) * 1000;
+        wm = v * w.meanMs + (backlog / K) * 1000;
+        wp = v * w.p99Ms + (backlog / K) * 1000;
       }
       m += (S + wm) / sub;
       p += (S + wm + Math.sqrt((S99 - S) ** 2 + (tail * (wp - wm)) ** 2)) / sub;
@@ -109,25 +109,56 @@ function logErr(pred: number[], obs: (number | null)[], w?: number[]) {
 interface Fitted {
   c: number;
   K: number;
+  /** service time used with this fit (the tied model fits it; others use the low-load self time) */
+  S: number;
+  /** service-time variability: waits are v × the M/M/c wait (Allen–Cunneen, Poisson arrivals: v = (1 + cs²) / 2) */
+  v: number;
   err: number;
 }
 
+/** v = (1 + cs²)/2: 0.5 deterministic service times, 1 exponential, > 1 heavy-tailed */
+const VARIABILITY = [0.3, 0.4, 0.5, 0.65, 0.8, 1, 1.3, 1.7];
+
+/** any number of servers, any capacity (CPU pools, async runtimes…) */
 function fitFree(perRep: number[], obs: (number | null)[], stepS: number, S: number, S99: number, maxLam: number, servers?: number[]): Fitted {
-  let best: Fitted = { c: 1, K: Infinity, err: Infinity };
+  let best: Fitted = { c: 1, K: Infinity, S, v: 1, err: Infinity };
   // overloaded histories run above capacity: search from well below the peak
   const lo = Math.max(1e-3, maxLam * 0.3);
   for (const c of servers ?? SERVER_GRID) {
-    for (let j = 0; j <= 64; j++) {
-      const K = lo * 200 ** (j / 64);
-      const err = logErr(replayQueue(perRep, stepS, c, K, S, S99, 1).mean, obs);
-      if (err < best.err - 1e-12) best = { c, K, err };
+    for (let j = 0; j <= 48; j++) {
+      const K = lo * 200 ** (j / 48);
+      for (const v of VARIABILITY) {
+        const err = logErr(replayQueue(perRep, stepS, c, K, S, S99, 1, v).mean, obs);
+        if (err < best.err - 1e-12) best = { c, K, S, v, err };
+      }
     }
   }
   // refine K around the best
   for (let j = -10; j <= 10; j++) {
     const K = best.K * 1.06 ** (j / 2);
-    const err = logErr(replayQueue(perRep, stepS, best.c, K, S, S99, 1).mean, obs);
+    const err = logErr(replayQueue(perRep, stepS, best.c, K, S, S99, 1, best.v).mean, obs);
     if (err < best.err) best = { ...best, K, err };
+  }
+  return best;
+}
+
+/**
+ * A lock, a connection pool or a worker pool: c holders, each held for the service time s, so
+ * capacity is c / s. The service time is fitted too — the self time measured at low load already
+ * contains some waiting.
+ */
+function fitTied(perRep: number[], obs: (number | null)[], stepS: number, S: number, S99: number, servers?: number[]): Fitted {
+  let best: Fitted = { c: 1, K: Infinity, S, v: 1, err: Infinity };
+  if (S <= 0.05) return best;
+  for (const c of servers ?? SERVER_GRID) {
+    for (let j = 0; j <= 14; j++) {
+      const s = S * (0.45 + 0.04 * j);
+      const K = (c * 1000) / s;
+      for (const v of VARIABILITY) {
+        const err = logErr(replayQueue(perRep, stepS, c, K, s, S99 - (S - s), 1, v).mean, obs);
+        if (err < best.err - 1e-12) best = { c, K, S: s, v, err };
+      }
+    }
   }
   return best;
 }
@@ -225,6 +256,9 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
     // capacity: none / CPU / concurrency — replay the history through each and keep what explains it
     let capacity: Capacity = { limit: 'none', servers: 1, perReplicaRps: Infinity };
     let tail = 1;
+    let variability = 1;
+    let selfMean = S;
+    let selfP99 = S99;
     let latencyMape: number | undefined;
     let p99Mape: number | undefined;
     const ov = opts.services?.[id];
@@ -232,21 +266,41 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
       const none = logErr(replayQueue(perRep, d.stepS, 1, Infinity, S, S99, 1).mean, selfObs);
       const cpuK = cpu && cpuLimit && cpu.perReq > 0 ? (cpuLimit - cpu.base) / cpu.perReq : Infinity;
       const cpuC = cpuLimit ? Math.max(1, Math.round(cpuLimit)) : 1;
-      const cpuErr = isFinite(cpuK) ? logErr(replayQueue(perRep, d.stepS, cpuC, cpuK, S, S99, 1).mean, selfObs) : Infinity;
-      const free = fitFree(perRep, selfObs, d.stepS, S, S99, maxLam, ov?.servers ? [ov.servers] : undefined);
-      const simple = Math.min(none, cpuErr);
+      let cpuFit: Fitted = { c: cpuC, K: cpuK, S, v: 1, err: Infinity };
+      if (isFinite(cpuK)) for (const v of VARIABILITY) {
+        const err = logErr(replayQueue(perRep, d.stepS, cpuC, cpuK, S, S99, 1, v).mean, selfObs);
+        if (err < cpuFit.err) cpuFit = { c: cpuC, K: cpuK, S, v, err };
+      }
+      const servers = ov?.servers ? [ov.servers] : undefined;
+      const free = fitFree(perRep, selfObs, d.stepS, S, S99, maxLam, servers);
+      const tied = fitTied(perRep, selfObs, d.stepS, S, S99, servers);
+      // the tied model is physically grounded; the free one has to be clearly better to win
+      const queue = tied.err <= free.err / 0.85 ? { ...tied, tied: true } : { ...free, tied: false };
+      const simple = Math.min(none, cpuFit.err);
+      let chosen: Fitted | null = null;
       if (ov?.perReplicaRps) capacity = { limit: 'concurrency', servers: ov.servers ?? 1, perReplicaRps: ov.perReplicaRps };
-      else if (free.err < simple * 0.85 && isFinite(free.K) && free.K < maxLam * 40) {
-        const limitedByCpu = isFinite(cpuK) && Math.abs(free.K - cpuK) / cpuK < 0.25;
-        capacity = { limit: limitedByCpu ? 'cpu' : 'concurrency', servers: free.c, perReplicaRps: free.K };
-      } else if (isFinite(cpuErr) && cpuErr <= none * 1.1) capacity = { limit: 'cpu', servers: cpuC, perReplicaRps: cpuK };
-      else if (isFinite(cpuK)) {
+      else if (queue.err < simple * 0.85 && isFinite(queue.K) && queue.K < maxLam * 40) {
+        const limitedByCpu = isFinite(cpuK) && Math.abs(queue.K - cpuK) / cpuK < 0.25;
+        capacity = { limit: limitedByCpu ? 'cpu' : 'concurrency', servers: queue.c, perReplicaRps: queue.K };
+        chosen = queue;
+        if (queue.tied) notes.push(`${queue.c} at a time, each holding it ${queue.S.toFixed(queue.S < 10 ? 1 : 0)} ms (a lock or pool)`);
+      } else if (isFinite(cpuFit.err) && cpuFit.err <= none * 1.1) {
+        capacity = { limit: 'cpu', servers: cpuC, perReplicaRps: cpuK };
+        chosen = cpuFit;
+      } else if (isFinite(cpuK)) {
         // load never came close: the CPU limit is the only limit we know of
         capacity = { limit: 'cpu', servers: cpuC, perReplicaRps: cpuK };
+        chosen = cpuFit;
         notes.push('load never approached capacity; the CPU limit is extrapolated');
       }
+      if (chosen) {
+        variability = isFinite(chosen.err) ? chosen.v : 1;
+        selfMean = chosen.S;
+        selfP99 = Math.max(chosen.S, S99 - (S - chosen.S));
+      }
+      const tiedK = chosen && 'tied' in chosen && (chosen as Fitted & { tied: boolean }).tied;
 
-      // bootstrap the capacity (blocks of 6 buckets), server count fixed
+      // bootstrap the capacity (blocks of 6 buckets), server count and variability fixed
       if (isFinite(capacity.perReplicaRps) && B > 0 && !ov?.perReplicaRps) {
         const draws: number[] = [];
         const blocks = Math.ceil(d.n / 6);
@@ -256,12 +310,13 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
             const start = Math.floor(rand() * blocks) * 6;
             for (let j = start; j < Math.min(d.n, start + 6); j++) w[j] += 1;
           }
-          // weighted refit of K on a coarse grid around the estimate
           let bestK = capacity.perReplicaRps;
           let bestE = Infinity;
           for (let j = -12; j <= 12; j++) {
             const K = capacity.perReplicaRps * 1.04 ** j;
-            const e = logErr(replayQueue(perRep, d.stepS, capacity.servers, K, S, S99, 1).mean, selfObs, w);
+            // for a lock, more capacity means a shorter hold time
+            const s = tiedK ? (capacity.servers * 1000) / K : selfMean;
+            const e = logErr(replayQueue(perRep, d.stepS, capacity.servers, K, s, selfP99 + (s - selfMean), 1, variability).mean, selfObs, w);
             if (e < bestE) [bestE, bestK] = [e, K];
           }
           draws.push(bestK);
@@ -273,12 +328,12 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
 
       // tail multiplier on queueing excess
       let bestTail = { t: 1, e: Infinity };
-      for (const t of [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.15, 1.3, 1.5, 1.75, 2, 2.5, 3]) {
-        const e = logErr(replayQueue(perRep, d.stepS, capacity.servers, capacity.perReplicaRps, S, S99, t).p99, selfP99Obs);
+      for (const t of [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.15, 1.3, 1.5, 1.75, 2, 2.5, 3, 3.5, 4, 5, 6]) {
+        const e = logErr(replayQueue(perRep, d.stepS, capacity.servers, capacity.perReplicaRps, selfMean, selfP99, t, variability).p99, selfP99Obs);
         if (e < bestTail.e) bestTail = { t, e };
       }
       tail = bestTail.t;
-      const r = replayQueue(perRep, d.stepS, capacity.servers, capacity.perReplicaRps, S, S99, tail);
+      const r = replayQueue(perRep, d.stepS, capacity.servers, capacity.perReplicaRps, selfMean, selfP99, tail, variability);
       // errors below a few ms don't matter to anyone's p99: floor the denominator
       latencyMape = mape(r.mean, selfObs, 5);
       p99Mape = mape(r.p99, selfP99Obs, 5);
@@ -311,8 +366,9 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
       memoryGb: memVals.length ? median(memVals) / 2 ** 30 : null,
       cpu,
       capacity,
-      self: { mean: S, p99: Math.max(S, S99) },
+      self: { mean: selfMean, p99: Math.max(selfMean, selfP99) },
       tail,
+      variability,
       cost: { perReplicaHour: 0, perRequest: 0, cpuShare: 0.8, arch: opts.services?.[id]?.arch ?? 'x86', source: 'none' },
       ...(d.placement?.[hostedBy[id] ?? id] ? { placement: d.placement[hostedBy[id] ?? id] } : {}),
       fit: { status: st, latencyMape, p99Mape, cpuMape, cpuR2: cpu?.r2, samples: withData.length, notes: fitNotes },
@@ -422,7 +478,7 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
       const obs = series[id]?.p99Ms;
       if (!obs) continue;
       let best = { t: 1, err: Infinity };
-      for (const t of [0.5, 0.7, 0.85, 1, 1.15, 1.3, 1.5, 1.75, 2, 2.5]) {
+      for (const t of [0.5, 0.7, 0.85, 1, 1.15, 1.3, 1.5, 1.75, 2, 2.5, 3, 3.5, 4, 5, 6]) {
         e.tail = t;
         const r = runPlan(basePlan(model, observed), traffic);
         const err = logErr(r.endpoints[id].p99Ms, obs.map((x) => x));

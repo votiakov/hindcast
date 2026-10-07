@@ -312,6 +312,23 @@ export function sliceDataset(d: Dataset, from: number, to: number): Dataset {
   }
   const endpoints: Record<string, EndpointSeries> = {};
   for (const [id, e] of Object.entries(d.endpoints)) endpoints[id] = { service: e.service, rps: cut(e.rps), errorRate: cut(e.errorRate), p50Ms: cut(e.p50Ms), p99Ms: cut(e.p99Ms), meanMs: cut(e.meanMs) };
-  const bill = d.bill ? { ...d.bill, components: Object.fromEntries(Object.entries(d.bill.components).map(([k, c]) => [k, { ...c, series: cut(c.series) }])) } : undefined;
+  // the bill's totals follow the slice: each component's spend scales with its share of the series
+  let bill: Bill | undefined;
+  if (d.bill) {
+    const start = d.start + from * d.stepS;
+    const end = d.start + Math.min(d.n, to) * d.stepS;
+    const frac = Math.max(0, Math.min(1, (Math.min(end, d.bill.end) - Math.max(start, d.bill.start)) / Math.max(1, d.bill.end - d.bill.start)));
+    const components: Bill['components'] = {};
+    let total = 0;
+    for (const [k, c] of Object.entries(d.bill.components)) {
+      const all = (c.series ?? []).reduce<number>((a, v) => a + (v ?? 0), 0);
+      const part = (cut(c.series) ?? []).reduce<number>((a, v) => a + (v ?? 0), 0);
+      const f = c.series ? (all > 0 ? part / all : 0) : frac;
+      const scale = <T extends Partial<Record<CostCategory, number>>>(o: T) => Object.fromEntries(Object.entries(o).map(([cat, v]) => [cat, (v ?? 0) * f])) as T;
+      components[k] = { ...c, total: c.total * f, byCategory: scale(c.byCategory), usage: scale(c.usage), series: cut(c.series) };
+      total += c.total * f;
+    }
+    bill = { ...d.bill, start: Math.max(start, d.bill.start), end: Math.min(end, d.bill.end), components, unattributed: d.bill.unattributed * frac, total: total + d.bill.unattributed * frac };
+  }
   return { ...d, start: d.start + from * d.stepS, n: Math.max(0, Math.min(d.n, to) - from), services, endpoints, bill };
 }
