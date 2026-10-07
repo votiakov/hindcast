@@ -1,4 +1,4 @@
-import { Pause, Play, RotateCcw, Skull, TrendingUp, HeartPulse } from 'lucide-react';
+import { Pause, Play, RotateCcw, Skull, TrendingUp, HeartPulse, X } from 'lucide-react';
 import { useSim, type Pattern } from '../sim/store';
 
 const fmtTime = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
@@ -11,7 +11,8 @@ export function ControlBar() {
   const pattern = useSim((s) => s.pattern);
   const t = useSim((s) => s.simT);
   const scripted = useSim((s) => s.mode === 'lesson' || (s.mode === 'compare' && s.compare.scenarioId !== null));
-  const { setRunning, setSpeed, reset, setTraffic, setReadRatio, setPattern, spike, chaosAll } = useSim.getState();
+  const pb = useSim((s) => (s.mode === 'sandbox' ? s.playback : null));
+  const { setRunning, setSpeed, reset, setTraffic, setReadRatio, setPattern, spike, chaosAll, stopPlayback } = useSim.getState();
 
   return (
     <div className="controlbar panel">
@@ -30,7 +31,24 @@ export function ControlBar() {
         <RotateCcw size={15} />
       </button>
 
-      {!scripted && (
+      {pb && (
+        <>
+          <div className="divider" />
+          <div className="pb-strip" title={pb.title}>
+            <div className="pb-title">{pb.title}</div>
+            <div className="pb-track">
+              <i className="pb-fill" style={{ width: `${Math.min(100, (pb.t / pb.duration) * 100)}%` }} />
+              {pb.events.map((e, i) => (
+                <i key={i} className={`pb-mark ${pb.fired.includes(i) ? 'fired' : ''}`} style={{ left: `${(e.at / pb.duration) * 100}%` }} title={`t=${e.at}s ${e.note ?? e.action.type}`} />
+              ))}
+            </div>
+          </div>
+          <button className="chip" onClick={stopPlayback} title="Back to free play">
+            <X size={13} /> Exit replay
+          </button>
+        </>
+      )}
+      {!scripted && !pb && (
         <>
           <div className="divider" />
           <div className="traffic">

@@ -11,6 +11,9 @@ import type { Graph } from '../scenarios/build';
 import { HOME_GRAPHS } from '../ui/homeGraphs';
 import type { ThemeId } from '../theme/themes';
 import { setPricing, type PricingId } from './pricing';
+import type { AuditResult } from './audit';
+import type { SimAction } from './actions';
+import { applyChangesToGraph } from '../spec/convert';
 import { EPISODES, OUTRO_SECONDS, episodeById, episodeDuration, episodeTraffic, type BeatAction, type StageBoard } from '../studio/episodes';
 
 export type Mode = 'home' | 'lesson' | 'sandbox' | 'compare' | 'studio';
@@ -91,6 +94,31 @@ export interface StudioState {
 
 export type Aspect = '4:5' | '1:1' | '9:16' | '16:9';
 
+/** a scripted run played on the sandbox board (audit incident replays, scenario files) */
+export interface Playback {
+  title: string;
+  duration: number;
+  /** keyframes (linear); null = constant `rps` */
+  traffic: { at: number; rps: number }[] | null;
+  rps: number;
+  events: { at: number; action: SimAction; note?: string }[];
+  t: number;
+  fired: number[];
+  findingId?: string;
+}
+
+export interface AuditState {
+  status: 'idle' | 'running' | 'done' | 'error';
+  progress: { done: number; total: number; label: string } | null;
+  result: AuditResult | null;
+  /** spec JSON the result was computed for — the board has changed when it differs */
+  specKey: string | null;
+  selected: string | null;
+  error: string | null;
+  /** $ a minute of full outage costs */
+  costPerMinute: number;
+}
+
 export interface Board {
   id: BoardId;
   title: string;
@@ -121,6 +149,16 @@ interface State {
   studio: StudioState;
   analysisOpen: boolean;
   setAnalysisOpen: (open: boolean) => void;
+  auditOpen: boolean;
+  setAuditOpen: (open: boolean) => void;
+  audit: AuditState;
+  setAudit: (p: Partial<AuditState>) => void;
+  /** apply a verified fix from the audit to the main board */
+  applyFix: (findingId: string, fixIndex: number) => void;
+  playback: Playback | null;
+  /** play a scripted run on the main board from a clean state */
+  play: (p: Omit<Playback, 't' | 'fired'>) => void;
+  stopPlayback: () => void;
 
   loadEpisode: (id: string) => void;
   setStudio: (p: Partial<Pick<StudioState, 'aspect' | 'brandId'>>) => void;
@@ -193,6 +231,12 @@ function nextName(nodes: AppNode[], kind: Kind): string {
   return `${prefix}-${i}`;
 }
 
+function keyframeRps(tl: { at: number; rps: number }[], t: number): number {
+  if (t <= tl[0].at) return tl[0].rps;
+  for (let i = 1; i < tl.length; i++) if (t <= tl[i].at) return tl[i - 1].rps + ((tl[i].rps - tl[i - 1].rps) * (t - tl[i - 1].at)) / Math.max(1e-9, tl[i].at - tl[i - 1].at);
+  return tl[tl.length - 1].rps;
+}
+
 function patternMultiplier(p: Pattern, t: number): number {
   switch (p) {
     case 'steady':
@@ -260,7 +304,29 @@ export const useSim = create<State>()((set, get) => {
     compare: init.compare,
     settings: DEFAULT_SETTINGS,
     analysisOpen: false,
-    setAnalysisOpen: (analysisOpen) => set({ analysisOpen }),
+    setAnalysisOpen: (analysisOpen) => set(analysisOpen ? { analysisOpen, auditOpen: false } : { analysisOpen }),
+    auditOpen: false,
+    setAuditOpen: (auditOpen) => set(auditOpen ? { auditOpen, analysisOpen: false } : { auditOpen, audit: { ...get().audit, selected: null } }),
+    audit: { status: 'idle', progress: null, result: null, specKey: null, selected: null, error: null, costPerMinute: 0 },
+    setAudit: (p) => set({ audit: { ...get().audit, ...p } }),
+    applyFix: (findingId, fixIndex) => {
+      const f = get().audit.result?.findings.find((x) => x.id === findingId);
+      const fix = f?.fixes[fixIndex];
+      if (!fix) return;
+      const { nodes, edges } = board('main');
+      const r = applyChangesToGraph(nodes, edges, fix.changes);
+      patch('main', { nodes: r.nodes, edges: r.edges, version: board('main').version + 1 });
+      get().toast('good', `Applied: ${fix.title}`);
+    },
+    playback: null,
+    play: (p) => {
+      engines.main.reset();
+      const { nodes } = board('main');
+      const healed = applyAction(nodes, { type: 'revive-all' }, { zoneMembers: (z) => nodesInZone(nodes, z) }).nodes;
+      patch('main', { nodes: healed, nodeStats: {}, edgeStats: {}, global: emptyGlobal });
+      set({ playback: { ...p, t: 0, fired: [] }, simT: 0, spikeUntil: 0, running: true });
+    },
+    stopPlayback: () => set({ playback: null }),
     studio: freshStudio(EPISODES[0].id, '4:5', 'personal'),
 
     loadEpisode: (id) => {
@@ -372,6 +438,8 @@ export const useSim = create<State>()((set, get) => {
       if (!hit) get().toast('info', `No live ${what} to kill`);
     },
     setMode: (mode) => {
+      if (get().playback) set({ playback: null });
+      if (mode !== 'sandbox' && get().auditOpen) set({ auditOpen: false });
       const focus = mode === 'compare' ? 'A' : 'main';
       if (mode === 'home') {
         engines.main.reset();
@@ -389,6 +457,10 @@ export const useSim = create<State>()((set, get) => {
     },
     reset: () => {
       const s = get();
+      if (s.mode === 'sandbox' && s.playback) {
+        const { t: _t, fired: _f, ...p } = s.playback;
+        return get().play(p);
+      }
       if (s.mode === 'studio') get().loadEpisode(s.studio.episodeId);
       else if (s.mode === 'compare' && s.compare.scenarioId) get().pickScenario(s.compare.scenarioId);
       else if (s.mode === 'compare') {
@@ -444,6 +516,7 @@ export const useSim = create<State>()((set, get) => {
       let ls = s.lesson;
       let cmp = s.compare;
       let simT = s.simT;
+      let pb = s.playback;
       const sc = s.mode === 'compare' ? scenarioById(cmp.scenarioId) : undefined;
       const cfg = {
         timeoutS: s.settings.timeoutS,
@@ -491,6 +564,15 @@ export const useSim = create<State>()((set, get) => {
               if (ev.b) get().apply('B', ev.b);
             }
           }
+        } else if (s.mode === 'sandbox' && pb && pb.t < pb.duration) {
+          rps = pb.traffic ? keyframeRps(pb.traffic, pb.t) : pb.rps;
+          pb = { ...pb, t: pb.t + dt };
+          for (const [ei, ev] of pb.events.entries()) {
+            if (pb.fired.includes(ei) || pb.t < ev.at) continue;
+            pb = { ...pb, fired: [...pb.fired, ei] };
+            get().apply('main', ev.action);
+            if (ev.note) get().toast('info', ev.note);
+          }
         } else {
           rps = s.traffic * patternMultiplier(s.pattern, simT) * (simT < s.spikeUntil ? 3 : 1);
         }
@@ -525,6 +607,7 @@ export const useSim = create<State>()((set, get) => {
           break;
         }
         if (studio.done) break;
+        if (pb && pb.t >= pb.duration) break;
       }
 
       for (const { b, e } of s.settings.alerts && s.mode !== 'studio' ? events : []) {
@@ -541,7 +624,8 @@ export const useSim = create<State>()((set, get) => {
         const { nodes, edges } = next[b];
         next[b] = { ...next[b], ...engines[b].snapshot(systemNodes(nodes), edges) };
       }
-      set({ boards: next, lesson: ls, compare: cmp, studio, simT, running: (cmp.finished && sc) || studio.done ? false : get().running });
+      const pbDone = !!pb && pb.t >= pb.duration && !!s.playback && s.playback.t < s.playback.duration;
+      set({ boards: next, lesson: ls, compare: cmp, studio, simT, playback: pb, running: (cmp.finished && sc) || studio.done || pbDone ? false : get().running });
     },
   };
 });

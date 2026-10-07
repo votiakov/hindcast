@@ -168,3 +168,50 @@ export function decodePayload<T = unknown>(s: string): T {
   const bin = atob(s.replace(/-/g, '+').replace(/_/g, '/'));
   return JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)))) as T;
 }
+
+/**
+ * Apply variant edits straight to a board, keeping the user's layout: new components are placed
+ * next to what they connect to. Used to apply audit fixes with one click.
+ */
+export function applyChangesToGraph(nodes: AppNode[], edges: SystemEdge[], changes: ChangeSpec[]): { nodes: AppNode[]; edges: SystemEdge[]; added: string[] } {
+  let ns = [...nodes];
+  let es = [...edges];
+  const added: string[] = [];
+  const pendingPos = new Map<string, true>();
+  for (const ch of changes) {
+    switch (ch.op) {
+      case 'set':
+        ns = ns.map((n) => (n.id === ch.id && isSystem(n) ? { ...n, data: { ...n.data, ...ch.fields, ...(ch.fields.instances !== undefined ? { down: Math.min(n.data.down ?? 0, ch.fields.instances - 1) } : {}) } } : n));
+        break;
+      case 'add': {
+        const data = componentData(ch.component);
+        ns = [...ns.map((n) => ({ ...n, selected: false })), { id: ch.component.id, type: 'system', position: { x: 0, y: 0 }, data, selected: true } as AppNode];
+        pendingPos.set(ch.component.id, true);
+        added.push(ch.component.id);
+        break;
+      }
+      case 'remove':
+        ns = ns.filter((n) => n.id !== ch.id);
+        es = es.filter((e) => e.source !== ch.id && e.target !== ch.id);
+        break;
+      case 'connect':
+        if (!es.some((e) => e.source === ch.from && e.target === ch.to)) es = [...es, { id: `e-${ch.from}-${ch.to}-${Date.now() % 1e6}-${es.length}`, source: ch.from, target: ch.to, type: 'flow' }];
+        break;
+      case 'disconnect':
+        es = es.filter((e) => !(e.source === ch.from && e.target === ch.to));
+        break;
+    }
+  }
+  // place new nodes: below a neighbour they connect to, nudged until free
+  const pos = (id: string) => ns.find((n) => n.id === id)?.position;
+  for (const id of pendingPos.keys()) {
+    const callers = es.filter((e) => e.target === id).map((e) => pos(e.source)).filter(Boolean) as { x: number; y: number }[];
+    const callees = es.filter((e) => e.source === id).map((e) => pos(e.target)).filter(Boolean) as { x: number; y: number }[];
+    const anchor = callees.length && callers.length ? { x: (callers[0].x + callees[0].x) / 2, y: callers[0].y } : callers[0] ? { x: callers[0].x + COL, y: callers[0].y } : callees[0] ? { x: callees[0].x - COL, y: callees[0].y } : { x: 0, y: 0 };
+    let p = { x: anchor.x, y: anchor.y + ROW };
+    const taken = () => ns.some((n) => n.id !== id && n.type === 'system' && Math.abs(n.position.x - p.x) < NODE_W && Math.abs(n.position.y - p.y) < NODE_H);
+    for (let i = 0; i < 12 && taken(); i++) p = { x: p.x, y: p.y + ROW };
+    ns = ns.map((n) => (n.id === id ? { ...n, position: p } : n));
+  }
+  return { nodes: ns, edges: es, added };
+}

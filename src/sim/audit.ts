@@ -118,6 +118,7 @@ function auditParsed(spec: ArchitectureSpec, opts: AuditOptions): AuditResult {
   const bp = breakingPoint(spec, { readRatio, slo });
   const rps = opts.rps ?? Math.max(10, Math.round(bp.maxRps * 0.5));
   const byId = new Map(spec.components.map((c) => [c.id, c]));
+  const nm = (id: string) => byId.get(id)?.name ?? id;
   const parents = (id: string) => pairs(spec).filter(([, b]) => b === id).map(([a]) => a);
   const children = (id: string) => pairs(spec).filter(([a]) => a === id).map(([, b]) => b);
 
@@ -153,18 +154,18 @@ function auditParsed(spec: ArchitectureSpec, opts: AuditOptions): AuditResult {
     const spec_ = KINDS[c.kind as Kind];
     const n = c.instances ?? c.autoscale?.min ?? 1;
     if (spec_.scalable && n > 1) {
-      incidents.push({ id: `instance:${c.id}`, kind: 'instance', target: c.id, title: `one ${c.id} instance dies`, events: fault({ type: 'kill-id', id: c.id }, { type: 'revive-id', id: c.id }) });
+      incidents.push({ id: `instance:${c.id}`, kind: 'instance', target: c.id, title: `one ${nm(c.id)} instance dies`, events: fault({ type: 'kill-id', id: c.id }, { type: 'revive-id', id: c.id }) });
     } else {
-      incidents.push({ id: `component:${c.id}`, kind: 'component', target: c.id, title: `${c.id} goes down`, events: fault({ type: 'kill-id', id: c.id }, { type: 'revive-id', id: c.id }) });
+      incidents.push({ id: `component:${c.id}`, kind: 'component', target: c.id, title: `${nm(c.id)} goes down`, events: fault({ type: 'kill-id', id: c.id }, { type: 'revive-id', id: c.id }) });
     }
     if (c.kind === 'cache' || c.kind === 'cdn') {
-      incidents.push({ id: `cold:${c.id}`, kind: 'cold-cache', target: c.id, title: `${c.id} restarts cold`, events: [{ at: FAULT_AT, action: { type: 'flush-cache', id: c.id } }] });
+      incidents.push({ id: `cold:${c.id}`, kind: 'cold-cache', target: c.id, title: `${nm(c.id)} restarts cold`, events: [{ at: FAULT_AT, action: { type: 'flush-cache', id: c.id } }] });
     }
     if (c.kind !== 'lb' && c.kind !== 'queue') {
-      incidents.push({ id: `slow:${c.id}`, kind: 'slow', target: c.id, title: `${c.id} turns slow (+250 ms)`, events: fault({ type: 'inject-latency', id: c.id, ms: 250 }, { type: 'restore', id: c.id }) });
+      incidents.push({ id: `slow:${c.id}`, kind: 'slow', target: c.id, title: `${nm(c.id)} turns slow (+250 ms)`, events: fault({ type: 'inject-latency', id: c.id, ms: 250 }, { type: 'restore', id: c.id }) });
     }
     if (c.kind !== 'lb' && c.kind !== 'queue' && c.kind !== 'cdn') {
-      incidents.push({ id: `errors:${c.id}`, kind: 'errors', target: c.id, title: `${c.id} fails 20% of requests`, events: fault({ type: 'inject-errors', id: c.id, rate: 0.2 }, { type: 'restore', id: c.id }) });
+      incidents.push({ id: `errors:${c.id}`, kind: 'errors', target: c.id, title: `${nm(c.id)} fails 20% of requests`, events: fault({ type: 'inject-errors', id: c.id, rate: 0.2 }, { type: 'restore', id: c.id }) });
     }
   }
   for (const z of spec.zones ?? []) {
@@ -203,14 +204,14 @@ function auditParsed(spec: ArchitectureSpec, opts: AuditOptions): AuditResult {
       severity,
       impact,
       blastRadius: blast(r, inc.target),
-      explanation: explainIncident(inc, impact, r, severity),
+      explanation: explainIncident(inc, impact, r, severity, nm),
       // failed requests expressed as minutes of full outage, priced
       costAtRisk: opts.incidentCostPerMinute ? Math.round((impact.failedRequests / (rps * 60)) * opts.incidentCostPerMinute) : null,
       fixes: [],
       scenario: scenarioFor(inc),
     };
     if (opts.fixes !== false && SEV_RANK[severity] >= 2) {
-      for (const cand of candidateFixes(inc, spec, byId, parents, children)) {
+      for (const cand of candidateFixes(inc, spec, byId, parents, children, nm)) {
         let variant: ArchitectureSpec;
         try {
           variant = applyVariant(spec, { name: cand.title, changes: cand.changes });
@@ -247,14 +248,14 @@ function auditParsed(spec: ArchitectureSpec, opts: AuditOptions): AuditResult {
     impact: { errorRate: 0, peakErrorRate: 0, peakP99Ms: 0, failedRequests: 0, breachS: 0, selfHealS: null, recoveryS: null },
     blastRadius: bp.limitedBy ? [bp.limitedBy] : [],
     explanation: bp.limitedBy
-      ? `Sustains ${Math.round(bp.maxRps)} req/s within SLO — ${ratio.toFixed(1)}× the expected ${rps} req/s. ${bp.limitedBy} gives out first${bp.note ? `: ${bp.note}` : '.'}`
+      ? `Sustains ${Math.round(bp.maxRps)} req/s within SLO — ${ratio.toFixed(1)}× the expected ${rps} req/s. ${nm(bp.limitedBy)} gives out first${bp.note ? `: ${bp.note}` : '.'}`
       : `Sustains at least ${Math.round(bp.maxRps)} req/s — no limit found.`,
     costAtRisk: null,
     fixes: [],
     scenario: { duration: 30, rps: Math.round(bp.firstFailingRps ?? bp.maxRps * 1.2), readRatio, slo },
   };
   if (opts.fixes !== false && SEV_RANK[headroomSev] >= 2 && bp.limitedBy) {
-    for (const cand of capacityFixes(byId.get(bp.limitedBy))) {
+    for (const cand of capacityFixes(byId.get(bp.limitedBy), nm)) {
       let variant: ArchitectureSpec;
       try {
         variant = applyVariant(spec, { name: cand.title, changes: cand.changes });
@@ -267,7 +268,7 @@ function auditParsed(spec: ArchitectureSpec, opts: AuditOptions): AuditResult {
       const cost = simulate(variant, { duration: 20, rps, readRatio, slo }).summary.meanCostPerHour;
       headroom.fixes.push({
         ...cand,
-        why: `${cand.why} Sustains ${Math.round(bp2.maxRps)} req/s (${r2.toFixed(1)}×)${bp2.limitedBy ? `, then ${bp2.limitedBy} is next` : ''}.`,
+        why: `${cand.why} Sustains ${Math.round(bp2.maxRps)} req/s (${r2.toFixed(1)}×)${bp2.limitedBy ? `, then ${nm(bp2.limitedBy)} is next` : ''}.`,
         monthlyDelta: Math.round((cost - baseCost) * 730),
         after: { severity: r2 < 1 ? 'critical' : r2 < 1.5 ? 'major' : r2 < 2 ? 'minor' : 'ok', errorRate: 0, peakP99Ms: 0, failedRequests: 0 },
       });
@@ -348,7 +349,7 @@ function blast(r: SimResult, target: string): string[] {
     .map(([id]) => id);
 }
 
-function explainIncident(inc: Incident, i: IncidentImpact, r: SimResult, sev: Severity): string {
+function explainIncident(inc: Incident, i: IncidentImpact, r: SimResult, sev: Severity, nm: (id: string) => string): string {
   const pct = (x: number) => `${(x * 100).toFixed(x < 0.01 ? 2 : 1)}%`;
   const parts: string[] = [];
   if (sev === 'ok') parts.push(`Absorbed: users stayed within SLO${i.peakP99Ms ? ` (p99 peaked at ${i.peakP99Ms} ms)` : ''}.`);
@@ -361,7 +362,7 @@ function explainIncident(inc: Incident, i: IncidentImpact, r: SimResult, sev: Se
     else if (i.recoveryS > 3) parts.push(`Took ${i.recoveryS} s to recover after the fault was cleared.`);
   }
   const top = r.bottlenecks.find((b) => b.id !== inc.target && b.note);
-  if (sev !== 'ok' && top?.note) parts.push(`Knock-on: ${top.id} — ${top.note}`);
+  if (sev !== 'ok' && top?.note) parts.push(`Knock-on: ${nm(top.id)} — ${top.note}`);
   return parts.join(' ');
 }
 
@@ -383,10 +384,11 @@ function candidateFixes(
   byId: Map<string, ComponentSpec>,
   parents: (id: string) => string[],
   children: (id: string) => string[],
+  nm: (id: string) => string,
 ): Cand[] {
   const c = byId.get(inc.target);
   const out: Cand[] = [];
-  if (inc.kind === 'surge') return [...capacityFixes(c), ...autoscaleFix(c)];
+  if (inc.kind === 'surge') return [...capacityFixes(c, nm), ...autoscaleFix(c, nm)];
   if (!c) return out;
   const kind = c.kind as Kind;
   const ps = parents(c.id);
@@ -396,14 +398,14 @@ function candidateFixes(
     if (KINDS[kind].scalable) {
       const fed = ps.some((p) => ['lb', 'gateway', 'queue'].includes(byId.get(p)?.kind ?? ''));
       const n = c.instances ?? 1;
-      if (fed) out.push({ title: `Run ${n + 1} × ${c.id}`, why: 'One more instance than the load needs (N+1): losing one leaves enough capacity.', changes: [{ op: 'set', id: c.id, fields: { instances: n + 1 } }] });
+      if (fed) out.push({ title: `Run ${n + 1} × ${nm(c.id)}`, why: 'One more instance than the load needs (N+1): losing one leaves enough capacity.', changes: [{ op: 'set', id: c.id, fields: { instances: n + 1 } }] });
       else {
         const lb = uniqueId(spec, `${c.id}-lb`);
         out.push({
-          title: `Put ${c.id} behind a load balancer with ${Math.max(2, n + 1)} instances`,
+          title: `Put ${nm(c.id)} behind a load balancer with ${Math.max(2, n + 1)} instances`,
           why: 'Without a load balancer callers know one address; with one, a dead instance is routed around.',
           changes: [
-            { op: 'add', component: { id: lb, kind: 'lb' } },
+            { op: 'add', component: { id: lb, kind: 'lb', name: `${nm(c.id)}-lb` } },
             ...ps.flatMap((p): ChangeSpec[] => [{ op: 'disconnect', from: p, to: c.id }, { op: 'connect', from: p, to: lb }]),
             { op: 'connect', from: lb, to: c.id },
             { op: 'set', id: c.id, fields: { instances: Math.max(2, n + 1) } },
@@ -414,12 +416,12 @@ function candidateFixes(
       const hasReplica = ks.some((k) => byId.get(k)?.kind === 'replica');
       if (!hasReplica) {
         const rep = uniqueId(spec, `${c.id}-replica`);
-        out.push({ title: `Add a read replica to ${c.id}`, why: 'A replica serves reads and is promoted to primary in seconds when the primary dies.', changes: [{ op: 'add', component: { id: rep, kind: 'replica', tier: c.tier } }, { op: 'connect', from: c.id, to: rep }] });
+        out.push({ title: `Add a read replica to ${nm(c.id)}`, why: 'A replica serves reads and is promoted to primary in seconds when the primary dies.', changes: [{ op: 'add', component: { id: rep, kind: 'replica', tier: c.tier, name: `${nm(c.id)}-replica` } }, { op: 'connect', from: c.id, to: rep }] });
       }
     } else if ((kind === 'cache' || kind === 'cdn') && ks.length) {
       // callers bypass a dead cache and go straight to its origin
       out.push({
-        title: `Bypass ${c.id} when it is down`,
+        title: `Bypass ${nm(c.id)} when it is down`,
         why: 'Callers fail over to the origin instead of failing — the cache is an optimisation, not a dependency.',
         changes: ps.flatMap((p): ChangeSpec[] => [{ op: 'set', id: p, fields: { routing: 'failover' } }, ...ks.filter((k) => !children(p).includes(k)).map((k): ChangeSpec => ({ op: 'connect', from: p, to: k }))]),
       });
@@ -427,10 +429,10 @@ function candidateFixes(
       const twin = uniqueId(spec, `${c.id}-b`);
       const { id: _id, ...rest } = c;
       out.push({
-        title: `Run a standby ${c.id}`,
+        title: `Run a standby ${nm(c.id)}`,
         why: `A second ${KINDS[kind].label.toLowerCase()} that callers fail over to.`,
         changes: [
-          { op: 'add', component: { ...rest, id: twin } },
+          { op: 'add', component: { ...rest, id: twin, name: `${nm(c.id)}-standby` } },
           ...ps.flatMap((p): ChangeSpec[] => [{ op: 'connect', from: p, to: twin }, { op: 'set', id: p, fields: { routing: 'failover' } }]),
           ...ks.map((k): ChangeSpec => ({ op: 'connect', from: twin, to: k })),
         ],
@@ -442,7 +444,7 @@ function candidateFixes(
     const z = spec.zones?.find((x) => x.id === inc.target);
     for (const m of z?.members ?? []) {
       const mc = byId.get(m);
-      if (mc && KINDS[mc.kind as Kind].scalable) out.push({ title: `Add ${m} capacity outside ${inc.target}`, why: 'Instances outside the failed zone keep serving.', changes: [{ op: 'set', id: m, fields: { instances: (mc.instances ?? 1) * 2 } }] });
+      if (mc && KINDS[mc.kind as Kind].scalable) out.push({ title: `Add ${nm(m)} capacity outside ${inc.target}`, why: 'Instances outside the failed zone keep serving.', changes: [{ op: 'set', id: m, fields: { instances: (mc.instances ?? 1) * 2 } }] });
     }
   }
 
@@ -456,38 +458,38 @@ function candidateFixes(
         why: inc.kind === 'slow' ? 'Give up quickly on the slow dependency and serve a degraded answer instead of tying up workers.' : 'Retry the occasional failure (within a 10 % budget so retries cannot snowball), cut off a dependency that keeps failing.',
         changes: [{ op: 'set', id: p, fields }],
       });
-      if (inc.kind === 'errors') out.push({ title: `2 retries with backoff on ${p}`, why: 'Most transient errors succeed on a second try; backoff with jitter spreads the extra load.', changes: [{ op: 'set', id: p, fields: { retries: 2, retryPolicy: 'backoff' } }] });
-      if (inc.kind === 'errors') out.push({ title: `Retry budget on ${p}`, why: 'Transient errors are retried; a 10 % budget stops retries from multiplying load.', changes: [{ op: 'set', id: p, fields: { retries: 2, retryPolicy: 'budget' } }] });
+      if (inc.kind === 'errors') out.push({ title: `2 retries with backoff on ${nm(p)}`, why: 'Most transient errors succeed on a second try; backoff with jitter spreads the extra load.', changes: [{ op: 'set', id: p, fields: { retries: 2, retryPolicy: 'backoff' } }] });
+      if (inc.kind === 'errors') out.push({ title: `Retry budget on ${nm(p)}`, why: 'Transient errors are retried; a 10 % budget stops retries from multiplying load.', changes: [{ op: 'set', id: p, fields: { retries: 2, retryPolicy: 'budget' } }] });
     }
   }
 
   if (inc.kind === 'cold-cache') {
-    for (const k of ks) out.push(...capacityFixes(byId.get(k)).map((f) => ({ ...f, why: `${f.why} The origin must survive the misses of a cold cache.` })));
-    out.push({ title: `Warm ${c.id} faster`, why: 'Pre-warm on restart (load hot keys) so the stampede is short.', changes: [{ op: 'set', id: c.id, fields: { warmupS: 5 } }] });
+    for (const k of ks) out.push(...capacityFixes(byId.get(k), nm).map((f) => ({ ...f, why: `${f.why} The origin must survive the misses of a cold cache.` })));
+    out.push({ title: `Warm ${nm(c.id)} faster`, why: 'Pre-warm on restart (load hot keys) so the stampede is short.', changes: [{ op: 'set', id: c.id, fields: { warmupS: 5 } }] });
   }
   return out;
 }
 
-function capacityFixes(c: ComponentSpec | undefined): Cand[] {
+function capacityFixes(c: ComponentSpec | undefined, nm: (id: string) => string = (x) => x): Cand[] {
   if (!c) return [];
   const kind = c.kind as Kind;
   const out: Cand[] = [];
   if (KINDS[kind].scalable) {
     const n = c.instances ?? 1;
-    out.push({ title: `Scale ${c.id} to ${n * 2} instances`, why: 'Double the fleet.', changes: [{ op: 'set', id: c.id, fields: { instances: n * 2 } }] });
+    out.push({ title: `Scale ${nm(c.id)} to ${n * 2} instances`, why: 'Double the fleet.', changes: [{ op: 'set', id: c.id, fields: { instances: n * 2 } }] });
   }
   if (KINDS[kind].tiered) {
     const i = TIERS.indexOf((c.tier as Tier) ?? 'S');
-    if (i < TIERS.length - 1) out.push({ title: `Size ${c.id} up to ${TIERS[i + 1]}`, why: 'Bigger instance class: about twice the throughput.', changes: [{ op: 'set', id: c.id, fields: { tier: TIERS[i + 1] } }] });
+    if (i < TIERS.length - 1) out.push({ title: `Size ${nm(c.id)} up to ${TIERS[i + 1]}`, why: 'Bigger instance class: about twice the throughput.', changes: [{ op: 'set', id: c.id, fields: { tier: TIERS[i + 1] } }] });
   }
   if (kind === 'gateway' || kind === 'function' || kind === 'llmapi') {
-    out.push({ title: `Raise ${c.id} limit to ${Math.round((c.limit ?? KINDS[kind].capacity) * 2)}/s`, why: 'The limit, not the hardware, is what fails first.', changes: [{ op: 'set', id: c.id, fields: { limit: Math.round((c.limit ?? KINDS[kind].capacity) * 2) } }] });
+    out.push({ title: `Raise ${nm(c.id)} limit to ${Math.round((c.limit ?? KINDS[kind].capacity) * 2)}/s`, why: 'The limit, not the hardware, is what fails first.', changes: [{ op: 'set', id: c.id, fields: { limit: Math.round((c.limit ?? KINDS[kind].capacity) * 2) } }] });
   }
   return out;
 }
 
-function autoscaleFix(c: ComponentSpec | undefined): Cand[] {
+function autoscaleFix(c: ComponentSpec | undefined, nm: (id: string) => string = (x) => x): Cand[] {
   if (!c || !KINDS[c.kind as Kind].scalable || c.autoscale) return [];
   const n = c.instances ?? 1;
-  return [{ title: `Autoscale ${c.id} (${n}–${n * 4}, 15 s warm-up)`, why: 'Pay for the surge only while it lasts — as long as capacity arrives fast enough.', changes: [{ op: 'set', id: c.id, fields: { autoscale: { min: n, max: n * 4, warmupS: 15, cooldownS: 60 } } }] }];
+  return [{ title: `Autoscale ${nm(c.id)} (${n}–${n * 4}, 15 s warm-up)`, why: 'Pay for the surge only while it lasts — as long as capacity arrives fast enough.', changes: [{ op: 'set', id: c.id, fields: { autoscale: { min: n, max: n * 4, warmupS: 15, cooldownS: 60 } } }] }];
 }

@@ -6,7 +6,7 @@ import { Sparkline } from '../canvas/Sparkline';
 import { TEMPLATES, templateGroups } from '../scenarios/templates';
 import { SettingsButton } from './SettingsPanel';
 import { currentSpecYaml } from '../spec/links';
-import { FileCode2, FlaskConical } from 'lucide-react';
+import { FileCode2, FlaskConical, ShieldAlert } from 'lucide-react';
 
 const fmtRps = (r: number) => (r >= 1000 ? `${(r / 1000).toFixed(2)}k` : r.toFixed(0));
 
@@ -102,6 +102,8 @@ export function TopBar() {
   const loadGraph = useSim((s) => s.loadGraph);
   const analysisOpen = useSim((s) => s.analysisOpen);
   const setAnalysisOpen = useSim((s) => s.setAnalysisOpen);
+  const auditOpen = useSim((s) => s.auditOpen);
+  const setAuditOpen = useSim((s) => s.setAuditOpen);
 
   return (
     <div className="topbar">
@@ -155,6 +157,11 @@ export function TopBar() {
           }}
         >
           <FileCode2 size={15} />
+        </button>
+      )}
+      {mode === 'sandbox' && (
+        <button className={`icon-btn ${auditOpen ? 'on' : ''}`} title="Failure audit: what breaks first, and what it costs" onClick={() => setAuditOpen(!auditOpen)}>
+          <ShieldAlert size={15} />
         </button>
       )}
       {(mode === 'sandbox' || mode === 'compare') && (

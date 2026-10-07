@@ -9,6 +9,7 @@ import { ControlBar } from './ui/ControlBar';
 import { Toasts } from './ui/Toasts';
 import { CompareView } from './ui/CompareView';
 import { AnalysisPanel } from './ui/AnalysisPanel';
+import { AuditPanel } from './ui/AuditPanel';
 import { HomeBoard } from './ui/HomeBoard';
 import './ui/callout.css';
 import { StudioView } from './studio/StudioView';
@@ -74,6 +75,7 @@ export default function App() {
   const mode = useSim((s) => s.mode);
   const theme = useSim((s) => s.settings.theme);
   const analysisOpen = useSim((s) => s.analysisOpen);
+  const auditOpen = useSim((s) => s.auditOpen);
   useSimLoop();
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -93,12 +95,13 @@ export default function App() {
           <CompareView />
         ) : (
           <ReactFlowProvider>
-            <BoardCanvas id="main" padding={{ top: '60px', left: '270px', right: mode === 'lesson' ? '380px' : '60px', bottom: '110px' }} />
+            <BoardCanvas id="main" padding={{ top: '60px', left: '270px', right: mode === 'lesson' ? '380px' : mode === 'sandbox' && (auditOpen || analysisOpen) ? '450px' : '60px', bottom: '110px' }} />
           </ReactFlowProvider>
         )}
         {mode !== 'studio' && mode !== 'home' && <Palette key={mode} compact={mode === 'compare'} />}
         {mode === 'lesson' && <LessonPanel />}
         {analysisOpen && (mode === 'sandbox' || mode === 'compare') && <AnalysisPanel />}
+        {auditOpen && mode === 'sandbox' && <AuditPanel />}
         {mode !== 'studio' && mode !== 'home' && <ControlBar />}
         <Toasts />
       </div>

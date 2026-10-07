@@ -2,6 +2,7 @@ import type { AnalysisRequest } from './browser.worker';
 import { aggregate, seedsFor, type Analysis, type RunSummary } from './analyze';
 import type { OptimizeResult } from '../optimize';
 import type { breakingPoint } from '../headless';
+import type { AuditOptions, AuditResult } from '../audit';
 
 /**
  * Promise wrapper around analysis web workers. Monte Carlo seeds are split across up to
@@ -13,11 +14,14 @@ const spawn = () => new Worker(new URL('./browser.worker.ts', import.meta.url), 
 
 type Req = AnalysisRequest extends infer R ? (R extends { id: number } ? Omit<R, 'id'> : never) : never;
 
-function ask<T>(w: Worker, req: Req): Promise<T> {
+type Progress = { done: number; total: number; label: string };
+
+function ask<T>(w: Worker, req: Req, onProgress?: (p: Progress) => void): Promise<T> {
   const id = seq++;
   return new Promise((resolve, reject) => {
-    const onMsg = (e: MessageEvent<{ id: number; ok: boolean; result?: T; error?: string }>) => {
+    const onMsg = (e: MessageEvent<{ id: number; ok: boolean; result?: T; error?: string; progress?: Progress }>) => {
       if (e.data.id !== id) return;
+      if (e.data.progress) return onProgress?.(e.data.progress);
       w.removeEventListener('message', onMsg);
       e.data.ok ? resolve(e.data.result as T) : reject(new Error(e.data.error));
     };
@@ -56,5 +60,19 @@ export async function breakingPointInBrowser(spec: unknown, readRatio: number) {
     return await ask<ReturnType<typeof breakingPoint>>(w, { type: 'breaking', spec, readRatio });
   } finally {
     w.terminate();
+  }
+}
+
+let auditWorker: Worker | null = null;
+
+/** Failure audit off the main thread. Starting a new one cancels the previous. */
+export async function auditInBrowser(spec: unknown, opts: Omit<AuditOptions, 'onProgress'>, onProgress?: (p: Progress) => void): Promise<AuditResult> {
+  auditWorker?.terminate();
+  const w = (auditWorker = spawn());
+  try {
+    return await ask<AuditResult>(w, { type: 'audit', spec, opts }, onProgress);
+  } finally {
+    w.terminate();
+    if (auditWorker === w) auditWorker = null;
   }
 }

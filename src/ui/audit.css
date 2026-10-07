@@ -1,0 +1,99 @@
+/* Failure audit — a risk register, not a dashboard: one ruled list, severity in the margin. */
+
+.audit {
+  position: absolute; top: 16px; right: 16px; bottom: 104px; width: 412px; z-index: 9;
+  display: flex; flex-direction: column; padding: 0; overflow: hidden;
+  background: var(--panel-solid);
+}
+.au-head { display: flex; align-items: center; gap: 10px; padding: 13px 14px 11px; border-bottom: 1px solid var(--border); color: var(--muted); }
+.au-head > div { flex: 1; }
+.au-h1 { font-weight: 700; font-size: 14px; color: var(--text); }
+.au-h2 { font-size: 11px; color: var(--muted); }
+
+.au-inputs { display: flex; align-items: center; gap: 12px; padding: 9px 14px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+.au-inputs b { color: var(--text); font-family: var(--mono); font-weight: 600; }
+.au-inputs label { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.au-inputs input { width: 64px; font-family: var(--mono); font-size: 12px; padding: 3px 5px; border-radius: 5px; border: 1px solid var(--border-strong); background: transparent; color: var(--text); }
+.au-run { margin-left: auto; }
+.au-run:disabled { opacity: 0.6; cursor: progress; }
+
+.au-progress { padding: 9px 14px; display: flex; flex-direction: column; gap: 6px; font-size: 11px; color: var(--muted); font-family: var(--mono); border-bottom: 1px solid var(--border); }
+.au-progress > i { display: block; height: 2px; background: var(--border); }
+.au-progress > i > i { display: block; height: 100%; background: var(--cyan); transition: width 0.2s; }
+
+.au-empty { padding: 14px; font-size: 12.5px; line-height: 1.55; color: var(--muted); }
+.au-stale { padding: 7px 14px; font-size: 11.5px; color: var(--amber); border-bottom: 1px solid var(--border); }
+
+.au-summary { display: flex; align-items: center; gap: 16px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.au-score { font-family: var(--mono); font-size: 40px; line-height: 1; font-weight: 600; letter-spacing: -2px; font-variant-numeric: tabular-nums; }
+.au-score small { font-size: 13px; letter-spacing: 0; color: var(--muted); font-weight: 400; margin-left: 2px; }
+.au-score.good { color: var(--green); }
+.au-score.warn { color: var(--amber); }
+.au-score.bad { color: var(--red); }
+.au-sumlines { font-size: 12px; color: var(--muted); line-height: 1.6; }
+.au-sumlines b { color: var(--text); font-family: var(--mono); font-weight: 600; }
+.bad { color: var(--red); }
+
+.au-list { flex: 1; overflow: auto; }
+.au-row { border-bottom: 1px solid var(--border); border-left: 3px solid transparent; }
+.au-row.sev-critical { border-left-color: var(--red); }
+.au-row.sev-major { border-left-color: var(--amber); }
+.au-row.sev-minor { border-left-color: var(--border-strong); }
+.au-row.open { background: rgba(148, 163, 184, 0.05); }
+.au-row-head { width: 100%; display: grid; grid-template-columns: 46px 1fr auto; align-items: center; gap: 8px; padding: 8px 12px 8px 9px; background: none; border: 0; text-align: left; font-size: 12.5px; }
+.au-row-head:hover .au-title { color: var(--text); }
+.au-sev { font-family: var(--mono); font-size: 9.5px; font-weight: 700; letter-spacing: 0.5px; color: var(--muted); }
+.sev-critical .au-sev { color: var(--red); }
+.sev-major .au-sev { color: var(--amber); }
+.sev-ok .au-sev { color: var(--green); }
+.au-title { color: var(--text); opacity: 0.92; }
+.sev-ok .au-title, .sev-minor .au-title { opacity: 0.7; }
+.au-impact { display: flex; align-items: center; gap: 6px; }
+.au-impact em { font-style: normal; font-family: var(--mono); font-size: 11px; color: var(--muted); min-width: 34px; text-align: right; }
+.au-bar { display: block; width: 46px; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.au-bar > i { display: block; height: 100%; background: var(--red); }
+.sev-major .au-bar > i { background: var(--amber); }
+
+.au-detail { padding: 2px 14px 12px 55px; font-size: 12px; color: var(--muted); }
+.au-detail p { margin: 0 0 8px; line-height: 1.5; color: var(--text); opacity: 0.85; }
+.au-facts { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; margin-bottom: 8px; }
+.au-facts b { font-family: var(--mono); color: var(--text); font-weight: 600; }
+.au-facts .bad b { color: var(--red); }
+.au-blast { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-bottom: 9px; font-size: 11px; }
+.au-blast code { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radius: 4px; border: 1px solid var(--border-strong); color: var(--text); }
+.au-replay { margin-bottom: 9px; }
+
+.au-fixes { border-top: 1px dashed var(--border-strong); padding-top: 8px; }
+.au-fixes-h { font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 700; margin-bottom: 6px; }
+.au-fix { display: flex; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.au-fix:last-child { border-bottom: 0; }
+.au-fix-main { flex: 1; min-width: 0; }
+.au-fix-title { color: var(--text); font-weight: 600; font-size: 12px; }
+.au-fix-why { font-size: 11px; line-height: 1.45; margin-top: 2px; }
+.au-fix-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
+.au-after { font-family: var(--mono); font-size: 10.5px; font-weight: 700; }
+.au-after.sev-ok { color: var(--green); }
+.au-after.sev-minor { color: var(--muted); }
+.au-after.sev-major { color: var(--amber); }
+.au-cost { font-family: var(--mono); font-size: 11px; color: var(--text); }
+.au-fix-side .chip { padding: 3px 8px; font-size: 11px; }
+.au-nofix { font-size: 11.5px; font-style: italic; }
+
+.au-foot { display: flex; align-items: center; justify-content: space-between; padding: 9px 14px; border-top: 1px solid var(--border); font-size: 10.5px; color: var(--muted); font-family: var(--mono); }
+.au-playing { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 14px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+.au-playing b { color: var(--text); }
+
+/* ---- risk lens on the canvas ---- */
+.risk-mark {
+  position: absolute; top: -21px; left: 0; z-index: 3; pointer-events: none;
+  font-family: var(--mono); font-size: 9.5px; font-weight: 700; letter-spacing: 0.4px;
+  padding: 2px 6px; border-radius: 4px 4px 0 0; color: #fff; white-space: nowrap;
+}
+.risk-mark.sev-critical { background: var(--red); }
+.risk-mark.sev-major { background: var(--amber); color: #1b1300; }
+.risk-ring { position: absolute; inset: -7px; border-radius: 16px; pointer-events: none; z-index: -1; }
+.risk-ring.target { box-shadow: 0 0 0 2px var(--red), 0 0 24px rgba(244, 63, 94, 0.45); }
+.risk-ring.blast { box-shadow: 0 0 0 2px var(--amber); border: 0; opacity: 0.85; }
+[data-theme='reference'] .risk-ring { border-radius: 6px; }
+[data-theme='reference'] .risk-ring.target { box-shadow: 0 0 0 2px var(--r-bad); }
+[data-theme='reference'] .risk-mark { border-radius: 3px 3px 0 0; }

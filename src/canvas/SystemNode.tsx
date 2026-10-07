@@ -7,6 +7,7 @@ import { KIND_ICONS } from './icons';
 import { Sparkline } from './Sparkline';
 import { useBoardId } from './BoardContext';
 import { NodeControls } from './NodeControls';
+import { RiskMark } from './RiskMark';
 import { healthOf, nodeView, type Health } from './nodeModel';
 import { Station } from '../theme/transit/Station';
 import { RefNode } from '../theme/reference/RefNode';
@@ -35,6 +36,7 @@ function SystemNodeImpl({ id, data, selected }: NodeProps<SystemNodeT>) {
     return (
       <>
         <NodeControls id={id} data={data} selected={selected} />
+        <RiskMark id={id} />
         <RefNode data={data} st={st} v={v} selected={selected} showCost={showCost} running={running} explainOn={explainOn} />
       </>
     );
@@ -44,6 +46,7 @@ function SystemNodeImpl({ id, data, selected }: NodeProps<SystemNodeT>) {
     return (
       <>
         <NodeControls id={id} data={data} selected={selected} />
+        <RiskMark id={id} />
         <Station data={data} st={st} v={v} selected={selected} showCost={showCost} running={running} />
       </>
     );
@@ -57,6 +60,7 @@ function SystemNodeImpl({ id, data, selected }: NodeProps<SystemNodeT>) {
   return (
     <>
       <NodeControls id={id} data={data} selected={selected} />
+      <RiskMark id={id} />
 
       {spec.scalable &&
         Array.from({ length: Math.min(v.instances - 1, 3) }, (_, i) => (

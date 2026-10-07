@@ -636,3 +636,11 @@ select { background: #0a1122; color: var(--text); border: 1px solid var(--border
 .an-error { color: var(--red); font-size: 12px; }
 
 .lesson-picker { width: 100%; margin-bottom: 10px; font-weight: 600; }
+
+/* ---------- scripted playback strip (audit replays) ---------- */
+.pb-strip { display: flex; flex-direction: column; gap: 5px; width: 420px; }
+.pb-title { font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pb-track { position: relative; height: 6px; border-radius: 3px; background: var(--border); }
+.pb-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--cyan); opacity: 0.7; }
+.pb-mark { position: absolute; top: -4px; width: 2px; height: 14px; margin-left: -1px; background: var(--red); opacity: 0.55; }
+.pb-mark.fired { opacity: 1; }
