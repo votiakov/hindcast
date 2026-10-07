@@ -1,0 +1,32 @@
+/* Sandbox document menu — a plain, ruled menu; the design name is the title. */
+.dm { position: relative; }
+.dm-title { display: flex; align-items: center; gap: 8px; max-width: 280px; padding: 6px 10px; border-radius: 8px; border: 1px solid transparent; background: none; color: var(--text); font-size: 13.5px; font-weight: 600; }
+.dm-title:hover, .dm-title.on { border-color: var(--border-strong); }
+.dm-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dm-unsaved { font-family: var(--mono); font-size: 9.5px; font-weight: 500; color: var(--muted); border: 1px dashed var(--border-strong); border-radius: 4px; padding: 0 4px; }
+.dm-menu {
+  position: absolute; top: calc(100% + 8px); left: 0; z-index: 40; width: 320px; max-height: 72vh; overflow: auto;
+  background: var(--panel-solid); border: 1px solid var(--border-strong); border-radius: 10px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+}
+.dm-rename { padding: 10px; border-bottom: 1px solid var(--border); }
+.dm-rename input { width: 100%; font: inherit; font-size: 13px; font-weight: 600; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border-strong); background: transparent; color: var(--text); }
+.dm-actions { display: flex; flex-direction: column; padding: 4px 0; border-bottom: 1px solid var(--border); }
+.dm-actions button, .dm-tpl, .dm-open { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; width: 100%; text-align: left; padding: 6px 12px; border: 0; background: none; font-size: 12.5px; color: var(--text); }
+.dm-actions button:hover, .dm-tpl:hover, .dm-open:hover { background: rgba(148, 163, 184, 0.09); }
+.dm-actions span, .dm-actions kbd { font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+.dm-section { padding: 6px 0; border-bottom: 1px solid var(--border); }
+.dm-section:last-child { border-bottom: 0; }
+.dm-h { padding: 4px 12px 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted); }
+.dm-item { display: flex; align-items: center; }
+.dm-item.cur .dm-open span { color: var(--cyan); }
+.dm-open { flex-direction: column; gap: 1px; }
+.dm-open em { font-style: normal; font-family: var(--mono); font-size: 10px; color: var(--muted); }
+.dm-del { margin-right: 8px; padding: 4px; border: 0; background: none; color: var(--muted); border-radius: 4px; }
+.dm-del:hover { color: var(--red); }
+.dm-group { padding-bottom: 4px; }
+.dm-g { padding: 4px 12px 2px; font-size: 11px; color: var(--muted); }
+.dm-tpl { padding-left: 20px; }
+
+/* dropping a file on the board */
+.drop-hint { position: absolute; inset: 12px; z-index: 30; border: 2px dashed var(--cyan); border-radius: 14px; display: grid; place-items: center; pointer-events: none; background: rgba(5, 9, 20, 0.6); font-size: 15px; color: var(--text); }
+[data-theme='reference'] .drop-hint { background: rgba(245, 245, 242, 0.75); }

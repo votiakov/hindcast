@@ -15,6 +15,10 @@ import './ui/callout.css';
 import { StudioView } from './studio/StudioView';
 import { Stage } from './studio/Stage';
 import { openFromHash } from './spec/links';
+import { writeAutosave } from './sim/designs';
+import { saveCurrent } from './ui/DesignMenu';
+import { openFile } from './spec/openFile';
+import { useState } from 'react';
 import type { Aspect } from './sim/store';
 import type { ThemeId } from './theme/themes';
 import './theme/transit.css';
@@ -58,9 +62,22 @@ function useSimLoop() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.code !== 'Space' || (e.target as HTMLElement).closest('input, select, textarea')) return;
-      e.preventDefault();
+      if ((e.target as HTMLElement).closest('input, select, textarea')) return;
       const s = useSim.getState();
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && (e.key === 'z' || e.key === 'Z' || e.key === 'y') && (s.mode === 'sandbox' || s.mode === 'compare')) {
+        e.preventDefault();
+        if (e.key === 'y' || e.shiftKey) s.redo(s.focus);
+        else s.undo(s.focus);
+        return;
+      }
+      if (mod && e.key === 's' && s.mode === 'sandbox') {
+        e.preventDefault();
+        saveCurrent();
+        return;
+      }
+      if (e.code !== 'Space') return;
+      e.preventDefault();
       s.setRunning(!s.running);
     };
     window.addEventListener('keydown', onKey);
@@ -69,6 +86,22 @@ function useSimLoop() {
 }
 
 if (!RENDER && location.hash) openFromHash(location.hash);
+
+// autosave the sandbox design (debounced); survives reloads and mode switches
+if (!RENDER) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  useSim.subscribe((s, prev) => {
+    if (s.mode !== 'sandbox') return;
+    const a = s.boards.main;
+    const b = prev.boards.main;
+    if (a.nodes === b.nodes && a.edges === b.edges && a.title === b.title && s.designId === prev.designId) return;
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      const m = useSim.getState().boards.main;
+      writeAutosave(m.title, { nodes: m.nodes, edges: m.edges }, useSim.getState().designId ?? undefined);
+    }, 500);
+  });
+}
 window.addEventListener('hashchange', () => openFromHash(location.hash));
 
 export default function App() {
@@ -77,6 +110,8 @@ export default function App() {
   const analysisOpen = useSim((s) => s.analysisOpen);
   const auditOpen = useSim((s) => s.auditOpen);
   useSimLoop();
+  const [dropping, setDropping] = useState(false);
+  const hasFiles = (e: React.DragEvent) => e.dataTransfer.types.includes('Files');
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
@@ -86,7 +121,23 @@ export default function App() {
   return (
     <div className="app">
       <TopBar />
-      <div className="board">
+      <div
+        className="board"
+        onDragOver={(e) => {
+          if (!hasFiles(e) || mode === 'studio') return;
+          e.preventDefault();
+          setDropping(true);
+        }}
+        onDragLeave={(e) => e.currentTarget === e.target && setDropping(false)}
+        onDrop={(e) => {
+          setDropping(false);
+          const f = e.dataTransfer.files?.[0];
+          if (!f || mode === 'studio') return;
+          e.preventDefault();
+          openFile(f);
+        }}
+      >
+        {dropping && <div className="drop-hint">Drop an architecture spec (.yaml / .json) or terraform show -json output</div>}
         {mode === 'home' ? (
           <HomeBoard />
         ) : mode === 'studio' ? (

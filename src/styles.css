@@ -644,3 +644,27 @@ select { background: #0a1122; color: var(--text); border: 1px solid var(--border
 .pb-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--cyan); opacity: 0.7; }
 .pb-mark { position: absolute; top: -4px; width: 2px; height: 14px; margin-left: -1px; background: var(--red); opacity: 0.55; }
 .pb-mark.fired { opacity: 1; }
+
+/* ---------- top bar fits 1280–1920 ---------- */
+.topbar { gap: 18px; min-width: 0; }
+.metrics { min-width: 0; flex-shrink: 1; }
+.metric { flex-shrink: 1; min-width: 0; }
+.metric svg { max-width: 100%; display: block; }
+@media (max-width: 1680px) {
+  .brand { min-width: 0; }
+  .brand-sub { display: none; }
+  .metric { width: 140px; padding: 6px 10px 4px; }
+  .metric-value { font-size: 17px; }
+  .metric.vs { width: 176px; }
+}
+@media (max-width: 1440px) {
+  .topbar { gap: 12px; padding: 10px 12px; }
+  .mode-tabs button { padding: 6px 10px; }
+  .metric { width: 118px; }
+  .metric-sub { display: none; }
+  .metric.vs { width: 150px; }
+}
+@media (max-width: 1280px) {
+  .brand-name { display: none; }
+  .metric { width: 104px; }
+}

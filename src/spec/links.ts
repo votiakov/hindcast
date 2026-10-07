@@ -54,7 +54,8 @@ export function openPayload(p: { spec?: unknown; compare?: ComparePayload }): bo
       const spec = ArchitectureSpec.parse(p.spec);
       if (spec.pricing) s.setSetting('pricing', spec.pricing);
       s.setMode('sandbox');
-      useSim.getState().loadGraph('main', specToGraph(spec), spec.name ?? 'Main');
+      useSim.getState().loadGraph('main', specToGraph(spec), spec.name ?? 'Untitled');
+      useSim.getState().setDesign(null, spec.name ?? 'Untitled');
       return true;
     }
     const c = p.compare!;

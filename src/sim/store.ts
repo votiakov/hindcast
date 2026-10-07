@@ -14,6 +14,7 @@ import { setPricing, type PricingId } from './pricing';
 import type { AuditResult } from './audit';
 import type { SimAction } from './actions';
 import { applyChangesToGraph } from '../spec/convert';
+import { readAutosave } from './designs';
 import { EPISODES, OUTRO_SECONDS, episodeById, episodeDuration, episodeTraffic, type BeatAction, type StageBoard } from '../studio/episodes';
 
 export type Mode = 'home' | 'lesson' | 'sandbox' | 'compare' | 'studio';
@@ -155,6 +156,9 @@ interface State {
   setAudit: (p: Partial<AuditState>) => void;
   /** apply a verified fix from the audit to the main board */
   applyFix: (findingId: string, fixIndex: number) => void;
+  /** library id of the design open in the sandbox (null = unsaved) */
+  designId: string | null;
+  setDesign: (id: string | null, name: string) => void;
   playback: Playback | null;
   /** play a scripted run on the main board from a clean state */
   play: (p: Omit<Playback, 't' | 'fired'>) => void;
@@ -181,6 +185,8 @@ interface State {
   setZoneFailed: (b: BoardId, id: string, failed: boolean) => void;
   apply: (b: BoardId, a: ScenarioAction) => string | null;
   loadGraph: (b: BoardId, g: Graph, title?: string) => void;
+  undo: (b: BoardId) => void;
+  redo: (b: BoardId) => void;
   setFocus: (b: BoardId) => void;
   /** switch mode keeping the current main board (home → sandbox) */
   keepBoardAs: (mode: Mode) => void;
@@ -199,6 +205,16 @@ interface State {
   toast: (tone: Toast['tone'], text: string) => void;
   tick: (realDt: number) => void;
 }
+
+/** undo history per board — design edits only, not simulation state */
+type Snap = { nodes: AppNode[]; edges: SystemEdge[] };
+const history: Record<BoardId, { past: Snap[]; future: Snap[]; lastKey: string; lastT: number }> = {
+  main: { past: [], future: [], lastKey: '', lastT: 0 },
+  A: { past: [], future: [], lastKey: '', lastT: 0 },
+  B: { past: [], future: [], lastKey: '', lastT: 0 },
+};
+const HISTORY_MAX = 100;
+let dragging = false;
 
 export const engines: Record<BoardId, Engine> = { main: new Engine(), A: new Engine(), B: new Engine() };
 let toastSeq = 1;
@@ -281,6 +297,29 @@ export const useSim = create<State>()((set, get) => {
   const setNodes = (b: BoardId, fn: (nodes: AppNode[]) => AppNode[]) => patch(b, { nodes: fn(board(b).nodes) });
   const runBeatAction = (b: BoardId, a: BeatAction) => (a.type === 'graph' ? get().replaceGraph(b, a.graph, a.title) : get().apply(b, a));
   const s0 = get;
+  /** record the board before an edit; edits with the same key in quick succession coalesce (sliders, drags) */
+  const remember = (b: BoardId, key = '') => {
+    const h = history[b];
+    const now = performance.now();
+    if (key && key === h.lastKey && now - h.lastT < 800) {
+      h.lastT = now;
+      return;
+    }
+    h.lastKey = key;
+    h.lastT = now;
+    const { nodes, edges } = board(b);
+    h.past = [...h.past, { nodes, edges }].slice(-HISTORY_MAX);
+    h.future = [];
+  };
+  const restore = (b: BoardId, from: 'past' | 'future') => {
+    const h = history[b];
+    const snap = h[from].pop();
+    if (!snap) return;
+    const { nodes, edges } = board(b);
+    (from === 'past' ? h.future : h.past).push({ nodes, edges });
+    h.lastKey = '';
+    patch(b, { nodes: snap.nodes.map((n) => ({ ...n, selected: false })), edges: snap.edges });
+  };
   const label = (b: BoardId) => (get().mode === 'compare' ? `[${board(b).title}] ` : '');
 
   const init = initialCompare(null);
@@ -313,11 +352,14 @@ export const useSim = create<State>()((set, get) => {
       const f = get().audit.result?.findings.find((x) => x.id === findingId);
       const fix = f?.fixes[fixIndex];
       if (!fix) return;
+      remember('main');
       const { nodes, edges } = board('main');
       const r = applyChangesToGraph(nodes, edges, fix.changes);
       patch('main', { nodes: r.nodes, edges: r.edges, version: board('main').version + 1 });
       get().toast('good', `Applied: ${fix.title}`);
     },
+    designId: null,
+    setDesign: (designId, name) => set((s) => ({ designId, boards: { ...s.boards, main: { ...s.boards.main, title: name } } })),
     playback: null,
     play: (p) => {
       engines.main.reset();
@@ -355,33 +397,65 @@ export const useSim = create<State>()((set, get) => {
       set({ settings: { ...get().settings, [k]: v } });
     },
 
-    onNodesChange: (b, c) => patch(b, { nodes: applyNodeChanges(c, board(b).nodes) }),
-    onEdgesChange: (b, c) => patch(b, { edges: applyEdgeChanges(c, board(b).edges) }),
+    onNodesChange: (b, c) => {
+      const drag = c.some((x) => x.type === 'position' && x.dragging);
+      if (drag && !dragging) remember(b);
+      dragging = drag;
+      if (c.some((x) => x.type === 'remove')) remember(b);
+      patch(b, { nodes: applyNodeChanges(c, board(b).nodes) });
+    },
+    onEdgesChange: (b, c) => {
+      if (c.some((x) => x.type === 'remove')) remember(b);
+      patch(b, { edges: applyEdgeChanges(c, board(b).edges) });
+    },
+    undo: (b) => restore(b, 'past'),
+    redo: (b) => restore(b, 'future'),
     onConnect: (b, c) => {
       const { edges, nodes } = board(b);
       if (c.source === c.target) return;
       if (nodes.find((n) => n.id === c.source)?.type === 'zone' || nodes.find((n) => n.id === c.target)?.type === 'zone') return;
       if (edges.some((e) => e.source === c.source && e.target === c.target)) return;
+      remember(b);
       patch(b, { edges: addEdge({ ...c, type: 'flow', id: `e-${c.source}-${c.target}-${Date.now()}` }, edges) });
     },
     addNode: (b, kind, position) => {
+      remember(b);
       const nodes = board(b).nodes;
       const name = nextName(nodes, kind);
       const node: SystemNode = { id: `${name}-${Date.now()}`, type: 'system', position, data: defaultData(kind, name), selected: true };
       patch(b, { nodes: [...nodes.map((n) => ({ ...n, selected: false })), node] });
     },
     addZone: (b, position) => {
+      remember(b);
       const nodes = board(b).nodes;
       const n = nodes.filter((x) => x.type === 'zone').length + 1;
       const zone: AppNode = { id: `zone-${Date.now()}`, type: 'zone', position, width: 560, height: 380, zIndex: -1, data: { label: `zone-${n}` } };
       patch(b, { nodes: [zone, ...nodes] });
     },
-    updateNode: (b, id, p) => setNodes(b, (nodes) => nodes.map((n) => (n.id === id && isSystem(n) ? { ...n, data: { ...n.data, ...p } } : n))),
-    updateZone: (b, id, p) => setNodes(b, (nodes) => nodes.map((n) => (n.id === id && n.type === 'zone' ? ({ ...n, data: { ...n.data, ...p } } as AppNode) : n))),
-    moveNodes: (b, positions) => setNodes(b, (nodes) => nodes.map((n) => (positions[n.id] ? { ...n, position: positions[n.id] } : n))),
-    removeNode: (b, id) => patch(b, { nodes: board(b).nodes.filter((n) => n.id !== id), edges: board(b).edges.filter((e) => e.source !== id && e.target !== id) }),
-    removeEdge: (b, id) => patch(b, { edges: board(b).edges.filter((e) => e.id !== id) }),
-    updateEdge: (b, id, data) => patch(b, { edges: board(b).edges.map((e) => (e.id === id ? { ...e, data: { ...e.data, ...data } } : e)) }),
+    updateNode: (b, id, p) => {
+      remember(b, `node:${id}:${Object.keys(p).sort().join(',')}`);
+      setNodes(b, (nodes) => nodes.map((n) => (n.id === id && isSystem(n) ? { ...n, data: { ...n.data, ...p } } : n)));
+    },
+    updateZone: (b, id, p) => {
+      remember(b, `zone:${id}`);
+      setNodes(b, (nodes) => nodes.map((n) => (n.id === id && n.type === 'zone' ? ({ ...n, data: { ...n.data, ...p } } as AppNode) : n)));
+    },
+    moveNodes: (b, positions) => {
+      remember(b, 'move');
+      setNodes(b, (nodes) => nodes.map((n) => (positions[n.id] ? { ...n, position: positions[n.id] } : n)));
+    },
+    removeNode: (b, id) => {
+      remember(b);
+      patch(b, { nodes: board(b).nodes.filter((n) => n.id !== id), edges: board(b).edges.filter((e) => e.source !== id && e.target !== id) });
+    },
+    removeEdge: (b, id) => {
+      remember(b);
+      patch(b, { edges: board(b).edges.filter((e) => e.id !== id) });
+    },
+    updateEdge: (b, id, data) => {
+      remember(b, `edge:${id}`);
+      patch(b, { edges: board(b).edges.map((e) => (e.id === id ? { ...e, data: { ...e.data, ...data } } : e)) });
+    },
     killNode: (b, id) => {
       const n = board(b).nodes.find((x) => x.id === id);
       if (!n || !isSystem(n)) return;
@@ -416,8 +490,11 @@ export const useSim = create<State>()((set, get) => {
       if (a.type === 'kill' || a.type === 'kill-id' || a.type === 'inject-errors' || a.type === 'inject-latency' || a.type === 'flush-cache' || a.type === 'degrade') for (const n of r.notes) get().toast(n.tone, `${label(b)}${n.text}`);
       return r.target;
     },
-    loadGraph: (b, g, title) => patch(b, makeBoard(b, title ?? board(b).title, g, board(b).version + 1)),
-    keepBoardAs: (mode) => set({ mode, focus: 'main' }),
+    loadGraph: (b, g, title) => {
+      remember(b);
+      patch(b, makeBoard(b, title ?? board(b).title, g, board(b).version + 1));
+    },
+    keepBoardAs: (mode) => set((s) => ({ mode, focus: 'main', designId: null, boards: { ...s.boards, main: { ...s.boards.main, title: mode === 'sandbox' ? 'Untitled' : s.boards.main.title } } })),
     setFocus: (focus) => get().focus !== focus && set({ focus }),
     setRunning: (running) => {
       const s = get();
@@ -452,7 +529,10 @@ export const useSim = create<State>()((set, get) => {
         set((s) => ({ mode, focus, running: false, simT: 0, spikeUntil: 0, compare: init.compare, boards: { ...s.boards, A: init.A, B: init.B } }));
       } else {
         const lesson = mode === 'lesson' ? s0().lesson.lesson : lesson1;
-        set((s) => ({ mode, focus, running: false, simT: 0, spikeUntil: 0, readRatio: lesson.readRatio ?? 0.8, lesson: freshLesson(lesson), boards: { ...s.boards, main: makeBoard('main', 'Main', lesson.initial, s.boards.main.version + 1) } }));
+        // the sandbox reopens the last design you were working on
+        const saved = mode === 'sandbox' ? readAutosave() : null;
+        const graph = saved?.graph ?? lesson.initial;
+        set((s) => ({ mode, focus, running: false, simT: 0, spikeUntil: 0, designId: saved?.designId ?? null, readRatio: mode === 'sandbox' ? s.readRatio : lesson.readRatio ?? 0.8, lesson: freshLesson(lesson), boards: { ...s.boards, main: makeBoard('main', saved?.name ?? (mode === 'sandbox' ? 'Untitled' : 'Main'), graph, s.boards.main.version + 1) } }));
       }
     },
     reset: () => {

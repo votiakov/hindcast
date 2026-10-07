@@ -3,10 +3,9 @@ import { BrandMark } from '../theme/BrandMark';
 import { useSim, type Mode } from '../sim/store';
 import type { GlobalStats } from '../sim/engine';
 import { Sparkline } from '../canvas/Sparkline';
-import { TEMPLATES, templateGroups } from '../scenarios/templates';
 import { SettingsButton } from './SettingsPanel';
-import { currentSpecYaml } from '../spec/links';
-import { FileCode2, FlaskConical, ShieldAlert } from 'lucide-react';
+import { DesignMenu } from './DesignMenu';
+import { FlaskConical, ShieldAlert } from 'lucide-react';
 
 const fmtRps = (r: number) => (r >= 1000 ? `${(r / 1000).toFixed(2)}k` : r.toFixed(0));
 
@@ -99,7 +98,6 @@ function CompareMetrics() {
 export function TopBar() {
   const mode = useSim((s) => s.mode);
   const setMode = useSim((s) => s.setMode);
-  const loadGraph = useSim((s) => s.loadGraph);
   const analysisOpen = useSim((s) => s.analysisOpen);
   const setAnalysisOpen = useSim((s) => s.setAnalysisOpen);
   const auditOpen = useSim((s) => s.auditOpen);
@@ -123,42 +121,8 @@ export function TopBar() {
         ))}
       </div>
 
-      {mode === 'sandbox' && (
-        <select
-          className="template-select"
-          value=""
-          onChange={(e) => {
-            const t = TEMPLATES.find((x) => x.id === e.target.value);
-            if (t) loadGraph('main', t.graph);
-          }}
-        >
-          <option value="" disabled>
-            Load template…
-          </option>
-          {templateGroups().map((g) => (
-            <optgroup key={g} label={g}>
-              {TEMPLATES.filter((t) => t.group === g).map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.title}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
-      )}
+      {mode === 'sandbox' && <DesignMenu />}
 
-      {mode === 'sandbox' && (
-        <button
-          className="icon-btn"
-          title="Copy this architecture as a spec (YAML) — paste it to your AI assistant or the CLI"
-          onClick={() => {
-            navigator.clipboard?.writeText(currentSpecYaml());
-            useSim.getState().toast('good', 'Architecture spec copied (YAML)');
-          }}
-        >
-          <FileCode2 size={15} />
-        </button>
-      )}
       {mode === 'sandbox' && (
         <button className={`icon-btn ${auditOpen ? 'on' : ''}`} title="Failure audit: what breaks first, and what it costs" onClick={() => setAuditOpen(!auditOpen)}>
           <ShieldAlert size={15} />
