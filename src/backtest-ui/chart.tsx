@@ -183,7 +183,8 @@ export interface Candle {
 
 /** group measured buckets into candles: open/close/high/low of the bucket values in each group */
 export function candles(vals: Num[], i0: number, i1: number, maxCandles: number): { size: number; list: Candle[] } {
-  const size = Math.max(1, Math.ceil((i1 - i0) / maxCandles));
+  // a candle needs a few buckets to have an open, a close and a range
+  const size = Math.max(i1 - i0 >= 60 ? 3 : 1, Math.ceil((i1 - i0) / maxCandles));
   const list: Candle[] = [];
   for (let g = i0; g < i1; g += size) {
     const seg: number[] = [];
