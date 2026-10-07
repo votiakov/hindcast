@@ -9,7 +9,7 @@ import { backtestMarkdown, headline } from './report';
  */
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-const COLORS = ['#c2410c', '#1d4ed8', '#15803d', '#7c3aed', '#be185d'];
+const COLORS = ['#f2a93b', '#3fc1d9', '#b48cf2', '#ef7fb1', '#9bd35a'];
 
 interface Line {
   label: string;
@@ -19,7 +19,7 @@ interface Line {
   dash?: boolean;
 }
 
-function chart(title: string, t: number[], lines: Line[], opts: { unit: (v: number) => string; log?: boolean; threshold?: { v: number; label: string } }): string {
+function chart(title: string, t: number[], lines: Line[], opts: { unit: (v: number) => string; log?: boolean; threshold?: { v: number; label: string }; cap?: number }): string {
   const W = 960;
   const H = 200;
   const L = 56;
@@ -32,7 +32,7 @@ function chart(title: string, t: number[], lines: Line[], opts: { unit: (v: numb
     for (const v of l.band?.hi ?? []) if (isFinite(v)) all.push(v);
   }
   if (opts.threshold) all.push(opts.threshold.v);
-  const max = Math.max(1e-9, ...all) * 1.08;
+  const max = Math.min(opts.cap ?? Infinity, Math.max(1e-9, ...all) * 1.08);
   const min = opts.log ? Math.max(1, Math.min(...all.filter((v) => v > 0)) * 0.8) : 0;
   const x = (i: number) => L + ((W - L - R) * i) / Math.max(1, t.length - 1);
   const y = (v: number) => (opts.log ? T + (H - T - B) * (1 - (Math.log(Math.max(min, v)) - Math.log(min)) / (Math.log(max) - Math.log(min))) : T + (H - T - B) * (1 - v / max));
@@ -64,30 +64,32 @@ export function backtestHtml(r: BacktestResult, model: Model): string {
   const ms = (v: number) => (v >= 1000 ? `${(v / 1000).toFixed(1)}s` : `${Math.round(v)}ms`);
   const pct = (v: number) => `${(v * 100).toFixed(v < 0.1 ? 1 : 0)}%`;
   const usd = (v: number) => `$${v < 10 ? v.toFixed(2) : Math.round(v).toLocaleString('en-US')}`;
-  const measured: Line = { label: 'measured', color: '#111827', values: r.actual.p99Ms };
-  const asBuilt = (k: 'p99Ms' | 'errorRate' | 'costPerHour' | 'cumulativeCost' | 'errorBudget'): Line => ({ label: 'as built (model)', color: '#6b7280', band: r.baseline.series[k], dash: true });
+  const measured: Line = { label: 'measured', color: '#e6edf3', values: r.actual.p99Ms };
+  const asBuilt = (k: 'p99Ms' | 'errorRate' | 'costPerHour' | 'cumulativeCost' | 'errorBudget'): Line => ({ label: 'as built (model)', color: '#8193a3', band: r.baseline.series[k], dash: true });
   const strat = (k: 'p99Ms' | 'errorRate' | 'costPerHour' | 'cumulativeCost' | 'errorBudget') => strategies.map((s) => ({ label: s.name, color: s.color, band: s.series[k] }));
   const md = backtestMarkdown(r, model);
   const checks = r.accuracy.flatMap((a) => a.checks).filter((c) => c.metric !== 'errors');
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Backtest — ${esc(r.model)}</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
 <style>
-:root{--ink:#111827;--mute:#6b7280;--rule:#e5e7eb;--bg:#fbfaf7}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 "IBM Plex Sans",ui-sans-serif,system-ui,sans-serif}
-main{max-width:1000px;margin:0 auto;padding:32px 16px 64px}h1{font-size:22px;margin:0 0 4px}h2{font-size:15px;margin:32px 0 8px;text-transform:uppercase;letter-spacing:.06em}
-.sub{color:var(--mute)}figure{margin:16px 0}figcaption{font-weight:600;margin-bottom:4px}svg{width:100%;height:auto;display:block}
-.grid{stroke:var(--rule)}.slo{stroke:#b91c1c;stroke-dasharray:2 3}.ax{fill:var(--mute);font:10px "IBM Plex Mono",ui-monospace,monospace}
-.legend{display:flex;gap:16px;flex-wrap:wrap;color:var(--mute);font-size:12px}.legend i{display:inline-block;width:10px;height:2px;margin-right:6px;vertical-align:middle}
-table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px solid var(--rule);padding:6px 8px;text-align:left;vertical-align:top}th{font-weight:600;color:var(--mute)}
-.num{font-family:"IBM Plex Mono",ui-monospace,monospace;white-space:nowrap}.pass{color:#15803d}.miss{color:#b91c1c}
-.verdict{font-size:16px;margin:12px 0;border-left:3px solid var(--ink);padding-left:12px}
-details{margin-top:24px}pre{white-space:pre-wrap;font-size:12px}
+:root{--bg:#10161d;--pane:#121a22;--line:#22303c;--grid:#18232d;--text:#c9d4de;--dim:#6e8191;--hi:#e6edf3;--amber:#f2a93b;--red:#ef5b5b;--green:#58c48a;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 "IBM Plex Sans Condensed","Arial Narrow",sans-serif}
+main{max-width:1040px;margin:0 auto;padding:28px 16px 64px}h1{font:600 20px "IBM Plex Mono",monospace;color:var(--hi);margin:0 0 4px}h1 span{color:var(--amber);font-size:12px;letter-spacing:.14em;text-transform:uppercase;display:block;margin-bottom:6px}
+h2{font:600 12px "IBM Plex Mono",monospace;margin:32px 0 8px;text-transform:uppercase;letter-spacing:.1em;color:var(--dim)}
+.sub{color:var(--dim);font-family:"IBM Plex Mono",monospace;font-size:12px}figure{margin:12px 0;background:var(--pane);border:1px solid var(--line);padding:8px 8px 6px}figcaption{font:500 12px "IBM Plex Mono",monospace;color:var(--dim);margin-bottom:4px}svg{width:100%;height:auto;display:block}
+.grid{stroke:var(--grid)}.slo{stroke:var(--red);stroke-dasharray:3 3}.ax{fill:var(--dim);font:10px "IBM Plex Mono",monospace}
+.legend{display:flex;gap:16px;flex-wrap:wrap;color:var(--dim);font:11px "IBM Plex Mono",monospace}.legend i{display:inline-block;width:10px;height:2px;margin-right:6px;vertical-align:middle}
+table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}th{font:500 11px "IBM Plex Mono",monospace;color:var(--dim)}
+.num{font-family:"IBM Plex Mono",monospace;white-space:nowrap}.pass{color:var(--green)}.miss{color:var(--red)}
+.verdict{font-size:17px;margin:12px 0;color:var(--hi);border-left:2px solid var(--amber);padding-left:12px}
+details{margin-top:24px}pre{white-space:pre-wrap;font:12px "IBM Plex Mono",monospace;color:var(--text)}a{color:var(--amber)}
 </style></head><body><main>
-<h1>Backtest — ${esc(r.model)}</h1>
+<h1><span>Bottleneck · backtest on real traffic</span>${esc(r.model)}</h1>
 <div class="sub">${new Date(r.window.start * 1000).toISOString().slice(0, 16).replace('T', ' ')} → ${new Date(r.window.end * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC · ${r.window.stepS}s buckets · ${r.draws} draws · bands = 10th–90th percentile · SLO p99 ≤ ${r.slo.p99Ms} ms, errors ≤ ${pct(r.slo.errorRate)}</div>
-${strategies.map((s) => `<p class="verdict"><b style="color:${s.color}">${esc(s.name)}</b> ${esc(headline(s, r.baseline))}.</p>`).join('')}
+${strategies.map((s) => `<p class="verdict" style="border-left-color:${s.color}"><b style="color:${s.color}">${esc(s.name)}</b> ${esc(headline(s, r.baseline))}.</p>`).join('')}
 ${chart('p99 latency', r.t, [measured, asBuilt('p99Ms'), ...strat('p99Ms')], { unit: ms, log: true, threshold: { v: r.slo.p99Ms, label: 'SLO' } })}
-${chart('Errors', r.t, [{ ...measured, values: r.actual.errorRate }, asBuilt('errorRate'), ...strat('errorRate')], { unit: pct, threshold: { v: r.slo.errorRate, label: 'SLO' } })}
+${chart('Errors', r.t, [{ ...measured, values: r.actual.errorRate }, asBuilt('errorRate'), ...strat('errorRate')], { unit: pct, threshold: { v: r.slo.errorRate, label: 'SLO' }, cap: 1 })}
 ${chart('Cost, $/hour', r.t, [{ ...measured, label: 'measured (bill)', values: r.actual.costPerHour }, asBuilt('costPerHour'), ...strat('costPerHour')], { unit: usd })}
 ${chart('Cumulative cost, $', r.t, [asBuilt('cumulativeCost'), ...strat('cumulativeCost')], { unit: usd })}
 ${chart('Error budget used', r.t, [asBuilt('errorBudget'), ...strat('errorBudget')], { unit: pct, threshold: { v: 1, label: 'budget' } })}
