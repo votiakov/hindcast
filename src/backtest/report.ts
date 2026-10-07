@@ -20,7 +20,9 @@ export function headline(s: StrategyResult, base: StrategyResult): string {
   const newInc = s.incidents.filter((i) => !base.incidents.some((b) => b.start < i.end && i.start < b.end));
   if (newInc.length) {
     const w = [...newInc].sort((a, b) => b.minutes - a.minutes)[0];
-    return `${money}; on ${when(w.start)} it would have caused ${Math.round(w.minutes)} minute${Math.round(w.minutes) === 1 ? '' : 's'} out of SLO (${w.why})`;
+    const total = s.delta.minutesOutOfSlo.p50;
+    const more = total > w.minutes + 0.5 ? `, ${Math.round(total)} more minutes out of SLO in all` : '';
+    return `${money}; on ${when(w.start)} it would have caused ${Math.max(1, Math.round(w.minutes))} minute${Math.max(1, Math.round(w.minutes)) === 1 ? '' : 's'} out of SLO (${w.why})${more}`;
   }
   const ds = s.delta.minutesOutOfSlo.p50;
   if (ds < -0.5) return `${money} and removes ${Math.round(-ds)} minute${Math.round(-ds) === 1 ? '' : 's'} out of SLO from the history`;
