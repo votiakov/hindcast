@@ -7,7 +7,7 @@ import type { Dataset } from '../src/backtest/dataset';
 import { OUTAGES, replayOutage } from '../src/backtest/outages';
 
 /** the reference systems that ship with the app: recorded, calibrated, checked against unseen runs */
-const bundles = existsSync('public/reference') ? readdirSync('public/reference').filter((f) => f.endsWith('.json')) : [];
+const bundles = existsSync('public/reference') ? readdirSync('public/reference').filter((f) => f.endsWith('.json') && f !== 'index.json') : [];
 
 describe.each(bundles)('reference workspace %s', (file) => {
   const w = JSON.parse(readFileSync(`public/reference/${file}`, 'utf8')) as { name: string; dataset: Dataset; model: Model; strategies: string[] };
