@@ -10,6 +10,7 @@ import { Toasts } from './ui/Toasts';
 import { CompareView } from './ui/CompareView';
 import { AnalysisPanel } from './ui/AnalysisPanel';
 import { AuditPanel } from './ui/AuditPanel';
+import { CommandPalette } from './ui/CommandPalette';
 import { HomeBoard } from './ui/HomeBoard';
 import './ui/callout.css';
 import { StudioView } from './studio/StudioView';
@@ -155,6 +156,7 @@ export default function App() {
         {auditOpen && mode === 'sandbox' && <AuditPanel />}
         {mode !== 'studio' && mode !== 'home' && <ControlBar />}
         <Toasts />
+        <CommandPalette />
       </div>
     </div>
   );
