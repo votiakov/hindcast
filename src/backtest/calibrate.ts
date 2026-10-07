@@ -337,24 +337,29 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
           const r = vals(reps, i) ?? replicas;
           if (c !== null && r > 0) cpuPeak = Math.max(cpuPeak, c / (r * cpuLimit));
         }
-      let chosen: Fitted | null = null;
-      let cpuSaturated = false;
-      if (ov?.perReplicaRps) capacity = { limit: 'concurrency', servers: ov.servers ?? 1, perReplicaRps: ov.perReplicaRps };
-      else if (cpuPeak >= 0.9 && isFinite(cpuK) && cpuK < (isFinite(queue.K) ? queue.K * 1.5 : Infinity)) {
-        // what finished per second while CPU was pinned is the capacity; CPU per request measured at
-        // low load can drift (runtimes get more efficient when busy)
+      /** completions per replica in buckets where CPU was pinned (needs completion rates from traces) */
+      const seenAtSaturation = () => {
         let seen = 0;
-        const doneS = s.doneRps ?? s.rps;
-        if (doneS && cpu && cpuLimit)
+        if (s.doneRps && cpu && cpuLimit)
           for (let i = 0; i < d.n; i++) {
             const c = vals(s.cpuCores, i);
             const r = vals(reps, i) ?? replicas;
-            const k = vals(doneS, i);
+            const k = vals(s.doneRps, i);
             if (c !== null && k !== null && r > 0 && c / (r * cpuLimit) >= 0.95) seen = Math.max(seen, k / r);
           }
+        return seen;
+      };
+      const cpuSeenK = (fallback: number) => seenAtSaturation() || fallback;
+      let chosen: Fitted | null = null;
+      let cpuSaturated = false;
+      if (ov?.perReplicaRps) capacity = { limit: 'concurrency', servers: ov.servers ?? 1, perReplicaRps: ov.perReplicaRps };
+      else if (cpuPeak >= 0.9 && isFinite(cpuK) && cpuSeenK(cpuK) < (isFinite(queue.K) && queue.err < simple * 0.85 ? queue.K / 1.1 : Infinity)) {
+        // what finished per second while CPU was pinned is the capacity; CPU per request measured at
+        // low load can drift (runtimes get more efficient when busy). Taken when the latency fit claims
+        // more than that — the queue then sits where spans can't see it (an event loop too busy to accept)
+        const seen = seenAtSaturation();
         const K = seen > 0 ? seen : cpuK;
         capacity = { limit: 'cpu', servers: cpuC, perReplicaRps: K };
-        // the queue may sit outside the spans, so self time can't tell how bursty it is: no less than M/M/c
         chosen = { ...cpuFit, K, v: Math.max(1, cpuFit.v) };
         cpuSaturated = true;
         notes.push(`CPU reached ${Math.round(cpuPeak * 100)}% of its limit in the history; ${seen > 0 ? `${seen.toFixed(1)} req/s per replica finished while it was pinned` : `capacity ${cpuK.toFixed(1)} req/s per replica from CPU per request`}`);
