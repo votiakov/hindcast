@@ -15,6 +15,7 @@ import type { AuditResult } from './audit';
 import type { SimAction } from './actions';
 import { applyChangesToGraph } from '../spec/convert';
 import { readAutosave } from './designs';
+import { Recorder, lean } from './recorder';
 import { EPISODES, OUTRO_SECONDS, episodeById, episodeDuration, episodeTraffic, type BeatAction, type StageBoard } from '../studio/episodes';
 
 export type Mode = 'home' | 'lesson' | 'sandbox' | 'compare' | 'studio';
@@ -159,6 +160,11 @@ interface State {
   /** library id of the design open in the sandbox (null = unsaved) */
   designId: string | null;
   setDesign: (id: string | null, name: string) => void;
+  /** reviewing a recorded moment on the main board (simulation paused) */
+  scrub: { index: number; live: Pick<Board, 'nodes' | 'nodeStats' | 'edgeStats' | 'global'> } | null;
+  /** bumps whenever the recorder takes a frame */
+  recVersion: number;
+  setScrub: (index: number | null) => void;
   playback: Playback | null;
   /** play a scripted run on the main board from a clean state */
   play: (p: Omit<Playback, 't' | 'fired'>) => void;
@@ -216,6 +222,8 @@ const history: Record<BoardId, { past: Snap[]; future: Snap[]; lastKey: string; 
 const HISTORY_MAX = 100;
 let dragging = false;
 
+export const recorders: Record<BoardId, Recorder> = { main: new Recorder(), A: new Recorder(), B: new Recorder() };
+
 export const engines: Record<BoardId, Engine> = { main: new Engine(), A: new Engine(), B: new Engine() };
 let toastSeq = 1;
 const emptyGlobal: GlobalStats = { t: 0, rps: 0, errorRate: 0, p99: 0, cost: 0, history: [] };
@@ -237,6 +245,7 @@ function freshStudio(episodeId: string, aspect: Aspect, brandId: string): Studio
 
 function makeBoard(id: BoardId, title: string, g: Graph, version = 0): Board {
   engines[id].reset();
+  recorders[id].clear();
   return { id, title, ...clone(g), nodeStats: {}, edgeStats: {}, global: emptyGlobal, version };
 }
 
@@ -360,9 +369,38 @@ export const useSim = create<State>()((set, get) => {
     },
     designId: null,
     setDesign: (designId, name) => set((s) => ({ designId, boards: { ...s.boards, main: { ...s.boards.main, title: name } } })),
+    scrub: null,
+    recVersion: 0,
+    setScrub: (index) => {
+      const cur = get().scrub;
+      if (index === null) {
+        if (cur) {
+          patch('main', cur.live);
+          set({ scrub: null });
+        }
+        return;
+      }
+      const rec = recorders.main;
+      const i = Math.max(0, Math.min(rec.frames.length - 1, index));
+      const f = rec.frames[i];
+      if (!f) return;
+      const live = cur?.live ?? (({ nodes, nodeStats, edgeStats, global }) => ({ nodes, nodeStats, edgeStats, global }))(board('main'));
+      const nodeStats: Record<string, NodeStats> = {};
+      const from = Math.max(0, i - 89);
+      for (const id in f.nodeStats) nodeStats[id] = { ...f.nodeStats[id], history: rec.frames.slice(from, i + 1).map((x) => x.nodeStats[id]?.util ?? 0) };
+      patch('main', {
+        nodes: live.nodes.map((n) => (f.data[n.id] && isSystem(n) ? { ...n, data: f.data[n.id] } : n)),
+        nodeStats,
+        edgeStats: f.edgeStats,
+        global: { ...f.global, history: rec.historyAt(i) },
+      });
+      set({ scrub: { index: i, live }, running: false });
+    },
     playback: null,
     play: (p) => {
+      if (get().scrub) get().setScrub(null);
       engines.main.reset();
+      recorders.main.clear();
       const { nodes } = board('main');
       const healed = applyAction(nodes, { type: 'revive-all' }, { zoneMembers: (z) => nodesInZone(nodes, z) }).nodes;
       patch('main', { nodes: healed, nodeStats: {}, edgeStats: {}, global: emptyGlobal });
@@ -497,6 +535,7 @@ export const useSim = create<State>()((set, get) => {
     keepBoardAs: (mode) => set((s) => ({ mode, focus: 'main', designId: null, boards: { ...s.boards, main: { ...s.boards.main, title: mode === 'sandbox' ? 'Untitled' : s.boards.main.title } } })),
     setFocus: (focus) => get().focus !== focus && set({ focus }),
     setRunning: (running) => {
+      if (running && get().scrub) get().setScrub(null);
       const s = get();
       if (running && ((s.mode === 'compare' && s.compare.finished) || (s.mode === 'studio' && s.studio.done))) get().reset();
       set({ running });
@@ -515,6 +554,7 @@ export const useSim = create<State>()((set, get) => {
       if (!hit) get().toast('info', `No live ${what} to kill`);
     },
     setMode: (mode) => {
+      if (get().scrub) get().setScrub(null);
       if (get().playback) set({ playback: null });
       if (mode !== 'sandbox' && get().auditOpen) set({ auditOpen: false });
       const focus = mode === 'compare' ? 'A' : 'main';
@@ -579,6 +619,8 @@ export const useSim = create<State>()((set, get) => {
       }));
     },
     toast: (tone, text) => {
+      const st = get();
+      if (st.mode !== 'studio' && st.mode !== 'home') for (const b of activeBoards(st.mode)) recorders[b].mark({ t: st.simT, tone, text: text.replace(/^\[[^\]]*\] /, '') });
       const id = toastSeq++;
       set({ toasts: [...get().toasts, { id, tone, text }].slice(-5) });
       setTimeout(() => set({ toasts: get().toasts.filter((t) => t.id !== id) }), 4200);
@@ -690,6 +732,7 @@ export const useSim = create<State>()((set, get) => {
         if (pb && pb.t >= pb.duration) break;
       }
 
+      if (!s.settings.alerts && s.mode !== 'studio') for (const { b, e } of events) recorders[b].mark({ t: simT, tone: e.kind === 'overload' || e.kind === 'breaker-open' ? 'bad' : 'info', text: `${e.kind}: ${e.name}` });
       for (const { b, e } of s.settings.alerts && s.mode !== 'studio' ? events : []) {
         if (e.kind === 'overload') get().toast('bad', `${label(b)}🔥 ${e.name} overloaded — dropping requests`);
         if (e.kind === 'recovered') get().toast('good', `${label(b)}✅ ${e.name} recovered`);
@@ -700,12 +743,23 @@ export const useSim = create<State>()((set, get) => {
         if (e.kind === 'scale-in') get().toast('info', `${label(b)}⤵ ${e.name}: scaling in ${e.detail ?? ''}`);
       }
       const next = { ...get().boards };
+      let recorded = false;
       for (const b of boards) {
         const { nodes, edges } = next[b];
         next[b] = { ...next[b], ...engines[b].snapshot(systemNodes(nodes), edges) };
+        const nb = next[b];
+        if (s.mode !== 'studio')
+          recorded =
+            recorders[b].maybeRecord(simT, () => ({
+              t: simT,
+              global: { t: nb.global.t, rps: nb.global.rps, errorRate: nb.global.errorRate, p99: nb.global.p99, cost: nb.global.cost },
+              nodeStats: lean(nb.nodeStats),
+              edgeStats: nb.edgeStats,
+              data: Object.fromEntries(systemNodes(nodes).map((n) => [n.id, n.data])),
+            })) || recorded;
       }
       const pbDone = !!pb && pb.t >= pb.duration && !!s.playback && s.playback.t < s.playback.duration;
-      set({ boards: next, lesson: ls, compare: cmp, studio, simT, playback: pb, running: (cmp.finished && sc) || studio.done || pbDone ? false : get().running });
+      set({ boards: next, lesson: ls, compare: cmp, studio, simT, playback: pb, ...(recorded ? { recVersion: s.recVersion + 1 } : {}), running: (cmp.finished && sc) || studio.done || pbDone ? false : get().running });
     },
   };
 });

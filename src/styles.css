@@ -325,9 +325,10 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 /* ---------- control bar ---------- */
 .controlbar {
   left: 50%; bottom: 18px; transform: translateX(-50%);
-  display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+  display: flex; flex-direction: column; gap: 6px; padding: 8px 12px;
   white-space: nowrap;
 }
+.cb-row { display: flex; align-items: center; gap: 10px; }
 .play {
   width: 40px; height: 40px; border-radius: 12px; border: 0; display: grid; place-items: center;
   background: linear-gradient(135deg, #22d3ee, #34d399); color: #03151a;
@@ -668,3 +669,19 @@ select { background: #0a1122; color: var(--text); border: 1px solid var(--border
   .brand-name { display: none; }
   .metric { width: 104px; }
 }
+
+/* ---------- flight recorder ---------- */
+.tl { display: flex; flex-direction: column; gap: 3px; padding-bottom: 2px; border-bottom: 1px solid var(--border); }
+.tl-track { position: relative; height: 26px; cursor: ew-resize; touch-action: none; }
+.tl-track svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.tl-rps { fill: none; stroke: var(--cyan); stroke-width: 1; opacity: 0.45; vector-effect: non-scaling-stroke; }
+.tl-err { fill: rgba(244, 63, 94, 0.35); stroke: var(--red); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.tl-mark { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--muted); opacity: 0.6; pointer-events: auto; }
+.tl-mark.bad { background: var(--red); opacity: 0.9; }
+.tl-mark.good { background: var(--green); }
+.tl-head { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--text); box-shadow: 0 0 6px rgba(226, 232, 240, 0.6); pointer-events: none; }
+.tl-meta { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 10.5px; color: var(--muted); min-height: 16px; }
+.tl-meta b { color: var(--text); }
+.tl-live { margin-left: auto; border: 1px solid var(--border-strong); background: none; border-radius: 5px; font-family: var(--mono); font-size: 10.5px; padding: 1px 7px; color: var(--text); }
+.tl.scrubbing .tl-track { outline: 1px dashed var(--border-strong); outline-offset: 2px; }
+[data-theme='reference'] .tl-err { fill: var(--r-bad-tint); stroke: var(--r-bad); }

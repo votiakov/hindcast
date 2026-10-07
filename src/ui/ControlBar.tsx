@@ -1,5 +1,6 @@
 import { Pause, Play, RotateCcw, Skull, TrendingUp, HeartPulse, X } from 'lucide-react';
 import { useSim, type Pattern } from '../sim/store';
+import { Timeline } from './Timeline';
 
 const fmtTime = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 
@@ -12,10 +13,13 @@ export function ControlBar() {
   const t = useSim((s) => s.simT);
   const scripted = useSim((s) => s.mode === 'lesson' || (s.mode === 'compare' && s.compare.scenarioId !== null));
   const pb = useSim((s) => (s.mode === 'sandbox' ? s.playback : null));
+  const mode = useSim((s) => s.mode);
   const { setRunning, setSpeed, reset, setTraffic, setReadRatio, setPattern, spike, chaosAll, stopPlayback } = useSim.getState();
 
   return (
     <div className="controlbar panel">
+      {mode === 'sandbox' && <Timeline />}
+      <div className="cb-row">
       <button className={`play ${running ? 'on' : ''}`} onClick={() => setRunning(!running)} title="Space">
         {running ? <Pause size={18} /> : <Play size={18} />}
       </button>
@@ -82,6 +86,7 @@ export function ControlBar() {
           </button>
         </>
       )}
+      </div>
     </div>
   );
 }
