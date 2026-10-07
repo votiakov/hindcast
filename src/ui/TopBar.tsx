@@ -27,8 +27,9 @@ function Metric({ label, value, sub, tone, values, max, color }: { label: string
 function SingleMetrics({ onClick, lens }: { onClick: () => void; lens: React.ReactNode }) {
   const g = useSim((s) => s.boards.main.global);
   const goal = useSim((s) => (s.mode === 'lesson' && !s.lesson.finished ? s.lesson.lesson.steps[s.lesson.stepIndex].goal : undefined));
-  const maxErr = goal?.maxErrorRate ?? 0.01;
-  const maxP99 = goal?.maxP99 ?? 300;
+  const slo = useSim((s) => s.settings);
+  const maxErr = goal?.maxErrorRate ?? slo.sloErrorRate;
+  const maxP99 = goal?.maxP99 ?? slo.sloP99Ms;
   const errTone = g.rps < 0.5 ? undefined : g.errorRate > maxErr ? 'bad' : g.errorRate > maxErr / 2 ? 'warn' : 'good';
   const p99Tone = g.rps < 0.5 ? undefined : g.p99 > maxP99 ? 'bad' : g.p99 > maxP99 * 0.7 ? 'warn' : 'good';
   const costTone = goal?.maxCost !== undefined ? (g.cost > goal.maxCost ? 'bad' : 'good') : undefined;
@@ -38,7 +39,7 @@ function SingleMetrics({ onClick, lens }: { onClick: () => void; lens: React.Rea
     <div className="metrics" onClick={onClick} title="Cost breakdown and error budget">
       {lens}
       <Metric label="Throughput" value={fmtRps(g.rps)} sub="req/s" values={h.map((x) => x.rps)} color="#22d3ee" />
-      <Metric label="Error rate" value={`${(g.errorRate * 100).toFixed(2)}%`} sub={`SLO < ${(maxErr * 100).toFixed(0)}%`} tone={errTone} values={h.map((x) => x.err)} max={0.2} color="#f43f5e" />
+      <Metric label="Error rate" value={`${(g.errorRate * 100).toFixed(2)}%`} sub={`SLO < ${+(maxErr * 100).toFixed(2)}%`} tone={errTone} values={h.map((x) => x.err)} max={0.2} color="#f43f5e" />
       <Metric label="p99" value={`${g.p99.toFixed(0)}ms`} sub={`SLO < ${maxP99}ms`} tone={p99Tone} values={h.map((x) => x.p99)} max={Math.max(maxP99 * 2, ...h.map((x) => x.p99))} color="#fbbf24" />
       {showCost && <Metric label="Cost" value={`$${g.cost.toFixed(2)}`} sub={goal?.maxCost !== undefined ? `budget $${goal.maxCost.toFixed(2)}/h` : `/h · $${(g.cost * 730).toFixed(0)}/mo`} tone={costTone} values={h.map((x) => x.cost)} color="#a78bfa" />}
     </div>

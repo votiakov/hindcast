@@ -13,6 +13,7 @@ const ms = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(2)}s` : `${Math.rou
 /** scenario the analysis runs: the comparison script, or the sandbox's current traffic */
 function scenarioFor(b: BoardId, killMidRun: boolean) {
   const s = useSim.getState();
+  const slo = { maxErrorRate: s.settings.sloErrorRate, maxP99Ms: s.settings.sloP99Ms };
   const sc = s.mode === 'compare' ? scenarioById(s.compare.scenarioId) : undefined;
   if (sc) {
     const side = b === 'A' ? 'a' : 'b';
@@ -22,6 +23,7 @@ function scenarioFor(b: BoardId, killMidRun: boolean) {
       readRatio: sc.readRatio,
       traffic: sc.timeline.map((k) => ({ at: k.at, rps: k.rps })),
       events: sc.events.filter((e) => e[side]).map((e) => ({ at: e.at, action: e[side]!, note: e.message })),
+      slo,
     };
   }
   return {
@@ -30,6 +32,7 @@ function scenarioFor(b: BoardId, killMidRun: boolean) {
     rps: s.traffic,
     readRatio: s.readRatio,
     events: killMidRun ? [{ at: 30, action: { type: 'kill' as const, kind: 'server' as const, pick: 'busiest' as const }, note: 'busiest server instance dies' }] : [],
+    slo,
   };
 }
 
@@ -181,7 +184,7 @@ export function AnalysisPanel() {
       {mode !== 'compare' && (
         <>
           <div className="an-section">Capacity</div>
-          <button className="btn wide" disabled={!!busy} onClick={() => run('bp', async () => setBp(await breakingPointInBrowser(specOf('main'), useSim.getState().readRatio)))}>
+          <button className="btn wide" disabled={!!busy} onClick={() => run('bp', async () => setBp(await breakingPointInBrowser(specOf('main'), useSim.getState().readRatio, { maxErrorRate: useSim.getState().settings.sloErrorRate, maxP99Ms: useSim.getState().settings.sloP99Ms })))}>
             {busy === 'bp' ? <Loader2 size={14} className="spin" /> : <Gauge size={14} />} Find breaking point
           </button>
           {bp && (

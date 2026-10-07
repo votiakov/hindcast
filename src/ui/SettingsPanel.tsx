@@ -86,6 +86,24 @@ export function SettingsButton() {
             </div>
           ))}
           <div className="settings-sec">
+            <div className="panel-title">SLO</div>
+            <label className="slider-row">
+              <span>Max error rate</span>
+              <select className="tb-select" value={settings.sloErrorRate} onChange={(e) => setSetting('sloErrorRate', +e.target.value)}>
+                {[0.0001, 0.001, 0.005, 0.01, 0.02, 0.05].map((v) => (
+                  <option key={v} value={v}>
+                    {+(v * 100).toFixed(2)}%
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="slider-row">
+              <span>p99 latency</span>
+              <input type="range" min={50} max={3000} step={50} value={settings.sloP99Ms} onChange={(e) => setSetting('sloP99Ms', +e.target.value)} />
+              <span className="mono">{settings.sloP99Ms}ms</span>
+            </label>
+          </div>
+          <div className="settings-sec">
             <div className="panel-title">Tuning</div>
             <label className="slider-row">
               <span>Request timeout</span>

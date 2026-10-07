@@ -32,7 +32,7 @@ export async function runAudit() {
   try {
     const result = await auditInBrowser(
       spec,
-      { rps: s.traffic, readRatio: s.readRatio, incidentCostPerMinute: s.audit.costPerMinute || undefined },
+      { rps: s.traffic, readRatio: s.readRatio, incidentCostPerMinute: s.audit.costPerMinute || undefined, slo: { maxErrorRate: s.settings.sloErrorRate, maxP99Ms: s.settings.sloP99Ms } },
       (progress) => useSim.getState().setAudit({ progress }),
     );
     useSim.getState().setAudit({ status: 'done', result, specKey: JSON.stringify(spec), progress: null });

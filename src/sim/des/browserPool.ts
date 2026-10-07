@@ -54,10 +54,10 @@ export async function optimizeInBrowser(spec: unknown, scenario: Record<string, 
   }
 }
 
-export async function breakingPointInBrowser(spec: unknown, readRatio: number) {
+export async function breakingPointInBrowser(spec: unknown, readRatio: number, slo?: { maxErrorRate: number; maxP99Ms: number }) {
   const w = spawn();
   try {
-    return await ask<ReturnType<typeof breakingPoint>>(w, { type: 'breaking', spec, readRatio });
+    return await ask<ReturnType<typeof breakingPoint>>(w, { type: 'breaking', spec, readRatio, slo });
   } finally {
     w.terminate();
   }

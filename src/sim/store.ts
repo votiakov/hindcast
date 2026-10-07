@@ -40,6 +40,9 @@ export interface Settings {
   failoverS: number;
   coldStarts: boolean;
   timeoutS: number;
+  /** service level objective used by metrics, the audit, analysis and present mode */
+  sloErrorRate: number;
+  sloP99Ms: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -54,6 +57,8 @@ export const DEFAULT_SETTINGS: Settings = {
   failoverS: DEFAULT_ENGINE_CONFIG.failoverS ?? 3,
   coldStarts: true,
   timeoutS: DEFAULT_ENGINE_CONFIG.timeoutS,
+  sloErrorRate: 0.01,
+  sloP99Ms: 300,
 };
 
 export interface Toast {

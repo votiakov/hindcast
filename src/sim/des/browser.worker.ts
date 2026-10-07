@@ -9,7 +9,7 @@ import { audit, type AuditOptions } from '../audit';
 export type AnalysisRequest =
   | { id: number; type: 'runs'; spec: unknown; scenario: unknown; seeds: number[] }
   | { id: number; type: 'optimize'; spec: unknown; scenario: Record<string, unknown>; allowRuntimes: boolean }
-  | { id: number; type: 'breaking'; spec: unknown; readRatio: number }
+  | { id: number; type: 'breaking'; spec: unknown; readRatio: number; slo?: { maxErrorRate: number; maxP99Ms: number } }
   | { id: number; type: 'audit'; spec: unknown; opts: Omit<AuditOptions, 'onProgress'> };
 
 self.onmessage = (e: MessageEvent<AnalysisRequest>) => {
@@ -22,7 +22,7 @@ self.onmessage = (e: MessageEvent<AnalysisRequest>) => {
       result = r;
     } else if (m.type === 'audit') {
       result = audit(m.spec, { ...m.opts, onProgress: (done, total, label) => self.postMessage({ id: m.id, progress: { done, total, label } }) });
-    } else result = breakingPoint(m.spec, { readRatio: m.readRatio });
+    } else result = breakingPoint(m.spec, { readRatio: m.readRatio, slo: m.slo });
     self.postMessage({ id: m.id, ok: true, result });
   } catch (err) {
     self.postMessage({ id: m.id, ok: false, error: err instanceof Error ? err.message : String(err) });

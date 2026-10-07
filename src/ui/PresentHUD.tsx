@@ -14,6 +14,7 @@ export function deck() {
 export function presentStep(dir: 1 | -1) {
   const s = useSim.getState();
   const d = deck();
+  const slo = useSim((s) => s.settings);
   if (!d.length || s.mode !== 'sandbox') return;
   const i = Math.max(0, Math.min(d.length - 1, s.presentIdx + dir));
   s.setPresentIdx(i);
@@ -37,6 +38,7 @@ export function PresentHUD() {
   const toasts = useSim((s) => s.toasts);
   const [caption, setCaption] = useState<{ id: number; text: string; tone: string } | null>(null);
   const d = deck();
+  const slo = useSim((s) => s.settings);
 
   useEffect(() => {
     const t = toasts[toasts.length - 1];
@@ -54,7 +56,7 @@ export function PresentHUD() {
       <div className="ph-l">{label}</div>
     </div>
   );
-  const errTone = (e: number, rps: number) => (rps < 0.5 ? '' : e > 0.01 ? 'bad' : 'good');
+  const errTone = (e: number, rps: number) => (rps < 0.5 ? '' : e > slo.sloErrorRate ? 'bad' : 'good');
 
   return (
     <div className="ph">
@@ -74,7 +76,7 @@ export function PresentHUD() {
           <div className="ph-nums">
             {big('req/s', g.rps >= 1000 ? `${(g.rps / 1000).toFixed(1)}k` : g.rps.toFixed(0))}
             {big('errors', `${(g.errorRate * 100).toFixed(g.errorRate < 0.1 ? 2 : 1)}%`, errTone(g.errorRate, g.rps))}
-            {big('p99', fmtMs(g.p99), g.rps < 0.5 ? '' : g.p99 > 300 ? 'bad' : 'good')}
+            {big('p99', fmtMs(g.p99), g.rps < 0.5 ? '' : g.p99 > slo.sloP99Ms ? 'bad' : 'good')}
             {big('per month', `$${Math.round(g.cost * 730).toLocaleString('en-US')}`)}
           </div>
         )}
