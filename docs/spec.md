@@ -150,3 +150,21 @@ entry points; entry points without explicit targets → all front-line compute; 
 through a single cache into the database(s) (cache-aside), otherwise calls them directly; queues are
 produced by the web tier; default hit rates (CDN 60 %, cache 85 %). Size tiers: ≤ large = S, xlarge = M,
 ≥ 2xlarge = L. Terraform has no traffic or SLOs — supply them in the scenario.
+
+## Importing from Kubernetes
+
+`npm run sim -- import-k8s manifests.yaml [more.yaml …] --out arch.yaml` (MCP: `import_kubernetes`; in the
+app, drop the YAML on the board) reads `kubectl get … -o yaml`, Helm template or kustomize output.
+
+| Kubernetes | component |
+|---|---|
+| Deployment / StatefulSet / DaemonSet (replicas; DaemonSet = 3) | server ×replicas; image decides otherwise: postgres/mysql/mongo… → db (extra replicas → read replicas), redis/memcached/valkey → cache, rabbitmq/kafka/nats → queue, minio → storage, nginx/envoy/haproxy → lb, vllm/tgi/triton → llm |
+| container CPU request | tier: ≤ 1 core S, ≤ 2 M, more L; image name → runtime (node, python, java, go, rust) |
+| HorizontalPodAutoscaler | `autoscale` (min/max replicas, CPU target; pod warm-up 20 s, scale-in 300 s) |
+| Ingress / HTTPRoute | entry lb → backend services; else LoadBalancer/NodePort Services; else the first server |
+| Service | resolves names to workloads via selector |
+
+Call edges come from Service names that appear in a container's env vars, args or command (e.g.
+`DATABASE_URL=postgres://…@postgres:5432`). Workloads not reachable from an entry point that talk to a
+broker become its consumers (workers). With one cache and a database, the cache is placed in front of
+the database (cache-aside). All of these guesses are reported as `assumptions`.

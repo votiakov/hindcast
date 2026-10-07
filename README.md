@@ -2,7 +2,7 @@
 
 An architecture simulator that tells you what breaks first, and what it costs.
 
-Draw a system (or import it from Terraform, or paste a YAML spec), push traffic and failures through
+Draw a system (or import it from Terraform or Kubernetes manifests, or paste a YAML spec), push traffic and failures through
 it, and watch where it gives out. Then run the failure audit: every component dying, every dependency
 turning slow, caches restarting cold, zones going dark, a traffic surge. Each incident is graded by what
 users would have seen, and each fix is verified by re-running the same incident and priced in $/month.
@@ -33,8 +33,8 @@ Documentation: [docs/](docs/README.md).
 - **Present** – press P: no chrome, large numbers, captions; ←/→ walks through the audit's incidents live.
 - **Studio** – render scripted comparisons to MP4 / carousel for posts (`npm run record`).
 
-⌘K opens the command palette. ⌘Z undoes. ⌘S saves the design locally. Drop a spec or a
-`terraform show -json` file on the board to open it.
+⌘K opens the command palette. ⌘Z undoes. ⌘S saves the design locally. Drop a spec, Kubernetes
+manifests or a `terraform show -json` file on the board to open it. `?` lists the shortcuts.
 
 ## The engines
 
@@ -97,6 +97,7 @@ npm run sim -- analyze          examples/shop.yaml --rps 800 --runs 24
 npm run sim -- optimize         examples/shop.yaml examples/black-friday.yaml --out optimized.yaml
 npm run sim -- breaking-point   examples/shop.yaml
 npm run sim -- import-terraform examples/terraform/shop.tfstate.json --out shop.yaml
+npm run sim -- import-k8s       examples/kubernetes/shop.yaml --out shop.yaml
 npm run sim -- link             examples/shop.yaml
 ```
 
@@ -112,7 +113,7 @@ changes an architecture spec. Every command takes `--json`.
 | `compare_architectures` | baseline and variants under one scenario, ranked |
 | `find_breaking_point` | max req/s within SLO and the limiting component |
 | `optimize_cost` | cheapest sizing that meets the SLO |
-| `import_terraform` | `terraform show -json` → priced spec + assumptions to confirm |
+| `import_terraform` / `import_kubernetes` | `terraform show -json` or k8s manifests → spec + assumptions to confirm |
 | `show_architecture` / `open_in_app` | live canvas in MCP Apps hosts / a link into the app |
 | `list_components` / `validate_architecture` | catalogue / schema + lint |
 

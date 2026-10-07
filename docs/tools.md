@@ -12,6 +12,7 @@
 | `audit <arch> [--rps N] [--cost-per-min $] [--md report.md]` | **failure audit**: what breaks first and what it costs — see below; exit code 2 when anything is critical (use it in CI) |
 | `optimize <arch> [scenario] [--runtimes] [--p99 …] [--out file.yaml]` | cheapest sizing that meets the SLO; writes the optimized spec with `--out` |
 | `import-terraform <terraform-show.json> [--name …] [--out arch.yaml]` | Terraform state/plan JSON → spec (AWS-priced) + assumptions to review |
+| `import-k8s <manifests.yaml …> [--name …] [--out arch.yaml]` | Kubernetes manifests → spec (HPAs become autoscaling) + assumptions to review |
 | `link <arch> [variants]` | URL that opens the architecture (or a comparison) in the app |
 | `catalog` | component catalogue as JSON |
 
@@ -44,6 +45,7 @@ Registered for Claude Code in `.mcp.json` (restart Claude Code in this folder an
 | `optimize_cost` | `architecture`, `scenario?`, `allow_runtimes?`, `slo?` | before/after cost, savings, changes as a ready variant, log, verification |
 | `audit_resilience` | `architecture`, `rps?`, `read_ratio?`, `slo?`, `incident_cost_per_minute?` | resilience score, headroom, ranked risk register with blast radius and recovery, verified + priced fixes, Markdown report |
 | `import_terraform` | `terraform_json`, `name?` | spec, assumptions, skipped resources, lint |
+| `import_kubernetes` | `manifests_yaml`, `name?` | spec, assumptions, skipped objects, lint |
 | `show_architecture` | `architecture`, `compare_with?`, `scenario?` | **live canvas**: renders the simulation inline in MCP Apps hosts (Claude, ChatGPT…); text + link elsewhere |
 | `open_in_app` | `architecture`, `compare_with?` (variant), `scenario?` | URL for the app (sandbox, or side-by-side comparison playing the scenario) |
 
