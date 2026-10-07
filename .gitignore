@@ -10,3 +10,4 @@ dist-mcp
 reference/*/runs/*/raw/
 reference/stack/run/
 scripts/.shot.mjs
+dist-cli

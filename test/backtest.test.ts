@@ -260,3 +260,58 @@ describe('strategies and backtest', () => {
     expect(r.strategies[0].events.some((e) => /scale out/.test(e.what))).toBe(true);
   });
 });
+
+describe('strategy from a config diff', () => {
+  const dep = (name: string, replicas: number, cpu: string, arch?: string) => `apiVersion: apps/v1
+kind: Deployment
+metadata: { name: ${name} }
+spec:
+  replicas: ${replicas}
+  template:
+    spec:
+      ${arch ? `nodeSelector: { kubernetes.io/arch: ${arch} }` : ''}
+      containers:
+        - name: app
+          resources: { limits: { cpu: "${cpu}", memory: 512Mi } }
+`;
+  const hpa = `apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: api }
+spec:
+  scaleTargetRef: { kind: Deployment, name: api }
+  minReplicas: 2
+  maxReplicas: 8
+  metrics: [{ type: Resource, resource: { name: cpu, target: { type: Utilization, averageUtilization: 60 } } }]
+`;
+  it('turns replica, CPU, arch and HPA changes into a strategy', async () => {
+    const { readWorkloads, strategyFromDiff, cpuQuantity, memQuantity } = await import('../src/backtest/configDiff');
+    expect(cpuQuantity('500m')).toBe(0.5);
+    expect(memQuantity('512Mi')).toBe(0.5);
+    const before = readWorkloads([dep('api', 3, '1') + '---\n' + dep('db', 1, '2') + '---\n' + dep('web', 2, '500m')]);
+    const after = readWorkloads([dep('api', 3, '1', 'arm64') + '---\n' + hpa + '---\n' + dep('db', 1, '4') + '---\n' + dep('web', 2, '500m')]);
+    const { strategy } = strategyFromDiff(before, after);
+    expect(strategy!.changes).toEqual([
+      { service: 'api', autoscale: { min: 2, max: 8, targetCpu: 0.6, cooldownS: 300, warmupS: 30 }, arch: 'arm' },
+      { service: 'db', cpu: 4 },
+    ]);
+    expect(strategyFromDiff(before, before).strategy).toBeNull();
+  });
+});
+
+describe('public-outage replays', () => {
+  it('replays every outage against a model, with faults on the right roles', async () => {
+    const { OUTAGES, replayOutage } = await import('../src/backtest/outages');
+    const m = calibrate(synthetic({ K: 40, c: 4, S: 20 }, 0.5), { bootstrap: 0 });
+    expect(OUTAGES.length).toBeGreaterThanOrEqual(3);
+    for (const o of OUTAGES) {
+      const { replay, result } = replayOutage(m, o, [], { draws: 1 });
+      expect(replay.dataset.n).toBe(Math.round((o.minutes * 60) / o.stepS));
+      expect(o.sources.length).toBeGreaterThan(0);
+      expect(result.baseline.events.length + replay.warnings.length).toBeGreaterThan(0);
+    }
+    // the Cloudflare regex cuts edge capacity to 3%: the single api service melts down
+    const cf = replayOutage(m, OUTAGES.find((o) => o.id.startsWith('cloudflare'))!, [], { draws: 1 });
+    expect(cf.replay.roles.edge).toEqual(['api']);
+    expect(cf.result.baseline.summary.minutesOutOfSlo.p50).toBeGreaterThan(15);
+  });
+});

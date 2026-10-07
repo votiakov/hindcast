@@ -1,6 +1,6 @@
 import { quantile, type Dataset, type Num } from './dataset';
 import type { AccuracyRecord, Model } from './model';
-import { basePlan, runPlan, type Plan, type RunResult, type Traffic } from './engine';
+import { basePlan, runPlan, type Fault, type Plan, type RunResult, type Traffic } from './engine';
 import { observedReplicas, trafficOf } from './calibrate';
 import { applyStrategy, StrategySpec } from './strategy';
 
@@ -124,7 +124,9 @@ export function explainMoment(r: RunResult, plan: Plan, i: number): { why: strin
   const util = s.util[i];
   const reps = Math.round(s.replicas[i] * 10) / 10;
   if (util < 0.5 && s.waitMs[i] < 50) return { why: `no component near its limit (busiest: ${worst.id} at ${Math.round(util * 100)}%)`, service: null };
-  const cap = isFinite(p.perReplicaRps) ? `${reps} × ${p.perReplicaRps.toFixed(1)} req/s` : 'unbounded';
+  // capacity actually available at that moment (faults can cut it below the plan's)
+  const perRep = util > 0 && s.replicas[i] > 0 ? s.rps[i] / s.replicas[i] / util : p.perReplicaRps;
+  const cap = isFinite(perRep) ? `${reps} × ${perRep.toFixed(1)} req/s${perRep < p.perReplicaRps * 0.95 ? ` (normally ${p.perReplicaRps.toFixed(1)})` : ''}` : 'unbounded';
   const queue = s.backlog[i] > 0.5 ? `, ${(s.waitMs[i] / 1000).toFixed(1)} s queue` : s.waitMs[i] > 5 ? `, ${Math.round(s.waitMs[i])} ms wait` : '';
   return { why: `${worst.id} at ${Math.round(util * 100)}% of capacity (${s.rps[i].toFixed(1)} req/s on ${cap})${queue}`, service: worst.id };
 }
@@ -221,6 +223,8 @@ export interface BacktestOptions {
   /** use the observed replica counts for the baseline (default true) */
   observed?: boolean;
   traffic?: Traffic;
+  /** time-boxed faults (incident and public-outage replays) */
+  faults?: Fault[];
 }
 
 export function backtest(model: Model, d: Dataset, strategies: unknown[], opts: BacktestOptions = {}): BacktestResult {
@@ -234,7 +238,7 @@ export function backtest(model: Model, d: Dataset, strategies: unknown[], opts: 
   const runAll = (plan: Plan) => {
     const rnd = rng(opts.seed ?? 7);
     const runs: RunResult[] = [];
-    for (let k = 0; k < draws; k++) runs.push(runPlan(drawPlan(plan, model, k, rnd), traffic));
+    for (let k = 0; k < draws; k++) runs.push(runPlan(drawPlan(plan, model, k, rnd), traffic, { faults: opts.faults }));
     return runs;
   };
   const baseRuns = runAll(base);

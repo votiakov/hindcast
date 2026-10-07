@@ -25,6 +25,28 @@ export interface AutoscalePolicy {
   intervalS: number;
 }
 
+/** a time-boxed fault on one service, for incident and public-outage replays */
+export interface Fault {
+  /** seconds from the start of the traffic */
+  at: number;
+  /** end, seconds from the start (default: to the end) */
+  until?: number;
+  service: string;
+  /** capacity multiplier (0.05 = every request suddenly costs 20× the CPU) */
+  capacity?: number;
+  /** calls to it fail at once (DNS gone, connection refused) */
+  down?: boolean;
+  /** extra latency on every call, ms (a primary now across the country) */
+  extraMs?: number;
+  /** share of calls that fail (packet loss, health-check flaps) */
+  errorRate?: number;
+  /** the autoscaler cannot launch anything (cloud control plane impaired) */
+  noScaleOut?: boolean;
+  /** launches take this many times longer (provisioning throttled) */
+  warmupFactor?: number;
+  note?: string;
+}
+
 export interface ServicePlan {
   id: string;
   hostedBy?: string;
@@ -174,7 +196,7 @@ export function linkPrice(a: ServicePlan | undefined, b: ServicePlan | undefined
   return 0;
 }
 
-export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number; observedFrom?: number } = {}): RunResult {
+export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number; faults?: Fault[] } = {}): RunResult {
   const { n, stepS } = traffic;
   const sub = Math.max(1, Math.ceil(stepS / (opts.substepS ?? 5)));
   const dt = stepS / sub;
@@ -188,10 +210,26 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
       const s = plan.services[id];
       const first = s.observedReplicas?.find((x) => x !== null) ?? null;
       const live = s.replicas ?? first ?? 1;
-      return [id, { backlog: 0, live: s.autoscale ? Math.max(s.autoscale.min, Math.min(s.autoscale.max, live)) : live, pending: [] as { at: number; n: number }[], lastScale: -Infinity, nextEval: 0 }];
+      return [id, { backlog: 0, live: s.autoscale ? Math.max(s.autoscale.min, Math.min(s.autoscale.max, live)) : live, pending: [] as { at: number; n: number }[], lastScale: -Infinity, nextEval: 0, blockedSaid: false }];
     }),
   );
   const epFail = Object.fromEntries(epIds.map((id) => [id, 0]));
+  const faults = (opts.faults ?? []).filter((f) => plan.services[f.service]);
+  const faultOn = new Set<Fault>();
+  type Effect = { capacity: number; down: boolean; extraMs: number; errorRate: number; noScaleOut: boolean; warmupFactor: number };
+  const effect = (id: string): Effect => {
+    const e: Effect = { capacity: 1, down: false, extraMs: 0, errorRate: 0, noScaleOut: false, warmupFactor: 1 };
+    for (const f of faultOn) {
+      if (f.service !== id) continue;
+      if (f.capacity !== undefined) e.capacity *= f.capacity;
+      if (f.down) e.down = true;
+      e.extraMs += f.extraMs ?? 0;
+      e.errorRate = 1 - (1 - e.errorRate) * (1 - (f.errorRate ?? 0));
+      if (f.noScaleOut) e.noScaleOut = true;
+      if (f.warmupFactor) e.warmupFactor *= f.warmupFactor;
+    }
+    return e;
+  };
 
   const z = () => new Array<number>(n).fill(0);
   const out: RunResult = {
@@ -243,6 +281,17 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
     }
     for (let k = 0; k < sub; k++) {
       const now = i * stepS + k * dt;
+      for (const f of faults) {
+        const active = now >= f.at && now < (f.until ?? Infinity);
+        if (active && !faultOn.has(f)) {
+          faultOn.add(f);
+          out.events.push({ t: traffic.start + now, what: f.note ?? `${f.service}: fault starts` });
+        } else if (!active && faultOn.has(f)) {
+          faultOn.delete(f);
+          out.events.push({ t: traffic.start + now, what: `${f.service}: ${f.note ? `ends — ${f.note}` : 'fault ends'}` });
+        }
+      }
+      const fx = Object.fromEntries(svcIds.map((id) => [id, effect(id)]));
       // offered load per endpoint, including client retries of last substep's failures
       const lam: Record<string, number> = {};
       for (const id of epIds) {
@@ -263,16 +312,20 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
       for (const e of epIds) for (const [s, v] of Object.entries(visits[e])) if (s in svcLam) svcLam[s] += lam[e] * v;
 
       // queues
-      const lat: Record<string, { mean: number; p99: number; wait: number }> = {};
+      const lat: Record<string, { mean: number; p99: number; wait: number; err: number }> = {};
       for (const id of svcIds) {
         const s = plan.services[id];
         const S = st[id];
+        const f = fx[s.hostedBy && fx[s.hostedBy]?.down ? s.hostedBy : id];
         const live = liveOf(id);
         const perRep = live > 0 ? svcLam[id] / live : svcLam[id] > 0 ? Infinity : 0;
-        const K = s.perReplicaRps;
+        const K = s.perReplicaRps * fx[id].capacity * (s.hostedBy ? fx[s.hostedBy]?.capacity ?? 1 : 1);
         let waitMean = 0;
         let waitP99 = 0;
-        if (live <= 0 && svcLam[id] > 0) {
+        if (f.down) {
+          // refused at once: nothing queues
+          S.backlog = 0;
+        } else if (live <= 0 && svcLam[id] > 0) {
           waitMean = waitP99 = Infinity;
         } else if (isFinite(K)) {
           const served = Math.min(K, perRep + S.backlog / dt);
@@ -283,9 +336,10 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
           waitP99 = w.p99Ms + drain;
         }
         const ex0 = Math.max(0, s.selfP99 - s.selfMean);
-        const mean = s.selfMean + waitMean;
+        const extra = fx[id].extraMs;
+        const mean = s.selfMean + waitMean + extra;
         const p99 = mean + Math.sqrt(ex0 ** 2 + (s.tail * Math.max(0, waitP99 - waitMean)) ** 2);
-        lat[id] = { mean, p99, wait: waitMean };
+        lat[id] = { mean, p99, wait: waitMean, err: f.down ? 1 : fx[id].errorRate };
         const o = out.services[id];
         o.rps[i] += svcLam[id] / sub;
         o.util[i] += (isFinite(K) && live > 0 ? Math.min(1.5, perRep / K) : 0) / sub;
@@ -313,7 +367,10 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
         }
         const p99 = mean + Math.sqrt(ep.baseExcessMs ** 2 + ep.tail ** 2 * ex2);
         const late = exceed(mean, p99, ep.timeoutMs);
-        const fail = 1 - (1 - ep.errorRate) * (1 - late);
+        // a failed call to any service on the request's path fails the request
+        let ok = 1;
+        for (const [s, v] of Object.entries(visits[e])) if (lat[s]?.err) ok *= (1 - lat[s].err) ** Math.max(1, v);
+        const fail = 1 - (1 - ep.errorRate) * (1 - late) * ok;
         epFail[e] = fail;
         const base = traffic.endpoints[e][i] ?? 0;
         // what the client sees: answers capped at its deadline
@@ -364,9 +421,13 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
         const util = s.cpu && s.cpuLimit ? (s.cpu.base + s.cpu.perReq * Math.min(perRep, s.perReplicaRps)) / s.cpuLimit : isFinite(s.perReplicaRps) ? perRep / s.perReplicaRps : 0;
         const booting = S.pending.reduce((x, p) => x + p.n, 0);
         const desired = Math.min(a.max, Math.max(a.min, Math.ceil((S.live * util) / a.target - 1e-9)));
-        if (desired > S.live + booting) {
+        if (desired > S.live + booting && fx[id].noScaleOut) {
+          if (!S.blockedSaid) out.events.push({ t: traffic.start + t, what: `${id}: wants ${desired} replicas but cannot launch any` });
+          S.blockedSaid = true;
+        } else if (desired > S.live + booting) {
+          S.blockedSaid = false;
           const add = desired - S.live - booting;
-          S.pending.push({ at: t + a.warmupS, n: add });
+          S.pending.push({ at: t + a.warmupS * fx[id].warmupFactor, n: add });
           S.lastScale = t;
           out.events.push({ t: traffic.start + t, what: `${id}: scale out ${S.live + booting} → ${desired} (load ${(util * 100).toFixed(0)}% of target ${(a.target * 100).toFixed(0)}%)` });
         } else if (desired < S.live && !booting && t - S.lastScale >= a.cooldownS) {

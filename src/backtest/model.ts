@@ -133,6 +133,8 @@ export interface Model {
   accuracy: AccuracyRecord[];
   /** history the model was fitted on */
   fittedOn: { start: number; end: number; stepS: number; buckets: number };
+  /** traffic seen in that history, req/s (all endpoints) */
+  traffic?: { mean: number; p90: number; peak: number };
 }
 
 export const AWS_TRANSFER: TransferPrices = {

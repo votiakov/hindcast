@@ -12,6 +12,7 @@
     "sim": "tsx cli/bottleneck.ts",
     "mcp": "tsx mcp/server.ts",
     "build:mcp": "vite build --config vite.mcp.config.ts",
+    "build:cli": "esbuild cli/bottleneck.ts --bundle --platform=node --format=esm --target=node20 --outfile=dist-cli/bottleneck.mjs --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
     "test": "vitest run",
     "check": "tsc --noEmit && vitest run"
   },

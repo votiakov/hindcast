@@ -278,8 +278,9 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
       }
       tail = bestTail.t;
       const r = replayQueue(perRep, d.stepS, capacity.servers, capacity.perReplicaRps, S, S99, tail);
-      latencyMape = mape(r.mean, selfObs);
-      p99Mape = mape(r.p99, selfP99Obs);
+      // errors below a few ms don't matter to anyone's p99: floor the denominator
+      latencyMape = mape(r.mean, selfObs, 5);
+      p99Mape = mape(r.p99, selfP99Obs, 5);
     } else if (shape) notes.push('too little load data to fit capacity; using trace averages');
 
     let cpuMape: number | undefined;
@@ -412,6 +413,8 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
 
   // ---- endpoint tail + fit quality: replay the whole history through the full model ----
   const traffic = trafficOf(d, model);
+  const totals = Array.from({ length: d.n }, (_, i) => Object.values(traffic.endpoints).reduce((a, s) => a + (s[i] ?? 0), 0)).filter((x) => x > 0).sort((a, b) => a - b);
+  if (totals.length) model.traffic = { mean: totals.reduce((a, x) => a + x, 0) / totals.length, p90: quantile(totals, 0.9), peak: totals[totals.length - 1] };
   const observed = Object.fromEntries(Object.keys(services).map((id) => [id, replicasOf(id)]));
   if (Object.values(traffic.endpoints).length) {
     for (const [id, e] of Object.entries(endpoints)) {

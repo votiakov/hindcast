@@ -1,28 +1,4 @@
-/**
- * Bottleneck CLI — the simulation engine without the UI.
- *
- *   npm run sim -- validate        <arch.yaml>
- *   npm run sim -- simulate        <arch.yaml> [scenario.yaml] [--rps 800 | --traffic metrics.csv] [--duration 60] [--engine fluid|des] [--seed 1] [--json]
- *   npm run sim -- analyze         <arch.yaml> [scenario.yaml] [--runs 20]       (discrete-event Monte Carlo, 95% CIs)
- *   npm run sim -- optimize        <arch.yaml> [scenario.yaml] [--runtimes] [--out optimized.yaml]
- *   npm run sim -- compare         <arch.yaml> <variants.yaml> [scenario.yaml] [--json]
- *   npm run sim -- breaking-point  <arch.yaml> [--p99 300] [--errors 0.01]
- *   npm run sim -- audit           <arch.yaml> [--rps 500] [--cost-per-min 1000] [--md report.md] [--html report.html]   (what breaks first, and what it costs)
- *   npm run sim -- link            <arch.yaml> [variants.yaml]     → open in the app
- *   npm run sim -- import-terraform <terraform-show.json> [--name "My system"] [--out arch.yaml]
- *   npm run sim -- import-k8s      <manifests.yaml …> [--name "My system"] [--out arch.yaml]      (Deployments, HPAs, StatefulSets, Services, Ingress)
- *   npm run sim -- catalog
- *
- * Backtesting on real data (files only; see docs/backtest.md):
- *   npm run sim -- export-prometheus --url http://prom:9090 --start 2026-09-01 --end 2026-09-15 [--step 60] [--preset otel-spanmetrics,cadvisor] --out telemetry/
- *   npm run sim -- import        <bottleneck.import.yaml> [--out dataset.json]
- *   npm run sim -- calibrate     <dataset.json> [--out model.json] [--p99 500] [--errors 0.01] [--timeout 5000] [--holdout 0.3]
- *   npm run sim -- backtest      <model.json> <dataset.json> <strategy.yaml …> [--last 14d] [--draws 30] [--md r.md] [--html r.html] [--comment pr.md] [--gate]
- *   npm run sim -- headroom      <model.json> [strategy.yaml]
- *   npm run sim -- accuracy      <model.json>
- *
- * Files may be YAML or JSON. A variants file is either a list of variants or { variants, scenario }.
- */
+/** Bottleneck CLI — the simulation and backtesting engine without the UI. Usage: see USAGE below. */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parse as parseYaml } from 'yaml';
 import { specToYaml } from '../src/spec/yaml';
@@ -42,6 +18,31 @@ import { validateSpec } from '../src/spec/validate';
 import { applyVariant, encodePayload } from '../src/spec/convert';
 import { ArchitectureSpec, VariantSpec } from '../src/spec/schema';
 import { backtestCommand } from './backtest';
+
+const USAGE = `Bottleneck CLI — the simulation engine without the UI.
+
+  npm run sim -- validate        <arch.yaml>
+  npm run sim -- simulate        <arch.yaml> [scenario.yaml] [--rps 800 | --traffic metrics.csv] [--duration 60] [--engine fluid|des] [--seed 1] [--json]
+  npm run sim -- analyze         <arch.yaml> [scenario.yaml] [--runs 20]       (discrete-event Monte Carlo, 95% CIs)
+  npm run sim -- optimize        <arch.yaml> [scenario.yaml] [--runtimes] [--out optimized.yaml]
+  npm run sim -- compare         <arch.yaml> <variants.yaml> [scenario.yaml] [--json]
+  npm run sim -- breaking-point  <arch.yaml> [--p99 300] [--errors 0.01]
+  npm run sim -- audit           <arch.yaml> [--rps 500] [--cost-per-min 1000] [--md report.md] [--html report.html]   (what breaks first, and what it costs)
+  npm run sim -- link            <arch.yaml> [variants.yaml]     → open in the app
+  npm run sim -- import-terraform <terraform-show.json> [--name "My system"] [--out arch.yaml]
+  npm run sim -- import-k8s      <manifests.yaml …> [--name "My system"] [--out arch.yaml]      (Deployments, HPAs, StatefulSets, Services, Ingress)
+  npm run sim -- catalog
+
+Backtesting on real data (files only; see docs/backtest.md):
+  npm run sim -- export-prometheus --url http://prom:9090 --start 2026-09-01 --end 2026-09-15 [--step 60] [--preset otel-spanmetrics,cadvisor] --out telemetry/
+  npm run sim -- import        <bottleneck.import.yaml> [--out dataset.json]
+  npm run sim -- calibrate     <dataset.json> [--out model.json] [--p99 500] [--errors 0.01] [--timeout 5000] [--holdout 0.3]
+  npm run sim -- backtest      <model.json> <dataset.json> <strategy.yaml …> [--last 14d] [--draws 30] [--md r.md] [--html r.html] [--comment pr.md] [--gate]
+  npm run sim -- headroom      <model.json> [strategy.yaml]
+  npm run sim -- accuracy      <model.json>
+  npm run sim -- diff-strategy --base <dir> --head <dir> [--model model.json] [--out strategy.yaml]   (k8s manifests before/after → strategy)
+
+Files may be YAML or JSON. A variants file is either a list of variants or { variants, scenario }.`;
 
 const APP_URL = process.env.BOTTLENECK_APP_URL ?? 'http://localhost:5173';
 
@@ -250,7 +251,7 @@ async function main() {
     case 'catalog':
       return console.log(JSON.stringify(catalog(), null, 2));
     default:
-      console.log(readFileSync(new URL(import.meta.url), 'utf8').split('\n').slice(1, 25).map((l) => l.replace(/^ \*\s?/, '')).join('\n'));
+      console.log(USAGE);
       process.exitCode = cmd ? 1 : 0;
   }
 }

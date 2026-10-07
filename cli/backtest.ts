@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { parse as parseYaml, stringify as toYaml } from 'yaml';
 import { importBundle } from '../src/backtest/import/manifest';
@@ -14,6 +14,8 @@ import { backtestMarkdown, headline, prComment } from '../src/backtest/report';
 import { backtestHtml } from '../src/backtest/reportHtml';
 import { reviveModel, type Model } from '../src/backtest/model';
 import { fileAccess } from './files';
+import { readWorkloads, strategyFromDiff } from '../src/backtest/configDiff';
+import { OUTAGES, outageById, replayOutage, type Role } from '../src/backtest/outages';
 
 /**
  * Backtest commands:
@@ -23,7 +25,16 @@ import { fileAccess } from './files';
  *   backtest      <model.json> <dataset.json> <strategy.yaml …> [--last 14d] [--draws 30] [--md r.md] [--html r.html] [--comment pr.md] [--json]
  *   headroom      <model.json> [strategy.yaml]
  *   accuracy      <model.json>
+ *   outage        <model.json> <outage-id | list> [strategy.yaml …] [--rps 120] [--role primary-db=orders-db,edge=web] [--md r.md] [--html r.html]
+ *   diff-strategy --base <dir|file> --head <dir|file> [--model model.json] [--out strategy.yaml]   (Kubernetes manifests before/after → strategy)
  */
+
+/** every YAML file under a path */
+function yamlFiles(p: string): string[] {
+  if (!existsSync(p)) return [];
+  if (!statSync(p).isDirectory()) return [p];
+  return readdirSync(p).flatMap((f) => yamlFiles(join(p, f))).filter((f) => /\.ya?ml$/.test(f));
+}
 
 type Opt = Record<string, string | true>;
 const c = { dim: (s: string) => `\x1b[2m${s}\x1b[0m`, bold: (s: string) => `\x1b[1m${s}\x1b[0m`, red: (s: string) => `\x1b[31m${s}\x1b[0m`, green: (s: string) => `\x1b[32m${s}\x1b[0m`, yellow: (s: string) => `\x1b[33m${s}\x1b[0m` };
@@ -150,6 +161,50 @@ export async function backtestCommand(cmd: string, pos: string[], opt: Opt): Pro
       console.log(`\nSustains ${c.bold(`${bp.rps.toFixed(1)} req/s`)} with today's endpoint mix within SLO (p99 ≤ ${m.slo.p99Ms} ms, errors ≤ ${(m.slo.errorRate * 100).toFixed(1)}%)${bp.limitedBy ? `, then ${c.yellow(bp.limitedBy)} saturates` : ''}.\n`);
       printAccuracy(m);
       console.log('');
+      return true;
+    }
+    case 'outage': {
+      if (!pos[1] || pos[1] === 'list') {
+        for (const o of OUTAGES) console.log(`  ${c.bold(o.id.padEnd(24))} ${o.title}\n  ${''.padEnd(24)} ${c.dim(o.what)}`);
+        return true;
+      }
+      const m = reviveModel(readJson<Model>(pos[0]));
+      const o = outageById(pos[1]);
+      if (!o) throw new Error(`no outage "${pos[1]}" — try \`outage <model> list\``);
+      const roles: Partial<Record<Role, string[]>> = {};
+      for (const kv of String(opt.role ?? '').split(',').filter(Boolean)) {
+        const [r, v] = kv.split('=');
+        roles[r as Role] = v.split('+');
+      }
+      const { replay, result } = replayOutage(m, o, pos.slice(2).map(readAny), { baseRps: opt.rps ? Number(opt.rps) : undefined, roles });
+      if (opt.md) writeFileSync(String(opt.md), backtestMarkdown(result, m));
+      if (opt.html) writeFileSync(String(opt.html), backtestHtml(result, m));
+      if (json) return console.log(JSON.stringify({ roles: replay.roles, warnings: replay.warnings, result }, null, 2)), true;
+      console.log(`\n${c.bold(o.title)}\n${c.dim(o.what)}`);
+      for (const t of o.timeline) console.log(`  ${c.dim(t.at.padEnd(12))} ${t.text}`);
+      console.log(`\n  replayed against ${c.bold(m.name)} at ${replay.baseRps.toFixed(1)} req/s normal load${opt.rps ? '' : ' (p90 of its history)'}`);
+      for (const [r, svcs] of Object.entries(replay.roles)) console.log(`  ${c.dim(`${r}:`.padEnd(14))} ${svcs.join(', ') || c.yellow('nothing in this model')}`);
+      for (const w of replay.warnings) console.log(c.yellow(`  ${w}`));
+      const verdict = (s: { summary: { minutesOutOfSlo: { p50: number }; failedRequests: { p50: number } } }) => (s.summary.minutesOutOfSlo.p50 < 1 ? c.green('survives') : c.red(`${Math.round(s.summary.minutesOutOfSlo.p50)} min out of SLO, ${Math.round(s.summary.failedRequests.p50).toLocaleString()} failed requests`));
+      console.log(`\n  ${'As built'.padEnd(30)} ${verdict(result.baseline)}   ${c.dim(result.baseline.worst.why)}`);
+      for (const st of result.strategies) console.log(`  ${st.name.padEnd(30)} ${verdict(st)}`);
+      console.log(c.dim(`\n  assumptions: ${o.assumptions.join(' ')}\n  source: ${o.sources.map((x) => x.url).join(' ')}\n`));
+      return true;
+    }
+    case 'diff-strategy': {
+      const read = (p: string) => yamlFiles(p).map((f) => readFileSync(f, 'utf8'));
+      const known = opt.model ? new Set(Object.keys(reviveModel(readJson<Model>(String(opt.model))).services)) : undefined;
+      const { strategy, ignored } = strategyFromDiff(readWorkloads(read(String(opt.base))), readWorkloads(read(String(opt.head))), { known, name: opt.name ? String(opt.name) : undefined });
+      for (const i of ignored) console.error(c.yellow(`  ignored: ${i}`));
+      if (!strategy) {
+        console.error(c.dim('  no change the model can backtest (replicas, CPU/memory limits, HPAs, arch)'));
+        if (opt.out) writeFileSync(String(opt.out), '');
+        return true;
+      }
+      const yaml = toYaml(strategy);
+      if (opt.out) writeFileSync(String(opt.out), yaml);
+      else console.log(yaml);
+      console.error(c.green(`  strategy: ${strategy.name}`));
       return true;
     }
     case 'accuracy': {
