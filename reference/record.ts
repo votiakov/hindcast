@@ -27,6 +27,8 @@ export interface ReferenceConfig {
   project: string;
   base: string;
   timeout?: string;
+  /** k6 Poisson thinning factor (default 20; lower for high request rates) */
+  thin?: number;
   mix: string;
   /** zone per compose service, for the bill's transfer lines and the model's placement */
   placement?: Record<string, { zone?: string; region?: string }>;
@@ -74,7 +76,7 @@ async function main() {
   // one load generator at a time: a leftover k6 from an interrupted run would double the load
   execSync('docker rm -f bnref-k6 >/dev/null 2>&1 || true');
   sh(
-    `docker run --rm --name bnref-k6 --network bnref -v ${join(ROOT, 'load')}:/load:ro -v ${out}:/out -e SHAPE=/out/shape.json -e MIX=/out/mix.json -e BASE=${cfg.base} -e TIMEOUT=${cfg.timeout ?? '5s'} grafana/k6:latest run --quiet --out csv=/out/raw/k6.csv /load/replay.js`,
+    `docker run --rm --name bnref-k6 --network bnref -v ${join(ROOT, 'load')}:/load:ro -v ${out}:/out -e SHAPE=/out/shape.json -e MIX=/out/mix.json -e BASE=${cfg.base} -e TIMEOUT=${cfg.timeout ?? '5s'} -e THIN=${cfg.thin ?? 20} grafana/k6:latest run --quiet --out csv=/out/raw/k6.csv /load/replay.js`,
   );
   const end = Math.floor(Date.now() / 1000);
   if (scaling) await scaling.stop();

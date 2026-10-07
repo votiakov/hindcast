@@ -6,9 +6,22 @@ name: Astronomy Shop
 project: shop
 base: http://frontend-lb:8080
 timeout: 5s
+thin: 5
 mix: mix.json
 edge: frontend-lb
 slo: { p99Ms: 800, errorRate: 0.01 }
 runs:
   # quick capacity probe (not used for calibration)
-  probe: { shape: [steps, 5, 125, 10, 25] }
+  probe: { shape: [steps, 40, 280, 20, 25] }
+  # 40 minutes of "production": a compressed day peaking at 170 req/s, with a push to 290 req/s
+  history: { shape: [history, 170, 290, 40] }
+  # breaking point, measured: +15 req/s every minute from 150 to 330
+  stress: { shape: [steps, 150, 330, 15, 60] }
+  # the strategy, actually applied: the frontend autoscaled 1–4 replicas at 60% CPU, same day
+  autoscale: { shape: [history, 170, 290, 40], autoscale: { service: frontend, min: 1, max: 4, targetCpu: 0.6, cooldownS: 120, intervalS: 15 } }
+  # the other strategy, actually applied: a 1-core frontend, stepped to its breaking point
+  stress-cpu1: { shape: [steps, 300, 600, 25, 60], env: { FRONTEND_CPUS: 1.0 } }
+validate:
+  - { run: autoscale, strategy: strategies/1-autoscale-frontend.yaml }
+  - { run: stress, stress: true }
+  - { run: stress-cpu1, strategy: strategies/2-frontend-1cpu.yaml, stress: true }

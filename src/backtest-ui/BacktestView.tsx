@@ -374,16 +374,20 @@ function Watch() {
       )}
       <h4>Model accuracy</h4>
       {checks.length ? (
-        <div className="bt-acc">
-          {checks.map((c, i) => (
-            <div key={i} title={c.note}>
-              <span>{c.metric}</span>
-              <span className={c.pass ? 'pos' : 'neg'}>{(c.error * 100).toFixed(0)}%</span>
-              <span className="bt-dim">≤{c.tolerance * 100}%</span>
-            </div>
-          ))}
-          <div className="bt-dim small">{r.accuracy.map((a) => a.label).join(' · ')}</div>
-        </div>
+        r.accuracy.map((a, k) => (
+          <div key={k} className="bt-acc" title={a.label}>
+            <div className="bt-dim small">{a.method === 'reference' ? 'vs recorded runs it never saw' : 'holdout: last 30% of the history'}</div>
+            {a.checks
+              .filter((c) => c.metric !== 'errors')
+              .map((c, i) => (
+                <div key={i} title={c.note}>
+                  <span>{c.metric}</span>
+                  <span className={c.pass ? 'pos' : 'neg'}>{(c.error * 100).toFixed(0)}%</span>
+                  <span className="bt-dim">≤{c.tolerance * 100}%</span>
+                </div>
+              ))}
+          </div>
+        ))
       ) : (
         <div className="bt-dim small">No accuracy record yet — calibrate with a holdout to measure one.</div>
       )}

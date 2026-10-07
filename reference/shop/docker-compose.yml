@@ -40,7 +40,7 @@ services:
       OTEL_COLLECTOR_HOST: otel-collector
       PUBLIC_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://localhost:8080/otlp-http/v1/traces
       WEB_OTEL_SERVICE_NAME: frontend-web
-    cpus: ${FRONTEND_CPUS:-1.0}
+    cpus: ${FRONTEND_CPUS:-0.5}
     mem_limit: 300m
     deploy: { replicas: "${FRONTEND_REPLICAS:-1}" }
   ad:

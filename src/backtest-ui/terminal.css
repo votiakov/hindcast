@@ -86,7 +86,7 @@
 .bt-worstbox { font: 12.5px/1.5 var(--bt-mono); cursor: pointer; padding: 6px; border: 1px solid var(--bt-line); }
 .bt-worstbox:hover { border-color: var(--bt-dim); }
 .bt-link { color: var(--bt-amber); margin-top: 2px; }
-.bt-acc { font: 12.5px var(--bt-mono); display: grid; gap: 3px; }
+.bt-acc { font: 12.5px var(--bt-mono); display: grid; gap: 3px; margin-bottom: 6px; }
 .bt-acc > div { display: grid; grid-template-columns: 1fr auto 44px; gap: 8px; }
 .bt-acc > div > span:nth-child(n + 2) { text-align: right; }
 
