@@ -17,7 +17,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
-        with: { repository: ${{ env.BOTTLENECK_REPO }}, path: .bottleneck }
+        with:
+          repository: ${{ env.BOTTLENECK_REPO }}
+          path: .bottleneck
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm ci --prefix .bottleneck
@@ -31,7 +33,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: { name: failure-audit, path: audit.html }
       - name: Comment on the PR
-        env: { GH_TOKEN: '${{ github.token }}' }
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: gh pr comment ${{ github.event.pull_request.number }} --body-file audit.md --edit-last || gh pr comment ${{ github.event.pull_request.number }} --body-file audit.md
       - name: Fail on critical incidents
         if: steps.audit.outputs.code == '2'
