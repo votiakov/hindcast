@@ -135,9 +135,19 @@ export function importTerraform(doc: unknown, name?: string): ImportResult {
         const lt = (arr<Record<string, unknown>>(v.launch_template)[0] ?? {}) as Record<string, unknown>;
         const type = ltType.get(str(lt.id)) ?? ltType.get(str(lt.name)) ?? ltType.get(str(v.launch_configuration)) ?? '';
         const n = num(v.desired_capacity, num(v.min_size, 1));
-        const c = add(r, { kind: isGpu(type) ? 'llm' : 'server', instances: Math.max(1, n), ...(type && !isGpu(type) ? { tier: tierOf(type) } : {}) });
+        const min = Math.max(1, num(v.min_size, n));
+        const max = Math.max(min, num(v.max_size, n));
+        const warmupS = num(v.default_instance_warmup, num(v.health_check_grace_period, 120));
+        const scales = max > min;
+        const c = add(r, {
+          kind: isGpu(type) ? 'llm' : 'server',
+          instances: Math.max(1, n),
+          ...(type && !isGpu(type) ? { tier: tierOf(type) } : {}),
+          ...(scales ? { autoscale: { min, max: Math.min(500, max), targetUtil: 0.6, warmupS: Math.min(900, warmupS), cooldownS: 300 } } : {}),
+        });
         compute.push(c.id);
         if (!type) assumptions.push(`${r.address}: instance type not resolvable — sized as S`);
+        if (scales) assumptions.push(`${r.address}: autoscaling ${min}–${max} assumed target-tracking at 60% CPU, ${Math.min(900, warmupS)} s warm-up, 300 s scale-in cooldown — check your scaling policy`);
         break;
       }
       case 'aws_ecs_service': {
