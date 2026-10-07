@@ -1,7 +1,7 @@
 /* Failure audit — a risk register, not a dashboard: one ruled list, severity in the margin. */
 
 .audit {
-  position: absolute; top: 16px; right: 16px; bottom: 104px; width: 412px; z-index: 9;
+  position: absolute; top: 16px; right: 16px; bottom: 128px; width: 412px; z-index: 9;
   display: flex; flex-direction: column; padding: 0; overflow: hidden;
   background: var(--panel-solid);
 }
