@@ -7,11 +7,11 @@ base: http://app-lb:9966
 timeout: 5s
 warmupS: 200
 # the JVM compiles hot paths under load: two minutes of light traffic before recording
-warmupLoad: [steps, 2, 10, 2, 25]
+warmupLoad: [steps, 1, 4, 1, 30]
 thin: 10
 mix: mix.json
 edge: app-lb
 slo: { p99Ms: 500, errorRate: 0.01 }
 runs:
   # quick capacity probe (not used for calibration)
-  probe: { shape: [steps, 5, 125, 10, 30] }
+  probe: { shape: [steps, 2, 16, 1, 30] }
