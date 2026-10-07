@@ -288,4 +288,51 @@ const llmFailover: Scenario = {
   },
 };
 
-export const ADVANCED: Scenario[] = [recovery, retryLayers, cells, shed, tail, llmFailover];
+/** Paying for peak all day vs following demand — and the warm-up gap autoscaling leaves open. */
+const elasticity: Scenario = {
+  id: 'fleet-vs-autoscale',
+  title: 'Peak-sized Fleet vs Autoscaling',
+  tagline: 'Ten servers all day, or two that grow when the rush comes?',
+  watch: 'Cost per hour on both sides, and the errors B takes while new instances boot.',
+  readRatio: 0.8,
+  a: {
+    title: 'Sized for peak (10 fixed)',
+    graph: graph(
+      [
+        ['users', 'client', X[0], 200],
+        ['lb', 'lb', X[1], 200],
+        ['api', 'server', X[2], 150, { instances: 10 }],
+        ['db', 'db', X[3], 200, { tier: 'M' }],
+      ],
+      [['users', 'lb'], ['lb', 'api'], ['api', 'db']],
+    ),
+  },
+  b: {
+    title: 'Autoscaling 2–12',
+    graph: graph(
+      [
+        ['users', 'client', X[0], 200],
+        ['lb', 'lb', X[1], 200],
+        ['api', 'server', X[2], 150, { instances: 2, autoscale: { min: 2, max: 12, targetUtil: 0.6, warmupS: 10, cooldownS: 15 } }],
+        ['db', 'db', X[3], 200, { tier: 'M' }],
+      ],
+      [['users', 'lb'], ['lb', 'api'], ['api', 'db']],
+    ),
+  },
+  timeline: [
+    { at: 0, rps: 300, caption: 'A quiet morning: A runs 10 servers at 12% CPU, B runs 2 at 60%.' },
+    { at: 18, rps: 300 },
+    { at: 21, rps: 1400, caption: 'The lunch rush: 4.5× traffic in three seconds.' },
+    { at: 45, rps: 1400 },
+    { at: 48, rps: 300, caption: 'Rush over. B scales back in after its cooldown; A keeps paying for 10.' },
+    { at: 90, rps: 300 },
+  ],
+  events: [],
+  takeaway: {
+    a: 'Never dropped a request — and paid for ten servers through every quiet minute.',
+    b: 'Cheaper by the hour, but ate errors for the ~10 s its new instances took to boot. Longer warm-ups (EC2: minutes) widen that gap.',
+    lesson: 'Autoscaling trades a warm-up window of risk for a lower bill. Keep the minimum high enough — or the warm-up short enough — to absorb the first seconds of a rush.',
+  },
+};
+
+export const ADVANCED: Scenario[] = [recovery, retryLayers, cells, shed, tail, llmFailover, elasticity];
