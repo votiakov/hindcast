@@ -8,7 +8,7 @@
  *
  * Needs Docker and the recording stack (reference/stack). Runs take real time (the shape's length).
  */
-import { execSync, spawnSync } from 'node:child_process';
+import { execSync, spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -75,9 +75,15 @@ async function main() {
   if (r.autoscale) scaling = autoscaleLoop({ prom: PROM, compose: join(sysDir, 'docker-compose.yml'), project: cfg.project, env, ...r.autoscale, log: join(out, 'autoscaler.log') });
   // one load generator at a time: a leftover k6 from an interrupted run would double the load
   execSync('docker rm -f bnref-k6 >/dev/null 2>&1 || true');
-  sh(
-    `docker run --rm --name bnref-k6 --network bnref -v ${join(ROOT, 'load')}:/load:ro -v ${out}:/out -e SHAPE=/out/shape.json -e MIX=/out/mix.json -e BASE=${cfg.base} -e TIMEOUT=${cfg.timeout ?? '5s'} -e THIN=${cfg.thin ?? 20} grafana/k6:latest run --quiet --out csv=/out/raw/k6.csv /load/replay.js`,
-  );
+  // asynchronously, so the autoscaler's timers keep running while k6 does
+  await new Promise<void>((res, rej) => {
+    const p = spawn(
+      'docker',
+      ['run', '--rm', '--name', 'bnref-k6', '--network', 'bnref', '-v', `${join(ROOT, 'load')}:/load:ro`, '-v', `${out}:/out`, '-e', 'SHAPE=/out/shape.json', '-e', 'MIX=/out/mix.json', '-e', `BASE=${cfg.base}`, '-e', `TIMEOUT=${cfg.timeout ?? '5s'}`, '-e', `THIN=${cfg.thin ?? 20}`, 'grafana/k6:latest', 'run', '--quiet', '--out', 'csv=/out/raw/k6.csv', '/load/replay.js'],
+      { stdio: 'inherit' },
+    );
+    p.on('close', (code) => (code === 0 || code === 99 ? res() : rej(new Error(`k6 exited ${code}`))));
+  });
   const end = Math.floor(Date.now() / 1000);
   if (scaling) await scaling.stop();
   console.log('flushing 30 s…');
