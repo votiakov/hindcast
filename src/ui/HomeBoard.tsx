@@ -8,6 +8,7 @@ import { explain, nodeView } from '../canvas/nodeModel';
 import { isSystem } from '../sim/catalog';
 import { optimizeInBrowser } from '../sim/des/browserPool';
 import { HOME_GRAPHS } from './homeGraphs';
+import { runAudit } from './AuditPanel';
 
 /**
  * The home page *is* a board: a live system that is about to fail. Short engineering callouts are
@@ -109,6 +110,11 @@ function Coach() {
     }) && S().setRunning(true);
 
   const toSandbox = () => S().keepBoardAs('sandbox');
+  const auditIt = () => {
+    toSandbox();
+    S().setAuditOpen(true);
+    void runAudit();
+  };
   const lesson = (id: string) => {
     S().setMode('lesson');
     S().pickLesson(id);
@@ -190,6 +196,7 @@ function Coach() {
             },
             { label: 'find the cheapest config for this load', run: cheapest },
             { label: 'what if one instance dies?', run: () => S().killNode('main', 'api-1') },
+            { label: 'audit it: what breaks first, and what it costs', run: auditIt },
             { label: 'take over the board', run: toSandbox },
           ]}
         />
@@ -210,6 +217,7 @@ function Coach() {
               },
             },
             { label: 'compare: cache vs a bigger database', run: () => compare('brute-vs-cache') },
+            { label: 'audit it: what breaks next?', run: auditIt },
             { label: 'take over the board', run: toSandbox },
           ]}
         />
