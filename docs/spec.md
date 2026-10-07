@@ -20,7 +20,7 @@ components:                     # required, ≥ 1
 connections:                    # caller → callee
   - [users, lb]
   - { from: lb, to: api }       # object form also accepted
-  - [api, db]
+  - { from: api, to: db, latencyMs: 70 }   # a link with network round-trip latency (cross-region)
 zones:                          # optional failure domains
   - { id: az-a, label: us-east-1a, members: [api, db] }
 ```
@@ -47,6 +47,8 @@ zones:                          # optional failure domains
 | `fanout` | any caller | scatter-gather: each call goes to N partitions of the callee in parallel and waits for the slowest (also makes the callee's instances reachable) |
 | `stallRate`, `stallMs` | any | rare hiccups: share of requests that stall, and for how long (GC pause, compaction, noisy neighbor) |
 | `queueS` | queued kinds | bounded queue length in seconds of work |
+| `autoscale` | server, worker, llm | `{ min, max, targetUtil?, warmupS?, cooldownS? }` — target-tracking autoscaling; `instances` is the starting size. Defaults: target 0.6, warm-up 30 s, scale-in cooldown 60 s |
+| `warmupS` | cache, cdn | re-warm time constant after a restart or flush (default 20 s) |
 | `capacity` | any | override: req/s per size-S instance |
 | `latencyMs` | any | override: base service time |
 | `costPerHour` | any | override: $/h per size-S instance |
@@ -57,6 +59,8 @@ zones:                          # optional failure domains
 - `db → replica` connections define replicas (reads are shared, failover target).
 - `queue → worker` connections define consumers (pull model).
 - `cache → db` / `cdn → lb` define the origin for misses.
+- `latencyMs` on a connection adds that round trip to every call over the link: same AZ ≈ 0,
+  cross-AZ ≈ 1, nearby region ≈ 15, cross-continent ≈ 70, intercontinental ≈ 150.
 
 ### Lint rules (warnings unless noted)
 
@@ -90,7 +94,10 @@ slo: { maxErrorRate: 0.01, maxP99Ms: 300 }      # defaults
 | `{ type: revive-all }` | heal everything, restore zones, clear degradation |
 | `{ type: fail-zone, id }` / `{ type: restore-zone, id }` | take every member of a zone down / up |
 | `{ type: degrade, id, factor }` | brownout: capacity × factor (0–1) |
-| `{ type: restore, id }` | end the brownout |
+| `{ type: inject-errors, id, rate }` | gray failure: the component fails `rate` (0–1) of its requests |
+| `{ type: inject-latency, id, ms }` | gray failure: every request takes `ms` longer (and each worker is busy longer, so throughput drops too) |
+| `{ type: flush-cache, id }` | a cache/cdn loses every key — hit rate restarts from zero and re-warms over `warmupS` |
+| `{ type: restore, id }` | end a brownout and clear injected faults |
 
 ## Variants (hypotheses)
 
@@ -128,7 +135,7 @@ A variants file is either a list of variants or `{ variants: [...], scenario: {.
 | `aws_cloudfront_distribution` | cdn (origins resolved to ALBs / S3 buckets → storage) |
 | `aws_lb` / `aws_alb` (internet-facing = entry point) | lb |
 | `aws_apigatewayv2_api`, `aws_api_gateway_rest_api` | gateway |
-| `aws_autoscaling_group` (+ launch template/config) | server ×desired_capacity, tier from instance type; GPU types → llm |
+| `aws_autoscaling_group` (+ launch template/config) | server ×desired_capacity, tier from instance type; GPU types → llm; `min_size < max_size` → `autoscale` (warm-up from `default_instance_warmup` / health-check grace) |
 | `aws_ecs_service` | server ×desired_count |
 | `aws_instance` | server (tier from type) or llm for GPU types |
 | `aws_lambda_function` | function (runtime, reserved concurrency) |

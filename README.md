@@ -1,121 +1,119 @@
 # Bottleneck
 
-A system-design simulator: build architectures, push traffic and failures through them, watch
-where they break — in a visual app, from the command line, or from an AI assistant over MCP.
+An architecture simulator that tells you what breaks first, and what it costs.
+
+Draw a system (or import it from Terraform, or paste a YAML spec), push traffic and failures through
+it, and watch where it gives out. Then run the failure audit: every component dying, every dependency
+turning slow, caches restarting cold, zones going dark, a traffic surge. Each incident is graded by what
+users would have seen, and each fix is verified by re-running the same incident and priced in $/month.
+
+It runs in three places over the same engine: a visual app, a CLI, and an MCP server for AI assistants.
 
 ```
 npm install
-npm run dev            # visual app on http://localhost:5173
-npm run sim -- …       # headless engine (CLI)
-npm run mcp            # MCP server (stdio) — Claude Code picks it up from .mcp.json
-npm run build:mcp      # single-file app for the MCP live canvas (show_architecture)
-npm run record -- …    # render a studio episode to MP4 / PNG carousel
+npm run dev            # app on http://localhost:5173
+npm run sim -- …       # CLI (headless engine)
+npm run mcp            # MCP server (stdio); Claude Code picks it up from .mcp.json
+npm test               # engine, spec and audit tests
 ```
 
-Full documentation: [docs/](docs/README.md) — architecture, engines, spec, catalog, analysis,
-tools (CLI/MCP), content authoring.
+Documentation: [docs/](docs/README.md).
 
-## The engine
+## What's in the app
 
-`src/sim/engine.ts` is a fluid, tick-based queueing simulation: request volume flows through the
-graph (forward pass), success and latency fold back from the leaves (backward pass). Per-kind
-behaviour lives in `src/sim/components/`; numbers live in `src/sim/catalog.ts` and can be
-overridden per component. Generic features: routing (split / fanout / failover), retries
-(immediate / backoff / budget), client deadlines, circuit breakers with fallback, bounded queues,
-DB failover to replicas, zones as failure domains, language runtimes, serverless cold starts,
-GPU inference and hosted LLM APIs.
+- **Live** – a running system that fails on arrival, with the next move pinned to the component under stress.
+- **Lessons** – guided steps with objectives: scaling basics, retry storms, elasticity (autoscaling lag,
+  cold-cache stampedes), AI serving, language runtimes.
+- **Sandbox** – build anything. Autoscaling, retries, timeouts, breakers, failover, fan-out, gray
+  failures, cross-region links. Every run is recorded; drag the timeline to rewind the whole board.
+- **Failure audit** – risk register with blast radius, recovery time and $ at risk; replay any incident
+  on the board; apply a verified fix with one click (undoable); copy the report as Markdown.
+- **Architecture as code** – a YAML editor that stays in sync with the board in both directions.
+- **Compare** – two designs, same traffic and failures, side by side, with a takeaway computed by the engine.
+- **Present** – press P: no chrome, large numbers, captions; ←/→ walks through the audit's incidents live.
+- **Studio** – render scripted comparisons to MP4 / carousel for posts (`npm run record`).
 
-A 60 s simulation of a typical architecture runs in ~50 ms in Node. Results are directional —
-good for comparing designs and finding bottlenecks, not a replacement for load tests.
+⌘K opens the command palette. ⌘Z undoes. ⌘S saves the design locally. Drop a spec or a
+`terraform show -json` file on the board to open it.
 
-## Architecture spec (v1)
+## The engines
 
-YAML or JSON. Schema: `src/spec/schema.ts`.
+Two engines take the same inputs:
+
+- **fluid** (`src/sim/engine.ts`) – request volume per 50 ms tick through a queueing model. Fast enough
+  for the live board, breaking-point search, the optimizer and the audit (≈ 1 ms per simulated second).
+- **discrete-event** (`src/sim/des/`) – every request simulated: real p50/p99/p99.9, retry storms,
+  timeouts and breaker oscillation emerge rather than being approximated; seeded and deterministic;
+  Monte Carlo with confidence intervals.
+
+Both model routing (split / fan-out / failover), retries (immediate / backoff / budget), deadlines,
+circuit breakers with fallback, bounded queues, DB failover to replicas, zones, language runtimes,
+serverless cold starts, GPU inference and hosted LLM APIs, target-tracking autoscaling with warm-up,
+cache warmth, injected errors and latency, and network latency per link. The test suite checks that
+the two engines agree where they should.
+
+Results are directional: good for comparing designs, finding bottlenecks and teaching. Calibrate
+`capacity`, `latencyMs` and `costPerHour` per component (or use `pricing: aws-us-east-1`) before making
+claims about a real system.
+
+## Spec
 
 ```yaml
 version: 1
 name: Web shop
+pricing: aws-us-east-1
 components:
   - { id: users, kind: client, retries: 2, retryPolicy: budget, timeoutMs: 1000 }
   - { id: lb, kind: lb }
-  - { id: api, kind: server, instances: 4, runtime: go, breaker: true, fallback: true }
-  - { id: redis, kind: cache, hitRate: 0.85 }
+  - id: api
+    kind: server
+    instances: 4
+    runtime: go
+    autoscale: { min: 4, max: 16, warmupS: 20 }
+  - { id: redis, kind: cache, hitRate: 0.9 }
   - { id: db, kind: db, tier: M }
-  - { id: db-replica, kind: replica }
-connections:            # caller → callee
+  - { id: db-replica, kind: replica, tier: M }
+connections:
   - [users, lb]
   - [lb, api]
   - [api, redis]
-  - [redis, db]
+  - { from: redis, to: db, latencyMs: 1 }
   - [db, db-replica]
-zones:                  # failure domains
+zones:
   - { id: az-a, label: us-east-1a, members: [api, db] }
 ```
 
-Kinds: `client cdn lb gateway server worker function cache db replica storage queue llm llmapi`
-(`npm run sim -- catalog` lists capacities, latency and prices). Calibrate to a real system with
-`capacity` (req/s per instance), `latencyMs` and `costPerHour`.
-
-**Scenario**
-
-```yaml
-name: Black Friday
-duration: 90                     # simulated seconds
-readRatio: 0.85
-traffic: [{ at: 0, rps: 600 }, { at: 30, rps: 2400 }, { at: 90, rps: 2400 }]   # or: rps: 800
-events:
-  - { at: 60, action: { type: kill, kind: server, pick: busiest }, note: "instance dies at peak" }
-  # kill-id · revive-id · kill · revive-all · fail-zone · restore-zone · degrade(factor) · restore
-slo: { maxErrorRate: 0.01, maxP99Ms: 300 }
-```
-
-**Variants** (hypotheses) are full specs or edit lists against a base:
-
-```yaml
-- name: Go + cache
-  changes:
-    - { op: set, id: api, fields: { runtime: go, instances: 6 } }
-    - { op: add, component: { id: redis, kind: cache } }
-    - { op: disconnect, from: api, to: db }
-    - { op: connect, from: api, to: redis }
-    - { op: connect, from: redis, to: db }
-```
+Scenarios add traffic (constant or keyframes), timed events (`kill-id`, `fail-zone`, `degrade`,
+`inject-errors`, `inject-latency`, `flush-cache`, …) and an SLO. Variants are edit lists against a base.
+Full reference: [docs/spec.md](docs/spec.md).
 
 ## CLI
 
 ```
-npm run sim -- validate        examples/shop.yaml
-npm run sim -- simulate        examples/shop.yaml examples/black-friday.yaml
-npm run sim -- compare         examples/shop.yaml examples/shop-variants.yaml examples/black-friday.yaml
-npm run sim -- breaking-point  examples/shop.yaml --p99 300
-npm run sim -- link            examples/shop.yaml examples/shop-hypothesis.yaml   # opens in the app
+npm run sim -- audit            examples/shop.yaml --rps 500 --cost-per-min 1000 --md report.md
+npm run sim -- simulate         examples/shop.yaml examples/black-friday.yaml [--engine des]
+npm run sim -- compare          examples/shop.yaml examples/shop-variants.yaml examples/black-friday.yaml
+npm run sim -- analyze          examples/shop.yaml --rps 800 --runs 24
+npm run sim -- optimize         examples/shop.yaml examples/black-friday.yaml --out optimized.yaml
+npm run sim -- breaking-point   examples/shop.yaml
 npm run sim -- import-terraform examples/terraform/shop.tfstate.json --out shop.yaml
-npm run sim -- catalog
+npm run sim -- link             examples/shop.yaml
 ```
 
-Add `--json` for machine-readable output.
+`audit` exits with code 2 when it finds a critical incident, so it can gate a pull request that
+changes an architecture spec. Every command takes `--json`.
 
 ## MCP server
 
-`.mcp.json` registers it for Claude Code in this folder. Tools:
-
-| tool | what it does |
+| tool | |
 |---|---|
-| `list_components` | catalogue: kinds, capacities, latency, prices, runtimes |
-| `validate_architecture` | schema + architectural lint |
-| `simulate` | one scenario → SLO compliance, errors, p99, cost, ranked bottlenecks with explanations, event log |
-| `compare_architectures` | baseline + variants under one scenario, ranked (SLO first, then cost) |
-| `find_breaking_point` | max sustainable req/s within SLO and the limiting component |
-| `import_terraform` | `terraform show -json` → AWS-priced spec + assumptions to confirm |
-| `analyze` / `optimize_cost` | discrete-event Monte Carlo with CIs / cheapest config meeting the SLO |
-| `show_architecture` | live canvas rendered inline in MCP Apps hosts |
-| `open_in_app` | link that opens the architecture (or a side-by-side comparison with a scenario) in the app |
+| `audit_resilience` | what breaks first, and what it costs: risk register, verified + priced fixes, Markdown report |
+| `simulate` / `analyze` | one run (fluid or DES) / Monte Carlo with confidence intervals |
+| `compare_architectures` | baseline and variants under one scenario, ranked |
+| `find_breaking_point` | max req/s within SLO and the limiting component |
+| `optimize_cost` | cheapest sizing that meets the SLO |
+| `import_terraform` | `terraform show -json` → priced spec + assumptions to confirm |
+| `show_architecture` / `open_in_app` | live canvas in MCP Apps hosts / a link into the app |
+| `list_components` / `validate_architecture` | catalogue / schema + lint |
 
-In the app, the **{ }** button in Sandbox copies the current board as a YAML spec — paste it to
-an assistant or into a file for the CLI.
-
-## App links
-
-- `#spec=<base64url JSON spec>` — open in Sandbox, auto-laid-out
-- `#compare=<base64url { a: {title, spec}, b: {title, spec}, scenario? }>` — open side by side; with a
-  scenario it plays like a built-in comparison, with a takeaway computed by the engine
+Details: [docs/tools.md](docs/tools.md).

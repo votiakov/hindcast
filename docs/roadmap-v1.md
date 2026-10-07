@@ -27,10 +27,10 @@ enough to teach with, present with, and make real platform decisions with.
 - [x] `audit` in CLI and MCP
 
 ## Seeing and showing
-- [ ] Timeline recorder: every run is recorded; scrub back through the whole board; event markers
-- [ ] Cost lens: monthly cost per component, $ per 1M requests, error budget burn
-- [ ] Present mode: chrome-free, large type, event captions, keyboard driven
-- [ ] Spec editor: YAML side panel, two-way sync with the canvas
+- [x] Timeline recorder: every run is recorded; scrub back through the whole board; event markers
+- [x] Cost lens: monthly cost per component, $ per 1M requests, error budget burn
+- [x] Present mode: chrome-free, large type, event captions, keyboard driven
+- [x] Spec editor: YAML side panel, two-way sync with the canvas
 
 ## Docs
-- [ ] README + docs updated for every feature above
+- [x] README + docs updated for every feature above

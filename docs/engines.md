@@ -168,6 +168,24 @@ icon in `canvas/icons.tsx`, colours in `theme/themes.ts`, and (if it has new kno
   | retry budget | 63 % | 68 % | 0 % |
   | immediate + 0.3 s queue | 37 % | 0 % | 0 % |
 
+### Dynamics (both engines)
+
+Shared code keeps the engines consistent (`src/sim/autoscale.ts`, `cacheWarmth` in `catalog.ts`):
+
+- **Autoscaling** — every second the scaler wants `ceil(demand ÷ (per-instance capacity × targetUtil))`
+  instances within `[min, max]`. Launched instances are billed immediately and serve after `warmupS`.
+  Scale-in removes at most half the surplus per step, only after `cooldownS` without scaling activity.
+  Instances killed by chaos are replaced (like an auto-scaling group replacing unhealthy hosts).
+- **Cache warmth** — a cache that dies, restarts or is flushed comes back empty: effective hit rate =
+  `hitRate × (1 − e^(−t / warmupS))`. The origin briefly sees nearly all traffic: the thundering herd.
+  Fluid and DES agree on the resulting error spike within about one percentage point.
+- **Gray failures** — `faultRate`: the component fails that share of the requests it handles (without
+  calling downstream). `faultLatencyMs`: added to every request's service time; in the DES this holds
+  workers longer, so throughput falls with it; the fluid engine applies the same capacity factor
+  `base ÷ (base + fault)`.
+- **Link latency** — a connection's `latencyMs` is added to every call over it (DES: on the request
+  hop; fluid: to the child's latency in the backward pass).
+
 ### Limitations (both engines)
 
 - No network partitions, slow dependencies other than via `degrade`, or memory/GC modelling.

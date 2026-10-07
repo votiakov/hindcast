@@ -30,14 +30,16 @@ Two engines: "fluid" (queueing model, milliseconds, used for quick checks and se
 Describe a system as an architecture spec: components (id, kind, optional knobs) + connections ([caller, callee]) + optional zones (failure domains).
 Kinds: client (traffic source), cdn, lb, gateway, server, worker, function, cache, db, replica, storage, queue, llm (self-hosted GPU), llmapi (hosted model API).
 Rules: instances are only reachable behind lb/gateway/queue; db shares reads with replica children and fails over to them; cache/cdn need an origin behind them.
-Scenarios: duration, constant rps or traffic keyframes, readRatio, timed events (kill-id, kill, fail-zone, degrade, restore…), SLO.
+Dynamics: server/worker/llm can autoscale ({ min, max, targetUtil, warmupS, cooldownS }); caches go cold after a restart or flush-cache and re-warm over warmupS (thundering herd on the origin); a connection can carry network latency ({ from, to, latencyMs }).
+Scenarios: duration, constant rps or traffic keyframes, readRatio, timed events (kill-id, kill, fail-zone, degrade, inject-errors, inject-latency, flush-cache, restore…), SLO.
+For "is this design production-ready / what breaks first / what should we fix", call audit_resilience: it replays every failure mode, grades user impact, and returns verified fixes priced in $/month.
 Calibrate to a real system by overriding capacity (req/s per instance), latencyMs and costPerHour per component.
 Results are directional: good for comparing designs and finding bottlenecks, not a substitute for load tests.`;
 
 const json = (v: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(v, null, 2) }] });
 const fail = (e: unknown) => ({ isError: true, content: [{ type: 'text' as const, text: e instanceof Error ? e.message : String(e) }] });
 
-const server = new McpServer({ name: 'bottleneck', version: '0.1.0' }, { instructions: INSTRUCTIONS });
+const server = new McpServer({ name: 'bottleneck', version: '1.0.0' }, { instructions: INSTRUCTIONS });
 
 server.registerTool(
   'list_components',

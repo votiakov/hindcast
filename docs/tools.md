@@ -9,6 +9,7 @@
 | `analyze <arch> [scenario] [--runs 20] [--seed 1]` | discrete-event Monte Carlo with 95 % CIs, in parallel threads |
 | `compare <arch> <variants> [scenario]` | baseline + variants ranked (SLO first, then cost) with each one's top bottleneck |
 | `breaking-point <arch> [--p99 300] [--errors 0.01]` | max sustainable req/s and the limiting component |
+| `audit <arch> [--rps N] [--cost-per-min $] [--md report.md]` | **failure audit**: what breaks first and what it costs — see below; exit code 2 when anything is critical (use it in CI) |
 | `optimize <arch> [scenario] [--runtimes] [--p99 …] [--out file.yaml]` | cheapest sizing that meets the SLO; writes the optimized spec with `--out` |
 | `import-terraform <terraform-show.json> [--name …] [--out arch.yaml]` | Terraform state/plan JSON → spec (AWS-priced) + assumptions to review |
 | `link <arch> [variants]` | URL that opens the architecture (or a comparison) in the app |
@@ -41,6 +42,7 @@ Registered for Claude Code in `.mcp.json` (restart Claude Code in this folder an
 | `compare_architectures` | `architecture`, `variants[]`, `scenario?` | ranked variants + per-variant summaries |
 | `find_breaking_point` | `architecture`, `readRatio?`, `slo?` | max req/s within SLO, limiting component |
 | `optimize_cost` | `architecture`, `scenario?`, `allow_runtimes?`, `slo?` | before/after cost, savings, changes as a ready variant, log, verification |
+| `audit_resilience` | `architecture`, `rps?`, `read_ratio?`, `slo?`, `incident_cost_per_minute?` | resilience score, headroom, ranked risk register with blast radius and recovery, verified + priced fixes, Markdown report |
 | `import_terraform` | `terraform_json`, `name?` | spec, assumptions, skipped resources, lint |
 | `show_architecture` | `architecture`, `compare_with?`, `scenario?` | **live canvas**: renders the simulation inline in MCP Apps hosts (Claude, ChatGPT…); text + link elsewhere |
 | `open_in_app` | `architecture`, `compare_with?` (variant), `scenario?` | URL for the app (sandbox, or side-by-side comparison playing the scenario) |
@@ -64,6 +66,49 @@ Hosts without UI support (e.g. the Claude Code terminal) get a text summary and 
 Inside the canvas the Analysis panel's web workers are not available (they are separate files);
 use the `analyze` / `optimize_cost` tools instead.
 
+## Failure audit
+
+`audit` replays one minute at the expected load once per thing that goes wrong in production, and
+grades what users would have seen:
+
+| incident | for |
+|---|---|
+| one instance dies / the component goes down | every component (fleets lose one instance; singletons die) |
+| zone goes dark | every zone |
+| turns slow (+250 ms) | every component except lb/queue |
+| fails 20 % of requests | every component except lb/queue/cdn |
+| restarts cold | every cache / CDN |
+| traffic surges 3× for 20 s | once |
+| load ramps past the breaking point | headroom = breaking point ÷ expected load |
+
+Timeline per incident: warm-up 0–10 s, fault at 10 s, cleared at 40 s, observed to 60 s.
+Severity: **critical** (≥ 25 % of requests failing, or never recovering after the fault clears — a
+metastable failure), **major** (out of SLO for more than 3 s), **minor** (a blip, or healed by itself
+within 8 s with < 5 % errors — failover, autoscaling), **ok**. The resilience score is the share of
+incidents survived, weighted by severity.
+
+For every major/critical incident, candidate fixes are generated (N+1 instances, a load balancer in
+front, a read replica, a standby, a cache bypass, timeouts + breakers with fallback, retry budgets,
+capacity, autoscaling, a bigger origin for cold caches), **each verified by re-running the same incident
+on the changed design**, and priced in $/month against the current design. Fixes that do not help are
+dropped. In the app: shield button in Sandbox → risk register, risk marks on the board, *Replay on the
+board* plays an incident live, *Apply* applies a fix (undoable), *Copy report* gives Markdown.
+
+## App
+
+| feature | how |
+|---|---|
+| Command palette | ⌘K — every command, component, design, template, lesson, chaos action; type a number to set traffic |
+| Undo / redo | ⌘Z / ⇧⌘Z (board edits, applied fixes, YAML edits) |
+| Designs | the design name in the top bar: save (⌘S), save a copy, open file, download YAML, share link, saved designs, templates. The sandbox autosaves locally |
+| Open files | drop a spec (.yaml/.json) or `terraform show -json` output anywhere on the board |
+| Architecture as code | `</>` button: YAML editor two-way synced with the board, inline errors and lint |
+| Flight recorder | every Sandbox run is recorded; drag the track above the controls to rewind the whole board; ←/→ step, Esc back to live |
+| Cost & error budget | click the metrics: $/month per component, $ per million requests, burn rate against a 30-day SLO |
+| Present mode | P — chrome-free board, large numbers, event captions; with an audit, ←/→ replays each incident live; F fullscreen |
+| Faults | select a component → *fault…*: 10/50 % errors, +100/500/2000 ms, 50 % capacity, flush cache, restore |
+| Links | select a connection → network latency preset |
+
 ## App links
 
 | hash | opens |
@@ -71,7 +116,7 @@ use the `analyze` / `optimize_cost` tools instead.
 | `#spec=<base64url(JSON spec)>` | Sandbox with the spec auto-laid-out |
 | `#compare=<base64url({ a: {title, spec}, b: {title, spec}, scenario? })>` | Compare mode; with a scenario it plays like a built-in comparison and ends with a takeaway computed by the engine |
 
-The **{ }** button in Sandbox copies the current board as a YAML spec (`graphToSpec`).
+The design menu's *Copy spec* / *Copy share link* export the current board (`graphToSpec`).
 
 ## Analysis panel (app)
 
