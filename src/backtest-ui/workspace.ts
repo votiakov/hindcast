@@ -6,6 +6,7 @@ import { holdoutAccuracy } from '../backtest/accuracy';
 import type { Dataset } from '../backtest/dataset';
 import { reviveModel, type Model } from '../backtest/model';
 import { useSim } from '../sim/store';
+import { outageById, outageScenario } from '../backtest/outages';
 
 /** Reference systems recorded under real load (see reference/README.md), served from /reference/. */
 export const REFERENCES = [
@@ -102,4 +103,28 @@ export async function openWorkspaceFiles(files: File[]) {
   } finally {
     st.setLoading(null);
   }
+}
+
+/** replay a public outage against the open workspace's model (and its strategies) */
+export function openOutage(id: string) {
+  const st = useBacktest.getState();
+  const base = st.workspace?.outage?.parent ?? st.workspace;
+  const o = outageById(id);
+  if (!base || !o) return;
+  const r = outageScenario(base.model, o);
+  st.setWorkspace({
+    id: `${base.id}:outage:${id}`,
+    name: base.name,
+    source: o.title,
+    dataset: r.dataset,
+    model: base.model,
+    strategies: base.strategies.map((x) => ({ ...x })),
+    outage: { outage: o, faults: r.faults, roles: r.roles, warnings: r.warnings, baseRps: r.baseRps, parent: base },
+  });
+}
+
+export function closeOutage() {
+  const st = useBacktest.getState();
+  const parent = st.workspace?.outage?.parent;
+  if (parent) st.setWorkspace(parent);
 }

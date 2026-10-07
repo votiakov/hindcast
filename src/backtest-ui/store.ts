@@ -5,6 +5,8 @@ import type { Model } from '../backtest/model';
 import { backtest, type BacktestResult } from '../backtest/backtest';
 import { StrategySpec } from '../backtest/strategy';
 import type { ArchitectureSpec } from '../spec/schema';
+import type { Fault } from '../backtest/engine';
+import type { Outage } from '../backtest/outages';
 
 /**
  * Backtest screen state: the workspace (dataset + calibrated model + strategy files), what is
@@ -27,6 +29,8 @@ export interface Workspace {
   dataset: Dataset;
   model: Model;
   strategies: StrategyFile[];
+  /** a public-outage replay against this workspace's model */
+  outage?: { outage: Outage; faults: Fault[]; roles: Record<string, string[]>; warnings: string[]; baseRps: number; parent: Workspace };
 }
 
 export type Tab = 'overview' | 'incidents' | 'endpoints' | 'changes' | 'model';
@@ -132,14 +136,14 @@ export const useBacktest = create<State>((set, get) => ({
       });
       let result: BacktestResult | null = null;
       try {
-        result = backtest(w.model, w.dataset, ok, { draws: get().draws });
+        result = backtest(w.model, w.dataset, ok, { draws: get().draws, ...(w.outage ? { faults: w.outage.faults, observed: false } : {}) });
       } catch (e) {
         // a strategy that names an unknown service: report on that strategy, keep the rest
         const msg = e instanceof Error ? e.message : String(e);
         const bad = strategies.findIndex((s) => msg.includes(`"${strategyName(s.yaml)}"`));
         if (bad >= 0) strategies[bad] = { ...strategies[bad], error: msg };
         const good = strategies.filter((s) => !s.error).map((s) => parseYaml(s.yaml));
-        result = backtest(w.model, w.dataset, good, { draws: get().draws });
+        result = backtest(w.model, w.dataset, good, { draws: get().draws, ...(w.outage ? { faults: w.outage.faults, observed: false } : {}) });
       }
       set({ result, computing: false, workspace: { ...get().workspace!, strategies } });
     }, 16);

@@ -136,3 +136,15 @@
 .bt-return b { color: #f2a93b; font-weight: 500; }
 .bt-return button { border: 1px solid #22303c; background: none; color: #e6edf3; padding: 3px 9px; font: inherit; cursor: pointer; }
 .bt-return button:first-of-type { border-color: #f2a93b; color: #f2a93b; }
+
+/* public-outage replay */
+.bt-outage { border-bottom: 1px solid var(--bt-line); padding: 8px 12px; display: grid; gap: 4px; background: #131b22; }
+.bt-outage-head { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.bt-outage-head b { color: var(--bt-amber); font-weight: 600; font-size: 14.5px; }
+.bt-outage-head span { font: 12.5px var(--bt-mono); }
+.bt-outage-what { color: var(--bt-hi); max-width: 120ch; }
+.bt-outage-tl { display: flex; gap: 6px 18px; flex-wrap: wrap; font: 12px var(--bt-mono); color: var(--bt-dim); }
+.bt-outage-tl b { color: var(--bt-text); font-weight: 500; }
+.bt-outage a { color: var(--bt-amber); }
+.bt-marker line { stroke: var(--bt-amber); stroke-dasharray: 2 4; opacity: .7; }
+.bt-marker text { fill: var(--bt-amber); font: 10.5px var(--bt-mono); }

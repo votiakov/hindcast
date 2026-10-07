@@ -29,7 +29,7 @@ services:
       CHECKOUT_SERVICE_ADDR: checkoutservice:5050
       AD_SERVICE_ADDR: adservice:9555
       SHOPPING_ASSISTANT_SERVICE_ADDR: shoppingassistantservice:80
-    cpus: 0.5
+    cpus: ${FRONTEND_CPUS:-0.5}
     mem_limit: 256m
     deploy: { replicas: "${FRONTEND_REPLICAS:-1}" }
     networks: [ref]

@@ -3,7 +3,8 @@ import { useBacktest, strategyName, type Tab } from './store';
 import { AXIS_W, Pane, TimeAxis, bandPath, candles, makeScale, path, useWidth, yScale } from './chart';
 import { headline } from '../backtest/report';
 import type { StrategyResult } from '../backtest/backtest';
-import { loadReference, REFERENCES, openWorkspaceFiles } from './workspace';
+import { closeOutage, loadReference, openOutage, REFERENCES, openWorkspaceFiles } from './workspace';
+import { OUTAGES } from '../backtest/outages';
 import { openMomentOnBoard } from './bridge';
 import { cardData } from '../backtest/card';
 import { useSim, type Mode } from '../sim/store';
@@ -77,17 +78,68 @@ function Bar() {
           Card ↗
         </button>
       )}
+      <select className="bt-select" aria-label="Replay a public outage" value={w?.outage?.outage.id ?? ''} onChange={(e) => (e.target.value ? openOutage(e.target.value) : closeOutage())}>
+        <option value="">{w?.outage ? '← back to the history' : 'Replay an outage…'}</option>
+        {OUTAGES.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.title.split(' — ')[0]}
+          </option>
+        ))}
+      </select>
       <label className="bt-chip">
         Open files…
         <input type="file" multiple hidden onChange={(e) => e.target.files && openWorkspaceFiles([...e.target.files])} />
       </label>
-      <span className="bt-modes">
-        {(['sandbox', 'compare', 'lesson', 'studio'] as Mode[]).map((m) => (
-          <button key={m} className="bt-chip dim" onClick={() => setMode(m)}>
-            {m[0].toUpperCase() + m.slice(1)}
-          </button>
+      <select className="bt-select" aria-label="Other views" value="" onChange={(e) => e.target.value && setMode(e.target.value as Mode)}>
+        <option value="">Board ▾</option>
+        <option value="sandbox">Sandbox</option>
+        <option value="compare">Compare</option>
+        <option value="lesson">Lessons</option>
+        <option value="home">Live</option>
+        <option value="studio">Studio</option>
+      </select>
+    </div>
+  );
+}
+
+function OutageBanner() {
+  const w = useBacktest((s) => s.workspace);
+  const r = useBacktest((s) => s.result);
+  const o = w?.outage;
+  if (!o || !r) return null;
+  const b = r.baseline.summary;
+  return (
+    <div className="bt-outage">
+      <div className="bt-outage-head">
+        <b>{o.outage.title}</b>
+        <span className={b.minutesOutOfSlo.p50 < 1 ? 'pos' : 'neg'}>
+          {w!.name} as built: {b.minutesOutOfSlo.p50 < 1 ? 'survives' : `${Math.round(b.minutesOutOfSlo.p50)} min out of SLO, ${Math.round(b.failedRequests.p50).toLocaleString('en-US')} failed requests`}
+        </span>
+        <button className="bt-chip" onClick={closeOutage}>
+          ← back to the history
+        </button>
+      </div>
+      <div className="bt-outage-what">{o.outage.what}</div>
+      <div className="bt-outage-tl">
+        {o.outage.timeline.map((t, i) => (
+          <span key={i}>
+            <b>{t.at}</b> {t.text}
+          </span>
         ))}
-      </span>
+      </div>
+      <div className="bt-dim small">
+        Replayed at {o.baseRps.toFixed(1)} req/s normal load · roles: {Object.entries(o.roles).map(([role, ids]) => `${role} → ${ids.join(', ') || 'nothing'}`).join(' · ')} · assumptions: {o.outage.assumptions.join(' ')} · source:{' '}
+        {o.outage.sources.map((x) => (
+          <a key={x.url} href={x.url} target="_blank" rel="noreferrer">
+            {x.label}
+          </a>
+        ))}
+        {o.warnings.map((x) => (
+          <div key={x} className="neg">
+            {x}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -180,6 +232,19 @@ function Panes() {
           return <rect key={b.start} x={s.x(a) - 1} y={0} width={Math.max(2, s.x(z) - s.x(a) + 2)} height={300} className="bt-breach" />;
         })}
         <line x1={0} x2={s.plotW} y1={yp.y(r.slo.p99Ms)} y2={yp.y(r.slo.p99Ms)} className="bt-slo" />
+        {w.outage &&
+          [...new Map(w.outage.faults.map((f) => [f.at, f])).values()].map((f, k) => {
+            const i = Math.round(f.at / r.window.stepS);
+            if (i < i0 || i >= i1) return null;
+            return (
+              <g key={k} className="bt-marker">
+                <line x1={s.x(i)} x2={s.x(i)} y1={20} y2={300} />
+                <text x={s.x(i) + 4} y={58 + (k % 4) * 13}>
+                  {(f.note ?? '').replace(/ \([^)]*\)$/, '').slice(0, 48)}
+                </text>
+              </g>
+            );
+          })}
         <path d={bandPath(s, yp.y, r.baseline.series.p99Ms)} fill={ASBUILT} opacity={0.1} />
         <path d={path(s, yp.y, r.baseline.series.p99Ms.p50)} fill="none" stroke={ASBUILT} strokeDasharray="3 3" strokeWidth={1} />
         {cs.list.map((c) => {
@@ -580,7 +645,10 @@ export function BacktestView() {
         if (e.dataTransfer.files.length) openWorkspaceFiles([...e.dataTransfer.files]);
       }}
     >
-      <Bar />
+      <header>
+        <Bar />
+        <OutageBanner />
+      </header>
       {body === 'ready' ? (
         <>
           <div className="bt-main">
