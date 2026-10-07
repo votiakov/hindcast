@@ -90,7 +90,7 @@
     "cpuR2": 0.9602205791452718,
     "samples": 80,
     "notes": [
-     "CPU reached 102% of its limit in the history; 277.8 req/s per replica finished while it was pinned",
+     "CPU reached 102% of its limit in the history; capacity 277.8 req/s per replica (277.8 finished while pinned, 231.3 from CPU efficiency in the busiest buckets)",
      "replaying the history reproduces its self time within 362% (mean abs. error)"
     ]
    }
@@ -1480,6 +1480,22 @@
  "unattributedPerHour": 0,
  "accuracy": [
   {
+   "method": "reference",
+   "label": "recorded runs the model never saw: stress",
+   "checks": [
+    {
+     "metric": "breaking-point",
+     "predicted": 250.70842989066608,
+     "measured": 285.96440579139227,
+     "error": 0.12328798684982148,
+     "tolerance": 0.15,
+     "pass": true,
+     "note": "stress: step load test, p99 and errors over every request of each plateau (SLO p99 ≤ 800 ms, errors ≤ 1%)"
+    }
+   ],
+   "measuredAt": "2026-10-07T19:42:30.072Z"
+  },
+  {
    "method": "holdout",
    "label": "last 30% of the history",
    "checks": [
@@ -1502,7 +1518,7 @@
      "note": "model cost vs the bill over the held-out window"
     }
    ],
-   "measuredAt": "2026-10-07T19:32:11.855Z"
+   "measuredAt": "2026-10-07T19:42:37.545Z"
   }
  ],
  "fittedOn": {

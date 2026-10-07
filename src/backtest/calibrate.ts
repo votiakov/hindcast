@@ -357,12 +357,22 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
         // what finished per second while CPU was pinned is the capacity; CPU per request measured at
         // low load can drift (runtimes get more efficient when busy). Taken when the latency fit claims
         // more than that — the queue then sits where spans can't see it (an event loop too busy to accept)
+        // completions while pinned are a lower bound (demand may have been just below capacity); CPU
+        // efficiency in the busiest buckets — requests per CPU-second, at the limit — is the other read
         const seen = seenAtSaturation();
-        const K = seen > 0 ? seen : cpuK;
+        const eff: number[] = [];
+        const busy = withData.map((x) => x.i).sort((a, b) => perRep[b] - perRep[a]).slice(0, Math.max(3, Math.floor(withData.length * 0.15)));
+        for (const i of busy) {
+          const c = vals(s.cpuCores, i);
+          const r = vals(reps, i) ?? replicas;
+          if (c !== null && c > 0 && r > 0 && cpuLimit) eff.push((perRep[i] * cpuLimit) / (c / r));
+        }
+        const atLimit = eff.length ? median(eff) : 0;
+        const K = Math.max(seen, atLimit) || cpuK;
         capacity = { limit: 'cpu', servers: cpuC, perReplicaRps: K };
         chosen = { ...cpuFit, K, v: Math.max(1, cpuFit.v) };
         cpuSaturated = true;
-        notes.push(`CPU reached ${Math.round(cpuPeak * 100)}% of its limit in the history; ${seen > 0 ? `${seen.toFixed(1)} req/s per replica finished while it was pinned` : `capacity ${cpuK.toFixed(1)} req/s per replica from CPU per request`}`);
+        notes.push(`CPU reached ${Math.round(cpuPeak * 100)}% of its limit in the history; capacity ${K.toFixed(1)} req/s per replica (${seen > 0 ? `${seen.toFixed(1)} finished while pinned, ` : ''}${atLimit.toFixed(1)} from CPU efficiency in the busiest buckets)`);
       } else if (queue.err < simple * 0.85 && isFinite(queue.K) && queue.K < maxLam * 40) {
         const limitedByCpu = isFinite(cpuK) && Math.abs(queue.K - cpuK) / cpuK < 0.25;
         capacity = { limit: limitedByCpu ? 'cpu' : 'concurrency', servers: queue.c, perReplicaRps: queue.K };

@@ -1,0 +1,17 @@
+{
+  "system": "shop",
+  "run": "stress",
+  "start": 1791401260,
+  "end": 1791402045,
+  "env": {},
+  "shape": [
+    "steps",
+    150,
+    330,
+    15,
+    60
+  ],
+  "autoscale": null,
+  "sampling": 0.2,
+  "recordedAt": "2026-10-07T19:41:16.124Z"
+}
