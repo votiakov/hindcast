@@ -2,7 +2,7 @@
  * Bottleneck CLI — the simulation engine without the UI.
  *
  *   npm run sim -- validate        <arch.yaml>
- *   npm run sim -- simulate        <arch.yaml> [scenario.yaml] [--rps 800] [--duration 60] [--engine fluid|des] [--seed 1] [--json]
+ *   npm run sim -- simulate        <arch.yaml> [scenario.yaml] [--rps 800 | --traffic metrics.csv] [--duration 60] [--engine fluid|des] [--seed 1] [--json]
  *   npm run sim -- analyze         <arch.yaml> [scenario.yaml] [--runs 20]       (discrete-event Monte Carlo, 95% CIs)
  *   npm run sim -- optimize        <arch.yaml> [scenario.yaml] [--runtimes] [--out optimized.yaml]
  *   npm run sim -- compare         <arch.yaml> <variants.yaml> [scenario.yaml] [--json]
@@ -18,6 +18,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parse as parseYaml } from 'yaml';
 import { specToYaml } from '../src/spec/yaml';
+import { parseTrafficCsv } from '../src/spec/trafficCsv';
 import { simulateDes, type DesResult } from '../src/sim/des/des';
 import { analyzeParallel } from '../src/sim/des/nodePool';
 import type { Analysis } from '../src/sim/des/analyze';
@@ -127,6 +128,13 @@ function main() {
     const base = (path ? load(path) : {}) as Record<string, unknown>;
     if (opt.rps) base.rps = Number(opt.rps);
     if (opt.duration) base.duration = Number(opt.duration);
+    if (opt.traffic) {
+      // replay a metrics export (time, req/s) in real time
+      const t = parseTrafficCsv(readFileSync(String(opt.traffic), 'utf8'), { maxDurationS: opt.duration ? Number(opt.duration) : 3600 });
+      base.traffic = t.traffic;
+      base.duration = t.traffic[t.traffic.length - 1].at;
+      if (t.compression > 1.01) console.error(`traffic compressed ${t.compression.toFixed(1)}× to fit ${base.duration}s`);
+    }
     return base;
   };
 

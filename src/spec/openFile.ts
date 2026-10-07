@@ -4,6 +4,7 @@ import { useSim } from '../sim/store';
 import { importTerraform } from './terraform';
 import { ArchitectureSpec } from './schema';
 import { specToGraph } from './convert';
+import { parseTrafficCsv } from './trafficCsv';
 
 /**
  * Open a file the user picked or dropped: an architecture spec (YAML / JSON) or
@@ -13,6 +14,15 @@ export async function openFile(file: File): Promise<void> {
   const s = useSim.getState();
   try {
     const text = await file.text();
+    if (/\.(csv|tsv|txt)$/i.test(file.name)) {
+      // a traffic recording: replay it against whatever is on the board
+      const t = parseTrafficCsv(text);
+      if (s.mode !== 'sandbox') s.setMode('sandbox');
+      const dur = t.traffic[t.traffic.length - 1].at;
+      useSim.getState().play({ title: `${file.name}${t.compression > 1.01 ? ` (${Math.round(t.spanS / 60)} min compressed ${t.compression.toFixed(0)}×)` : ''}`, duration: dur, rps: 0, traffic: t.traffic, events: [] });
+      useSim.getState().toast('good', `Replaying ${file.name}: peak ${Math.round(t.peak)} req/s${t.compression > 1.01 ? ` — time compressed ${t.compression.toFixed(0)}×, so warm-ups and cooldowns look ${t.compression.toFixed(0)}× slower than they are` : ''}`);
+      return;
+    }
     const yaml = /\.ya?ml$/i.test(file.name);
     const all = yaml ? parseAllDocuments(text).map((d) => d.toJS()).filter(Boolean) : [JSON.parse(text)];
     const doc = all.length === 1 ? all[0] : yaml ? parseYaml(text.split(/^---$/m)[0]) : all[0];

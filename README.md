@@ -92,6 +92,7 @@ Full reference: [docs/spec.md](docs/spec.md).
 ```
 npm run sim -- audit            examples/shop.yaml --rps 500 --cost-per-min 1000 --md report.md
 npm run sim -- simulate         examples/shop.yaml examples/black-friday.yaml [--engine des]
+npm run sim -- simulate         examples/shop.yaml --traffic examples/traffic-day.csv --duration 240
 npm run sim -- compare          examples/shop.yaml examples/shop-variants.yaml examples/black-friday.yaml
 npm run sim -- analyze          examples/shop.yaml --rps 800 --runs 24
 npm run sim -- optimize         examples/shop.yaml examples/black-friday.yaml --out optimized.yaml

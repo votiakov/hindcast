@@ -73,7 +73,7 @@ export function DesignMenu() {
       <input
         ref={fileRef}
         type="file"
-        accept=".yaml,.yml,.json,.tfstate"
+        accept=".yaml,.yml,.json,.tfstate,.csv,.tsv"
         hidden
         onChange={(e) => {
           const f = e.target.files?.[0];
@@ -101,7 +101,7 @@ export function DesignMenu() {
               New blank
             </button>
             <button onClick={() => fileRef.current?.click()}>
-              Open file… <span>spec or terraform json</span>
+              Open file… <span>spec, k8s, terraform, traffic csv</span>
             </button>
             <button onClick={act(() => download(`${slug(title)}.yaml`, currentSpecYaml(), 'text/yaml'))}>Download .yaml</button>
             <button

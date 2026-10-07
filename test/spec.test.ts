@@ -67,3 +67,21 @@ describe('kubernetes import', () => {
     expect(validateSpec(r.spec).ok).toBe(true);
   });
 });
+
+import { parseTrafficCsv } from '../src/spec/trafficCsv';
+
+describe('traffic csv', () => {
+  it('reads a day of metrics with ISO timestamps and compresses it', () => {
+    const t = parseTrafficCsv(readFileSync('examples/traffic-day.csv', 'utf8'), { maxDurationS: 300 });
+    expect(t.spanS).toBeGreaterThan(23 * 3600);
+    expect(t.compression).toBeGreaterThan(250);
+    expect(t.traffic.at(-1)!.at).toBeCloseTo(300, 0);
+    expect(t.peak).toBeGreaterThan(1000);
+  });
+  it('accepts epoch-ms and per-second rows, skipping headers', () => {
+    const t = parseTrafficCsv('time,rps\n1700000000000,100\n1700000010000,250\n1700000020000,90\n');
+    expect(t.compression).toBe(1);
+    expect(t.traffic.map((x) => x.at)).toEqual([0, 10, 20]);
+    expect(t.peak).toBe(250);
+  });
+});

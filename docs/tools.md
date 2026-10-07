@@ -120,6 +120,7 @@ on critical findings.
 | Calibrate | select a component → *calibrate*: one instance served R req/s at C % CPU with p50 L ms and costs $/h → capacity, latency and price overrides that reproduce it at the current size and runtime |
 | Audit in Compare | *audit* on each side's header: score, incidents survived, headroom, cost and the top risks with their fixes, at the scenario's peak load |
 | Studio clip | in the audit, *Studio clip* turns an incident into an episode (as built vs fixed, same incident); render it with `npm run record -- --ep-file <file>.json` |
+| Replay real traffic | drop a CSV (time, req/s — Prometheus / CloudWatch / Datadog exports) on the board; long series are time-compressed to ~5 min (the factor is shown). CLI: `simulate <arch> --traffic metrics.csv` (real time up to an hour) |
 | Timeline export | *copy timeline* on the recorder: the run as a postmortem-style Markdown timeline |
 
 ## App links
