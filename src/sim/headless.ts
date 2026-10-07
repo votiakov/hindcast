@@ -291,3 +291,31 @@ export function catalog() {
     ],
   };
 }
+
+export interface CurvePoint {
+  rps: number;
+  errorRate: number;
+  p99Ms: number;
+  costPerHour: number;
+  /** $ per million successful requests */
+  perMillion: number;
+  bottleneck: string | null;
+}
+
+/** Steady-state behaviour across a range of loads: where latency bends, where errors start, what each request costs. */
+export function loadCurve(specInput: unknown, opts: { maxRps: number; points?: number; readRatio?: number; holdS?: number; cfg?: Partial<EngineConfig> }): CurvePoint[] {
+  const spec = ArchitectureSpec.parse(specInput);
+  const n = opts.points ?? 16;
+  const out: CurvePoint[] = [];
+  for (let i = 1; i <= n; i++) {
+    const rps = Math.round((opts.maxRps * i) / n);
+    const r = simulate(spec, { duration: opts.holdS ?? 20, rps, readRatio: opts.readRatio ?? 0.8 }, { cfg: opts.cfg });
+    const tail = r.timeline.slice(-5);
+    const err = tail.reduce((s, x) => s + x.errorRate, 0) / tail.length;
+    const p99 = tail.reduce((s, x) => s + x.p99Ms, 0) / tail.length;
+    const cost = tail.reduce((s, x) => s + x.costPerHour, 0) / tail.length;
+    const ok = rps * (1 - err);
+    out.push({ rps, errorRate: round(err, 4), p99Ms: Math.round(p99), costPerHour: round(cost), perMillion: ok > 0 ? round((cost / (ok * 3600)) * 1e6, 4) : 0, bottleneck: r.bottlenecks[0]?.id ?? null });
+  }
+  return out;
+}

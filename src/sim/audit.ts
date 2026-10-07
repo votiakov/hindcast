@@ -1,5 +1,5 @@
 import { KINDS, type Kind, type Tier } from './catalog';
-import { breakingPoint, simulate, type SimResult } from './headless';
+import { breakingPoint, loadCurve, simulate, type CurvePoint, type SimResult } from './headless';
 import { withPricing } from './pricing';
 import { applyVariant, pairs } from '../spec/convert';
 import { ArchitectureSpec, type ActionSpec, type ChangeSpec, type ComponentSpec } from '../spec/schema';
@@ -87,6 +87,8 @@ export interface AuditResult {
   survived: number;
   total: number;
   findings: Finding[];
+  /** steady-state latency, errors and unit cost from light load to 2× the breaking point */
+  curve: CurvePoint[];
   wallMs: number;
 }
 
@@ -279,6 +281,7 @@ function auditParsed(spec: ArchitectureSpec, opts: AuditOptions): AuditResult {
   progress('breaking point');
 
   findings.sort((a, b) => SEV_RANK[b.severity] - SEV_RANK[a.severity] || b.impact.failedRequests - a.impact.failedRequests);
+  const curve = loadCurve(spec, { maxRps: Math.max(rps * 1.5, bp.maxRps * 2), points: 20, readRatio });
   const graded = findings.filter((f) => f.kind !== 'headroom');
   const survived = graded.filter((f) => f.severity === 'ok' || f.severity === 'minor').length;
   return {
@@ -291,6 +294,7 @@ function auditParsed(spec: ArchitectureSpec, opts: AuditOptions): AuditResult {
     survived,
     total: graded.length,
     findings,
+    curve,
     wallMs: Date.now() - t0,
   };
 }

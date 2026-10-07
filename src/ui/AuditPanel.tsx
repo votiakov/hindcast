@@ -8,6 +8,7 @@ import type { Finding, Severity } from '../sim/audit';
 import type { SimAction } from '../sim/actions';
 import { isSystem } from '../sim/catalog';
 import './audit.css';
+import { LoadCurve } from './LoadCurve';
 
 const pct = (n: number) => `${(n * 100).toFixed(n > 0 && n < 0.01 ? 2 : n < 0.1 ? 1 : 0)}%`;
 const ms = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}s` : `${Math.round(n)}ms`);
@@ -209,6 +210,7 @@ export function AuditPanel() {
               </div>
             </div>
           </div>
+          {r.curve?.length > 1 && <LoadCurve curve={r.curve} now={r.load.rps} limit={r.headroom.maxRps} sloP99={r.slo.maxP99Ms} />}
           <div className="au-list">
             {r.findings.map((f) => (
               <FindingRow key={f.id} f={f} open={audit.selected === f.id} names={names} />

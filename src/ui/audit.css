@@ -97,3 +97,18 @@
 [data-theme='reference'] .risk-ring { border-radius: 6px; }
 [data-theme='reference'] .risk-ring.target { box-shadow: 0 0 0 2px var(--r-bad); }
 [data-theme='reference'] .risk-mark { border-radius: 3px 3px 0 0; }
+
+/* load curve */
+.lc { padding: 8px 14px 10px; border-bottom: 1px solid var(--border); }
+.lc svg { width: 100%; height: auto; display: block; cursor: crosshair; }
+.lc-lat { fill: none; stroke: var(--amber); stroke-width: 1.6; }
+.lc-err { fill: rgba(244, 63, 94, 0.22); stroke: var(--red); stroke-width: 1; }
+.lc-slo { stroke: var(--amber); stroke-dasharray: 3 3; opacity: 0.5; }
+.lc-now { stroke: var(--text); stroke-width: 1; opacity: 0.7; }
+.lc-limit { stroke: var(--red); stroke-dasharray: 2 2; }
+.lc-hover { stroke: var(--cyan); opacity: 0.6; }
+.lc-tag { font-family: var(--mono); font-size: 9px; fill: var(--muted); }
+.lc-tag.bad { fill: var(--red); }
+.lc-read { font-family: var(--mono); font-size: 10.5px; color: var(--muted); min-height: 28px; line-height: 1.4; margin-top: 3px; }
+.lc-read b { color: var(--text); }
+[data-theme='reference'] .lc-err { fill: var(--r-bad-tint); }

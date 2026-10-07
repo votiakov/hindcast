@@ -63,3 +63,16 @@ describe('retry amplification', () => {
     expect(retryAmp(0.9, 3, 'budget')).toBeCloseTo(1.1);
   });
 });
+
+import { loadCurve } from '../src/sim/headless';
+
+describe('load curve', () => {
+  it('latency rises with load and errors start past capacity', () => {
+    const c = loadCurve(shop, { maxRps: 2000, points: 8 });
+    expect(c[0].p99Ms).toBeLessThan(c[5].p99Ms);
+    expect(c[0].errorRate).toBe(0);
+    expect(c[7].errorRate).toBeGreaterThan(0.3);
+    // fixed costs amortise: a request is cheaper at higher (healthy) load
+    expect(c[3].perMillion).toBeLessThan(c[0].perMillion);
+  });
+});
