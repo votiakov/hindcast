@@ -6,7 +6,7 @@ import { accuracyLines } from './accuracy';
 
 const money = (x: number) => `${x < 0 ? '−' : ''}$${Math.abs(x) >= 100 ? Math.round(Math.abs(x)).toLocaleString('en-US') : Math.abs(x).toFixed(2)}`;
 const signed = (x: number) => `${x > 0 ? '+' : x < 0 ? '−' : '±'}$${Math.abs(x) >= 100 ? Math.round(Math.abs(x)).toLocaleString('en-US') : Math.abs(x).toFixed(2)}`;
-const range = (r: Ranged, f: (x: number) => string) => (Math.abs(r.hi - r.lo) < 1e-9 ? f(r.p50) : `${f(r.p50)} (${f(r.lo)} … ${f(r.hi)})`);
+const range = (r: Ranged, f: (x: number) => string) => (f(r.lo) === f(r.hi) ? f(r.p50) : `${f(r.p50)} (${f(r.lo)} … ${f(r.hi)})`);
 const mins = (x: number) => `${Math.round(x)} min`;
 const when = (t: number) => {
   const d = new Date(t * 1000);
