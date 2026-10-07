@@ -1,0 +1,5 @@
+name: App on 4 vCPU
+description: Double the app's CPU limit (2 → 4 cores).
+changes:
+  - service: app
+    cpu: 4

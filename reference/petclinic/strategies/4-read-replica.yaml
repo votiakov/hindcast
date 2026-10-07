@@ -1,0 +1,6 @@
+name: Postgres read replica
+description: One read replica; the mix is ~90% reads.
+changes:
+  - service: postgres
+    readReplicas: 1
+    readShare: 0.9

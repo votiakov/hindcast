@@ -1,0 +1,5 @@
+name: Two app replicas
+description: Scale the Spring app out behind the load balancer; each replica brings its own 10-connection pool to the same database.
+changes:
+  - service: app
+    replicas: 2

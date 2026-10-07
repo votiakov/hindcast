@@ -1,0 +1,17 @@
+{
+  "system": "petclinic",
+  "run": "probe",
+  "start": 1791410690,
+  "end": 1791411140,
+  "env": {},
+  "shape": [
+    "steps",
+    2,
+    16,
+    1,
+    30
+  ],
+  "autoscale": null,
+  "sampling": 0.2,
+  "recordedAt": "2026-10-07T22:12:51.108Z"
+}

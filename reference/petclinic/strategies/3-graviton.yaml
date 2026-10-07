@@ -1,0 +1,5 @@
+name: App on Graviton
+description: Arm pricing for the app; equal throughput assumed until benchmarked.
+changes:
+  - service: app
+    arch: arm
