@@ -1493,7 +1493,7 @@
      "note": "stress: step load test, p99 and errors over every request of each plateau (SLO p99 ≤ 800 ms, errors ≤ 1%)"
     }
    ],
-   "measuredAt": "2026-10-07T19:42:30.072Z"
+   "measuredAt": "2026-10-07T19:45:04.358Z"
   },
   {
    "method": "holdout",
@@ -1506,7 +1506,7 @@
      "error": 0.3461945596325195,
      "tolerance": 0.2,
      "pass": false,
-     "note": "p99 over every request in each 5-minute window on the last 13 min, calibrated on the 28 min before — typical error 35%, worst 40%"
+     "note": "p99 over every request in each 5-minute window on the last 13 min, calibrated on the 28 min before — typical error 35%, worst 40%; measured inside the model's 10–90% band in 0 of 2 windows"
     },
     {
      "metric": "cost",
@@ -1518,7 +1518,7 @@
      "note": "model cost vs the bill over the held-out window"
     }
    ],
-   "measuredAt": "2026-10-07T19:42:37.545Z"
+   "measuredAt": "2026-10-07T19:45:12.303Z"
   }
  ],
  "fittedOn": {

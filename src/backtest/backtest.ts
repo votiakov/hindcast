@@ -157,7 +157,7 @@ function incidents(r: RunResult, plan: Plan, slo: { p99Ms: number; errorRate: nu
 }
 
 /** a plan with every capacity drawn from its bootstrap samples (draw 0 = point estimate) */
-function drawPlan(plan: Plan, model: Model, draw: number, rnd: () => number): Plan {
+export function drawPlan(plan: Plan, model: Model, draw: number, rnd: () => number): Plan {
   if (draw === 0) return plan;
   const services = Object.fromEntries(
     Object.entries(plan.services).map(([id, s]) => {
@@ -171,7 +171,7 @@ function drawPlan(plan: Plan, model: Model, draw: number, rnd: () => number): Pl
   return { ...plan, services };
 }
 
-function rng(seed: number) {
+export function rng(seed: number) {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) >>> 0;

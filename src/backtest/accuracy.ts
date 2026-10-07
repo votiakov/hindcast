@@ -4,6 +4,7 @@ import type { AccuracyCheck, AccuracyRecord, Model } from './model';
 import { basePlan, mixtureQuantile, runPlan, type Plan, type Traffic } from './engine';
 import { calibrate, observedReplicas, trafficOf, type CalibrateOptions } from './calibrate';
 import { applyStrategy } from './strategy';
+import { drawPlan, rng } from './backtest';
 
 /**
  * How good is the model? Every claim is checked against something measured:
@@ -262,11 +263,24 @@ export function holdoutAccuracy(d: Dataset, opts: CalibrateOptions & { holdout?:
   const obs = clientSeries(test);
   const checks: AccuracyCheck[] = [];
   const span = `on the last ${Math.round((test.n * test.stepS) / 60)} min, calibrated on the ${Math.round((train.n * train.stepS) / 60)} min before`;
-  const w = opts.requests ? windowP99(r, opts.requests, test.start, test.stepS) : null;
-  if (w && w.rows.length) {
+  const log = opts.requests;
+  const w = log ? windowP99(r, log, test.start, test.stepS) : null;
+  if (log && w && w.rows.length) {
     const pm = w.rows.reduce((a, x) => a + x.predicted, 0) / w.rows.length;
     const mm = w.rows.reduce((a, x) => a + x.measured, 0) / w.rows.length;
-    checks.push({ metric: 'p99', predicted: pm, measured: mm, error: w.median, tolerance: TOLERANCE.p99, pass: w.median <= TOLERANCE.p99, note: `p99 over every request in each 5-minute window ${span} — typical error ${(w.median * 100).toFixed(0)}%, worst ${(w.max * 100).toFixed(0)}%` });
+    // the point estimate can miss where the training part never saw the load; does the band hold it?
+    const rnd = rng(11);
+    const plan = basePlan(model, observedReplicas(test, model));
+    const per: number[][] = w.rows.map(() => []);
+    for (let k = 1; k <= 20; k++) {
+      const rk = runPlan(drawPlan(plan, model, k, rnd), trafficOf(test, model));
+      windowP99(rk, log, test.start, test.stepS).rows.forEach((x, j) => per[j]?.push(x.predicted));
+    }
+    const inside = w.rows.filter((x, j) => {
+      const v = [...per[j], x.predicted].sort((a, b) => a - b);
+      return x.measured >= quantile(v, 0.1) * 0.95 && x.measured <= quantile(v, 0.9) * 1.05;
+    }).length;
+    checks.push({ metric: 'p99', predicted: pm, measured: mm, error: w.median, tolerance: TOLERANCE.p99, pass: w.median <= TOLERANCE.p99, note: `p99 over every request in each 5-minute window ${span} — typical error ${(w.median * 100).toFixed(0)}%, worst ${(w.max * 100).toFixed(0)}%; measured inside the model's 10–90% band in ${inside} of ${w.rows.length} windows` });
   } else {
     // per-bucket p99s decide pass/fail
     const ape = medianApe(r.p99Ms, obs.p99Ms);
