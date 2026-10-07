@@ -24,6 +24,9 @@ Bottleneck is one TypeScript codebase with three front-ends over the same simula
 
 | path | role |
 |---|---|
+| `src/backtest/` | Backtesting on real data, UI-free: `dataset.ts` (telemetry on a time grid), `import/` (Prometheus, CloudWatch, CSV, OTLP/Jaeger traces, AWS CUR / GCP billing, import manifest, Prometheus export presets), `calibrate.ts` (fit the model), `engine.ts` (bucketed replay with backlog, autoscalers, faults, cost), `strategy.ts`, `backtest.ts` (bands, incidents, ranking), `accuracy.ts`, `outages.ts`, `configDiff.ts` (k8s diff → strategy), `fromBoard.ts`, `toSpec.ts`, `report*.ts`, `card.ts` |
+| `src/backtest-ui/` | The backtest screen (strategy terminal): store, chart panes, workspace loading and file drop, outage replays, board bridge, Studio card |
+| `reference/` | Reference systems run under load in Docker (recording stack, k6 replay, synthetic bill from measured runtime, bundling into `public/reference/`) — see reference/README.md |
 | `src/sim/catalog.ts` | Component kinds (`KINDS`), tiers, runtimes, AI batching constants; `SystemNodeData` (everything a node can be configured with); `capacityOf`, `baseLatencyOf`, `costOf`, `fnCostPerRequest` |
 | `src/sim/components/` | Fluid-engine behaviour per kind: `types.ts` (the `Behavior` contract), `shared.ts` (bounded queue stage, M/M/1 latency), `behaviors.ts`, `index.ts` (kind → behaviour registry) |
 | `src/sim/engine.ts` | Fluid engine: topological forward/backward passes, routing, retries, breakers, deadlines, stats, cost |
