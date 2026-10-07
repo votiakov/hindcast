@@ -444,6 +444,16 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
         capacity.samples = draws;
       }
 
+      // a limit the history never came near is an extrapolation: when CPU and latency read it
+      // differently, the band has to span both
+      if (isFinite(capacity.perReplicaRps) && isFinite(cpuK) && !cpuSaturated && maxLam < capacity.perReplicaRps * 0.85 && Math.abs(cpuK - capacity.perReplicaRps) / capacity.perReplicaRps > 0.1 && B > 0) {
+        const lo = Math.min(cpuK, capacity.perReplicaRps, capacity.band?.[0] ?? Infinity);
+        const hi = Math.max(cpuK, capacity.perReplicaRps, capacity.band?.[1] ?? 0);
+        capacity.samples = Array.from({ length: B }, () => lo * (hi / lo) ** rand());
+        capacity.band = [lo * (hi / lo) ** 0.1, lo * (hi / lo) ** 0.9];
+        notes.push(`never loaded past ${Math.round((maxLam / capacity.perReplicaRps) * 100)}% of capacity: CPU (${cpuK.toFixed(0)}) and latency (${capacity.perReplicaRps.toFixed(0)}) read the limit differently, the band spans both`);
+      }
+
       // tail multiplier on queueing excess
       let bestTail = { t: 1, e: Infinity };
       for (const t of [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.15, 1.3, 1.5, 1.75, 2, 2.5, 3, 3.5, 4, 5, 6]) {

@@ -670,7 +670,7 @@
      "note": "stress-replicas-2: step load test, p99 and errors over every request of each plateau (SLO p99 ≤ 1000 ms, errors ≤ 3%)"
     }
    ],
-   "measuredAt": "2026-10-07T19:32:18.536Z"
+   "measuredAt": "2026-10-07T19:46:17.797Z"
   },
   {
    "method": "holdout",
@@ -683,7 +683,7 @@
      "error": 0.36384309853355934,
      "tolerance": 0.2,
      "pass": false,
-     "note": "p99 over every request in each 5-minute window on the last 13 min, calibrated on the 28 min before — typical error 36%, worst 67%"
+     "note": "p99 over every request in each 5-minute window on the last 13 min, calibrated on the 28 min before — typical error 36%, worst 67%; measured inside the model's 10–90% band in 0 of 2 windows"
     },
     {
      "metric": "cost",
@@ -695,7 +695,7 @@
      "note": "model cost vs the bill over the held-out window"
     }
    ],
-   "measuredAt": "2026-10-07T19:32:21.613Z"
+   "measuredAt": "2026-10-07T19:46:20.766Z"
   }
  ],
  "fittedOn": {
