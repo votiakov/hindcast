@@ -54,6 +54,9 @@ export interface ServiceModel {
   tail: number;
   /** service-time variability: queueing waits are this × the M/M/c wait (0.5 ≈ constant service times) */
   variability?: number;
+  /** waits scale with utilisation^(loadExponent − 1) on top of M/M/c: > 1 when queueing starts late and
+   *  steep (CPU quotas throttling in bursts) */
+  loadExponent?: number;
   cost: {
     /** $ per replica-hour (compute) */
     perReplicaHour: number;
@@ -83,6 +86,8 @@ export interface EndpointModel {
   overheadMs: number;
   /** measured p99 − mean at low load, ms */
   baseExcessMs: number;
+  /** measured median at low load, ms */
+  baseP50Ms?: number;
   /** tail multiplier fitted on history */
   tail: number;
   /** baseline error share (not overload), at zero load */

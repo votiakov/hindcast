@@ -243,6 +243,8 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
   };
 
   const services: Record<string, ServiceModel> = {};
+  /** services whose queue sits outside their spans (CPU pinned, latency fit blind to it) */
+  const hiddenQueue = new Set<string>();
   for (const id of ids) {
     const s = d.services[id] ?? {};
     const shape = topo?.services[id];
@@ -372,6 +374,7 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
         capacity = { limit: 'cpu', servers: cpuC, perReplicaRps: K };
         chosen = { ...cpuFit, K, v: Math.max(1, cpuFit.v) };
         cpuSaturated = true;
+        hiddenQueue.add(id);
         notes.push(`CPU reached ${Math.round(cpuPeak * 100)}% of its limit in the history; capacity ${K.toFixed(1)} req/s per replica (${seen > 0 ? `${seen.toFixed(1)} finished while pinned, ` : ''}${atLimit.toFixed(1)} from CPU efficiency in the busiest buckets)`);
       } else if (queue.err < simple * 0.85 && isFinite(queue.K) && queue.K < maxLam * 40) {
         const limitedByCpu = isFinite(cpuK) && Math.abs(queue.K - cpuK) / cpuK < 0.25;
@@ -553,6 +556,7 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
     const lowIdx = idx.slice(0, Math.max(3, Math.floor(idx.length * 0.3))).map((x) => x.i);
     const lowMean = median(lowIdx.map((i) => vals(ser?.meanMs, i)).filter((x): x is number => x !== null));
     const lowP99 = median(lowIdx.map((i) => vals(ser?.p99Ms, i)).filter((x): x is number => x !== null));
+    const lowP50 = median(lowIdx.map((i) => vals(ser?.p50Ms, i)).filter((x): x is number => x !== null));
     const pathMean = Object.entries(weights).reduce((a, [svc, w]) => a + w * (services[svc]?.self.mean ?? 0), 0);
     const measuredMean = isFinite(lowMean) ? lowMean : shape?.meanMs ?? pathMean;
     const measuredP99 = isFinite(lowP99) ? lowP99 : shape?.p99Ms ?? measuredMean * 1.5;
@@ -597,6 +601,7 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
       weights: shape ? weights : { [ser?.service ?? id.split(' ')[0]]: 1 },
       overheadMs: Math.max(0, measuredMean - pathMean),
       baseExcessMs: Math.max(0, measuredP99 - measuredMean),
+      ...(isFinite(lowP50) && lowP50 > 0 ? { baseP50Ms: lowP50 } : {}),
       tail: 1,
       errorRate: errs.length ? Math.min(0.5, errs[0]) : shape?.errorRate ?? 0,
       ...(errorSlope ? { errorSlope } : {}),
@@ -634,14 +639,51 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
   if (totals.length) model.traffic = { mean: totals.reduce((a, x) => a + x, 0) / totals.length, p90: quantile(totals, 0.9), peak: totals[totals.length - 1] };
   const observed = Object.fromEntries(Object.keys(services).map((id) => [id, replicasOf(id)]));
   if (Object.values(traffic.endpoints).length) {
+    const fitTails = () => {
+      let total = 0;
+      for (const [id, e] of Object.entries(endpoints)) {
+        const obs = series[id]?.p99Ms;
+        if (!obs) continue;
+        const everyday = obs.map((x) => (x !== null && x <= e.slo.p99Ms ? x : null));
+        const use = everyday.filter((x) => x !== null).length >= 10 ? everyday : obs.map((x) => x);
+        let best = { t: 1, err: Infinity };
+        for (const t of [0.5, 0.7, 0.85, 1, 1.15, 1.3, 1.5, 1.75, 2, 2.5, 3, 3.5, 4, 5, 6]) {
+          e.tail = t;
+          const err = logErr(runPlan(basePlan(model, observed), traffic).endpoints[id].p99Ms, use);
+          if (err < best.err) best = { t, err };
+        }
+        e.tail = best.t;
+        total += best.err * (e.share || 0.01);
+      }
+      return total;
+    };
+    // a queue the spans can't see is read from the endpoints instead: how steeply it rises with load
+    if (hiddenQueue.size) {
+      let best = { k: 1, err: Infinity, tails: {} as Record<string, number> };
+      for (const k of [1, 1.5, 2, 3, 4]) {
+        for (const id of hiddenQueue) services[id].loadExponent = k;
+        const err = fitTails();
+        if (err < best.err) best = { k, err, tails: Object.fromEntries(Object.entries(endpoints).map(([id, e]) => [id, e.tail])) };
+      }
+      for (const id of hiddenQueue) {
+        services[id].loadExponent = best.k;
+        if (best.k !== 1) services[id].fit.notes.push(`queueing outside its spans rises steeply with load (exponent ${best.k}, read from end-to-end latency)`);
+      }
+      for (const [id, t] of Object.entries(best.tails)) endpoints[id].tail = t;
+    }
     for (const [id, e] of Object.entries(endpoints)) {
+      if (hiddenQueue.size) break;
       const obs = series[id]?.p99Ms;
       if (!obs) continue;
       let best = { t: 1, err: Infinity };
+      // everyday latency decides the tail: buckets within the SLO (overloads are capacity's business,
+      // and their huge p99s would otherwise drag the multiplier up for every ordinary minute)
+      const everyday = obs.map((x) => (x !== null && x <= e.slo.p99Ms ? x : null));
+      const use = everyday.filter((x) => x !== null).length >= 10 ? everyday : obs.map((x) => x);
       for (const t of [0.5, 0.7, 0.85, 1, 1.15, 1.3, 1.5, 1.75, 2, 2.5, 3, 3.5, 4, 5, 6]) {
         e.tail = t;
         const r = runPlan(basePlan(model, observed), traffic);
-        const err = logErr(r.endpoints[id].p99Ms, obs.map((x) => x));
+        const err = logErr(r.endpoints[id].p99Ms, use);
         if (err < best.err) best = { t, err };
       }
       e.tail = best.t;

@@ -1,0 +1,23 @@
+{
+  "system": "shop",
+  "run": "autoscale",
+  "start": 1791403700,
+  "end": 1791406101,
+  "env": {},
+  "shape": [
+    "history",
+    170,
+    290,
+    40
+  ],
+  "autoscale": {
+    "service": "frontend",
+    "min": 1,
+    "max": 4,
+    "targetCpu": 0.6,
+    "cooldownS": 120,
+    "intervalS": 15
+  },
+  "sampling": 0.2,
+  "recordedAt": "2026-10-07T20:48:54.803Z"
+}

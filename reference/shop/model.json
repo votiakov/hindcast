@@ -93,7 +93,8 @@
      "CPU reached 102% of its limit in the history; capacity 277.8 req/s per replica (277.8 finished while pinned, 231.3 from CPU efficiency in the busiest buckets)",
      "replaying the history reproduces its self time within 362% (mean abs. error)"
     ]
-   }
+   },
+   "loadExponent": 1
   },
   "checkout": {
    "id": "checkout",
@@ -1195,7 +1196,8 @@
    },
    "overheadMs": 4.427451560764339,
    "baseExcessMs": 50.433499999999995,
-   "tail": 1.75,
+   "baseP50Ms": 5.1505,
+   "tail": 1.5,
    "errorRate": 0,
    "bytes": {},
    "egressBytes": 2212.62728580957,
@@ -1207,9 +1209,9 @@
     "status": "poor",
     "samples": 81,
     "notes": [
-     "replaying the history reproduces its p99 within 40% (mean abs. error)"
+     "replaying the history reproduces its p99 within 39% (mean abs. error)"
     ],
-    "p99Mape": 0.4005537952297493,
+    "p99Mape": 0.39070544775080585,
     "latencyMape": 0.24177785566679097
    }
   },
@@ -1236,7 +1238,8 @@
    },
    "overheadMs": 3.461683837474339,
    "baseExcessMs": 67.24000000000001,
-   "tail": 2.5,
+   "baseP50Ms": 4.447,
+   "tail": 2,
    "errorRate": 0,
    "bytes": {},
    "egressBytes": 2212.62728580957,
@@ -1248,9 +1251,9 @@
     "status": "poor",
     "samples": 81,
     "notes": [
-     "replaying the history reproduces its p99 within 33% (mean abs. error)"
+     "replaying the history reproduces its p99 within 31% (mean abs. error)"
     ],
-    "p99Mape": 0.32668868243954574,
+    "p99Mape": 0.31316294984869153,
     "latencyMape": 0.20456141500353767
    }
   },
@@ -1274,6 +1277,7 @@
    },
    "overheadMs": 3.4822073512253935,
    "baseExcessMs": 57.628499999999995,
+   "baseP50Ms": 3.205,
    "tail": 4,
    "errorRate": 0,
    "bytes": {},
@@ -1309,6 +1313,7 @@
    },
    "overheadMs": 2.9376206351940035,
    "baseExcessMs": 58.512,
+   "baseP50Ms": 2.801,
    "tail": 4,
    "errorRate": 0,
    "bytes": {},
@@ -1348,7 +1353,8 @@
    },
    "overheadMs": 0,
    "baseExcessMs": 98.575,
-   "tail": 1.3,
+   "baseP50Ms": 6.229,
+   "tail": 1.5,
    "errorRate": 0,
    "bytes": {},
    "egressBytes": 2212.62728580957,
@@ -1360,9 +1366,9 @@
     "status": "poor",
     "samples": 81,
     "notes": [
-     "replaying the history reproduces its p99 within 36% (mean abs. error)"
+     "replaying the history reproduces its p99 within 38% (mean abs. error)"
     ],
-    "p99Mape": 0.35795681332944457,
+    "p99Mape": 0.3750413014221309,
     "latencyMape": 0.38595416184255865
    }
   },
@@ -1386,7 +1392,8 @@
    },
    "overheadMs": 3.2602312136676987,
    "baseExcessMs": 77.01,
-   "tail": 2,
+   "baseP50Ms": 4.8629999999999995,
+   "tail": 1.75,
    "errorRate": 0,
    "bytes": {},
    "egressBytes": 2212.62728580957,
@@ -1398,9 +1405,9 @@
     "status": "poor",
     "samples": 81,
     "notes": [
-     "replaying the history reproduces its p99 within 33% (mean abs. error)"
+     "replaying the history reproduces its p99 within 32% (mean abs. error)"
     ],
-    "p99Mape": 0.32816026063076625,
+    "p99Mape": 0.3242955473655558,
     "latencyMape": 0.18540578453363904
    }
   },
@@ -1451,6 +1458,7 @@
    },
    "overheadMs": 0,
    "baseExcessMs": 64.3245,
+   "baseP50Ms": 19.652,
    "tail": 0.5,
    "errorRate": 0,
    "bytes": {
@@ -1483,19 +1491,46 @@
  "accuracy": [
   {
    "method": "reference",
-   "label": "recorded runs the model never saw: stress",
+   "label": "recorded runs the model never saw: autoscale, stress",
    "checks": [
     {
+     "metric": "p99",
+     "predicted": 97.87843011940632,
+     "measured": 94.04337500000005,
+     "error": 0.08733084152204598,
+     "tolerance": 0.2,
+     "pass": true,
+     "note": "autoscale: p99 over every request in each 5-minute window, 8 windows — typical error 9%, worst 27%"
+    },
+    {
+     "metric": "errors",
+     "predicted": 0,
+     "measured": 44,
+     "error": 1,
+     "tolerance": null,
+     "pass": true,
+     "note": "autoscale: failed requests (informational)"
+    },
+    {
+     "metric": "cost",
+     "predicted": 0.18933446409849922,
+     "measured": 0.18331817320000282,
+     "error": 0.03281884601769697,
+     "tolerance": 0.1,
+     "pass": true,
+     "note": "autoscale: predicted cost vs the run's bill"
+    },
+    {
      "metric": "breaking-point",
-     "predicted": 250.70842989066608,
+     "predicted": 251.50605604531466,
      "measured": 285.96440579139227,
-     "error": 0.12328798684982148,
+     "error": 0.12049873707434264,
      "tolerance": 0.15,
      "pass": true,
      "note": "stress: step load test, p99 and errors over every request of each plateau (SLO p99 ≤ 800 ms, errors ≤ 1%)"
     }
    ],
-   "measuredAt": "2026-10-07T19:46:03.458Z"
+   "measuredAt": "2026-10-07T20:55:38.968Z"
   },
   {
    "method": "holdout",
@@ -1503,12 +1538,12 @@
    "checks": [
     {
      "metric": "p99",
-     "predicted": 432.1827726798823,
+     "predicted": 291.00455848225033,
      "measured": 571.4209999999981,
-     "error": 0.3461945596325195,
+     "error": 0.33776536999295337,
      "tolerance": 0.2,
      "pass": false,
-     "note": "p99 over every request in each 5-minute window on the last 13 min, calibrated on the 28 min before — typical error 35%, worst 40%; measured inside the model's 10–90% band in 1 of 2 windows"
+     "note": "p99 over every request in each 5-minute window on the last 13 min, calibrated on the 28 min before — typical error 34%, worst 54%; measured inside the model's 10–90% band in 1 of 2 windows"
     },
     {
      "metric": "cost",
@@ -1520,7 +1555,7 @@
      "note": "model cost vs the bill over the held-out window"
     }
    ],
-   "measuredAt": "2026-10-07T19:46:11.397Z"
+   "measuredAt": "2026-10-07T20:55:47.796Z"
   }
  ],
  "fittedOn": {

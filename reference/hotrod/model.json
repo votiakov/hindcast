@@ -588,7 +588,8 @@
    },
    "overheadMs": 106.28199242807699,
    "baseExcessMs": 145.9805,
-   "tail": 3.5,
+   "baseP50Ms": 421.61350000000004,
+   "tail": 2.5,
    "errorRate": 0,
    "errorSlope": 0.0049604124020115265,
    "bytes": {
@@ -605,9 +606,9 @@
     "samples": 81,
     "notes": [
      "errors grow with traffic: -0.69% + 0.496% per req/s",
-     "replaying the history reproduces its p99 within 15% (mean abs. error)"
+     "replaying the history reproduces its p99 within 12% (mean abs. error)"
     ],
-    "p99Mape": 0.149243422438444,
+    "p99Mape": 0.11682274239791762,
     "latencyMape": 0.07463264745102516
    }
   }
@@ -626,12 +627,12 @@
    "checks": [
     {
      "metric": "p99",
-     "predicted": 646.7414455296263,
+     "predicted": 620.3093564203725,
      "measured": 620.8848749999999,
-     "error": 0.04400996312528546,
+     "error": 0.03123949947119585,
      "tolerance": 0.2,
      "pass": true,
-     "note": "replicas-2: p99 over every request in each 5-minute window, 8 windows — typical error 4%, worst 8%"
+     "note": "replicas-2: p99 over every request in each 5-minute window, 8 windows — typical error 3%, worst 5%"
     },
     {
      "metric": "errors",
@@ -653,9 +654,9 @@
     },
     {
      "metric": "breaking-point",
-     "predicted": 6.633776731005058,
+     "predicted": 6.675531080795507,
      "measured": 7.60711266373816,
-     "error": 0.12795077130549576,
+     "error": 0.12246191480551458,
      "tolerance": 0.15,
      "pass": true,
      "note": "stress: step load test, p99 and errors over every request of each plateau (SLO p99 ≤ 1000 ms, errors ≤ 3%)"
@@ -670,7 +671,7 @@
      "note": "stress-replicas-2: step load test, p99 and errors over every request of each plateau (SLO p99 ≤ 1000 ms, errors ≤ 3%)"
     }
    ],
-   "measuredAt": "2026-10-07T19:46:17.797Z"
+   "measuredAt": "2026-10-07T20:55:54.632Z"
   },
   {
    "method": "holdout",
@@ -678,12 +679,12 @@
    "checks": [
     {
      "metric": "p99",
-     "predicted": 1137.406152270537,
+     "predicted": 1058.0244937894345,
      "measured": 2812.0315,
-     "error": 0.36384309853355934,
+     "error": 0.37128213966519197,
      "tolerance": 0.2,
      "pass": false,
-     "note": "p99 over every request in each 5-minute window on the last 13 min, calibrated on the 28 min before — typical error 36%, worst 67%; measured inside the model's 10–90% band in 0 of 2 windows"
+     "note": "p99 over every request in each 5-minute window on the last 13 min, calibrated on the 28 min before — typical error 37%, worst 70%; measured inside the model's 10–90% band in 1 of 2 windows"
     },
     {
      "metric": "cost",
@@ -695,7 +696,7 @@
      "note": "model cost vs the bill over the held-out window"
     }
    ],
-   "measuredAt": "2026-10-07T19:46:20.766Z"
+   "measuredAt": "2026-10-07T20:55:57.819Z"
   }
  ],
  "fittedOn": {

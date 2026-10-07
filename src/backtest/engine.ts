@@ -63,6 +63,8 @@ export interface ServicePlan {
   tail: number;
   /** waits are this × the M/M/c wait */
   variability?: number;
+  /** waits × utilisation^(loadExponent − 1) */
+  loadExponent?: number;
   cpu: { base: number; perReq: number } | null;
   cpuLimit: number | null;
   /** $ per replica-hour and per request */
@@ -82,6 +84,8 @@ export interface EndpointPlan {
   weights: Record<string, number>;
   overheadMs: number;
   baseExcessMs: number;
+  /** median at low load, ms (shapes the latency distribution) */
+  baseP50Ms?: number;
   tail: number;
   errorRate: number;
   errorSlope?: number;
@@ -125,6 +129,8 @@ export interface EndpointTrace {
   errorRate: number[];
   meanMs: number[];
   p99Ms: number[];
+  /** median, when the endpoint's median is known */
+  p50Ms: number[];
   /** $ per bucket attributed to this endpoint (by its share of each component's load) */
   cost: number[];
 }
@@ -177,11 +183,32 @@ export function exceed(mean: number, p99: number, t: number): number {
   return Math.min(1, 1 - 0.5 * Math.exp(-(mean - t) / ex));
 }
 
+/** standard normal upper tail */
+function normalTail(z: number): number {
+  // Abramowitz–Stegun 7.1.26 via erfc
+  const t = 1 / (1 + 0.3275911 * Math.abs(z / Math.SQRT2));
+  const y = t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429)))) * Math.exp(-(z * z) / 2);
+  return z >= 0 ? y / 2 : 1 - y / 2;
+}
+
+/**
+ * P(latency > x) for one endpoint. With a median known the latency is lognormal through (p50, p99) —
+ * request latencies are skewed: most fast, a few very slow — otherwise an exponential tail through
+ * (mean, p99).
+ */
+export function survival(p: { mean: number; p99: number; p50?: number }, x: number): number {
+  if (p.p50 && p.p50 > 0 && p.p99 > p.p50 * 1.01 && x > 0) {
+    const sigma = (Math.log(p.p99) - Math.log(p.p50)) / 2.3263;
+    return normalTail((Math.log(x) - Math.log(p.p50)) / sigma);
+  }
+  return exceed(p.mean, p.p99, x);
+}
+
 /** p-quantile of a traffic-weighted mixture of endpoint latencies */
-export function mixtureQuantile(parts: { w: number; mean: number; p99: number }[], tail = 0.01): number {
+export function mixtureQuantile(parts: { w: number; mean: number; p99: number; p50?: number }[], tail = 0.01): number {
   const tot = parts.reduce((s, p) => s + p.w, 0);
   if (tot <= 0) return 0;
-  const f = (x: number) => parts.reduce((s, p) => s + (p.w / tot) * exceed(p.mean, p.p99, x), 0) - tail;
+  const f = (x: number) => parts.reduce((s, p) => s + (p.w / tot) * survival(p, x), 0) - tail;
   let lo = 0;
   let hi = Math.max(1, ...parts.map((p) => (isFinite(p.p99) ? p.p99 : 1e7))) * 2;
   if (f(hi) > 0) return hi;
@@ -247,7 +274,7 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
     costPerHour: z(),
     cost: { compute: z(), requests: z(), transfer: z(), other: z() },
     services: Object.fromEntries(svcIds.map((id) => [id, { rps: z(), util: z(), replicas: z(), waitMs: z(), selfMeanMs: z(), selfP99Ms: z(), backlog: z(), cpuCores: z() }])),
-    endpoints: Object.fromEntries(epIds.map((id) => [id, { rps: z(), errorRate: z(), meanMs: z(), p99Ms: z(), cost: z() }])),
+    endpoints: Object.fromEntries(epIds.map((id) => [id, { rps: z(), errorRate: z(), meanMs: z(), p99Ms: z(), p50Ms: z(), cost: z() }])),
     events: [],
   };
 
@@ -263,6 +290,21 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
         dollars += ((bytes * keep) / GB) * linkPrice(host(from), host(to), plan.transfer);
       }
       return [id, dollars];
+    }),
+  );
+
+  // each endpoint's mean latency with no queueing anywhere (anchors the median's shift)
+  const zeroMean = Object.fromEntries(
+    epIds.map((e) => {
+      const ep = plan.endpoints[e];
+      let m = ep.overheadMs;
+      for (const [s, w] of Object.entries(ep.weights)) {
+        const ps = plan.services[s];
+        if (!ps) continue;
+        const keep = (visits[e][s] ?? 0) / Math.max(1e-9, ep.visits[s] ?? 1);
+        m += w * keep * ps.selfMean + (ps.cache ? w * (1 - keep) * ps.cache.latencyMs : 0);
+      }
+      return [e, m];
     }),
   );
 
@@ -340,7 +382,7 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
           S.backlog = Math.max(0, S.backlog + (perRep - served) * dt);
           const w = mmcWait(Math.min(perRep, K * RHO_MAX), s.servers, K);
           const drain = (S.backlog / K) * 1000;
-          const v = s.variability ?? 1;
+          const v = (s.variability ?? 1) * Math.min(1, w.rho) ** ((s.loadExponent ?? 1) - 1);
           waitMean = v * w.meanMs + drain;
           waitP99 = v * w.p99Ms + drain;
         }
@@ -390,12 +432,15 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
         const o = out.endpoints[e];
         o.rps[i] += base / sub;
         o.errorRate[i] += fail / sub;
+        // the median moves with the mean: everything that waits, waits for everyone
+        const p50 = ep.baseP50Ms ? Math.min(ep.timeoutMs, ep.baseP50Ms + Math.max(0, seenMean - zeroMean[e])) : 0;
         o.meanMs[i] += seenMean / sub;
         o.p99Ms[i] += seenP99 / sub;
+        o.p50Ms[i] += p50 / sub;
         acc.rps += base / sub;
         acc.fail += (base * fail) / sub;
         acc.late += (base * late) / sub;
-        acc.parts.push({ w: base / sub, mean: seenMean, p99: seenP99 });
+        acc.parts.push({ w: base / sub, mean: seenMean, p99: seenP99, ...(p50 > 0 && late <= 0.01 ? { p50 } : {}) });
         acc.timeout = Math.max(acc.timeout, ep.timeoutMs);
       }
 
@@ -491,6 +536,7 @@ export function basePlan(model: Model, observed?: Record<string, Num[] | undefin
       selfP99: s.self.p99,
       tail: s.tail,
       variability: s.variability,
+      loadExponent: s.loadExponent,
       cpu: s.cpu ? { base: s.cpu.base, perReq: s.cpu.perReq } : null,
       cpuLimit: s.cpuLimit,
       replicaHour: s.cost.perReplicaHour,
@@ -501,6 +547,6 @@ export function basePlan(model: Model, observed?: Record<string, Num[] | undefin
   }
   const endpoints: Record<string, EndpointPlan> = {};
   for (const [id, e] of Object.entries(model.endpoints))
-    endpoints[id] = { id, service: e.service, visits: e.visits, calls: e.calls, weights: e.weights, overheadMs: e.overheadMs, baseExcessMs: e.baseExcessMs, tail: e.tail, errorRate: e.errorRate, errorSlope: e.errorSlope, bytes: e.bytes, egressBytes: e.egressBytes, timeoutMs: model.timeoutMs, slo: e.slo };
+    endpoints[id] = { id, service: e.service, visits: e.visits, calls: e.calls, weights: e.weights, overheadMs: e.overheadMs, baseExcessMs: e.baseExcessMs, baseP50Ms: e.baseP50Ms, tail: e.tail, errorRate: e.errorRate, errorSlope: e.errorSlope, bytes: e.bytes, egressBytes: e.egressBytes, timeoutMs: model.timeoutMs, slo: e.slo };
   return { services, endpoints, transfer: model.transfer, unattributedPerHour: model.unattributedPerHour, slo: model.slo };
 }

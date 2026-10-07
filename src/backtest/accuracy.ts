@@ -145,8 +145,8 @@ export function parseRequestLog(csv: string): RequestLog {
 
 /** the model's p99 over a span of buckets: the traffic-weighted mixture of every endpoint's latency */
 function predictedP99(r: ReturnType<typeof runPlan>, i0: number, i1: number): number {
-  const parts: { w: number; mean: number; p99: number }[] = [];
-  for (const e of Object.values(r.endpoints)) for (let i = i0; i < i1; i++) if (e.rps[i] > 0) parts.push({ w: e.rps[i], mean: e.meanMs[i], p99: e.p99Ms[i] });
+  const parts: { w: number; mean: number; p99: number; p50?: number }[] = [];
+  for (const e of Object.values(r.endpoints)) for (let i = i0; i < i1; i++) if (e.rps[i] > 0) parts.push({ w: e.rps[i], mean: e.meanMs[i], p99: e.p99Ms[i], ...(e.p50Ms[i] > 0 && e.p99Ms[i] < 4000 ? { p50: e.p50Ms[i] } : {}) });
   return mixtureQuantile(parts);
 }
 
