@@ -116,7 +116,15 @@ export function applyStrategy(model: Model, base: Plan, input: unknown): Applied
           s.perReplicaRps = c0 > base ? (s.perReplicaRps * Math.max(0, c1! - base)) / (c0 - base) : s.perReplicaRps * scale;
           s.servers = Math.max(1, Math.round(c1!));
           notes.push(`${ch.service}: ${c0} → ${c1} cores per replica; CPU-bound, so capacity scales to ${s.perReplicaRps.toFixed(1)} req/s per replica`);
-        } else notes.push(`${ch.service}: ${c0} → ${c1} cores per replica; capacity is ${m.capacity.limit === 'concurrency' ? 'bound by a concurrency limit' : 'not CPU-bound'}, so throughput does not change`);
+        } else {
+          // not CPU-bound today — but a smaller limit can make it so
+          const cpuCap = m.cpu && m.cpu.perReq > 0 ? (c1! - m.cpu.base) / m.cpu.perReq : Infinity;
+          if (cpuCap < s.perReplicaRps) {
+            s.perReplicaRps = Math.max(0, cpuCap);
+            s.servers = Math.max(1, Math.round(c1!));
+            notes.push(`${ch.service}: ${c0} → ${c1} cores per replica; at ${(m.cpu!.perReq * 1000).toFixed(1)} ms of CPU per request that caps it at ${Math.max(0, cpuCap).toFixed(1)} req/s per replica — now CPU-bound`);
+          } else notes.push(`${ch.service}: ${c0} → ${c1} cores per replica; capacity is ${m.capacity.limit === 'concurrency' ? 'bound by a concurrency limit' : 'not CPU-bound'}, so throughput does not change`);
+        }
         s.cpuLimit = c1!;
       }
       const cpuPart = c0 && c1 ? (m.cost.cpuShare * c1) / c0 : m.cost.cpuShare;

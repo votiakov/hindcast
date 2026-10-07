@@ -19,10 +19,11 @@ export function headline(s: StrategyResult, base: StrategyResult): string {
   const money = Math.abs(dm) < 1 ? 'costs the same' : dm < 0 ? `saves $${Math.round(-dm).toLocaleString('en-US')}/month` : `costs $${Math.round(dm).toLocaleString('en-US')}/month more`;
   const newInc = s.incidents.filter((i) => !base.incidents.some((b) => b.start < i.end && i.start < b.end));
   if (newInc.length) {
-    const w = [...newInc].sort((a, b) => b.minutes - a.minutes)[0];
-    const total = s.delta.minutesOutOfSlo.p50;
-    const more = total > w.minutes + 0.5 ? `, ${Math.round(total)} more minutes out of SLO in all` : '';
-    return `${money}; on ${when(w.start)} it would have caused ${Math.max(1, Math.round(w.minutes))} minute${Math.max(1, Math.round(w.minutes)) === 1 ? '' : 's'} out of SLO (${w.why})${more}`;
+    const w = [...newInc].sort((a, b) => b.minutes - a.minutes || b.peakP99Ms - a.peakP99Ms)[0];
+    const total = Math.max(w.minutes, s.delta.minutesOutOfSlo.p50);
+    const mins = (x: number) => `${Math.max(1, Math.round(x))} minute${Math.max(1, Math.round(x)) === 1 ? '' : 's'}`;
+    if (newInc.length === 1 || total < w.minutes + 0.5) return `${money}; on ${when(w.start)} it would have caused ${mins(w.minutes)} out of SLO (${w.why})`;
+    return `${money}; it would have caused ${mins(total)} out of SLO, the worst on ${when(w.start)} (${w.why})`;
   }
   const ds = s.delta.minutesOutOfSlo.p50;
   if (ds < -0.5) return `${money} and removes ${Math.round(-ds)} minute${Math.round(-ds) === 1 ? '' : 's'} out of SLO from the history`;

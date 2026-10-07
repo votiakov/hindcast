@@ -362,7 +362,7 @@ export function accuracyLines(rec: AccuracyRecord): string[] {
   const f = (c: AccuracyCheck) => {
     const unit = c.metric === 'cost' ? (x: number) => `$${x.toFixed(x < 10 ? 3 : 0)}` : c.metric === 'breaking-point' ? (x: number) => `${x.toFixed(1)} req/s` : c.metric === 'errors' ? (x: number) => `${Math.round(x)}` : (x: number) => `${Math.round(x)} ms`;
     const verdict = c.metric === 'errors' ? '' : c.pass ? 'PASS' : 'MISS';
-    return `${verdict.padEnd(4)} ${c.metric.padEnd(14)} predicted ${unit(c.predicted)} vs measured ${unit(c.measured)} — off by ${(c.error * 100).toFixed(1)}%${isFinite(c.tolerance) ? ` (target ≤ ${c.tolerance * 100}%)` : ''} · ${c.note}`;
+    return `${verdict.padEnd(4)} ${c.metric.padEnd(14)} predicted ${unit(c.predicted)} vs measured ${unit(c.measured)} — off by ${(c.error * 100).toFixed(1)}%${typeof c.tolerance === 'number' && isFinite(c.tolerance) ? ` (target ≤ ${c.tolerance * 100}%)` : ''} · ${c.note}`;
   };
-  return rec.checks.map(f);
+  return rec.checks.filter((c) => c.metric !== 'errors').map(f);
 }

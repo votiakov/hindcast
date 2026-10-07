@@ -27,7 +27,7 @@ services:
       OTEL_INSTRUMENTATION_COMMON_PEER_SERVICE_MAPPING: postgres=postgres
     volumes: ["./otel:/otel:ro"]
     cpus: ${APP_CPUS:-1.0}
-    mem_limit: 1280m
+    mem_limit: 1536m
     depends_on: [postgres]
     deploy: { replicas: "${APP_REPLICAS:-1}" }
     networks: [ref]

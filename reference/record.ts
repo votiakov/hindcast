@@ -29,6 +29,8 @@ export interface ReferenceConfig {
   timeout?: string;
   /** seconds between starting the system and recording (JVMs need longer) */
   warmupS?: number;
+  /** a gentle load (shape args) run before recording, so a JIT-compiled runtime starts warm */
+  warmupLoad?: (string | number)[];
   /** k6 Poisson thinning factor (default 20; lower for high request rates) */
   thin?: number;
   mix: string;
@@ -63,6 +65,14 @@ async function main() {
   sh(`docker compose -f ${join(sysDir, 'docker-compose.yml')} up -d --force-recreate --remove-orphans`, env);
   console.log(`warming up ${cfg.warmupS ?? 45} s…`);
   await sleep((cfg.warmupS ?? 45) * 1000);
+  if (cfg.warmupLoad) {
+    console.log('warm-up load…');
+    const warm = spawnSync('node', [join(ROOT, 'load/shape.mjs'), ...cfg.warmupLoad.map(String)], { encoding: 'utf8' }).stdout;
+    writeFileSync(join(out, 'raw', 'warmup-shape.json'), warm);
+    execSync('docker rm -f bnref-k6 >/dev/null 2>&1 || true');
+    spawnSync('docker', ['run', '--rm', '--name', 'bnref-k6', '--network', 'bnref', '-v', `${join(ROOT, 'load')}:/load:ro`, '-v', `${out}:/out`, '-v', `${join(sysDir, cfg.mix)}:/out/warm-mix.json:ro`, '-e', 'SHAPE=/out/raw/warmup-shape.json', '-e', 'MIX=/out/warm-mix.json', '-e', `BASE=${cfg.base}`, '-e', 'TIMEOUT=30s', '-e', `THIN=${cfg.thin ?? 20}`, 'grafana/k6:latest', 'run', '--quiet', '/load/replay.js'], { stdio: 'ignore' });
+    await sleep(20_000);
+  }
   // drop warm-up spans: restart the collector into the run directory
   rmSync(join(out, 'raw', 'traces.jsonl'), { force: true });
   sh(`docker compose -f ${join(ROOT, 'stack/docker-compose.yml')} up -d --force-recreate otel-collector`, { RUN_DIR: resolve(out, 'raw') });
