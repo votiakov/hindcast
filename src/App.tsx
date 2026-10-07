@@ -13,6 +13,7 @@ import { AuditPanel } from './ui/AuditPanel';
 import { CommandPalette } from './ui/CommandPalette';
 import { SpecEditor } from './ui/SpecEditor';
 import { PresentHUD, presentStep } from './ui/PresentHUD';
+import { Shortcuts } from './ui/Shortcuts';
 import { HomeBoard } from './ui/HomeBoard';
 import './ui/callout.css';
 import { StudioView } from './studio/StudioView';
@@ -186,6 +187,7 @@ export default function App() {
         {mode !== 'studio' && mode !== 'home' && <ControlBar />}
         <Toasts />
         <CommandPalette />
+        {!present && <Shortcuts />}
         {present && mode !== 'studio' && <PresentHUD />}
       </div>
     </div>
