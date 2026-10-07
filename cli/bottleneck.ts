@@ -7,6 +7,7 @@
  *   npm run sim -- optimize        <arch.yaml> [scenario.yaml] [--runtimes] [--out optimized.yaml]
  *   npm run sim -- compare         <arch.yaml> <variants.yaml> [scenario.yaml] [--json]
  *   npm run sim -- breaking-point  <arch.yaml> [--p99 300] [--errors 0.01]
+ *   npm run sim -- audit           <arch.yaml> [--rps 500] [--cost-per-min 1000] [--md report.md]   (what breaks first, and what it costs)
  *   npm run sim -- link            <arch.yaml> [variants.yaml]     → open in the app
  *   npm run sim -- import-terraform <terraform-show.json> [--name "My system"] [--out arch.yaml]
  *   npm run sim -- catalog
@@ -19,6 +20,8 @@ import { simulateDes, type DesResult } from '../src/sim/des/des';
 import { analyzeParallel } from '../src/sim/des/nodePool';
 import type { Analysis } from '../src/sim/des/analyze';
 import { optimize } from '../src/sim/optimize';
+import { audit, type AuditResult } from '../src/sim/audit';
+import { auditMarkdown } from '../src/sim/auditReport';
 import { importTerraform } from '../src/spec/terraform';
 import { breakingPoint, catalog, compare, simulate, type SimResult } from '../src/sim/headless';
 import { validateSpec } from '../src/spec/validate';
@@ -87,6 +90,20 @@ function printAnalysis(a: Analysis) {
   console.log(`  latency  p50 ${f(m.p50Ms, ms)}   p99 ${f(m.p99Ms, ms)}   p99.9 ${f(m.p999Ms, ms)}`);
   console.log(`  cost     $${m.costPerHour.mean.toFixed(2)}/h ${c.dim(`≈ $${Math.round(m.costPerHour.mean * 730).toLocaleString()}/month`)}`);
   for (const b of a.bottlenecks) console.log(`  ${c.yellow(pad(b.id, 14))} top bottleneck in ${pct(b.share)} of runs ${c.dim(b.note ?? '')}`);
+  console.log('');
+}
+
+function printAudit(r: AuditResult) {
+  const sev = { critical: c.red('CRITICAL'), major: c.yellow('MAJOR   '), minor: c.dim('minor   '), ok: c.green('ok      ') };
+  const score = r.score >= 80 ? c.green(String(r.score)) : r.score >= 50 ? c.yellow(String(r.score)) : c.red(String(r.score));
+  console.log(`\n${c.bold(r.architecture)} ${c.dim('·')} failure audit at ${r.load.rps} req/s ${c.dim(`· ${r.findings.length} scenarios · ${r.wallMs} ms`)}`);
+  console.log(`  resilience ${score}/100 ${c.dim(`— survives ${r.survived} of ${r.total} incidents within SLO`)}`);
+  console.log(`  headroom   ${r.headroom.ratio.toFixed(1)}× ${c.dim(`(${Math.round(r.headroom.maxRps)} req/s, then ${r.headroom.limitedBy ?? '—'})`)}   cost $${r.baseline.monthly.toLocaleString()}/month\n`);
+  for (const f of r.findings) {
+    console.log(`  ${sev[f.severity]} ${c.bold(pad(f.title, 36))} ${c.dim(f.explanation)}`);
+    if (f.costAtRisk) console.log(`           ${c.red(`$${f.costAtRisk.toLocaleString()} at risk per incident`)}`);
+    for (const x of f.fixes) console.log(`           ${c.green('fix')} ${x.title} ${c.dim(`→ ${x.after.severity}, ${x.monthlyDelta >= 0 ? '+' : '−'}$${Math.abs(x.monthlyDelta).toLocaleString()}/month`)}`);
+  }
   console.log('');
 }
 
@@ -159,6 +176,19 @@ function main() {
       console.log(`\nSustains ${c.bold(`${r.maxRps.toLocaleString()} req/s`)} within SLO (errors ≤ ${pct(r.slo.maxErrorRate)}, p99 ≤ ${ms(r.slo.maxP99Ms)}).`);
       if (r.limitedBy) console.log(`Limited by ${c.yellow(r.limitedBy)} — ${c.dim(r.note ?? '')}`);
       console.log('');
+      return;
+    }
+    case 'audit': {
+      const r = audit(load(pos[0]), {
+        rps: opt.rps ? Number(opt.rps) : undefined,
+        incidentCostPerMinute: opt['cost-per-min'] ? Number(opt['cost-per-min']) : undefined,
+        slo: { maxP99Ms: opt.p99 ? Number(opt.p99) : undefined, maxErrorRate: opt.errors ? Number(opt.errors) : undefined },
+      });
+      if (opt.md) writeFileSync(String(opt.md), auditMarkdown(r));
+      if (json) return console.log(JSON.stringify(r, null, 2));
+      printAudit(r);
+      if (opt.md) console.log(c.dim(`  report written to ${opt.md}\n`));
+      process.exitCode = r.findings.some((f) => f.severity === 'critical') ? 2 : 0;
       return;
     }
     case 'link': {

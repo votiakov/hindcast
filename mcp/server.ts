@@ -17,6 +17,8 @@ import { ArchitectureSpec, ScenarioSpec, VariantSpec } from '../src/spec/schema'
 import { simulateDes } from '../src/sim/des/des';
 import { analyzeParallel } from '../src/sim/des/nodePool';
 import { optimize } from '../src/sim/optimize';
+import { audit } from '../src/sim/audit';
+import { auditMarkdown } from '../src/sim/auditReport';
 import { importTerraform } from '../src/spec/terraform';
 import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/server';
 import { existsSync, readFileSync } from 'node:fs';
@@ -168,6 +170,31 @@ server.registerTool(
     try {
       const r = optimize(architecture, (scenario ?? {}) as Record<string, unknown>, { allowRuntimes: allow_runtimes, slo });
       return json({ ...r, spec: undefined, variant: { name: 'optimized', changes: r.changes } });
+    } catch (e) {
+      return fail(e);
+    }
+  },
+);
+
+server.registerTool(
+  'audit_resilience',
+  {
+    title: 'Failure audit: what breaks first, and what it costs',
+    description:
+      'Replays one minute at the expected load once per production failure mode — every component dying (one instance or all), every zone going dark, each dependency turning slow (+250 ms) or erroring (20 %), caches restarting cold, a 3× traffic surge — plus the breaking point. Grades each incident by user impact (critical / major / minor / ok), detects self-healing and metastable non-recovery, lists the blast radius, and proposes fixes that are verified by re-running the same incident and priced in $/month. Returns a resilience score and a ranked risk register, plus a Markdown report. Ask the user for their expected req/s and what a minute of outage costs them.',
+    inputSchema: {
+      architecture: ArchitectureSpec,
+      rps: z.number().positive().optional().describe('expected load (default: half the breaking point)'),
+      read_ratio: z.number().min(0).max(1).optional(),
+      slo: z.object({ maxErrorRate: z.number().optional(), maxP99Ms: z.number().optional() }).optional(),
+      incident_cost_per_minute: z.number().nonnegative().optional().describe('$ a minute of full outage costs the business'),
+    },
+    annotations: { readOnlyHint: true },
+  },
+  async ({ architecture, rps, read_ratio, slo, incident_cost_per_minute }) => {
+    try {
+      const r = audit(architecture, { rps, readRatio: read_ratio, slo, incidentCostPerMinute: incident_cost_per_minute });
+      return json({ ...r, findings: r.findings.map(({ scenario: _s, ...f }) => f), report_markdown: auditMarkdown(r) });
     } catch (e) {
       return fail(e);
     }
