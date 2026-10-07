@@ -42,10 +42,16 @@ export default function () {
       break;
     }
   }
+  // the same draw fills a variable everywhere it appears (path and body)
   let path = m.path;
-  for (const [k, vals] of Object.entries(m.vars || {})) path = path.replace(`{${k}}`, String(pick(vals)));
+  let body = m.body || '';
+  for (const [k, vals] of Object.entries(m.vars || {})) {
+    const v = String(pick(vals));
+    path = path.split(`{${k}}`).join(v);
+    body = body.split(`{${k}}`).join(v);
+  }
   path = path.replace('{rand}', String(Math.random()));
   const params = { timeout: __ENV.TIMEOUT || '5s', tags: { name: m.name }, headers: m.headers || {} };
   if (m.method === 'GET') http.get(base + path, params);
-  else http.request(m.method, base + path, m.body || '', params);
+  else http.request(m.method, base + path, body, params);
 }

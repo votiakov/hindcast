@@ -9,8 +9,15 @@ load generator measured.
 | system | what limits it | services |
 |---|---|---|
 | [HotROD](hotrod/) (Jaeger's demo) | a mutex around a simulated MySQL connection — concurrency, not CPU | frontend, customer (+ in-process mysql), driver (+ in-process redis), route, nginx |
-| [Online Boutique](boutique/) (Google's microservices demo) | CPU: the frontend and the services it fans out to | 11 services in Go, Node.js, Python, C#, Java, plus Redis |
+| [Astronomy Shop](shop/) (the OpenTelemetry demo, successor of Google's Online Boutique) | CPU: the Next.js frontend and the services it fans out to | 11 services in TypeScript, Go, C#, C++, Java, Python, Ruby, PHP, Rust, plus Valkey and flagd |
 | [PetClinic REST](petclinic/) on PostgreSQL | JVM CPU and a 10-connection pool in front of a CPU-limited database | app, PostgreSQL, nginx |
+
+Online Boutique itself was the first choice for the microservices system; its images are amd64-only
+and its Go services crash under emulation on Apple silicon (`fatal error: lfstack.push`), so the
+OpenTelemetry demo — forked from it, maintained, multi-arch — stands in.
+
+Docker Desktop's credential helper can hang on pulls; the recordings ran with a plain
+`DOCKER_CONFIG` (no `credsStore`).
 
 Results are in each system's `model.json` (`accuracy`), in the app (watchlist → Model accuracy), in
 `bottleneck accuracy reference/<system>/model.json`, and in every report generated from these models.

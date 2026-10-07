@@ -1,0 +1,14 @@
+# Reference system 2 — OpenTelemetry Astronomy Shop (github.com/open-telemetry/opentelemetry-demo 2.0.2).
+# Google's Online Boutique was the first choice; its images are amd64-only and its Go services crash
+# under emulation on Apple silicon, so its maintained, multi-arch successor is used instead.
+# CPU-bound: the Next.js frontend renders and fans out to every other service.
+name: Astronomy Shop
+project: shop
+base: http://frontend-lb:8080
+timeout: 5s
+mix: mix.json
+edge: frontend-lb
+slo: { p99Ms: 800, errorRate: 0.01 }
+runs:
+  # quick capacity probe (not used for calibration)
+  probe: { shape: [steps, 5, 125, 10, 25] }

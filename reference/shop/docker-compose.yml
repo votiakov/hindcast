@@ -1,0 +1,131 @@
+# Reference system 2: the OpenTelemetry Astronomy Shop (github.com/open-telemetry/opentelemetry-demo,
+# 2.0.2) — the maintained successor of Google's Online Boutique, with native arm64 images.
+# 11 services in TypeScript/Next.js, Go, C#, C++, Java, Python, Ruby, PHP, Rust and Node.js, plus
+# Valkey and flagd, each under a CPU limit. nginx in front of the frontend so it can scale out.
+name: shop
+x-otel: &otel
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+  OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE: cumulative
+  OTEL_RESOURCE_ATTRIBUTES: service.namespace=opentelemetry-demo,service.version=2.0.2
+  OTEL_METRICS_EXPORTER: none
+  OTEL_LOGS_EXPORTER: none
+  FLAGD_HOST: flagd
+  FLAGD_PORT: "8013"
+x-svc: &svc
+  networks: [ref]
+  restart: unless-stopped
+services:
+  frontend-lb:
+    <<: *svc
+    image: nginx:1.27-alpine
+    volumes: ["./nginx.conf:/etc/nginx/nginx.conf:ro"]
+    cpus: 0.5
+    mem_limit: 64m
+  frontend:
+    <<: *svc
+    image: ghcr.io/open-telemetry/demo:2.0.2-frontend
+    environment:
+      <<: *otel
+      PORT: "8080"
+      FRONTEND_ADDR: frontend:8080
+      AD_ADDR: ad:9555
+      CART_ADDR: cart:7070
+      CHECKOUT_ADDR: checkout:5050
+      CURRENCY_ADDR: currency:7001
+      PRODUCT_CATALOG_ADDR: product-catalog:3550
+      RECOMMENDATION_ADDR: recommendation:9001
+      SHIPPING_ADDR: shipping:50050
+      OTEL_SERVICE_NAME: frontend
+      ENV_PLATFORM: local
+      OTEL_COLLECTOR_HOST: otel-collector
+      PUBLIC_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://localhost:8080/otlp-http/v1/traces
+      WEB_OTEL_SERVICE_NAME: frontend-web
+    cpus: ${FRONTEND_CPUS:-1.0}
+    mem_limit: 300m
+    deploy: { replicas: "${FRONTEND_REPLICAS:-1}" }
+  ad:
+    <<: *svc
+    image: ghcr.io/open-telemetry/demo:2.0.2-ad
+    environment: { <<: *otel, AD_PORT: "9555", OTEL_SERVICE_NAME: ad, OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4318", OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf, _JAVA_OPTIONS: "-XX:MaxRAMPercentage=70" }
+    cpus: 0.5
+    mem_limit: 400m
+  cart:
+    <<: *svc
+    image: ghcr.io/open-telemetry/demo:2.0.2-cart
+    environment: { <<: *otel, CART_PORT: "7070", VALKEY_ADDR: "valkey-cart:6379", OTEL_SERVICE_NAME: cart, ASPNETCORE_URLS: "http://*:7070" }
+    cpus: 0.5
+    mem_limit: 200m
+  checkout:
+    <<: *svc
+    image: ghcr.io/open-telemetry/demo:2.0.2-checkout
+    environment:
+      <<: *otel
+      CHECKOUT_PORT: "5050"
+      CART_ADDR: cart:7070
+      CURRENCY_ADDR: currency:7001
+      EMAIL_ADDR: http://email:6060
+      PAYMENT_ADDR: payment:50051
+      PRODUCT_CATALOG_ADDR: product-catalog:3550
+      SHIPPING_ADDR: shipping:50050
+      OTEL_SERVICE_NAME: checkout
+    cpus: 0.25
+    mem_limit: 64m
+  currency:
+    <<: *svc
+    image: ghcr.io/open-telemetry/demo:2.0.2-currency
+    environment: { CURRENCY_PORT: "7001", VERSION: "2.0.2", OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317", OTEL_RESOURCE_ATTRIBUTES: "service.namespace=opentelemetry-demo,service.name=currency" }
+    cpus: 0.25
+    mem_limit: 64m
+  email:
+    <<: *svc
+    image: ghcr.io/open-telemetry/demo:2.0.2-email
+    environment: { APP_ENV: production, EMAIL_PORT: "6060", OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "http://otel-collector:4318/v1/traces", OTEL_SERVICE_NAME: email }
+    cpus: 0.25
+    mem_limit: 150m
+  payment:
+    <<: *svc
+    image: ghcr.io/open-telemetry/demo:2.0.2-payment
+    environment: { <<: *otel, PAYMENT_PORT: "50051", OTEL_SERVICE_NAME: payment }
+    cpus: 0.25
+    mem_limit: 150m
+  product-catalog:
+    <<: *svc
+    image: ghcr.io/open-telemetry/demo:2.0.2-product-catalog
+    environment: { <<: *otel, PRODUCT_CATALOG_PORT: "3550", PRODUCT_CATALOG_RELOAD_INTERVAL: "10", OTEL_SERVICE_NAME: product-catalog }
+    volumes: ["./products:/usr/src/app/products:ro"]
+    cpus: 0.25
+    mem_limit: 64m
+  quote:
+    <<: *svc
+    image: ghcr.io/open-telemetry/demo:2.0.2-quote
+    environment: { OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4318", OTEL_PHP_AUTOLOAD_ENABLED: "true", QUOTE_PORT: "8090", OTEL_SERVICE_NAME: quote, OTEL_RESOURCE_ATTRIBUTES: "service.namespace=opentelemetry-demo" }
+    cpus: 0.25
+    mem_limit: 64m
+  recommendation:
+    <<: *svc
+    image: ghcr.io/open-telemetry/demo:2.0.2-recommendation
+    environment: { <<: *otel, RECOMMENDATION_PORT: "9001", PRODUCT_CATALOG_ADDR: "product-catalog:3550", OTEL_SERVICE_NAME: recommendation, PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: python }
+    cpus: 0.25
+    mem_limit: 128m
+  shipping:
+    <<: *svc
+    image: ghcr.io/open-telemetry/demo:2.0.2-shipping
+    environment: { SHIPPING_PORT: "50050", QUOTE_ADDR: "http://quote:8090", OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317", OTEL_SERVICE_NAME: shipping, OTEL_RESOURCE_ATTRIBUTES: "service.namespace=opentelemetry-demo" }
+    cpus: 0.25
+    mem_limit: 64m
+  flagd:
+    <<: *svc
+    image: ghcr.io/open-feature/flagd:v0.12.1
+    command: ["start", "--uri", "file:./etc/flagd/demo.flagd.json"]
+    volumes: ["./flagd:/etc/flagd:ro"]
+    cpus: 0.25
+    mem_limit: 96m
+  valkey-cart:
+    <<: *svc
+    image: valkey/valkey:8.1-alpine
+    cpus: 0.25
+    mem_limit: 64m
+networks:
+  ref:
+    name: bnref
+    external: true
