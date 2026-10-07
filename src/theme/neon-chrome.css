@@ -1,0 +1,96 @@
+/* =====================================================================================
+   NEON — chrome refinement. The board stays as it is; the wrapper gets calmer and more
+   precise: solid surfaces, 1px borders, underline tabs, thin icons, accent used sparingly.
+   Scoped to [data-theme='neon'].
+   ===================================================================================== */
+
+:root[data-theme='neon'] {
+  --n-surface: #0b1120;
+  --n-surface-2: #101828;
+  --n-line: #1e293b;
+  --n-line-2: #2b3850;
+  --n-text-2: #a9b4c6;
+}
+
+[data-theme='neon'] svg.lucide { stroke-width: 1.6px; }
+
+/* surfaces */
+[data-theme='neon'] .panel {
+  background: rgba(11, 17, 32, 0.94);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid var(--n-line);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+[data-theme='neon'] .panel-title { color: #64748b; font-size: 10px; letter-spacing: 1.2px; }
+
+/* top bar */
+[data-theme='neon'] .topbar { background: #070b16; border-bottom: 1px solid var(--n-line); padding-top: 0; padding-bottom: 0; min-height: 60px; }
+[data-theme='neon'] .brand-mark { width: 30px; height: 30px; border-radius: 7px; background: transparent; border: 1px solid var(--n-line-2); color: var(--cyan); box-shadow: none; }
+[data-theme='neon'] .brand-name { font-size: 14px; font-weight: 600; letter-spacing: 0.2px; }
+[data-theme='neon'] .brand-sub { color: #55627a; font-size: 10.5px; }
+[data-theme='neon'] .mode-tabs { background: transparent; border: 0; padding: 0; gap: 4px; align-self: stretch; align-items: stretch; }
+[data-theme='neon'] .mode-tabs button { border-radius: 0; padding: 0 12px; font-weight: 500; font-size: 13px; color: #7c8aa3; border-bottom: 2px solid transparent; }
+[data-theme='neon'] .mode-tabs button:hover { color: var(--text); }
+[data-theme='neon'] .mode-tabs button.on { background: transparent; box-shadow: none; color: var(--text); border-bottom-color: var(--cyan); }
+
+/* metrics: one instrument strip instead of four cards */
+[data-theme='neon'] .metrics { gap: 0; border: 1px solid var(--n-line); border-radius: 8px; background: var(--n-surface); margin: 8px 0; }
+[data-theme='neon'] .metric { border: 0; border-left: 1px solid var(--n-line); border-radius: 0; background: transparent; padding: 6px 14px 3px; }
+[data-theme='neon'] .metric:first-child { border-left: 0; }
+[data-theme='neon'] .metric.bad { border-color: var(--n-line); box-shadow: inset 0 -2px 0 var(--red); background: rgba(244, 63, 94, 0.06); }
+[data-theme='neon'] .metric-value { font-size: 18px; }
+
+/* buttons */
+[data-theme='neon'] .icon-btn { border-radius: 6px; border: 1px solid var(--n-line-2); background: transparent; color: var(--n-text-2); }
+[data-theme='neon'] .icon-btn:hover, [data-theme='neon'] .icon-btn.on { background: var(--n-surface-2); color: var(--text); border-color: #3a4a66; }
+[data-theme='neon'] .btn { border-radius: 6px; font-weight: 600; }
+[data-theme='neon'] .btn.primary { background: var(--cyan); color: #04121a; box-shadow: none; }
+[data-theme='neon'] .btn.primary:hover { filter: brightness(1.08); }
+[data-theme='neon'] .play { width: 36px; height: 36px; border-radius: 8px; background: var(--cyan); color: #04121a; box-shadow: none; }
+[data-theme='neon'] .play.on { background: transparent; color: var(--text); box-shadow: inset 0 0 0 1px var(--n-line-2); }
+[data-theme='neon'] .speeds, [data-theme='neon'] .seg { background: transparent; border: 1px solid var(--n-line-2); border-radius: 6px; padding: 2px; }
+[data-theme='neon'] .speeds button, [data-theme='neon'] .seg button { border-radius: 4px; }
+[data-theme='neon'] .speeds button.on, [data-theme='neon'] .seg button.on { background: var(--n-surface-2); box-shadow: inset 0 0 0 1px #3a4a66; color: var(--text); }
+[data-theme='neon'] .chip { border-radius: 6px; border: 1px solid var(--n-line-2); background: transparent; color: var(--n-text-2); font-weight: 500; }
+[data-theme='neon'] .chip:hover { color: var(--text); background: var(--n-surface-2); }
+[data-theme='neon'] .chip.danger, [data-theme='neon'] .chip.good { color: var(--n-text-2); }
+[data-theme='neon'] .chip.danger svg { color: #fb7185; }
+[data-theme='neon'] .chip.good svg { color: #34d399; }
+[data-theme='neon'] .chip.danger:hover { border-color: rgba(244, 63, 94, 0.5); background: rgba(244, 63, 94, 0.08); }
+[data-theme='neon'] .chip.good:hover { border-color: rgba(52, 211, 153, 0.5); background: rgba(52, 211, 153, 0.08); }
+[data-theme='neon'] select { border-radius: 6px; border-color: var(--n-line-2); background-color: transparent; color: var(--text); }
+[data-theme='neon'] select option { background: var(--n-surface); }
+[data-theme='neon'] .switch { border-radius: 999px; background: var(--n-line-2); border: 0; width: 32px; height: 18px; }
+[data-theme='neon'] .switch::after { top: 3px; left: 3px; width: 12px; height: 12px; background: #94a3b8; }
+[data-theme='neon'] .switch:checked { background: rgba(34, 211, 238, 0.35); border: 0; }
+[data-theme='neon'] .switch:checked::after { transform: translateX(14px); background: var(--cyan); box-shadow: none; }
+
+/* palette: icon in kind colour, no tinted tiles */
+[data-theme='neon'] .palette-item { border-radius: 6px; padding: 5px 7px; }
+[data-theme='neon'] .palette-item:hover { background: var(--n-surface-2); border-color: var(--n-line); transform: none; }
+[data-theme='neon'] .palette-icon { width: 28px; height: 28px; border-radius: 6px; background: transparent; box-shadow: inset 0 0 0 1px var(--n-line-2); }
+[data-theme='neon'] .palette-name { font-weight: 500; }
+[data-theme='neon'] .group-head { color: #55627a; letter-spacing: 1.1px; }
+
+/* toasts, lesson, compare */
+[data-theme='neon'] .toast { border-radius: 6px; background: var(--n-surface); border: 1px solid var(--n-line); border-left: 3px solid var(--cyan); font-weight: 500; color: var(--text); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); }
+[data-theme='neon'] .toast.bad { border-left-color: var(--red); color: var(--text); }
+[data-theme='neon'] .toast.good { border-left-color: var(--green); color: var(--text); }
+[data-theme='neon'] .objective { border-radius: 4px; background: rgba(34, 211, 238, 0.05); border: 0; border-left: 2px solid var(--cyan); }
+[data-theme='neon'] .hint { border-radius: 4px; border: 0; border-left: 2px solid var(--amber); background: rgba(251, 191, 36, 0.06); }
+[data-theme='neon'] .hold-fill { background: var(--cyan); box-shadow: none; }
+[data-theme='neon'] .step-dot.cur { box-shadow: none; }
+[data-theme='neon'] .scenario-strip { background: #070b16; }
+[data-theme='neon'] .sc-chip { border-radius: 6px; border-color: var(--n-line-2); background: transparent; }
+[data-theme='neon'] .sc-chip.on { background: rgba(34, 211, 238, 0.08); color: var(--cyan); border-color: rgba(34, 211, 238, 0.5); box-shadow: none; }
+[data-theme='neon'] .pane-header { border-radius: 8px; background: rgba(11, 17, 32, 0.94); backdrop-filter: none; }
+[data-theme='neon'] .pane-tag { border-radius: 5px; box-shadow: none !important; }
+[data-theme='neon'] .ep-item.on { background: var(--n-surface-2); border-color: transparent; box-shadow: inset 2px 0 0 var(--cyan); }
+
+/* node control panel */
+[data-theme='neon'] .tb-group { border-radius: 6px; border-color: var(--n-line-2); background: var(--n-surface); }
+[data-theme='neon'] .tb-chip.on { background: rgba(34, 211, 238, 0.1); box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.45); }
+[data-theme='neon'] .tb-select { border-color: var(--n-line-2); background: var(--n-surface-2); }
+.toasts { bottom: 86px; }

@@ -1,0 +1,162 @@
+import { KINDS, QUEUE_MAX_BACKLOG, capacityOf, costOf, instancesUp, isUp, skuOf, type SystemNodeData } from '../sim/catalog';
+import type { NodeStats } from '../sim/engine';
+
+export type Health = 'idle' | 'ok' | 'warm' | 'hot' | 'down';
+
+export function healthOf(util: number, dropRps: number, inRps: number, up: boolean): Health {
+  if (!up) return 'down';
+  if (dropRps > Math.max(1, inRps * 0.02) || util >= 0.95) return 'hot';
+  if (util >= 0.7) return 'warm';
+  if (inRps < 0.5) return 'idle';
+  return 'ok';
+}
+
+export const fmtMs = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms.toFixed(0)}ms`);
+export const fmt = (n: number) => (!isFinite(n) ? '∞' : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n >= 10 ? n.toFixed(0) : n.toFixed(1));
+
+export interface NodeView {
+  health: Health;
+  /** node is serving (incl. a db mid-election) */
+  up: boolean;
+  failedOver: boolean;
+  promotedReplica: boolean;
+  electing: boolean;
+  instances: number;
+  instancesUp: number;
+  unreachable: boolean;
+  noOrigin: boolean;
+  cost: number;
+  /** concrete SKU under a real pricing profile, e.g. "m7g.xlarge" */
+  sku: string | null;
+  stats: { label: string; value: string; bad?: boolean }[];
+  meter: { label: string; value: string; fill: number } | null;
+  /** short badges: retries, breaker, runtime… */
+  tags: { text: string; tone?: 'bad' | 'warn' | 'good' }[];
+}
+
+/** everything a node renderer needs, theme-agnostic */
+export function nodeView(d: SystemNodeData, st: NodeStats | undefined, running: boolean, hasOutgoing: boolean): NodeView {
+  const spec = KINDS[d.kind];
+  const failover = st?.failover ?? 'none';
+  const up = isUp(d) || (d.kind === 'db' && failover === 'electing');
+  const util = st?.util ?? 0;
+  const inRps = st?.inRps ?? 0;
+  const dropRps = st?.dropRps ?? 0;
+
+  let health: Health;
+  if (d.kind === 'client') health = up ? (inRps > 0.5 ? 'ok' : 'idle') : 'down';
+  else if (d.kind === 'queue') health = !up ? 'down' : dropRps > 1 ? 'hot' : (st?.queue ?? 0) > 500 ? 'warm' : inRps < 0.5 ? 'idle' : 'ok';
+  else if (failover === 'electing') health = 'hot';
+  else health = healthOf(util, dropRps, inRps, up);
+
+  const pct = `${Math.round(Math.min(util, 9.99) * 100)}%`;
+  let stats: NodeView['stats'];
+  let meter: NodeView['meter'] = { label: 'CPU', value: pct, fill: util };
+  switch (d.kind) {
+    case 'client':
+      stats = [
+        { label: 'sending', value: `${fmt(inRps)}/s` },
+        { label: 'success', value: `${((st?.success ?? 1) * 100).toFixed(1)}%`, bad: (st?.success ?? 1) < 0.99 },
+        { label: 'latency', value: fmtMs(st?.latencyMs ?? 0) },
+      ];
+      meter = null;
+      break;
+    case 'queue': {
+      const backlog = st?.queue ?? 0;
+      const lag = st?.lagS ?? 0;
+      stats = [
+        { label: 'in', value: `${fmt(inRps)}/s` },
+        { label: 'backlog', value: fmt(backlog), bad: backlog > 500 },
+        { label: 'lag', value: isFinite(lag) ? `${lag.toFixed(1)}s` : '∞', bad: lag > 5 },
+      ];
+      meter = { label: 'BACKLOG', value: `${((backlog / QUEUE_MAX_BACKLOG) * 100).toFixed(1)}%`, fill: Math.max(backlog > 0 ? 0.02 : 0, backlog / QUEUE_MAX_BACKLOG) };
+      break;
+    }
+    case 'function':
+      stats = [
+        { label: 'in', value: `${fmt(inRps)}/s` },
+        { label: 'cold', value: `${Math.round((st?.coldFrac ?? 0) * 100)}%`, bad: (st?.coldFrac ?? 0) > 0.05 },
+        { label: 'throttled', value: `${fmt(dropRps)}/s`, bad: dropRps > 1 },
+      ];
+      meter = { label: 'CONCURRENCY', value: pct, fill: util };
+      break;
+    case 'gateway':
+    case 'llmapi':
+      stats = [
+        { label: 'in', value: `${fmt(inRps)}/s` },
+        { label: '429s', value: `${fmt(dropRps)}/s`, bad: dropRps > 1 },
+        { label: 'limit', value: `${fmt(d.limit ?? 0)}/s` },
+      ];
+      meter = { label: 'LIMIT USED', value: pct, fill: util };
+      break;
+    case 'cache':
+    case 'cdn':
+      stats = [
+        { label: 'in', value: `${fmt(inRps)}/s` },
+        { label: 'hits', value: `${fmt(st?.hitRps ?? 0)}/s` },
+        { label: 'cap', value: `${fmt(capacityOf(d))}/s` },
+      ];
+      break;
+    default:
+      stats = [
+        { label: 'in', value: `${fmt(inRps)}/s` },
+        { label: 'dropped', value: `${fmt(dropRps)}/s`, bad: dropRps > 1 },
+        { label: 'cap', value: `${fmt(capacityOf(d, st?.reachable))}/s` },
+      ];
+  }
+
+  const tags: NodeView['tags'] = [];
+  if (d.runtime) tags.push({ text: d.runtime.toUpperCase() });
+  if (d.batching) tags.push({ text: 'BATCHING' });
+  if (d.degraded !== undefined && d.degraded < 1) tags.push({ text: `DEGRADED ×${d.degraded}`, tone: 'warn' });
+  if ((d.retries ?? 0) > 0) {
+    const amp = st?.retryAmp ?? 1;
+    tags.push({ text: `RETRY ${d.retries}× ${d.retryPolicy ?? 'immediate'}${amp > 1.05 ? ` · load ×${amp.toFixed(1)}` : ''}`, tone: amp > 1.5 ? 'bad' : undefined });
+  }
+  if (d.timeoutMs) tags.push({ text: `TIMEOUT ${fmtMs(d.timeoutMs)}`, tone: (st?.lateFrac ?? 0) > 0.05 ? 'bad' : undefined });
+  if (st?.breaker) tags.push({ text: `BREAKER ${st.breaker.toUpperCase()}${d.fallback ? ' +FALLBACK' : ''}`, tone: st.breaker === 'open' ? 'bad' : st.breaker === 'half' ? 'warn' : 'good' });
+  if (d.routing && d.routing !== 'split') tags.push({ text: d.routing.toUpperCase() });
+  if ((d.fanout ?? 1) > 1) tags.push({ text: `FAN-OUT ×${d.fanout}` });
+  if (d.stallRate) tags.push({ text: `STALLS ${+(d.stallRate * 100).toFixed(2)}% × ${d.stallMs ?? 0}ms`, tone: 'warn' });
+
+  return {
+    health,
+    up,
+    failedOver: d.kind === 'db' && failover === 'promoted',
+    promotedReplica: d.kind === 'replica' && failover === 'promoted',
+    electing: failover === 'electing',
+    instances: d.instances ?? 1,
+    instancesUp: instancesUp(d),
+    unreachable: !!spec.scalable && d.kind !== 'llm' && instancesUp(d) > 1 && (st?.reachable ?? 1) < instancesUp(d) && running,
+    noOrigin: (d.kind === 'cache' || d.kind === 'cdn') && !hasOutgoing,
+    cost: st?.costPerHour ?? costOf(d),
+    sku: skuOf(d),
+    stats,
+    meter,
+    tags,
+  };
+}
+
+/**
+ * One plain-English sentence on what a component is going through right now, and why.
+ * Powers the educational callouts (reference theme). Null when nothing noteworthy happens.
+ */
+export function explain(d: SystemNodeData, st: NodeStats | undefined, v: NodeView): { tone: 'bad' | 'warn' | 'info'; text: string } | null {
+  if (!st) return null;
+  const cap = capacityOf(d, st.reachable);
+  if (v.failedOver) return { tone: 'info', text: 'Primary is down. A replica was promoted and now takes writes; this node only forwards.' };
+  if (v.electing) return { tone: 'bad', text: 'Primary lost. Electing a replica — writes fail until one is promoted; reads continue on replicas.' };
+  if (!v.up) return { tone: 'bad', text: 'Unavailable. Every request routed here fails unless an upstream load balancer can route around it.' };
+  if (st.breaker === 'open') return { tone: 'warn', text: `Circuit breaker open: calls to the failing dependency are cut off${d.fallback ? ' and a fallback response is served' : ' and fail fast'}, giving it room to recover.` };
+  if (st.retryAmp > 1.5) return { tone: 'bad', text: `Retry amplification ×${st.retryAmp.toFixed(1)}: failed calls are retried, multiplying the load on an already struggling dependency.` };
+  if (st.lateFrac > 0.05) return { tone: 'bad', text: `${Math.round(st.lateFrac * 100)}% of responses arrive after the ${fmtMs(d.timeoutMs ?? 0)} timeout — the work was done, but the caller had already given up.` };
+  if (d.kind === 'queue' && st.lagS > 5) return { tone: 'warn', text: `Backlog of ${fmt(st.queue)} messages: consumers are ${isFinite(st.lagS) ? `${st.lagS.toFixed(0)}s` : 'indefinitely'} behind. Producers are unaffected — work completes later.` };
+  if ((d.kind === 'gateway' || d.kind === 'llmapi') && st.dropRps > 1) return { tone: 'warn', text: `Rate limit reached: ${fmt(st.dropRps)}/s rejected with HTTP 429 to protect what is behind it.` };
+  if (d.kind === 'function' && st.coldFrac > 0.05) return { tone: 'warn', text: `${Math.round(st.coldFrac * 100)}% of invocations hit a cold start while new instances spin up.` };
+  if (v.health === 'hot' && st.dropRps > 1) return { tone: 'bad', text: `Overloaded: ${fmt(st.inRps)} req/s offered vs ${fmt(cap)} req/s capacity. The excess queues, then gets dropped.` };
+  if (v.health === 'hot') return { tone: 'bad', text: `Saturated at ${Math.round(st.util * 100)}% — requests are queuing and latency is climbing steeply.` };
+  if (v.health === 'warm') return { tone: 'warn', text: `${Math.round(st.util * 100)}% utilised. Queueing delay grows non-linearly beyond ~70%; little headroom left for spikes.` };
+  if (v.unreachable) return { tone: 'warn', text: 'Extra instances receive no traffic: without a load balancer, clients only know one address.' };
+  if (v.noOrigin) return { tone: 'bad', text: 'No origin behind this cache: every miss has nowhere to go and fails.' };
+  return null;
+}

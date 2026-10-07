@@ -1,0 +1,177 @@
+import { NodeToolbar, Position } from '@xyflow/react';
+import { HeartPulse, Minus, Plus, Skull, Trash2 } from 'lucide-react';
+import { KINDS, RUNTIME_KINDS, RUNTIMES, TIERS, isUp, type RetryPolicy, type RouteMode, type Runtime, type SystemNodeData, type Tier } from '../sim/catalog';
+import { useSim } from '../sim/store';
+import { useBoardId } from './BoardContext';
+import { fmt } from './nodeModel';
+
+/** nodes that make outgoing calls and can therefore retry / break */
+const CALLERS = new Set(['client', 'server', 'worker', 'function', 'gateway', 'lb']);
+
+/** Station control panel shown above a selected node (both themes). */
+export function NodeControls({ id, data, selected }: { id: string; data: SystemNodeData; selected: boolean }) {
+  const b = useBoardId();
+  const { updateNode, killNode, reviveNode, removeNode } = useSim.getState();
+  const spec = KINDS[data.kind];
+  const instances = data.instances ?? 1;
+  const set = (patch: Partial<SystemNodeData>) => updateNode(b, id, patch);
+  const caller = CALLERS.has(data.kind);
+  const routeModes: RouteMode[] = ['split', 'failover', 'fanout'];
+
+  return (
+    <NodeToolbar isVisible={selected} position={Position.Top} className="node-toolbar">
+      <div className="tb-row">
+        {spec.tiered && (
+          <div className="tb-group">
+            {(Object.keys(TIERS) as Tier[]).map((t) => (
+              <button key={t} className={`tb-chip ${data.tier === t ? 'on' : ''}`} onClick={() => set({ tier: t })} title={`${TIERS[t].label}: ×${TIERS[t].capacity} capacity, ×${TIERS[t].cost} cost`}>
+                {t}
+              </button>
+            ))}
+          </div>
+        )}
+        {spec.scalable && (
+          <div className="tb-group">
+            <button className="tb-btn" onClick={() => set({ instances: Math.max(1, instances - 1), down: Math.min(data.down ?? 0, Math.max(0, instances - 2)) })} title="Remove instance">
+              <Minus size={14} />
+            </button>
+            <span className="tb-count">×{instances}</span>
+            <button className="tb-btn" onClick={() => set({ instances: Math.min(24, instances + 1) })} title="Add instance">
+              <Plus size={14} />
+            </button>
+          </div>
+        )}
+        {RUNTIME_KINDS.includes(data.kind) && (
+          <div className="tb-group" title="Language runtime — changes throughput per instance, latency, cold starts and serverless cost">
+            <span className="tb-label">runtime</span>
+            <select className="tb-select" value={data.runtime ?? ''} onChange={(e) => set({ runtime: (e.target.value || undefined) as Runtime | undefined })}>
+              <option value="">generic</option>
+              {(Object.keys(RUNTIMES) as Runtime[]).map((r) => (
+                <option key={r} value={r}>
+                  {RUNTIMES[r].label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        {data.kind === 'llm' && (
+          <div className="tb-group">
+            <button className={`tb-chip wide ${data.batching ? 'on' : ''}`} onClick={() => set({ batching: !data.batching })} title="Continuous batching: ~4× throughput per GPU, +400ms latency">
+              batching
+            </button>
+          </div>
+        )}
+        {(data.kind === 'cache' || data.kind === 'cdn') && (
+          <div className="tb-group">
+            <span className="tb-label">hit</span>
+            <input type="range" min={0} max={0.99} step={0.01} value={data.hitRate ?? 0.85} onChange={(e) => set({ hitRate: +e.target.value })} />
+            <span className="tb-count">{Math.round((data.hitRate ?? 0.85) * 100)}%</span>
+          </div>
+        )}
+        {(data.kind === 'gateway' || data.kind === 'function' || data.kind === 'llmapi') && (
+          <div className="tb-group">
+            <span className="tb-label">{data.kind === 'function' ? 'max conc.' : 'rate limit'}</span>
+            <input type="range" min={data.kind === 'llmapi' ? 10 : 100} max={data.kind === 'llmapi' ? 1000 : 10000} step={data.kind === 'llmapi' ? 10 : 100} value={data.limit ?? 1000} onChange={(e) => set({ limit: +e.target.value })} />
+            <span className="tb-count wide">{fmt(data.limit ?? 1000)}/s</span>
+          </div>
+        )}
+        <div className="tb-group">
+          {isUp(data) && data.kind !== 'client' ? (
+            <button className="tb-btn danger" onClick={() => killNode(b, id)} title="Kill (chaos)">
+              <Skull size={14} />
+            </button>
+          ) : !isUp(data) ? (
+            <button className="tb-btn good" onClick={() => reviveNode(b, id)} title="Revive">
+              <HeartPulse size={14} />
+            </button>
+          ) : null}
+          <button className="tb-btn" onClick={() => removeNode(b, id)} title="Delete">
+            <Trash2 size={14} />
+          </button>
+        </div>
+      </div>
+
+      {caller && (
+        <div className="tb-row">
+          <div className="tb-group" title="Retries per failed call and how they are scheduled">
+            <span className="tb-label">retries</span>
+            <select className="tb-select" value={data.retries ?? 0} onChange={(e) => set({ retries: +e.target.value })}>
+              {[0, 1, 2, 3, 5].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+            {(data.retries ?? 0) > 0 && (
+              <select className="tb-select" value={data.retryPolicy ?? 'immediate'} onChange={(e) => set({ retryPolicy: e.target.value as RetryPolicy })}>
+                <option value="immediate">immediate</option>
+                <option value="backoff">backoff + jitter</option>
+                <option value="budget">retry budget 10%</option>
+              </select>
+            )}
+          </div>
+          {data.kind === 'client' && (
+            <div className="tb-group" title="Clients give up on responses slower than this">
+              <span className="tb-label">timeout</span>
+              <select className="tb-select" value={data.timeoutMs ?? 0} onChange={(e) => set({ timeoutMs: +e.target.value || undefined })}>
+                <option value={0}>none</option>
+                {[300, 500, 1000, 2000, 5000].map((ms) => (
+                  <option key={ms} value={ms}>
+                    {ms >= 1000 ? `${ms / 1000}s` : `${ms}ms`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div className="tb-group" title="Circuit breaker: stop calling a failing dependency for a while">
+            <button className={`tb-chip wide ${data.breaker ? 'on' : ''}`} onClick={() => set({ breaker: !data.breaker })}>
+              breaker
+            </button>
+            {data.breaker && (
+              <button className={`tb-chip wide ${data.fallback ? 'on' : ''}`} onClick={() => set({ fallback: !data.fallback })} title="Serve a degraded response while the breaker is open">
+                fallback
+              </button>
+            )}
+          </div>
+          {data.kind !== 'client' && (
+            <div className="tb-group" title="How calls spread over downstream nodes">
+              <span className="tb-label">routing</span>
+              <select className="tb-select" value={data.routing ?? 'split'} onChange={(e) => set({ routing: e.target.value as RouteMode })}>
+                {routeModes.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {(data.kind === 'server' || data.kind === 'worker' || data.kind === 'function') && (
+            <div className="tb-group" title="Scatter-gather: each call goes to N partitions in parallel and waits for the slowest">
+              <span className="tb-label">fan-out</span>
+              <select className="tb-select" value={data.fanout ?? 1} onChange={(e) => set({ fanout: +e.target.value > 1 ? +e.target.value : undefined })}>
+                {[1, 5, 10, 20, 50, 100].map((n) => (
+                  <option key={n} value={n}>
+                    ×{n}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'function' && data.kind !== 'queue' && (
+            <div className="tb-group" title="Bounded queue: seconds of work this node will hold before shedding">
+              <span className="tb-label">queue</span>
+              <select className="tb-select" value={data.queueS ?? ''} onChange={(e) => set({ queueS: e.target.value === '' ? undefined : +e.target.value })}>
+                <option value="">default</option>
+                {[0.1, 0.25, 0.5, 1, 3, 10].map((q) => (
+                  <option key={q} value={q}>
+                    {q}s
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+      )}
+    </NodeToolbar>
+  );
+}

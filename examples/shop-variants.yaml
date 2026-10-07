@@ -1,0 +1,28 @@
+# Hypotheses for surviving Black Friday
+- name: scale out (12 × node)
+  changes:
+    - { op: set, id: api, fields: { instances: 12 } }
+- name: rewrite API in Go (5 instances)
+  changes:
+    - { op: set, id: api, fields: { runtime: go, instances: 5 } }
+- name: Redis cache + 8 instances
+  changes:
+    - { op: add, component: { id: redis, kind: cache, hitRate: 0.85 } }
+    - { op: disconnect, from: api, to: db }
+    - { op: connect, from: api, to: redis }
+    - { op: connect, from: redis, to: db }
+    - { op: set, id: api, fields: { instances: 8 } }
+- name: Go + cache (4 instances)
+  changes:
+    - { op: set, id: api, fields: { runtime: go, instances: 4 } }
+    - { op: add, component: { id: redis, kind: cache, hitRate: 0.85 } }
+    - { op: disconnect, from: api, to: db }
+    - { op: connect, from: api, to: redis }
+    - { op: connect, from: redis, to: db }
+- name: Go + cache (6 instances, N+1)
+  changes:
+    - { op: set, id: api, fields: { runtime: go, instances: 6 } }
+    - { op: add, component: { id: redis, kind: cache, hitRate: 0.85 } }
+    - { op: disconnect, from: api, to: db }
+    - { op: connect, from: api, to: redis }
+    - { op: connect, from: redis, to: db }

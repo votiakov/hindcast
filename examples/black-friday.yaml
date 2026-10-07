@@ -1,0 +1,10 @@
+name: Black Friday
+duration: 90
+readRatio: 0.85
+traffic:
+  - { at: 0, rps: 600 }
+  - { at: 30, rps: 2400 }
+  - { at: 90, rps: 2400 }
+events:
+  - { at: 60, action: { type: kill, kind: server, pick: busiest }, note: "an API instance dies at peak" }
+slo: { maxErrorRate: 0.01, maxP99Ms: 300 }

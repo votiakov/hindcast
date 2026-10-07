@@ -1,0 +1,16 @@
+# One hypothesis + the scenario to judge it by (used by `link` to open a playable comparison)
+scenario:
+  name: Black Friday
+  duration: 90
+  readRatio: 0.85
+  traffic: [{ at: 0, rps: 600 }, { at: 30, rps: 2400 }, { at: 90, rps: 2400 }]
+  events:
+    - { at: 60, action: { type: kill, kind: server, pick: busiest }, note: "💥 An API instance dies at peak" }
+variants:
+  - name: Go + Redis, N+1
+    changes:
+      - { op: set, id: api, fields: { runtime: go, instances: 6 } }
+      - { op: add, component: { id: redis, kind: cache, hitRate: 0.85 } }
+      - { op: disconnect, from: api, to: db }
+      - { op: connect, from: api, to: redis }
+      - { op: connect, from: redis, to: db }

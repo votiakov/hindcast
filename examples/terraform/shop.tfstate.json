@@ -1,0 +1,45 @@
+{
+  "format_version": "1.0",
+  "terraform_version": "1.9.5",
+  "values": {
+    "root_module": {
+      "resources": [
+        { "address": "aws_cloudfront_distribution.web", "mode": "managed", "type": "aws_cloudfront_distribution", "name": "web",
+          "values": { "arn": "arn:aws:cloudfront::123456789012:distribution/E2ABC", "id": "E2ABC",
+            "origin": [ { "domain_name": "shop-alb-123.us-east-1.elb.amazonaws.com", "origin_id": "alb" },
+                        { "domain_name": "shop-assets.s3.us-east-1.amazonaws.com", "origin_id": "assets" } ] } },
+        { "address": "aws_s3_bucket.assets", "mode": "managed", "type": "aws_s3_bucket", "name": "assets",
+          "values": { "bucket": "shop-assets", "bucket_regional_domain_name": "shop-assets.s3.us-east-1.amazonaws.com", "arn": "arn:aws:s3:::shop-assets" } },
+        { "address": "aws_s3_bucket.logs", "mode": "managed", "type": "aws_s3_bucket", "name": "logs",
+          "values": { "bucket": "shop-logs", "bucket_regional_domain_name": "shop-logs.s3.us-east-1.amazonaws.com", "arn": "arn:aws:s3:::shop-logs" } },
+        { "address": "aws_lb.api", "mode": "managed", "type": "aws_lb", "name": "api",
+          "values": { "arn": "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/shop-alb/abc", "dns_name": "shop-alb-123.us-east-1.elb.amazonaws.com", "internal": false, "load_balancer_type": "application" } },
+        { "address": "aws_lb_target_group.api", "mode": "managed", "type": "aws_lb_target_group", "name": "api",
+          "values": { "arn": "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/shop-api/def", "port": 8080 } },
+        { "address": "aws_lb_listener.https", "mode": "managed", "type": "aws_lb_listener", "name": "https",
+          "values": { "load_balancer_arn": "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/shop-alb/abc",
+            "default_action": [ { "type": "forward", "target_group_arn": "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/shop-api/def" } ] } },
+        { "address": "aws_launch_template.api", "mode": "managed", "type": "aws_launch_template", "name": "api",
+          "values": { "id": "lt-0abc", "name": "shop-api", "instance_type": "m7g.xlarge" } },
+        { "address": "aws_autoscaling_group.api", "mode": "managed", "type": "aws_autoscaling_group", "name": "api",
+          "values": { "arn": "arn:aws:autoscaling:us-east-1:123456789012:autoScalingGroup:shop-api", "name": "shop-api", "desired_capacity": 6, "min_size": 3,
+            "launch_template": [ { "id": "lt-0abc", "version": "$Latest" } ],
+            "target_group_arns": [ "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/shop-api/def" ] } },
+        { "address": "aws_db_instance.main", "mode": "managed", "type": "aws_db_instance", "name": "main",
+          "values": { "arn": "arn:aws:rds:us-east-1:123456789012:db:shop-main", "id": "shop-main", "identifier": "shop-main", "engine": "postgres", "instance_class": "db.r7g.xlarge", "multi_az": true } },
+        { "address": "aws_db_instance.replica", "mode": "managed", "type": "aws_db_instance", "name": "replica",
+          "values": { "arn": "arn:aws:rds:us-east-1:123456789012:db:shop-replica", "id": "shop-replica", "instance_class": "db.r7g.large", "replicate_source_db": "shop-main" } },
+        { "address": "aws_elasticache_replication_group.sessions", "mode": "managed", "type": "aws_elasticache_replication_group", "name": "sessions",
+          "values": { "arn": "arn:aws:elasticache:us-east-1:123456789012:replicationgroup:shop-sessions", "id": "shop-sessions", "node_type": "cache.r7g.large" } },
+        { "address": "aws_sqs_queue.orders", "mode": "managed", "type": "aws_sqs_queue", "name": "orders",
+          "values": { "arn": "arn:aws:sqs:us-east-1:123456789012:shop-orders", "id": "https://sqs.us-east-1.amazonaws.com/123456789012/shop-orders", "name": "shop-orders" } },
+        { "address": "aws_lambda_function.order_worker", "mode": "managed", "type": "aws_lambda_function", "name": "order_worker",
+          "values": { "arn": "arn:aws:lambda:us-east-1:123456789012:function:shop-order-worker", "function_name": "shop-order-worker", "runtime": "nodejs20.x", "memory_size": 512, "reserved_concurrent_executions": 50 } },
+        { "address": "aws_lambda_event_source_mapping.orders", "mode": "managed", "type": "aws_lambda_event_source_mapping", "name": "orders",
+          "values": { "event_source_arn": "arn:aws:sqs:us-east-1:123456789012:shop-orders", "function_name": "arn:aws:lambda:us-east-1:123456789012:function:shop-order-worker" } },
+        { "address": "aws_iam_role.api", "mode": "managed", "type": "aws_iam_role", "name": "api", "values": { "name": "shop-api" } },
+        { "address": "aws_security_group.api", "mode": "managed", "type": "aws_security_group", "name": "api", "values": { "name": "shop-api" } }
+      ]
+    }
+  }
+}

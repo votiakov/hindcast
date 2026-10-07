@@ -1,0 +1,41 @@
+/* Home-board callouts: engineering annotations pinned under a component, not cards. */
+.callout {
+  position: absolute;
+  width: 330px;
+  padding: 10px 12px 11px;
+  margin-top: 26px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+  background: #070b16;
+  border: 1px solid #2b3850;
+  border-left: 2px solid var(--cyan);
+  pointer-events: all;
+  animation: callout-in 0.35s ease-out;
+}
+.callout.tone-bad { border-left-color: var(--red); }
+.callout.tone-good { border-left-color: var(--green); }
+@keyframes callout-in { from { opacity: 0; transform: translateY(6px); } }
+.callout-leader { position: absolute; left: 18px; top: -27px; overflow: visible; }
+.callout-leader line { stroke: #3a4a66; stroke-width: 1; stroke-dasharray: 2 3; }
+.callout-title { font-family: var(--mono); font-size: 11px; letter-spacing: 0.4px; text-transform: lowercase; color: var(--muted); margin-bottom: 4px; }
+.tone-bad .callout-title { color: #fb7185; }
+.tone-good .callout-title { color: #34d399; }
+.callout p { margin: 0 0 3px; }
+.callout-code { margin: 7px 0 2px; padding: 7px 8px; font-family: var(--mono); font-size: 11px; line-height: 1.55; white-space: pre-wrap; background: rgba(148, 163, 184, 0.06); border: 1px solid #1e293b; }
+.callout-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; margin-top: 7px; }
+.callout-actions button { background: none; border: 0; padding: 2px 0; font-size: 13px; color: var(--cyan); text-align: left; }
+.callout-actions button:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+[data-theme='reference'] .callout { background: var(--r-surface); border: 1px solid var(--r-line); border-left: 2px solid var(--r-accent); color: var(--r-ink); box-shadow: 0 2px 8px rgba(20, 20, 18, 0.06); }
+[data-theme='reference'] .callout.tone-bad { border-left-color: var(--r-bad); }
+[data-theme='reference'] .callout.tone-good { border-left-color: var(--r-ok); }
+[data-theme='reference'] .callout-leader line { stroke: var(--r-line-strong); }
+[data-theme='reference'] .callout-code { background: var(--r-sunken); border-color: var(--r-line); }
+[data-theme='reference'] .callout-actions button { color: var(--r-accent); }
+[data-theme='transit'] .callout { background: #fff; border: 2.5px solid var(--ink); color: var(--ink); box-shadow: 4px 4px 0 var(--ink); }
+[data-theme='transit'] .callout-actions button { color: var(--ink); font-weight: 800; }
+.metrics:empty { display: none; }
+
+.callout.above { margin-top: 0; }
+.callout.above .callout-leader { top: auto; bottom: -27px; }

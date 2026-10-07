@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "bottleneck": {
+      "command": "npx",
+      "args": ["tsx", "mcp/server.ts"],
+      "env": { "BOTTLENECK_APP_URL": "http://localhost:5173" }
+    }
+  }
+}

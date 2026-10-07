@@ -1,0 +1,97 @@
+import { z } from 'zod';
+
+/**
+ * Bottleneck architecture spec, v1 — the contract between the engine and everything else
+ * (app, CLI, MCP server, future engines). Plain data, JSON or YAML.
+ */
+
+export const KIND_VALUES = ['client', 'cdn', 'lb', 'gateway', 'server', 'worker', 'function', 'cache', 'db', 'replica', 'storage', 'queue', 'llm', 'llmapi'] as const;
+
+export const ComponentSpec = z
+  .object({
+    id: z.string().min(1).describe('Unique id, also used as the display name unless `name` is set'),
+    kind: z.enum(KIND_VALUES).describe('Component type — see list_components for capacities, latency and price'),
+    name: z.string().optional(),
+    tier: z.enum(['S', 'M', 'L']).optional().describe('Vertical size: S ×1, M ×2, L ×4 capacity'),
+    instances: z.number().int().min(1).max(500).optional().describe('server/worker/llm: horizontal instances (reachable only behind lb/gateway/queue)'),
+    runtime: z.enum(['node', 'python', 'java', 'go', 'rust']).optional().describe('server/worker/function language runtime'),
+    hitRate: z.number().min(0).max(0.999).optional().describe('cache/cdn hit ratio'),
+    limit: z.number().positive().optional().describe('gateway/llmapi rate limit or function max concurrency, req/s'),
+    batching: z.boolean().optional().describe('llm: continuous batching (×4 throughput, +400ms)'),
+    retries: z.number().int().min(0).max(10).optional().describe('retries per failed downstream call'),
+    retryPolicy: z.enum(['immediate', 'backoff', 'budget']).optional(),
+    timeoutMs: z.number().positive().optional().describe('client deadline; slower responses count as failures'),
+    breaker: z.boolean().optional().describe('circuit breaker on downstream calls'),
+    fallback: z.boolean().optional().describe('serve a degraded response while the breaker is open'),
+    routing: z.enum(['split', 'fanout', 'failover']).optional().describe('split evenly (default), call all children in parallel, or fail over in order'),
+    stallRate: z.number().min(0).max(0.5).optional().describe('share of requests that hit a rare stall (GC pause, compaction, noisy neighbour)'),
+    stallMs: z.number().min(0).optional().describe('stall duration in ms'),
+    fanout: z.number().int().min(1).max(1000).optional().describe('each call goes to N partitions of the callee in parallel; the caller waits for the slowest (scatter-gather)'),
+    queueS: z.number().positive().optional().describe('bounded queue length in seconds of work'),
+    capacity: z.number().positive().optional().describe('override: req/s per size-S instance'),
+    latencyMs: z.number().nonnegative().optional().describe('override: base service time'),
+    costPerHour: z.number().nonnegative().optional().describe('override: $/h per size-S instance'),
+  })
+  .describe('One component of the architecture');
+
+export const ZoneSpec = z.object({
+  id: z.string(),
+  label: z.string().optional(),
+  members: z.array(z.string()).describe('component ids located in this failure domain'),
+});
+
+export const ArchitectureSpec = z.object({
+  version: z.literal(1).default(1),
+  name: z.string().optional(),
+  description: z.string().optional(),
+  pricing: z.enum(['illustrative', 'aws-us-east-1']).optional().describe('cost model: illustrative teaching defaults, or cited AWS us-east-1 on-demand prices'),
+  components: z.array(ComponentSpec).min(1),
+  connections: z
+    .array(z.union([z.tuple([z.string(), z.string()]), z.object({ from: z.string(), to: z.string() })]))
+    .describe('caller → callee pairs, e.g. ["lb","api"]; order matters for failover routing'),
+  zones: z.array(ZoneSpec).optional(),
+});
+
+export const ActionSpec = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('kill-id'), id: z.string() }),
+  z.object({ type: z.literal('revive-id'), id: z.string() }),
+  z.object({ type: z.literal('kill'), kind: z.enum(KIND_VALUES), pick: z.enum(['busiest', 'random']).default('busiest') }),
+  z.object({ type: z.literal('revive-all') }),
+  z.object({ type: z.literal('fail-zone'), id: z.string() }),
+  z.object({ type: z.literal('restore-zone'), id: z.string() }),
+  z.object({ type: z.literal('degrade'), id: z.string(), factor: z.number().min(0).max(1) }),
+  z.object({ type: z.literal('restore'), id: z.string() }),
+]);
+
+export const ScenarioSpec = z.object({
+  name: z.string().optional(),
+  duration: z.number().positive().max(3600).default(60).describe('simulated seconds'),
+  rps: z.number().nonnegative().optional().describe('constant traffic (ignored when `traffic` is given)'),
+  traffic: z.array(z.object({ at: z.number().nonnegative(), rps: z.number().nonnegative() })).optional().describe('keyframes, linear in between'),
+  readRatio: z.number().min(0).max(1).default(0.8),
+  events: z.array(z.object({ at: z.number().nonnegative(), action: ActionSpec, note: z.string().optional() })).optional(),
+  slo: z.object({ maxErrorRate: z.number().default(0.01), maxP99Ms: z.number().default(300) }).optional(),
+});
+
+export const ChangeSpec = z.discriminatedUnion('op', [
+  z.object({ op: z.literal('set'), id: z.string(), fields: ComponentSpec.omit({ id: true, kind: true }).partial() }),
+  z.object({ op: z.literal('add'), component: ComponentSpec }),
+  z.object({ op: z.literal('remove'), id: z.string() }),
+  z.object({ op: z.literal('connect'), from: z.string(), to: z.string() }),
+  z.object({ op: z.literal('disconnect'), from: z.string(), to: z.string() }),
+]);
+
+export const VariantSpec = z.object({
+  name: z.string(),
+  /** either a full replacement architecture… */
+  spec: ArchitectureSpec.optional(),
+  /** …or a list of edits applied to the base */
+  changes: z.array(ChangeSpec).optional(),
+});
+
+export type ComponentSpec = z.infer<typeof ComponentSpec>;
+export type ArchitectureSpec = z.infer<typeof ArchitectureSpec>;
+export type ScenarioSpec = z.infer<typeof ScenarioSpec>;
+export type ActionSpec = z.infer<typeof ActionSpec>;
+export type ChangeSpec = z.infer<typeof ChangeSpec>;
+export type VariantSpec = z.infer<typeof VariantSpec>;

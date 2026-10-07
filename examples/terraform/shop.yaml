@@ -1,0 +1,54 @@
+version: 1
+name: Shop (from Terraform)
+pricing: aws-us-east-1
+components:
+  - id: users
+    kind: client
+  - kind: cdn
+    hitRate: 0.6
+    id: web
+  - kind: lb
+    id: api
+  - kind: server
+    instances: 6
+    tier: M
+    id: api-group
+  - kind: db
+    tier: M
+    id: main
+  - kind: replica
+    tier: S
+    id: replica
+  - kind: cache
+    tier: S
+    hitRate: 0.85
+    id: sessions
+  - kind: queue
+    id: orders
+  - kind: function
+    runtime: node
+    limit: 500
+    id: order-worker
+  - id: shop-assets
+    kind: storage
+connections:
+  - - api
+    - api-group
+  - - web
+    - api
+  - - web
+    - shop-assets
+  - - orders
+    - order-worker
+  - - main
+    - replica
+  - - users
+    - web
+  - - api-group
+    - sessions
+  - - sessions
+    - main
+  - - order-worker
+    - sessions
+  - - api-group
+    - orders

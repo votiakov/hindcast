@@ -1,0 +1,145 @@
+# Architecture spec v1
+
+The spec is the contract between the engines and everything else (app, CLI, MCP, tests). YAML or
+JSON. The zod schema in `src/spec/schema.ts` is the source of truth; `validate_architecture` /
+`npm run sim -- validate` checks it and lints the design.
+
+## Architecture
+
+```yaml
+version: 1                      # optional, defaults to 1
+name: Checkout                  # optional
+description: …                  # optional
+pricing: aws-us-east-1          # optional: illustrative (default) | aws-us-east-1 — see catalog.md
+components:                     # required, ≥ 1
+  - id: users                   # unique; also the display name unless `name` is set
+    kind: client
+  - { id: lb, kind: lb }
+  - { id: api, kind: server, instances: 6, runtime: go, tier: M }
+  - { id: db, kind: db, tier: L }
+connections:                    # caller → callee
+  - [users, lb]
+  - { from: lb, to: api }       # object form also accepted
+  - [api, db]
+zones:                          # optional failure domains
+  - { id: az-a, label: us-east-1a, members: [api, db] }
+```
+
+### Component fields
+
+| field | applies to | meaning |
+|---|---|---|
+| `id` | all | unique id |
+| `kind` | all | `client cdn lb gateway server worker function cache db replica storage queue llm llmapi` |
+| `name` | all | display name |
+| `tier` | sizable kinds | `S` (×1 capacity, ×1 cost), `M` (×2, ×2.2), `L` (×4, ×4.8) |
+| `instances` | server, worker, llm | horizontal instances (1–500); reachable only behind lb/gateway/queue |
+| `runtime` | server, worker, function | `node python java go rust` (see catalog.md) |
+| `hitRate` | cache, cdn | 0–0.999 |
+| `limit` | gateway, llmapi, function | rate limit (req/s) or max concurrency |
+| `batching` | llm | continuous batching: ×4 throughput, +400 ms |
+| `retries` | any caller | retries per failed downstream call (0–10) |
+| `retryPolicy` | any caller | `immediate` · `backoff` (exponential + jitter) · `budget` (≤ 10 % extra) |
+| `timeoutMs` | any caller (typically client) | deadline per attempt; slower responses are failures |
+| `breaker` | any caller | circuit breaker on downstream calls |
+| `fallback` | with `breaker` | serve a degraded response while open |
+| `routing` | any caller | `split` (default) · `fanout` (call all, wait for all) · `failover` (in order) |
+| `fanout` | any caller | scatter-gather: each call goes to N partitions of the callee in parallel and waits for the slowest (also makes the callee's instances reachable) |
+| `stallRate`, `stallMs` | any | rare hiccups: share of requests that stall, and for how long (GC pause, compaction, noisy neighbor) |
+| `queueS` | queued kinds | bounded queue length in seconds of work |
+| `capacity` | any | override: req/s per size-S instance |
+| `latencyMs` | any | override: base service time |
+| `costPerHour` | any | override: $/h per size-S instance |
+
+### Connections and semantics
+
+- Order matters for `routing: failover` (first child first).
+- `db → replica` connections define replicas (reads are shared, failover target).
+- `queue → worker` connections define consumers (pull model).
+- `cache → db` / `cdn → lb` define the origin for misses.
+
+### Lint rules (warnings unless noted)
+
+- no `client` component (error); duplicate ids, unknown/self connections, unknown zone members (errors)
+- `lb`/`gateway`/`queue` with nothing behind it (error)
+- cache/cdn without origin; `instances > 1` without lb/gateway/queue in front; replica not fed by a db;
+  component nothing connects to; `fallback` without `breaker`
+
+## Scenario
+
+```yaml
+name: Black Friday
+duration: 90                    # simulated seconds (≤ 3600), default 60
+rps: 800                        # constant traffic — or:
+traffic:                        # keyframes, linear in between (wins over rps)
+  - { at: 0, rps: 600 }
+  - { at: 30, rps: 2400 }
+readRatio: 0.85                 # default 0.8
+events:
+  - { at: 60, action: { type: kill, kind: server, pick: busiest }, note: "instance dies at peak" }
+slo: { maxErrorRate: 0.01, maxP99Ms: 300 }      # defaults
+```
+
+### Actions
+
+| action | effect |
+|---|---|
+| `{ type: kill-id, id }` | kill a component (scalable kinds lose one instance per kill) |
+| `{ type: revive-id, id }` | bring it back (all instances) |
+| `{ type: kill, kind, pick: busiest\|random }` | kill one live component/instance of a kind |
+| `{ type: revive-all }` | heal everything, restore zones, clear degradation |
+| `{ type: fail-zone, id }` / `{ type: restore-zone, id }` | take every member of a zone down / up |
+| `{ type: degrade, id, factor }` | brownout: capacity × factor (0–1) |
+| `{ type: restore, id }` | end the brownout |
+
+## Variants (hypotheses)
+
+A variant is a full replacement spec or a list of edits applied to a base:
+
+```yaml
+- name: Go + cache
+  changes:
+    - { op: set, id: api, fields: { runtime: go, instances: 6 } }
+    - { op: add, component: { id: redis, kind: cache, hitRate: 0.85 } }
+    - { op: remove, id: old-thing }
+    - { op: disconnect, from: api, to: db }
+    - { op: connect, from: api, to: redis }
+    - { op: connect, from: redis, to: db }
+- name: something completely different
+  spec: { components: […], connections: […] }
+```
+
+A variants file is either a list of variants or `{ variants: [...], scenario: {...} }`.
+
+## Board ↔ spec
+
+- `specToGraph` lays components out left-to-right by longest path from a traffic source and draws
+  zone frames around their members.
+- `graphToSpec` exports a board (only non-default fields), deriving zone membership from geometry.
+  Round-trips are exact.
+
+## Importing from Terraform
+
+`npm run sim -- import-terraform plan-or-state.json --out arch.yaml` (MCP: `import_terraform`) turns
+`terraform show -json` output into a spec priced with `aws-us-east-1`.
+
+| Terraform | component |
+|---|---|
+| `aws_cloudfront_distribution` | cdn (origins resolved to ALBs / S3 buckets → storage) |
+| `aws_lb` / `aws_alb` (internet-facing = entry point) | lb |
+| `aws_apigatewayv2_api`, `aws_api_gateway_rest_api` | gateway |
+| `aws_autoscaling_group` (+ launch template/config) | server ×desired_capacity, tier from instance type; GPU types → llm |
+| `aws_ecs_service` | server ×desired_count |
+| `aws_instance` | server (tier from type) or llm for GPU types |
+| `aws_lambda_function` | function (runtime, reserved concurrency) |
+| `aws_db_instance` (`replicate_source_db` → replica), `aws_rds_cluster` (+ instances → replicas) | db / replica |
+| `aws_elasticache_replication_group` / `_cluster` | cache |
+| `aws_sqs_queue` | queue |
+
+Wiring from real references: CloudFront origins; ALB listener → target group → ASG / ECS service /
+target-group attachments; API Gateway integrations → Lambda; Lambda event-source mappings → queue
+consumers; RDS `replicate_source_db`. Heuristics (always reported in `assumptions`): users → public
+entry points; entry points without explicit targets → all front-line compute; every service reads
+through a single cache into the database(s) (cache-aside), otherwise calls them directly; queues are
+produced by the web tier; default hit rates (CDN 60 %, cache 85 %). Size tiers: ≤ large = S, xlarge = M,
+≥ 2xlarge = L. Terraform has no traffic or SLOs — supply them in the scenario.
