@@ -1,0 +1,38 @@
+# Gate pull requests that change an architecture spec: run the failure audit, attach the report,
+# fail the check when a critical incident appears. Copy to .github/workflows/ in the repo that
+# holds your spec (here: architecture/shop.yaml), and point BOTTLENECK_REPO at this project.
+name: architecture-audit
+on:
+  pull_request:
+    paths: ['architecture/**']
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    permissions: { contents: read, pull-requests: write }
+    env:
+      BOTTLENECK_REPO: your-org/bottleneck
+      SPEC: architecture/shop.yaml
+      RPS: '800'              # expected peak load
+      COST_PER_MIN: '1000'    # what a minute of outage costs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: { repository: ${{ env.BOTTLENECK_REPO }}, path: .bottleneck }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --prefix .bottleneck
+      - name: Failure audit
+        id: audit
+        run: |
+          set +e
+          npm run --prefix .bottleneck -s sim -- audit "$GITHUB_WORKSPACE/$SPEC" --rps "$RPS" --cost-per-min "$COST_PER_MIN" \
+            --md "$GITHUB_WORKSPACE/audit.md" --html "$GITHUB_WORKSPACE/audit.html"
+          echo "code=$?" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with: { name: failure-audit, path: audit.html }
+      - name: Comment on the PR
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: gh pr comment ${{ github.event.pull_request.number }} --body-file audit.md --edit-last || gh pr comment ${{ github.event.pull_request.number }} --body-file audit.md
+      - name: Fail on critical incidents
+        if: steps.audit.outputs.code == '2'
+        run: echo "::error::The failure audit found critical incidents — see the PR comment" && exit 1

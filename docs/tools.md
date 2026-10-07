@@ -96,6 +96,13 @@ on the changed design**, and priced in $/month against the current design. Fixes
 dropped. In the app: shield button in Sandbox → risk register, risk marks on the board, *Replay on the
 board* plays an incident live, *Apply* applies a fix (undoable), *Copy report* gives Markdown.
 
+### In CI
+
+`audit` exits with code 2 when an incident is critical, so it can gate pull requests that change an
+architecture spec. `examples/ci/architecture-audit.yml` is a GitHub Actions workflow that runs the audit
+on the changed spec, comments the Markdown report on the PR, uploads the HTML report and fails the check
+on critical findings.
+
 ## App
 
 | feature | how |
