@@ -40,3 +40,30 @@ describe('spec', () => {
     expect(validateSpec(r.spec).ok).toBe(true);
   });
 });
+
+import { parseAllDocuments } from 'yaml';
+import { importKubernetes } from '../src/spec/kubernetes';
+
+describe('kubernetes import', () => {
+  const docs = parseAllDocuments(readFileSync('examples/kubernetes/shop.yaml', 'utf8')).map((d) => d.toJS());
+  const r = importKubernetes(docs, 'shop');
+  const byId = new Map(r.spec.components.map((c) => [c.id, c]));
+
+  it('maps workloads by image and HPAs to autoscaling', () => {
+    expect(byId.get('postgres')?.kind).toBe('db');
+    expect(byId.get('redis')?.kind).toBe('cache');
+    expect(byId.get('rabbitmq')?.kind).toBe('queue');
+    expect(byId.get('web')?.autoscale).toMatchObject({ min: 3, max: 12, targetUtil: 0.65 });
+    expect(byId.get('postgres-replica-1')?.kind).toBe('replica');
+  });
+
+  it('wires ingress, env references, queue consumers and cache-aside', () => {
+    const conns = r.spec.connections.map((c) => (Array.isArray(c) ? c.join('>') : `${c.from}>${c.to}`));
+    expect(conns).toEqual(expect.arrayContaining(['users>shop', 'shop>web', 'web>redis', 'redis>postgres', 'web>rabbitmq', 'rabbitmq>mailer']));
+    expect(byId.get('mailer')?.kind).toBe('worker');
+  });
+
+  it('produces a valid spec', () => {
+    expect(validateSpec(r.spec).ok).toBe(true);
+  });
+});

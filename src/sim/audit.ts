@@ -113,12 +113,19 @@ interface Incident {
   traffic?: { at: number; rps: number }[];
 }
 
-function auditParsed(spec: ArchitectureSpec, opts: AuditOptions): AuditResult {
+function auditParsed(input: ArchitectureSpec, opts: AuditOptions): AuditResult {
   const t0 = Date.now();
   const slo = { maxErrorRate: opts.slo?.maxErrorRate ?? 0.01, maxP99Ms: opts.slo?.maxP99Ms ?? 300 };
   const readRatio = opts.readRatio ?? 0.8;
-  const bp = breakingPoint(spec, { readRatio, slo });
-  const rps = opts.rps ?? Math.max(10, Math.round(bp.maxRps * 0.5));
+  const bp0 = breakingPoint(input, { readRatio, slo });
+  const rps = opts.rps ?? Math.max(10, Math.round(bp0.maxRps * 0.5));
+  // autoscaled fleets are audited at the size they settle at for this load, not at their minimum
+  let spec = input;
+  if (input.components.some((c) => c.autoscale)) {
+    const warm = simulate(input, { duration: 120, rps, readRatio, slo });
+    spec = { ...input, components: input.components.map((c) => (c.autoscale && warm.components[c.id]?.instances ? { ...c, instances: warm.components[c.id].instances } : c)) };
+  }
+  const bp = spec === input ? bp0 : breakingPoint(spec, { readRatio, slo });
   const byId = new Map(spec.components.map((c) => [c.id, c]));
   const nm = (id: string) => byId.get(id)?.name ?? id;
   const parents = (id: string) => pairs(spec).filter(([, b]) => b === id).map(([a]) => a);
@@ -227,7 +234,7 @@ function auditParsed(spec: ArchitectureSpec, opts: AuditOptions): AuditResult {
         const cost = simulate(variant, { duration: 20, rps, readRatio, slo }).summary.meanCostPerHour;
         f.fixes.push({
           ...cand,
-          monthlyDelta: Math.round((cost - baseCost) * 730),
+          monthlyDelta: monthly(cost - baseCost),
           after: { severity: sevAfter, errorRate: after.errorRate, peakP99Ms: after.peakP99Ms, failedRequests: after.failedRequests },
         });
       }
@@ -271,7 +278,7 @@ function auditParsed(spec: ArchitectureSpec, opts: AuditOptions): AuditResult {
       headroom.fixes.push({
         ...cand,
         why: `${cand.why} Sustains ${Math.round(bp2.maxRps)} req/s (${r2.toFixed(1)}×)${bp2.limitedBy ? `, then ${nm(bp2.limitedBy)} is next` : ''}.`,
-        monthlyDelta: Math.round((cost - baseCost) * 730),
+        monthlyDelta: monthly(cost - baseCost),
         after: { severity: r2 < 1 ? 'critical' : r2 < 1.5 ? 'major' : r2 < 2 ? 'minor' : 'ok', errorRate: 0, peakP99Ms: 0, failedRequests: 0 },
       });
     }
@@ -299,6 +306,8 @@ function auditParsed(spec: ArchitectureSpec, opts: AuditOptions): AuditResult {
   };
 }
 
+/** $/month from $/h; differences under $5 are simulation noise (autoscaled fleets), not a cost */
+const monthly = (perHour: number) => (Math.abs(perHour * 730) < 5 ? 0 : Math.round(perHour * 730));
 const avg = (xs: number[]) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : 0);
 
 function measure(r: SimResult, slo: { maxErrorRate: number; maxP99Ms: number }, base: SimResult): IncidentImpact {
@@ -365,7 +374,7 @@ function explainIncident(inc: Incident, i: IncidentImpact, r: SimResult, sev: Se
     if (i.recoveryS === null) parts.push('Did not recover after the fault was cleared — a metastable failure: the system stays overloaded by its own retries or backlog.');
     else if (i.recoveryS > 3) parts.push(`Took ${i.recoveryS} s to recover after the fault was cleared.`);
   }
-  const top = r.bottlenecks.find((b) => b.id !== inc.target && b.note);
+  const top = r.bottlenecks.find((b) => b.id !== inc.target && b.note && !b.note.startsWith('Scaling out'));
   if (sev !== 'ok' && top?.note) parts.push(`Knock-on: ${nm(top.id)} — ${top.note}`);
   return parts.join(' ');
 }

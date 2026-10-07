@@ -1,4 +1,5 @@
-import { parse as parseYaml } from 'yaml';
+import { parse as parseYaml, parseAllDocuments } from 'yaml';
+import { importKubernetes, looksLikeKubernetes } from './kubernetes';
 import { useSim } from '../sim/store';
 import { importTerraform } from './terraform';
 import { ArchitectureSpec } from './schema';
@@ -12,11 +13,17 @@ export async function openFile(file: File): Promise<void> {
   const s = useSim.getState();
   try {
     const text = await file.text();
-    const doc = /\.ya?ml$/i.test(file.name) ? parseYaml(text) : JSON.parse(text);
+    const yaml = /\.ya?ml$/i.test(file.name);
+    const all = yaml ? parseAllDocuments(text).map((d) => d.toJS()).filter(Boolean) : [JSON.parse(text)];
+    const doc = all.length === 1 ? all[0] : yaml ? parseYaml(text.split(/^---$/m)[0]) : all[0];
     const isTerraform = doc && typeof doc === 'object' && ('format_version' in doc || 'values' in doc || 'planned_values' in doc);
     const base = file.name.replace(/\.(ya?ml|json|tfstate)+$/i, '');
     let spec: ArchitectureSpec;
-    if (isTerraform) {
+    if (looksLikeKubernetes(all)) {
+      const r = importKubernetes(all, base);
+      spec = r.spec;
+      s.toast('info', `Imported ${r.mapped.length} Kubernetes objects — ${r.assumptions.length} assumption${r.assumptions.length === 1 ? '' : 's'} to review`);
+    } else if (isTerraform) {
       const r = importTerraform(doc, base);
       spec = r.spec;
       if (r.assumptions.length) s.toast('info', `Imported from Terraform — ${r.assumptions.length} assumption${r.assumptions.length > 1 ? 's' : ''} to review (see the spec)`);

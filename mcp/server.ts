@@ -20,6 +20,8 @@ import { optimize } from '../src/sim/optimize';
 import { audit } from '../src/sim/audit';
 import { auditMarkdown } from '../src/sim/auditReport';
 import { importTerraform } from '../src/spec/terraform';
+import { importKubernetes } from '../src/spec/kubernetes';
+import { parseAllDocuments } from 'yaml';
 import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/server';
 import { existsSync, readFileSync } from 'node:fs';
 
@@ -218,6 +220,28 @@ server.registerTool(
   async ({ terraform_json, name }) => {
     try {
       const r = importTerraform(terraform_json, name);
+      return json({ ...r, lint: validateSpec(r.spec).issues });
+    } catch (e) {
+      return fail(e);
+    }
+  },
+);
+
+server.registerTool(
+  'import_kubernetes',
+  {
+    title: 'Import an architecture from Kubernetes manifests',
+    description:
+      'Convert Kubernetes manifests (kubectl -o yaml, Helm template output, kustomize build — one or many YAML documents) into an architecture spec. Deployments/StatefulSets become components (images identify databases, caches, brokers, inference servers); HPAs become autoscaling; Ingress / LoadBalancer Services become entry points; call edges are inferred from Service names referenced in env vars and args. Every guess is listed in `assumptions` — confirm them with the user, ask for request rates and SLOs, then simulate or audit.',
+    inputSchema: {
+      manifests_yaml: z.string().describe('the manifests as YAML text (multi-document allowed)'),
+      name: z.string().optional(),
+    },
+    annotations: { readOnlyHint: true },
+  },
+  async ({ manifests_yaml, name }) => {
+    try {
+      const r = importKubernetes(parseAllDocuments(manifests_yaml).map((d) => d.toJS()), name);
       return json({ ...r, lint: validateSpec(r.spec).issues });
     } catch (e) {
       return fail(e);

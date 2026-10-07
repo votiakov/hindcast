@@ -3,6 +3,7 @@ import { KINDS, baseLatencyOf, cacheWarmth, capacityOf, perInstanceCapacity, cos
 import { applyAction } from '../actions';
 import { explain, nodeView } from '../../canvas/nodeModel';
 import { failoverOrder, type NodeStats } from '../engine';
+import { asyncOnly } from '../headless';
 import { ArchitectureSpec, ScenarioSpec } from '../../spec/schema';
 import { specToGraph } from '../../spec/convert';
 import { Histogram } from './histogram';
@@ -689,7 +690,7 @@ function runDes(spec: ArchitectureSpec, scenarioInput: unknown, cfgIn: Partial<D
     };
   }
   const bottlenecks = Object.entries(components)
-    .filter(([, c]) => c.peakUtil >= 0.7 || c.droppedTotal > 0 || c.finalStatus === 'down')
+    .filter(([id, c]) => (c.peakUtil >= 0.7 || c.droppedTotal > 0 || c.finalStatus === 'down') && !(c.droppedTotal === 0 && asyncOnly(id, sys(), edges)))
     .sort((a, b) => b[1].droppedTotal - a[1].droppedTotal || b[1].peakUtil - a[1].peakUtil)
     .slice(0, 5)
     .map(([id, c]) => ({ id, peakUtil: c.peakUtil, droppedTotal: c.droppedTotal, note: c.note }));

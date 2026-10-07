@@ -10,6 +10,7 @@
  *   npm run sim -- audit           <arch.yaml> [--rps 500] [--cost-per-min 1000] [--md report.md]   (what breaks first, and what it costs)
  *   npm run sim -- link            <arch.yaml> [variants.yaml]     → open in the app
  *   npm run sim -- import-terraform <terraform-show.json> [--name "My system"] [--out arch.yaml]
+ *   npm run sim -- import-k8s      <manifests.yaml …> [--name "My system"] [--out arch.yaml]      (Deployments, HPAs, StatefulSets, Services, Ingress)
  *   npm run sim -- catalog
  *
  * Files may be YAML or JSON. A variants file is either a list of variants or { variants, scenario }.
@@ -24,6 +25,8 @@ import { optimize } from '../src/sim/optimize';
 import { audit, type AuditResult } from '../src/sim/audit';
 import { auditMarkdown } from '../src/sim/auditReport';
 import { importTerraform } from '../src/spec/terraform';
+import { importKubernetes } from '../src/spec/kubernetes';
+import { parseAllDocuments } from 'yaml';
 import { breakingPoint, catalog, compare, simulate, type SimResult } from '../src/sim/headless';
 import { validateSpec } from '../src/spec/validate';
 import { applyVariant, encodePayload } from '../src/spec/convert';
@@ -212,10 +215,22 @@ function main() {
       if (r.skipped.length) console.error(c.dim(`Not modelled (no request path): ${r.skipped.join(', ')}`));
       return;
     }
+    case 'import-k8s': {
+      const docs = pos.flatMap((f) => parseAllDocuments(readFileSync(f, 'utf8')).map((d) => d.toJS()));
+      const r = importKubernetes(docs, opt.name ? String(opt.name) : undefined);
+      const yaml = specToYaml(r.spec);
+      if (opt.out) writeFileSync(String(opt.out), yaml);
+      if (json) return console.log(JSON.stringify(r, null, 2));
+      if (!opt.out) console.log(yaml);
+      console.error(c.bold(`\nImported ${r.spec.components.length - 1} components from ${r.mapped.length} objects`) + (opt.out ? ` → ${opt.out}` : ''));
+      if (r.assumptions.length) console.error(`${c.yellow('Assumptions — review these:')}\n${r.assumptions.map((x) => `  • ${x}`).join('\n')}`);
+      if (r.skipped.length) console.error(c.dim(`Not modelled: ${r.skipped.join(', ')}`));
+      return;
+    }
     case 'catalog':
       return console.log(JSON.stringify(catalog(), null, 2));
     default:
-      console.log(readFileSync(new URL(import.meta.url), 'utf8').split('\n').slice(1, 13).map((l) => l.replace(/^ \*\s?/, '')).join('\n'));
+      console.log(readFileSync(new URL(import.meta.url), 'utf8').split('\n').slice(1, 16).map((l) => l.replace(/^ \*\s?/, '')).join('\n'));
       process.exitCode = cmd ? 1 : 0;
   }
 }

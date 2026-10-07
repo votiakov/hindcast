@@ -21,6 +21,10 @@ export interface SimOptions {
 
 export interface ComponentReport {
   kind: string;
+  /** autoscaled components: instances serving at the end of the run */
+  instances?: number;
+  /** fed only by queues: saturation shows up as backlog, not as user errors */
+  async?: boolean;
   peakUtil: number;
   meanUtil: number;
   peakDropRps: number;
@@ -58,6 +62,12 @@ export interface SimResult {
 }
 
 const round = (n: number, d = 3) => Math.round(n * 10 ** d) / 10 ** d;
+
+/** a component whose every caller is a queue: it works off a backlog, users never wait on it */
+export function asyncOnly(id: string, nodes: { id: string; data: { kind: string } }[], edges: { source: string; target: string }[]): boolean {
+  const callers = edges.filter((e) => e.target === id).map((e) => nodes.find((n) => n.id === e.source)?.data.kind);
+  return callers.length > 0 && callers.every((k) => k === 'queue');
+}
 
 function trafficFn(sc: ScenarioSpec): (t: number) => number {
   const tl = sc.traffic?.length ? [...sc.traffic].sort((a, b) => a.at - b.at) : [{ at: 0, rps: sc.rps ?? 500 }];
@@ -160,10 +170,12 @@ function simulateParsed(spec: ArchitectureSpec, scenarioInput: unknown, opts: Si
       peakLatencyMs: Math.round(a.peakLat),
       finalStatus: v.failedOver ? 'failed over' : v.up ? v.health : 'down',
       note: a.worstNote,
+      ...(st?.scaling ? { instances: st.scaling.live } : {}),
+      ...(asyncOnly(n.id, finalSys, edges) ? { async: true } : {}),
     };
   }
   const bottlenecks = Object.entries(components)
-    .filter(([, c]) => c.kind !== 'client' && (c.peakUtil >= 0.7 || c.droppedTotal > 0 || c.finalStatus === 'down'))
+    .filter(([, c]) => c.kind !== 'client' && (c.peakUtil >= 0.7 || c.droppedTotal > 0 || c.finalStatus === 'down') && !(c.async && c.droppedTotal === 0))
     .sort((a, b) => b[1].droppedTotal - a[1].droppedTotal || b[1].peakUtil - a[1].peakUtil)
     .slice(0, 5)
     .map(([id, c]) => ({ id, peakUtil: c.peakUtil, droppedTotal: c.droppedTotal, note: c.note }));
