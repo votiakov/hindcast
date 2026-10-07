@@ -4,6 +4,8 @@ import { KINDS, RUNTIME_KINDS, RUNTIMES, TIERS, isUp, type RetryPolicy, type Rou
 import { useSim } from '../sim/store';
 import { useBoardId } from './BoardContext';
 import { fmt } from './nodeModel';
+import { Calibrate } from './Calibrate';
+import { useState } from 'react';
 
 /** nodes that make outgoing calls and can therefore retry / break */
 const CALLERS = new Set(['client', 'server', 'worker', 'function', 'gateway', 'lb']);
@@ -17,6 +19,8 @@ export function NodeControls({ id, data, selected }: { id: string; data: SystemN
   const set = (patch: Partial<SystemNodeData>) => updateNode(b, id, patch);
   const caller = CALLERS.has(data.kind);
   const routeModes: RouteMode[] = ['split', 'failover', 'fanout'];
+  const [cal, setCal] = useState(false);
+  const calibratable = data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'function' && data.kind !== 'queue';
 
   return (
     <NodeToolbar isVisible={selected} position={Position.Top} className="node-toolbar">
@@ -142,12 +146,24 @@ export function NodeControls({ id, data, selected }: { id: string; data: SystemN
               {(data.faultRate || data.faultLatencyMs || data.degraded !== undefined) && <option value="restore">restore</option>}
             </select>
           )}
+          {calibratable && (
+            <button className={`tb-chip wide ${cal || data.capacity !== undefined || data.latencyMs !== undefined ? 'on' : ''}`} onClick={() => setCal(!cal)} title="Calibrate from production numbers: req/s at CPU %, p50, $/h">
+              calibrate
+            </button>
+          )}
           <button className="tb-btn" onClick={() => removeNode(b, id)} title="Delete">
             <Trash2 size={14} />
           </button>
         </div>
       </div>
 
+      {cal && calibratable && (
+        <div className="tb-row">
+          <div className="tb-group">
+            <Calibrate d={data} apply={(p) => (set(p), setCal(false))} />
+          </div>
+        </div>
+      )}
       {caller && (
         <div className="tb-row">
           <div className="tb-group" title="Retries per failed call and how they are scheduled">
