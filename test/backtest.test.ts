@@ -6,7 +6,7 @@ import { parseCur, parseGcpBilling, summariseBill } from '../src/backtest/import
 import { parseCsv } from '../src/backtest/import/csv';
 import { importBundle } from '../src/backtest/import/manifest';
 import { erlangC, mmcWait } from '../src/backtest/queueing';
-import { calibrate } from '../src/backtest/calibrate';
+import { calibrate, trafficOf } from '../src/backtest/calibrate';
 import { basePlan, runPlan } from '../src/backtest/engine';
 import { applyStrategy } from '../src/backtest/strategy';
 import { backtest } from '../src/backtest/backtest';
@@ -367,5 +367,33 @@ describe('strategies from the board and from audit fixes', () => {
     const fix = fixToStrategy('Autoscale the API', spec, [{ op: 'set', id: 'api', fields: { autoscale: { min: 2, max: 6, targetUtil: 0.6 } } }], m);
     expect(fix.strategy!.changes[0]).toMatchObject({ service: 'api', autoscale: { min: 2, max: 6, targetCpu: 0.6 } });
     expect(() => backtest(m, synthetic({ K: 40, c: 4, S: 20 }, 0.8), [strategy, fix.strategy], { draws: 1 })).not.toThrow();
+  });
+});
+
+describe('accuracy measurement', () => {
+  it('finds the breaking point where failure persists, ignoring a lone noisy plateau', async () => {
+    const { crossing } = await import('../src/backtest/accuracy');
+    expect(crossing([{ rps: 1, score: 0.5 }, { rps: 2, score: 1.2 }, { rps: 3, score: 0.8 }, { rps: 4, score: 0.9 }, { rps: 5, score: 1.1 }, { rps: 6, score: 3 }])).toBeGreaterThan(4);
+    expect(crossing([{ rps: 1, score: 0.5 }, { rps: 2, score: 0.5 }])).toBe(2);
+    // log-linear interpolation: score 0.5 → 2 crosses 1 halfway in log space
+    expect(crossing([{ rps: 10, score: 0.5 }, { rps: 20, score: 2 }])).toBeCloseTo(15, 5);
+  });
+
+  it('pools every request of a window for p99, and scores load-test plateaus the same way for model and measurement', async () => {
+    const { windowP99, plateauBreakingPoint, parseRequestLog } = await import('../src/backtest/accuracy');
+    const d = synthetic({ K: 40, c: 4, S: 20 }, 0.6);
+    const m = calibrate(d, { bootstrap: 0 });
+    const r = runPlan(basePlan(m), trafficOf(d, m));
+    // a request log consistent with the model: 30 requests per 15 s bucket at the predicted p99
+    let csv = 't,ms,failed,endpoint\n';
+    for (let i = 0; i < d.n; i++) for (let k = 0; k < 30; k++) csv += `${d.start + i * d.stepS + k * 0.5},${k === 29 ? r.endpoints['api GET /x'].p99Ms[i] * 1.2 : 10},0,"api GET /x"\n`;
+    const log = parseRequestLog(csv);
+    const w = windowP99(r, log, d.start, d.stepS);
+    expect(w.rows.length).toBeGreaterThan(5);
+    expect(w.rows.every((x) => x.n >= 200)).toBe(true);
+    const shape = [{ t: 0, rps: 10 }, { t: 300, rps: 10 }, { t: 305, rps: 20 }, { t: 600, rps: 20 }];
+    const bp = plateauBreakingPoint(r, log, d.start, d.stepS, shape, { p99Ms: 1e6, errorRate: 0.5 });
+    expect(bp.plateaus.length).toBe(2);
+    expect(bp.measured).toBe(bp.plateaus[1].rps); // never broke: the last plateau
   });
 });
