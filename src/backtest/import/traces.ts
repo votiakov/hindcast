@@ -321,6 +321,7 @@ export function buildTopology(spans: Span[], b: DatasetBuilder | null, opts: Tra
   // per-bucket accumulators
   const step = opts.stepS;
   const sb = new Map<string, Map<number, { n: number; err: number; self: number[]; incl: number[] }>>();
+  const done = new Map<string, Map<number, number>>();
   const eb = new Map<string, Map<number, { n: number; err: number; dur: number[] }>>();
   let tMin = Infinity;
   let tMax = -Infinity;
@@ -356,6 +357,9 @@ export function buildTopology(spans: Span[], b: DatasetBuilder | null, opts: Tra
         cell.err += v.error ? 1 : 0;
         cell.self.push(v.self);
         cell.incl.push(v.end - v.start);
+        const endBucket = Math.floor(v.end / 1000 / step) * step;
+        const dm = done.get(v.service) ?? done.set(v.service, new Map()).get(v.service)!;
+        dm.set(endBucket, (dm.get(endBucket) ?? 0) + 1);
         if (parent) {
           const key = `${parent.service}>${v.service}`;
           ep.calls.set(key, (ep.calls.get(key) ?? 0) + 1);
@@ -427,6 +431,7 @@ export function buildTopology(spans: Span[], b: DatasetBuilder | null, opts: Tra
         }
       }
     }
+    for (const [id, m] of done) for (const [t, n] of m) b.addService(id, 'doneRps', t, n / step / sampling);
     if (want.endpoints)
       for (const [id, m] of eb) {
         const service = endpoints[id].service;

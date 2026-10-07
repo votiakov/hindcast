@@ -12,6 +12,8 @@ export type Num = number | null;
 export interface ServiceSeries {
   /** requests per second arriving at the service */
   rps?: Num[];
+  /** requests per second finishing (from trace end times) — under overload, this is the capacity */
+  doneRps?: Num[];
   /** share of requests that failed (0..1) */
   errorRate?: Num[];
   /** inclusive latency (span/server duration, includes downstream calls), ms */
@@ -35,7 +37,7 @@ export interface ServiceSeries {
 }
 
 export type ServiceMetric = keyof ServiceSeries;
-export const SERVICE_METRICS: ServiceMetric[] = ['rps', 'errorRate', 'p50Ms', 'p95Ms', 'p99Ms', 'meanMs', 'selfMeanMs', 'selfP99Ms', 'cpuCores', 'cpuLimitCores', 'replicas', 'netTxBps', 'netRxBps', 'memoryBytes'];
+export const SERVICE_METRICS: ServiceMetric[] = ['rps', 'doneRps', 'errorRate', 'p50Ms', 'p95Ms', 'p99Ms', 'meanMs', 'selfMeanMs', 'selfP99Ms', 'cpuCores', 'cpuLimitCores', 'replicas', 'netTxBps', 'netRxBps', 'memoryBytes'];
 
 /** an endpoint as users see it: a route on the entry service */
 export interface EndpointSeries {
@@ -103,6 +105,8 @@ export interface Topology {
   traces: number;
   /** share of requests that were traced (sampling), if known */
   sampling?: number;
+  /** traced ÷ measured requests where metrics also count them (1 = the stated sampling was exact) */
+  samplingCheck?: number;
 }
 
 export type CostCategory = 'compute' | 'requests' | 'transfer' | 'storage' | 'other';

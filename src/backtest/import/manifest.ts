@@ -18,7 +18,7 @@ const duration = z.union([z.number().positive(), z.string().regex(/^\d+(\.\d+)?(
 });
 
 const Mapping = z.object({
-  metric: z.enum(['rps', 'errorRate', 'p50Ms', 'p95Ms', 'p99Ms', 'meanMs', 'selfMeanMs', 'selfP99Ms', 'cpuCores', 'cpuPercent', 'cpuLimitCores', 'replicas', 'netTxBps', 'netRxBps', 'memoryBytes']),
+  metric: z.enum(['rps', 'doneRps', 'errorRate', 'p50Ms', 'p95Ms', 'p99Ms', 'meanMs', 'selfMeanMs', 'selfP99Ms', 'cpuCores', 'cpuPercent', 'cpuLimitCores', 'replicas', 'netTxBps', 'netRxBps', 'memoryBytes']),
   service: z.string().optional(),
   endpoint: z.string().optional(),
   by: z.string().optional(),
@@ -113,6 +113,7 @@ export function importBundle(manifestInput: unknown, fs: FileAccess): { dataset:
   const haveMetric = (metric: 'rps' | 'p99Ms') => b.has(metric);
   const stepS = m.step ?? 60;
   let topology;
+  const filledFromTraces = new Set<string>();
   for (const src of m.traces) {
     const spans: Span[] = [];
     const files = fs.glob(src.file);
@@ -121,7 +122,9 @@ export function importBundle(manifestInput: unknown, fs: FileAccess): { dataset:
       else parseTraceFile(fs.read(f), spans);
     }
     const series = { rps: src.series?.rps ?? !haveMetric('rps'), latency: src.series?.latency ?? !haveMetric('p99Ms'), endpoints: src.series?.endpoints ?? true };
+    const had = new Set(b.services().filter((id) => b.hasService(id, 'rps')));
     topology = buildTopology(spans, b, { stepS, sampling: src.sampling, ignoreServices: src.ignore, rename, series });
+    for (const id of Object.keys(topology.services)) if (!had.has(id) && b.hasService(id, 'rps')) filledFromTraces.add(id);
     log.push({ file: files.join(', '), what: `traces: ${topology.traces.toLocaleString()} requests, ${Object.keys(topology.services).length} services, ${Object.keys(topology.endpoints).length} endpoints`, points: spans.length });
   }
 
@@ -129,7 +132,27 @@ export function importBundle(manifestInput: unknown, fs: FileAccess): { dataset:
   const we = m.window?.end !== undefined ? parseTimestamp(m.window.end) ?? undefined : undefined;
   b.sources = log.map((l) => `${l.what} — ${l.file}`);
   const dataset = b.build({ name: m.name, stepS: m.step, start: ws, end: we });
-  if (topology) dataset.topology = topology;
+  if (topology) {
+    dataset.topology = topology;
+    // a sampler's real share drifts from its setting: where request metrics count the same requests,
+    // measure it, and rescale the rates that only traces provide
+    const ratios: number[] = [];
+    for (const [id, shape] of Object.entries(topology.services)) {
+      const metric = dataset.services[id]?.rps;
+      if (!metric || filledFromTraces.has(id)) continue;
+      const counted = metric.reduce<number>((a, v) => a + (v ?? 0), 0) * dataset.stepS;
+      if (counted > 50) ratios.push(shape.spans / (topology.sampling ?? 1) / counted);
+    }
+    if (ratios.length) {
+      const k = ratios.sort((a, b) => a - b)[Math.floor(ratios.length / 2)];
+      topology.samplingCheck = k;
+      if (Math.abs(k - 1) > 0.01)
+        for (const [id, sv] of Object.entries(dataset.services)) {
+          if (filledFromTraces.has(id) && sv.rps) sv.rps = sv.rps.map((v) => (v === null ? null : v / k));
+          if (sv.doneRps) sv.doneRps = sv.doneRps.map((v) => (v === null ? null : v / k));
+        }
+    }
+  }
 
   const lines: BillLine[] = [];
   let source: 'aws-cur' | 'gcp-billing' = 'aws-cur';

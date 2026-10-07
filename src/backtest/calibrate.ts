@@ -163,6 +163,23 @@ function fitTied(perRep: number[], obs: (number | null)[], stepS: number, S: num
   return best;
 }
 
+/** fit servers, service time and variability at a capacity that was seen directly */
+function fitAtK(perRep: number[], obs: (number | null)[], stepS: number, S: number, S99: number, K: number): Fitted & { tied: boolean } {
+  let best: Fitted & { tied: boolean } = { c: 1, K, S, v: 1, err: Infinity, tied: false };
+  for (const c of SERVER_GRID) {
+    for (const tied of [true, false]) {
+      const s = tied ? (c * 1000) / K : S;
+      if (tied && (s < S * 0.4 || s > S * 1.1)) continue;
+      for (const v of VARIABILITY) {
+        const err = logErr(replayQueue(perRep, stepS, c, K, s, S99 - (S - s), 1, v).mean, obs);
+        // prefer the physical (tied) reading when it explains the data as well
+        if (err < best.err * (tied ? 1.0001 : 0.97)) best = { c, K, S: s, v, err, tied };
+      }
+    }
+  }
+  return best;
+}
+
 function regress(x: number[], y: number[]) {
   const n = x.length;
   if (n < 3) return null;
@@ -280,7 +297,22 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
       const free = fitFree(perRep, selfObs, d.stepS, S, S99, maxLam, servers);
       const tied = fitTied(perRep, selfObs, d.stepS, S, S99, servers);
       // the tied model is physically grounded; the free one has to be clearly better to win
-      const queue = tied.err <= free.err / 0.85 ? { ...tied, tied: true } : { ...free, tied: false };
+      let queue = tied.err <= free.err / 0.85 ? { ...tied, tied: true } : { ...free, tied: false };
+      // while a service was overloaded, what finished per second *is* its capacity: when the history
+      // has such stretches, a model built on that number wins unless it explains the latency worse
+      const doneSeries = s.doneRps;
+      const saturated = withData.map((x) => x.i).filter((i) => (selfObs[i] ?? 0) > Math.max(4 * S, S + 500));
+      if (doneSeries && saturated.length >= 2 && !servers) {
+        const ks = saturated.map((i) => (vals(doneSeries, i) ?? NaN) / Math.max(1, vals(reps, i) ?? replicas)).filter((k) => isFinite(k) && k > 0);
+        if (ks.length >= 2) {
+          const seen = median(ks);
+          const atSeen = fitAtK(perRep, selfObs, d.stepS, S, S99, seen);
+          if (atSeen.err <= queue.err * 1.15) {
+            queue = atSeen;
+            notes.push(`capacity seen directly: ${seen.toFixed(1)} req/s per replica finished while it was overloaded (${saturated.length} buckets)`);
+          }
+        }
+      }
       const simple = Math.min(none, cpuFit.err);
       let chosen: Fitted | null = null;
       if (ov?.perReplicaRps) capacity = { limit: 'concurrency', servers: ov.servers ?? 1, perReplicaRps: ov.perReplicaRps };
