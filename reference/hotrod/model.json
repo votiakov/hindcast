@@ -671,7 +671,7 @@
      "note": "stress-replicas-2: step load test, p99 and errors over every request of each plateau (SLO p99 ≤ 1000 ms, errors ≤ 3%)"
     }
    ],
-   "measuredAt": "2026-10-07T20:55:54.632Z"
+   "measuredAt": "2026-10-07T21:06:20.471Z"
   },
   {
    "method": "holdout",
@@ -696,7 +696,7 @@
      "note": "model cost vs the bill over the held-out window"
     }
    ],
-   "measuredAt": "2026-10-07T20:55:57.819Z"
+   "measuredAt": "2026-10-07T21:06:23.679Z"
   }
  ],
  "fittedOn": {

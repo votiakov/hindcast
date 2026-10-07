@@ -985,7 +985,7 @@
    "capacity": {
     "limit": "concurrency",
     "servers": 8,
-    "perReplicaRps": 61.98917605011276,
+    "perReplicaRps": 612.8017364831277,
     "band": [
      94.99265300999961,
      3953.2106572200487
@@ -1037,7 +1037,7 @@
     "mean": 0.7772793240017362,
     "p99": 2.1545605468749986
    },
-   "tail": 1,
+   "tail": 6,
    "variability": 0.65,
    "cost": {
     "perReplicaHour": 0.021948857699999998,
@@ -1048,15 +1048,15 @@
    },
    "fit": {
     "status": "good",
-    "latencyMape": 0.07833271894383895,
-    "p99Mape": 0.32085878747468893,
+    "latencyMape": 0.09130235012361623,
+    "p99Mape": 0.3444157831256789,
     "cpuMape": 0.33645987527239574,
     "cpuR2": 0.004890168772955163,
     "samples": 80,
     "notes": [
      "CPU barely follows load (R² 0.00) — capacity is not CPU-bound or CPU data is noisy",
-     "never loaded past 57% of capacity: CPU (6300) and latency (62) read the limit differently, the band spans both",
-     "replaying the history reproduces its self time within 8% (mean abs. error)"
+     "never loaded past 6% of capacity: CPU (6300) and latency (613) read the limit differently, the band spans both",
+     "replaying the history reproduces its self time within 9% (mean abs. error)"
     ]
    }
   },
@@ -1074,7 +1074,7 @@
    "capacity": {
     "limit": "concurrency",
     "servers": 2,
-    "perReplicaRps": 63.47087616935114,
+    "perReplicaRps": 76.39414155883584,
     "band": [
      57.747581012386,
      101.06163344330737
@@ -1126,7 +1126,7 @@
     "mean": 1.2266347505137813,
     "p99": 2.102957763671875
    },
-   "tail": 0.8,
+   "tail": 1.3,
    "variability": 0.8,
    "cost": {
     "perReplicaHour": 0.01066228065,
@@ -1137,14 +1137,14 @@
    },
    "fit": {
     "status": "fair",
-    "latencyMape": 0.22040176871894362,
-    "p99Mape": 1.3470308155983532,
+    "latencyMape": 0.24548804519697293,
+    "p99Mape": 1.2570582607402598,
     "cpuMape": 0.058361586928576126,
     "cpuR2": 0.9622454550797216,
     "samples": 80,
     "notes": [
-     "never loaded past 64% of capacity: CPU (108) and latency (63) read the limit differently, the band spans both",
-     "replaying the history reproduces its self time within 22% (mean abs. error)"
+     "never loaded past 53% of capacity: CPU (108) and latency (76) read the limit differently, the band spans both",
+     "replaying the history reproduces its self time within 25% (mean abs. error)"
     ]
    }
   },
@@ -1292,8 +1292,8 @@
     "notes": [
      "replaying the history reproduces its p99 within 31% (mean abs. error)"
     ],
-    "p99Mape": 0.3096097512658246,
-    "latencyMape": 0.24319384480982834
+    "p99Mape": 0.30677823638040913,
+    "latencyMape": 0.24622766878284819
    }
   },
   "frontend GET /api/products/{productId}": {
@@ -1366,10 +1366,10 @@
     "status": "poor",
     "samples": 81,
     "notes": [
-     "replaying the history reproduces its p99 within 38% (mean abs. error)"
+     "replaying the history reproduces its p99 within 37% (mean abs. error)"
     ],
-    "p99Mape": 0.3750413014221309,
-    "latencyMape": 0.38595416184255865
+    "p99Mape": 0.37348574315437555,
+    "latencyMape": 0.36499073922752556
    }
   },
   "frontend POST /api/cart": {
@@ -1491,13 +1491,13 @@
  "accuracy": [
   {
    "method": "reference",
-   "label": "recorded runs the model never saw: autoscale, stress",
+   "label": "recorded runs the model never saw: autoscale, stress, stress-cpu1",
    "checks": [
     {
      "metric": "p99",
-     "predicted": 97.87843011940632,
+     "predicted": 96.7075228626752,
      "measured": 94.04337500000005,
-     "error": 0.08733084152204598,
+     "error": 0.08608137671678458,
      "tolerance": 0.2,
      "pass": true,
      "note": "autoscale: p99 over every request in each 5-minute window, 8 windows — typical error 9%, worst 27%"
@@ -1522,15 +1522,24 @@
     },
     {
      "metric": "breaking-point",
-     "predicted": 251.50605604531466,
+     "predicted": 251.606786531686,
      "measured": 285.96440579139227,
-     "error": 0.12049873707434264,
+     "error": 0.12014648873737718,
      "tolerance": 0.15,
      "pass": true,
      "note": "stress: step load test, p99 and errors over every request of each plateau (SLO p99 ≤ 800 ms, errors ≤ 1%)"
+    },
+    {
+     "metric": "breaking-point",
+     "predicted": 581.1126947884018,
+     "measured": 589.6363636363636,
+     "error": 0.014455805940114159,
+     "tolerance": 0.15,
+     "pass": true,
+     "note": "stress-cpu1: step load test, p99 and errors over every request of each plateau (SLO p99 ≤ 800 ms, errors ≤ 1%)"
     }
    ],
-   "measuredAt": "2026-10-07T20:55:38.968Z"
+   "measuredAt": "2026-10-07T21:06:04.972Z"
   },
   {
    "method": "holdout",
@@ -1538,12 +1547,12 @@
    "checks": [
     {
      "metric": "p99",
-     "predicted": 291.00455848225033,
+     "predicted": 153.89035907423715,
      "measured": 571.4209999999981,
-     "error": 0.33776536999295337,
+     "error": 0.4631331403152047,
      "tolerance": 0.2,
      "pass": false,
-     "note": "p99 over every request in each 5-minute window on the last 13 min, calibrated on the 28 min before — typical error 34%, worst 54%; measured inside the model's 10–90% band in 1 of 2 windows"
+     "note": "p99 over every request in each 5-minute window on the last 13 min, calibrated on the 28 min before — typical error 46%, worst 80%; measured inside the model's 10–90% band in 1 of 2 windows"
     },
     {
      "metric": "cost",
@@ -1555,7 +1564,7 @@
      "note": "model cost vs the bill over the held-out window"
     }
    ],
-   "measuredAt": "2026-10-07T20:55:47.796Z"
+   "measuredAt": "2026-10-07T21:06:13.612Z"
   }
  ],
  "fittedOn": {

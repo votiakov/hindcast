@@ -454,6 +454,8 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
         const hi = Math.max(cpuK, capacity.perReplicaRps, capacity.band?.[1] ?? 0);
         capacity.samples = Array.from({ length: B }, () => lo * (hi / lo) ** rand());
         capacity.band = [lo * (hi / lo) ** 0.1, lo * (hi / lo) ** 0.9];
+        // neither read is more trustworthy so far from the data: the point estimate sits mid-band
+        capacity.perReplicaRps = Math.sqrt(lo * hi);
         notes.push(`never loaded past ${Math.round((maxLam / capacity.perReplicaRps) * 100)}% of capacity: CPU (${cpuK.toFixed(0)}) and latency (${capacity.perReplicaRps.toFixed(0)}) read the limit differently, the band spans both`);
       }
 

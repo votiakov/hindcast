@@ -20,7 +20,7 @@ runs:
   # the strategy, actually applied: the frontend autoscaled 1–4 replicas at 60% CPU, same day
   autoscale: { shape: [history, 170, 290, 40], autoscale: { service: frontend, min: 1, max: 4, targetCpu: 0.6, cooldownS: 120, intervalS: 15 } }
   # the other strategy, actually applied: a 1-core frontend, stepped to its breaking point
-  stress-cpu1: { shape: [steps, 300, 600, 25, 60], env: { FRONTEND_CPUS: 1.0 } }
+  stress-cpu1: { shape: [steps, 150, 900, 50, 60], env: { FRONTEND_CPUS: 1.0 } }
 validate:
   - { run: autoscale, strategy: strategies/1-autoscale-frontend.yaml }
   - { run: stress, stress: true }
