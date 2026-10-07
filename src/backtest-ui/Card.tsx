@@ -93,8 +93,12 @@ export function BacktestCard({ c, aspect, t }: { c: CardData; aspect: string; t:
           </span>
         </div>
       </header>
-      <div className="cd-verdict" style={{ opacity: statsOn ? 1 : 0.0001, transform: `translateY(${statsOn ? 0 : 12}px)` }}>
-        {s ? (
+      <div className="cd-verdict">
+        {s && !statsOn ? (
+          <span className="cd-question">
+            What if: <b>{s.name}</b>?
+          </span>
+        ) : s ? (
           <>
             <b>{s.name}</b> {s.headline}.
           </>

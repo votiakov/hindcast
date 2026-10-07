@@ -56,3 +56,4 @@
 .cd-foot { margin-top: auto; display: flex; justify-content: space-between; gap: 24px; font: 21px/1.5 'IBM Plex Mono', monospace; color: var(--dim); }
 .cd-foot b { font-weight: 500; }
 .cd-brand { color: var(--amber); white-space: nowrap; }
+.cd-question { color: var(--dim); }
