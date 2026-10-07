@@ -202,16 +202,50 @@ export function applyChangesToGraph(nodes: AppNode[], edges: SystemEdge[], chang
         break;
     }
   }
-  // place new nodes: below a neighbour they connect to, nudged until free
+  ns = placeNew(ns, es, [...pendingPos.keys()]);
+  return { nodes: ns, edges: es, added };
+}
+
+/** position new nodes next to what they connect to, nudged down until the spot is free */
+function placeNew(nodes: AppNode[], es: SystemEdge[], ids: string[]): AppNode[] {
+  let ns = nodes;
   const pos = (id: string) => ns.find((n) => n.id === id)?.position;
-  for (const id of pendingPos.keys()) {
-    const callers = es.filter((e) => e.target === id).map((e) => pos(e.source)).filter(Boolean) as { x: number; y: number }[];
-    const callees = es.filter((e) => e.source === id).map((e) => pos(e.target)).filter(Boolean) as { x: number; y: number }[];
+  for (const id of ids) {
+    const callers = es.filter((e) => e.target === id && !ids.includes(e.source)).map((e) => pos(e.source)).filter(Boolean) as { x: number; y: number }[];
+    const callees = es.filter((e) => e.source === id && !ids.includes(e.target)).map((e) => pos(e.target)).filter(Boolean) as { x: number; y: number }[];
     const anchor = callees.length && callers.length ? { x: (callers[0].x + callees[0].x) / 2, y: callers[0].y } : callers[0] ? { x: callers[0].x + COL, y: callers[0].y } : callees[0] ? { x: callees[0].x - COL, y: callees[0].y } : { x: 0, y: 0 };
-    let p = { x: anchor.x, y: anchor.y + ROW };
+    let p = { x: anchor.x, y: anchor.y + (callers.length && callees.length ? ROW : 0) };
     const taken = () => ns.some((n) => n.id !== id && n.type === 'system' && Math.abs(n.position.x - p.x) < NODE_W && Math.abs(n.position.y - p.y) < NODE_H);
     for (let i = 0; i < 12 && taken(); i++) p = { x: p.x, y: p.y + ROW };
     ns = ns.map((n) => (n.id === id ? { ...n, position: p } : n));
   }
-  return { nodes: ns, edges: es, added };
+  return ns;
+}
+
+/**
+ * Bring a board in line with an edited spec while keeping its layout: components that already
+ * exist keep their position (and zones their frame); new ones are placed next to their neighbours.
+ */
+export function mergeSpecIntoGraph(input: unknown, current: { nodes: AppNode[]; edges: SystemEdge[] }): { nodes: AppNode[]; edges: SystemEdge[] } {
+  const fresh = specToGraph(input);
+  const old = new Map(current.nodes.map((n) => [n.id, n]));
+  const added: string[] = [];
+  let nodes = fresh.nodes.map((n) => {
+    const o = old.get(n.id);
+    if (!o) {
+      if (n.type === 'system') added.push(n.id);
+      return n;
+    }
+    if (n.type === 'zone' && o.type === 'zone') return { ...o, data: { ...o.data, label: n.data.label } } as AppNode;
+    // runtime state (alive, instances down, faults) belongs to the board, not the spec
+    const keep = isSystem(o) ? { alive: o.data.alive, down: o.data.down, degraded: o.data.degraded, faultRate: o.data.faultRate, faultLatencyMs: o.data.faultLatencyMs, flushes: o.data.flushes } : {};
+    return { ...n, position: o.position, ...(isSystem(n) ? { data: { ...n.data, ...keep, down: Math.min(Number(keep.down ?? 0), Math.max(0, (n.data.instances ?? 1) - 1)) } } : {}) } as AppNode;
+  });
+  nodes = placeNew(nodes, fresh.edges, added);
+  const oldEdge = new Map(current.edges.map((e) => [`${e.source}>${e.target}`, e]));
+  const edges = fresh.edges.map((e) => {
+    const o = oldEdge.get(`${e.source}>${e.target}`);
+    return o ? { ...o, data: e.data } : e;
+  });
+  return { nodes, edges };
 }

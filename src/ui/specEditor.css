@@ -1,0 +1,9 @@
+.spec { position: absolute; top: 16px; right: 16px; bottom: 104px; width: 440px; z-index: 9; display: flex; flex-direction: column; padding: 0; overflow: hidden; background: var(--panel-solid); }
+.spec-body { position: relative; flex: 1; display: flex; min-height: 0; font-family: var(--mono); font-size: 12px; line-height: 18px; }
+.spec-gutter { width: 38px; flex-shrink: 0; overflow: hidden; padding: 10px 6px 10px 0; text-align: right; color: var(--dim); border-right: 1px solid var(--border); user-select: none; }
+.spec-gutter .err { color: var(--red); font-weight: 700; }
+.spec-text { flex: 1; resize: none; border: 0; outline: none; background: transparent; color: var(--text); font: inherit; line-height: inherit; padding: 10px 12px; white-space: pre; overflow: auto; tab-size: 2; }
+.spec-status { border-top: 1px solid var(--border); padding: 8px 12px; font-size: 11.5px; display: flex; flex-direction: column; gap: 3px; max-height: 120px; overflow: auto; }
+.spec-ok { color: var(--green); font-family: var(--mono); font-size: 11px; }
+.spec-err { color: var(--red); }
+.spec-warn { color: var(--amber); }

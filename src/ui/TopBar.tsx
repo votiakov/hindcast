@@ -7,7 +7,7 @@ import type { GlobalStats } from '../sim/engine';
 import { Sparkline } from '../canvas/Sparkline';
 import { SettingsButton } from './SettingsPanel';
 import { DesignMenu } from './DesignMenu';
-import { FlaskConical, ShieldAlert } from 'lucide-react';
+import { FileCode2, FlaskConical, ShieldAlert } from 'lucide-react';
 
 const fmtRps = (r: number) => (r >= 1000 ? `${(r / 1000).toFixed(2)}k` : r.toFixed(0));
 
@@ -107,6 +107,8 @@ export function TopBar() {
   const setAnalysisOpen = useSim((s) => s.setAnalysisOpen);
   const auditOpen = useSim((s) => s.auditOpen);
   const setAuditOpen = useSim((s) => s.setAuditOpen);
+  const specOpen = useSim((s) => s.specOpen);
+  const setSpecOpen = useSim((s) => s.setSpecOpen);
 
   return (
     <div className="topbar">
@@ -128,6 +130,11 @@ export function TopBar() {
 
       {mode === 'sandbox' && <DesignMenu />}
 
+      {mode === 'sandbox' && (
+        <button className={`icon-btn ${specOpen ? 'on' : ''}`} title="Architecture as code: edit the YAML spec, two-way synced with the board" onClick={() => setSpecOpen(!specOpen)}>
+          <FileCode2 size={15} />
+        </button>
+      )}
       {mode === 'sandbox' && (
         <button className={`icon-btn ${auditOpen ? 'on' : ''}`} title="Failure audit: what breaks first, and what it costs" onClick={() => setAuditOpen(!auditOpen)}>
           <ShieldAlert size={15} />

@@ -15,7 +15,8 @@
  * Files may be YAML or JSON. A variants file is either a list of variants or { variants, scenario }.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
-import { parse as parseYaml, stringify as toYaml } from 'yaml';
+import { parse as parseYaml } from 'yaml';
+import { specToYaml } from '../src/spec/yaml';
 import { simulateDes, type DesResult } from '../src/sim/des/des';
 import { analyzeParallel } from '../src/sim/des/nodePool';
 import type { Analysis } from '../src/sim/des/analyze';
@@ -147,7 +148,7 @@ function main() {
     }
     case 'optimize': {
       const r = optimize(load(pos[0]), scenarioFrom(pos[1]) as Record<string, unknown>, { allowRuntimes: !!opt.runtimes, slo: { maxP99Ms: opt.p99 ? Number(opt.p99) : undefined, maxErrorRate: opt.errors ? Number(opt.errors) : undefined } });
-      if (opt.out) writeFileSync(String(opt.out), toYaml(r.spec));
+      if (opt.out) writeFileSync(String(opt.out), specToYaml(r.spec));
       if (json) return console.log(JSON.stringify({ ...r, spec: undefined }, null, 2));
       console.log(`\n${r.feasible ? c.green('✓ SLO can be met') : c.red('✗ SLO cannot be met by sizing alone — change the design')}  ${c.dim(`(${r.evaluations} simulations)`)}`);
       console.log(`  before  $${r.before.monthly.toLocaleString()}/month, in SLO ${pct(r.before.sloCompliance)} of the time`);
@@ -202,7 +203,7 @@ function main() {
     }
     case 'import-terraform': {
       const r = importTerraform(JSON.parse(readFileSync(pos[0], 'utf8')), opt.name ? String(opt.name) : undefined);
-      const yaml = toYaml(r.spec);
+      const yaml = specToYaml(r.spec);
       if (opt.out) writeFileSync(String(opt.out), yaml);
       if (json) return console.log(JSON.stringify(r, null, 2));
       if (!opt.out) console.log(yaml);

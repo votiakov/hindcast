@@ -153,6 +153,8 @@ interface State {
   setAnalysisOpen: (open: boolean) => void;
   auditOpen: boolean;
   setAuditOpen: (open: boolean) => void;
+  specOpen: boolean;
+  setSpecOpen: (open: boolean) => void;
   audit: AuditState;
   setAudit: (p: Partial<AuditState>) => void;
   /** apply a verified fix from the audit to the main board */
@@ -191,6 +193,8 @@ interface State {
   setZoneFailed: (b: BoardId, id: string, failed: boolean) => void;
   apply: (b: BoardId, a: ScenarioAction) => string | null;
   loadGraph: (b: BoardId, g: Graph, title?: string) => void;
+  /** replace a board's design in place (spec editor); undoable, keeps engine state */
+  setGraph: (b: BoardId, nodes: AppNode[], edges: SystemEdge[], title?: string) => void;
   undo: (b: BoardId) => void;
   redo: (b: BoardId) => void;
   setFocus: (b: BoardId) => void;
@@ -352,9 +356,11 @@ export const useSim = create<State>()((set, get) => {
     compare: init.compare,
     settings: DEFAULT_SETTINGS,
     analysisOpen: false,
-    setAnalysisOpen: (analysisOpen) => set(analysisOpen ? { analysisOpen, auditOpen: false } : { analysisOpen }),
+    setAnalysisOpen: (analysisOpen) => set(analysisOpen ? { analysisOpen, auditOpen: false, specOpen: false } : { analysisOpen }),
     auditOpen: false,
-    setAuditOpen: (auditOpen) => set(auditOpen ? { auditOpen, analysisOpen: false } : { auditOpen, audit: { ...get().audit, selected: null } }),
+    setAuditOpen: (auditOpen) => set(auditOpen ? { auditOpen, analysisOpen: false, specOpen: false } : { auditOpen, audit: { ...get().audit, selected: null } }),
+    specOpen: false,
+    setSpecOpen: (specOpen) => set(specOpen ? { specOpen, analysisOpen: false, auditOpen: false } : { specOpen }),
     audit: { status: 'idle', progress: null, result: null, specKey: null, selected: null, error: null, costPerMinute: 0 },
     setAudit: (p) => set({ audit: { ...get().audit, ...p } }),
     applyFix: (findingId, fixIndex) => {
@@ -445,6 +451,10 @@ export const useSim = create<State>()((set, get) => {
     onEdgesChange: (b, c) => {
       if (c.some((x) => x.type === 'remove')) remember(b);
       patch(b, { edges: applyEdgeChanges(c, board(b).edges) });
+    },
+    setGraph: (b, nodes, edges, title) => {
+      remember(b, 'spec-edit');
+      patch(b, { nodes, edges, ...(title ? { title } : {}) });
     },
     undo: (b) => restore(b, 'past'),
     redo: (b) => restore(b, 'future'),
@@ -558,7 +568,7 @@ export const useSim = create<State>()((set, get) => {
     setMode: (mode) => {
       if (get().scrub) get().setScrub(null);
       if (get().playback) set({ playback: null });
-      if (mode !== 'sandbox' && get().auditOpen) set({ auditOpen: false });
+      if (mode !== 'sandbox' && (get().auditOpen || get().specOpen)) set({ auditOpen: false, specOpen: false });
       const focus = mode === 'compare' ? 'A' : 'main';
       if (mode === 'home') {
         engines.main.reset();

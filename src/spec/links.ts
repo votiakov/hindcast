@@ -1,4 +1,4 @@
-import { stringify } from 'yaml';
+import { specToYaml } from './yaml';
 import { decodePayload, graphToSpec, specToGraph } from './convert';
 import { ArchitectureSpec, ScenarioSpec } from './schema';
 import { simulate } from '../sim/headless';
@@ -81,5 +81,5 @@ export function currentSpecYaml(): string {
   const { boards, settings } = useSim.getState();
   const { nodes, edges, title } = boards.main;
   const spec = graphToSpec(nodes, edges, title !== 'Main' ? title : undefined);
-  return stringify(settings.pricing !== 'illustrative' ? { ...spec, pricing: settings.pricing } : spec, { flowCollectionPadding: false, collectionStyle: 'block' });
+  return specToYaml(settings.pricing !== 'illustrative' ? { ...spec, pricing: settings.pricing } : spec);
 }
