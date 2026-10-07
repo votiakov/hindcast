@@ -24,6 +24,13 @@ import { importKubernetes } from '../src/spec/kubernetes';
 import { parseAllDocuments } from 'yaml';
 import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/server';
 import { existsSync, readFileSync } from 'node:fs';
+import { parse as parseYaml } from 'yaml';
+import { reviveModel, type Model } from '../src/backtest/model';
+import type { Dataset } from '../src/backtest/dataset';
+import { backtest } from '../src/backtest/backtest';
+import { backtestMarkdown } from '../src/backtest/report';
+import { OUTAGES, outageById, replayOutage } from '../src/backtest/outages';
+import { lastWindow } from '../cli/backtest';
 
 const APP_URL = process.env.BOTTLENECK_APP_URL ?? 'http://localhost:5173';
 
@@ -36,7 +43,8 @@ Dynamics: server/worker/llm can autoscale ({ min, max, targetUtil, warmupS, cool
 Scenarios: duration, constant rps or traffic keyframes, readRatio, timed events (kill-id, kill, fail-zone, degrade, inject-errors, inject-latency, flush-cache, restore…), SLO.
 For "is this design production-ready / what breaks first / what should we fix", call audit_resilience: it replays every failure mode, grades user impact, and returns verified fixes priced in $/month.
 Calibrate to a real system by overriding capacity (req/s per instance), latencyMs and costPerHour per component.
-Results are directional: good for comparing designs and finding bottlenecks, not a substitute for load tests.`;
+Results are directional: good for comparing designs and finding bottlenecks, not a substitute for load tests.
+For real systems with recorded telemetry, use backtest_strategy (replays production history through a calibrated model, with measured accuracy) and replay_outage (famous public outages against that model).`;
 
 const json = (v: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(v, null, 2) }] });
 const fail = (e: unknown) => ({ isError: true, content: [{ type: 'text' as const, text: e instanceof Error ? e.message : String(e) }] });
@@ -322,5 +330,63 @@ registerAppResource(server, 'Bottleneck live canvas', CANVAS_URI, { description:
     ],
   };
 });
+
+
+// ---- backtesting on real data ----
+const readModel = (path: string) => reviveModel(JSON.parse(readFileSync(path, 'utf8')) as Model);
+const readDataset = (path: string) => JSON.parse(readFileSync(path, 'utf8')) as Dataset;
+
+server.registerTool(
+  'backtest_strategy',
+  {
+    title: 'Backtest infrastructure changes on recorded production history',
+    description:
+      'Replay real traffic through a calibrated model (bottleneck calibrate → model.json, bottleneck import → dataset.json) with each strategy applied: $ saved/spent per month, minutes out of SLO, failed requests, worst moment and why, with 10th–90th percentile bands, ranked. Strategies are YAML/JSON objects: { name, changes: [{ service, replicas | autoscale | cpu | memoryGb | arch | perf | capacityRps | cache | readReplicas | zone | region } | { endpoint, retries, timeoutMs }] }. Reference models ship in reference/<system>/model.json and dataset.json.',
+    inputSchema: {
+      model: z.string().describe('path to model.json'),
+      dataset: z.string().describe('path to dataset.json'),
+      strategies: z.array(z.union([z.string(), z.record(z.string(), z.unknown())])).describe('strategy objects, or YAML text'),
+      last: z.string().optional().describe('only the last part of the history, e.g. "14d", "6h"'),
+      draws: z.number().int().min(1).max(100).optional(),
+    },
+    annotations: { readOnlyHint: true },
+  },
+  async ({ model, dataset, strategies, last, draws }) => {
+    try {
+      const m = readModel(model);
+      let d = readDataset(dataset);
+      if (last) d = lastWindow(d, last);
+      const r = backtest(m, d, strategies.map((s) => (typeof s === 'string' ? parseYaml(s) : s)), { draws: draws ?? 20 });
+      return { content: [{ type: 'text' as const, text: backtestMarkdown(r, m) }] };
+    } catch (e) {
+      return fail(e);
+    }
+  },
+);
+
+server.registerTool(
+  'replay_outage',
+  {
+    title: 'Would this design have survived a famous outage?',
+    description: `Replay a public outage's published timeline against a calibrated model, as built and with strategies. Outages: ${OUTAGES.map((o) => `${o.id} (${o.title})`).join('; ')}.`,
+    inputSchema: {
+      model: z.string().describe('path to model.json'),
+      outage: z.enum(OUTAGES.map((o) => o.id) as [string, ...string[]]),
+      strategies: z.array(z.union([z.string(), z.record(z.string(), z.unknown())])).optional(),
+      rps: z.number().positive().optional().describe('your normal load (default: p90 of the model history)'),
+    },
+    annotations: { readOnlyHint: true },
+  },
+  async ({ model, outage, strategies, rps }) => {
+    try {
+      const m = readModel(model);
+      const o = outageById(outage)!;
+      const { replay, result } = replayOutage(m, o, (strategies ?? []).map((s) => (typeof s === 'string' ? parseYaml(s) : s)), { baseRps: rps });
+      return json({ outage: o.title, what: o.what, timeline: o.timeline, assumptions: o.assumptions, sources: o.sources, roles: replay.roles, warnings: replay.warnings, report: backtestMarkdown(result, m) });
+    } catch (e) {
+      return fail(e);
+    }
+  },
+);
 
 await server.connect(new StdioServerTransport());
