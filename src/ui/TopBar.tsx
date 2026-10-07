@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { Crown } from 'lucide-react';
+import { Lens } from './Lens';
 import { BrandMark } from '../theme/BrandMark';
 import { useSim, type Mode } from '../sim/store';
 import type { GlobalStats } from '../sim/engine';
@@ -22,7 +24,7 @@ function Metric({ label, value, sub, tone, values, max, color }: { label: string
   );
 }
 
-function SingleMetrics() {
+function SingleMetrics({ onClick, lens }: { onClick: () => void; lens: React.ReactNode }) {
   const g = useSim((s) => s.boards.main.global);
   const goal = useSim((s) => (s.mode === 'lesson' && !s.lesson.finished ? s.lesson.lesson.steps[s.lesson.stepIndex].goal : undefined));
   const maxErr = goal?.maxErrorRate ?? 0.01;
@@ -33,7 +35,8 @@ function SingleMetrics() {
   const showCost = useSim((s) => s.settings.cost);
   const h = g.history;
   return (
-    <div className="metrics">
+    <div className="metrics" onClick={onClick} title="Cost breakdown and error budget">
+      {lens}
       <Metric label="Throughput" value={fmtRps(g.rps)} sub="req/s" values={h.map((x) => x.rps)} color="#22d3ee" />
       <Metric label="Error rate" value={`${(g.errorRate * 100).toFixed(2)}%`} sub={`SLO < ${(maxErr * 100).toFixed(0)}%`} tone={errTone} values={h.map((x) => x.err)} max={0.2} color="#f43f5e" />
       <Metric label="p99" value={`${g.p99.toFixed(0)}ms`} sub={`SLO < ${maxP99}ms`} tone={p99Tone} values={h.map((x) => x.p99)} max={Math.max(maxP99 * 2, ...h.map((x) => x.p99))} color="#fbbf24" />
@@ -80,14 +83,15 @@ function VsMetric({ label, a, b, fmt, lowerWins = true, seriesA, seriesB, max }:
   );
 }
 
-function CompareMetrics() {
+function CompareMetrics({ onClick, lens }: { onClick: () => void; lens: React.ReactNode }) {
   const A: GlobalStats = useSim((s) => s.boards.A.global);
   const B: GlobalStats = useSim((s) => s.boards.B.global);
   const ha = A.history;
   const hb = B.history;
   const showCost = useSim((s) => s.settings.cost);
   return (
-    <div className="metrics">
+    <div className="metrics" onClick={onClick} title="Cost breakdown and error budget (focused side)">
+      {lens}
       <VsMetric label="Error rate" a={A.errorRate} b={B.errorRate} fmt={(n) => `${(n * 100).toFixed(1)}%`} seriesA={ha.map((x) => x.err)} seriesB={hb.map((x) => x.err)} max={1} />
       <VsMetric label="p99 latency" a={A.p99} b={B.p99} fmt={(n) => (n >= 1000 ? `${(n / 1000).toFixed(1)}s` : `${n.toFixed(0)}ms`)} seriesA={ha.map((x) => x.p99)} seriesB={hb.map((x) => x.p99)} />
  {showCost && <VsMetric label="Cost $/h" a={A.cost} b={B.cost} fmt={(n) => `$${n.toFixed(2)}`} seriesA={ha.map((x) => x.cost)} seriesB={hb.map((x) => x.cost)} />}
@@ -97,6 +101,7 @@ function CompareMetrics() {
 
 export function TopBar() {
   const mode = useSim((s) => s.mode);
+  const [lens, setLens] = useState(false);
   const setMode = useSim((s) => s.setMode);
   const analysisOpen = useSim((s) => s.analysisOpen);
   const setAnalysisOpen = useSim((s) => s.setAnalysisOpen);
@@ -133,7 +138,7 @@ export function TopBar() {
           <FlaskConical size={15} />
         </button>
       )}
-      {mode === 'compare' ? <CompareMetrics /> : mode === 'studio' ? <div className="metrics" /> : <SingleMetrics />}
+      {mode === 'compare' ? <CompareMetrics onClick={() => setLens(!lens)} lens={lens && <Lens onClose={() => setLens(false)} />} /> : mode === 'studio' ? <div className="metrics" /> : <SingleMetrics onClick={() => setLens(!lens)} lens={lens && <Lens onClose={() => setLens(false)} />} />}
       <SettingsButton />
     </div>
   );

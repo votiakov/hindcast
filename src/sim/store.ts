@@ -460,7 +460,9 @@ export const useSim = create<State>()((set, get) => {
       remember(b);
       const nodes = board(b).nodes;
       const name = nextName(nodes, kind);
-      const node: SystemNode = { id: `${name}-${Date.now()}`, type: 'system', position, data: defaultData(kind, name), selected: true };
+      // readable ids (they show up in specs, the YAML editor and audit reports)
+      const id = nodes.some((n) => n.id === name) ? `${name}-${Date.now().toString(36)}` : name;
+      const node: SystemNode = { id, type: 'system', position, data: defaultData(kind, name), selected: true };
       patch(b, { nodes: [...nodes.map((n) => ({ ...n, selected: false })), node] });
     },
     addZone: (b, position) => {
