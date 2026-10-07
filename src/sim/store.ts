@@ -18,7 +18,7 @@ import { readAutosave } from './designs';
 import { Recorder, lean } from './recorder';
 import { EPISODES, OUTRO_SECONDS, episodeById, episodeDuration, episodeTraffic, type BeatAction, type StageBoard } from '../studio/episodes';
 
-export type Mode = 'home' | 'lesson' | 'sandbox' | 'compare' | 'studio';
+export type Mode = 'backtest' | 'home' | 'lesson' | 'sandbox' | 'compare' | 'studio';
 export type Pattern = 'steady' | 'diurnal' | 'spiky' | 'ramp';
 export type BoardId = 'main' | 'A' | 'B';
 
@@ -584,7 +584,9 @@ export const useSim = create<State>()((set, get) => {
       if (get().playback) set({ playback: null });
       if (mode !== 'sandbox' && (get().auditOpen || get().specOpen)) set({ auditOpen: false, specOpen: false });
       const focus = mode === 'compare' ? 'A' : 'main';
-      if (mode === 'home') {
+      if (mode === 'backtest') {
+        set({ mode, focus, running: false });
+      } else if (mode === 'home') {
         engines.main.reset();
         set((s) => ({ mode, focus, running: true, analysisOpen: false, simT: 0, traffic: 60, pattern: 'steady', readRatio: 0.8, spikeUntil: 0, boards: { ...s.boards, main: makeBoard('main', 'Main', HOME_GRAPHS[0], s.boards.main.version + 1) } }));
       } else if (mode === 'studio') {

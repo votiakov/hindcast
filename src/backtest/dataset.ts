@@ -1,0 +1,315 @@
+/**
+ * Telemetry dataset: everything Bottleneck learned from real files, on one regular time grid.
+ *
+ * Importers (Prometheus, CloudWatch, OpenTelemetry, billing exports) each produce raw points;
+ * `DatasetBuilder` buckets them onto the grid. Missing values are `null` (JSON-safe), never 0 —
+ * "no data" and "no traffic" must stay distinguishable for calibration.
+ */
+
+export type Num = number | null;
+
+/** per-service measurements; every array has `n` entries */
+export interface ServiceSeries {
+  /** requests per second arriving at the service */
+  rps?: Num[];
+  /** share of requests that failed (0..1) */
+  errorRate?: Num[];
+  /** inclusive latency (span/server duration, includes downstream calls), ms */
+  p50Ms?: Num[];
+  p95Ms?: Num[];
+  p99Ms?: Num[];
+  meanMs?: Num[];
+  /** self time (inclusive minus waiting on children), from traces, ms */
+  selfMeanMs?: Num[];
+  selfP99Ms?: Num[];
+  /** CPU used, cores (sum over replicas) */
+  cpuCores?: Num[];
+  /** CPU limit per replica, cores */
+  cpuLimitCores?: Num[];
+  /** replicas serving */
+  replicas?: Num[];
+  /** network bytes sent per second (all replicas) */
+  netTxBps?: Num[];
+  netRxBps?: Num[];
+  memoryBytes?: Num[];
+}
+
+export type ServiceMetric = keyof ServiceSeries;
+export const SERVICE_METRICS: ServiceMetric[] = ['rps', 'errorRate', 'p50Ms', 'p95Ms', 'p99Ms', 'meanMs', 'selfMeanMs', 'selfP99Ms', 'cpuCores', 'cpuLimitCores', 'replicas', 'netTxBps', 'netRxBps', 'memoryBytes'];
+
+/** an endpoint as users see it: a route on the entry service */
+export interface EndpointSeries {
+  /** service that receives the request */
+  service: string;
+  rps?: Num[];
+  errorRate?: Num[];
+  p50Ms?: Num[];
+  p99Ms?: Num[];
+  meanMs?: Num[];
+}
+
+/** one caller → callee relationship observed in traces */
+export interface TraceEdge {
+  from: string;
+  to: string;
+  /** calls per second over the whole window */
+  callsPerS: number;
+  /** mean request + response payload per call, bytes (null if unknown) */
+  bytesPerCall: number | null;
+}
+
+/** what one request to an endpoint does, on average (from traces) */
+export interface EndpointShape {
+  service: string;
+  /** traces seen for this endpoint */
+  traces: number;
+  /** calls per request, per edge key "from>to" */
+  calls: Record<string, number>;
+  /** visits per request per service (root = 1) */
+  visits: Record<string, number>;
+  /** mean ms per request spent by each service on the critical path */
+  criticalMs: Record<string, number>;
+  /** mean end-to-end duration, p99, ms */
+  meanMs: number;
+  p99Ms: number;
+  /** bytes moved per request per edge key */
+  bytes: Record<string, number>;
+  /** share of traces with an error */
+  errorRate: number;
+}
+
+export interface ServiceShape {
+  spans: number;
+  /** self time per visit (exclusive of child calls), ms */
+  selfMeanMs: number;
+  selfP50Ms: number;
+  selfP99Ms: number;
+  /** inclusive time per visit, ms */
+  meanMs: number;
+  p99Ms: number;
+  /** inferred from span attributes (db.system, messaging.system, …) */
+  kind: 'server' | 'db' | 'cache' | 'queue' | 'external' | 'client';
+  /** technology hint, e.g. "redis", "mysql" */
+  system?: string;
+}
+
+export interface Topology {
+  services: Record<string, ServiceShape>;
+  edges: TraceEdge[];
+  endpoints: Record<string, EndpointShape>;
+  /** trace window covered, epoch seconds */
+  start: number;
+  end: number;
+  traces: number;
+  /** share of requests that were traced (sampling), if known */
+  sampling?: number;
+}
+
+export type CostCategory = 'compute' | 'requests' | 'transfer' | 'storage' | 'other';
+
+export interface BillComponent {
+  /** total $ over the bill window */
+  total: number;
+  byCategory: Partial<Record<CostCategory, number>>;
+  /** usage per category, in the provider's unit (hours, requests, GB) */
+  usage: Partial<Record<CostCategory, number>>;
+  /** instance types / SKUs seen */
+  skus: string[];
+  /** $ per bucket on the dataset grid (null where the bill has no line) */
+  series?: Num[];
+}
+
+export interface Bill {
+  source: 'aws-cur' | 'gcp-billing';
+  currency: string;
+  start: number;
+  end: number;
+  total: number;
+  components: Record<string, BillComponent>;
+  /** spend that could not be attributed to a component */
+  unattributed: number;
+}
+
+export interface Placement {
+  zone?: string;
+  region?: string;
+}
+
+export interface Dataset {
+  version: 1;
+  name: string;
+  /** epoch seconds of the first bucket start */
+  start: number;
+  stepS: number;
+  n: number;
+  services: Record<string, ServiceSeries>;
+  endpoints: Record<string, EndpointSeries>;
+  topology?: Topology;
+  bill?: Bill;
+  placement?: Record<string, Placement>;
+  /** where each piece came from, for the report */
+  sources: string[];
+  /** modelling hints from the import manifest (SLO, client deadline, in-process dependencies…) */
+  hints?: {
+    slo?: { p99Ms: number; errorRate: number };
+    timeoutMs?: number;
+    hostedBy?: Record<string, string>;
+    services?: Record<string, { kind?: 'server' | 'db' | 'cache' | 'queue' | 'external' | 'lb'; servers?: number; perReplicaRps?: number; arch?: 'x86' | 'arm' }>;
+  };
+}
+
+export const bucketTimes = (d: Pick<Dataset, 'start' | 'stepS' | 'n'>) => Array.from({ length: d.n }, (_, i) => d.start + i * d.stepS);
+
+export function emptySeries(n: number): Num[] {
+  return new Array(n).fill(null);
+}
+
+/** mean of the non-null values */
+export function meanOf(a: Num[] | undefined): number | null {
+  if (!a) return null;
+  let s = 0;
+  let k = 0;
+  for (const v of a) if (v !== null && isFinite(v)) (s += v), k++;
+  return k ? s / k : null;
+}
+
+export function quantile(sorted: number[], q: number): number {
+  if (!sorted.length) return NaN;
+  const pos = (sorted.length - 1) * q;
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+}
+
+/**
+ * Accumulates raw (time, value) points per series and averages them into grid buckets.
+ * Latency quantiles are averaged too (a reasonable estimate when export step ≤ bucket).
+ */
+export class DatasetBuilder {
+  private svc = new Map<string, Map<ServiceMetric, Map<number, { s: number; k: number }>>>();
+  private ep = new Map<string, { service: string; m: Map<string, Map<number, { s: number; k: number }>> }>();
+  sources: string[] = [];
+  minT = Infinity;
+  maxT = -Infinity;
+
+  addService(service: string, metric: ServiceMetric, t: number, v: number) {
+    if (!isFinite(v) || !isFinite(t)) return;
+    let m = this.svc.get(service);
+    if (!m) this.svc.set(service, (m = new Map()));
+    let s = m.get(metric);
+    if (!s) m.set(metric, (s = new Map()));
+    const p = s.get(t) ?? { s: 0, k: 0 };
+    p.s += v;
+    p.k += 1;
+    s.set(t, p);
+    this.minT = Math.min(this.minT, t);
+    this.maxT = Math.max(this.maxT, t);
+  }
+
+  addEndpoint(endpoint: string, service: string, metric: 'rps' | 'errorRate' | 'p50Ms' | 'p99Ms' | 'meanMs', t: number, v: number) {
+    if (!isFinite(v) || !isFinite(t)) return;
+    let e = this.ep.get(endpoint);
+    if (!e) this.ep.set(endpoint, (e = { service, m: new Map() }));
+    let s = e.m.get(metric);
+    if (!s) e.m.set(metric, (s = new Map()));
+    const p = s.get(t) ?? { s: 0, k: 0 };
+    p.s += v;
+    p.k += 1;
+    s.set(t, p);
+    this.minT = Math.min(this.minT, t);
+    this.maxT = Math.max(this.maxT, t);
+  }
+
+  services() {
+    return [...this.svc.keys()];
+  }
+
+  /** does this service have this metric yet? */
+  hasService(service: string, metric: ServiceMetric) {
+    return !!this.svc.get(service)?.has(metric);
+  }
+
+  /** does any service have this metric yet? */
+  has(metric: ServiceMetric) {
+    return [...this.svc.values()].some((m) => m.has(metric));
+  }
+
+  build(opts: { name: string; stepS?: number; start?: number; end?: number }): Dataset {
+    if (!isFinite(this.minT)) throw new Error('no data points were imported');
+    const times = new Set<number>();
+    for (const m of this.svc.values()) for (const s of m.values()) for (const t of s.keys()) times.add(t);
+    const sorted = [...times].sort((a, b) => a - b);
+    let native = Infinity;
+    for (let i = 1; i < sorted.length; i++) if (sorted[i] - sorted[i - 1] > 0) native = Math.min(native, sorted[i] - sorted[i - 1]);
+    const stepS = opts.stepS ?? (isFinite(native) ? Math.max(1, native) : 60);
+    const start = Math.floor((opts.start ?? this.minT) / stepS) * stepS;
+    const end = opts.end ?? this.maxT;
+    const n = Math.max(1, Math.floor((end - start) / stepS) + 1);
+    const grid = (src: Map<number, { s: number; k: number }>): Num[] => {
+      const acc = Array.from({ length: n }, () => ({ s: 0, k: 0 }));
+      for (const [t, p] of src) {
+        const i = Math.floor((t - start) / stepS);
+        if (i < 0 || i >= n) continue;
+        acc[i].s += p.s;
+        acc[i].k += p.k;
+      }
+      return acc.map((a) => (a.k ? a.s / a.k : null));
+    };
+    const services: Record<string, ServiceSeries> = {};
+    for (const [id, m] of this.svc) {
+      const s: ServiceSeries = {};
+      for (const [metric, pts] of m) s[metric] = grid(pts);
+      services[id] = s;
+    }
+    const endpoints: Record<string, EndpointSeries> = {};
+    for (const [id, e] of this.ep) {
+      const s: EndpointSeries = { service: e.service };
+      for (const [metric, pts] of e.m) (s as unknown as Record<string, Num[]>)[metric] = grid(pts);
+      endpoints[id] = s;
+    }
+    return { version: 1, name: opts.name, start, stepS, n, services, endpoints, sources: this.sources };
+  }
+}
+
+/** re-grid a dataset to a coarser step (averaging), e.g. 15 s scrape data → 1 min buckets */
+export function regrid(d: Dataset, stepS: number): Dataset {
+  if (stepS <= d.stepS) return d;
+  const f = Math.round(stepS / d.stepS);
+  const n = Math.ceil(d.n / f);
+  const coarse = (a: Num[] | undefined): Num[] | undefined => {
+    if (!a) return undefined;
+    const out: Num[] = [];
+    for (let i = 0; i < n; i++) {
+      let s = 0;
+      let k = 0;
+      for (let j = i * f; j < Math.min(a.length, (i + 1) * f); j++) if (a[j] !== null) (s += a[j] as number), k++;
+      out.push(k ? s / k : null);
+    }
+    return out;
+  };
+  const services: Record<string, ServiceSeries> = {};
+  for (const [id, s] of Object.entries(d.services)) {
+    const o: ServiceSeries = {};
+    for (const m of SERVICE_METRICS) if (s[m]) o[m] = coarse(s[m]);
+    services[id] = o;
+  }
+  const endpoints: Record<string, EndpointSeries> = {};
+  for (const [id, e] of Object.entries(d.endpoints)) endpoints[id] = { service: e.service, rps: coarse(e.rps), errorRate: coarse(e.errorRate), p50Ms: coarse(e.p50Ms), p99Ms: coarse(e.p99Ms), meanMs: coarse(e.meanMs) };
+  const bill = d.bill ? { ...d.bill, components: Object.fromEntries(Object.entries(d.bill.components).map(([k, c]) => [k, { ...c, series: c.series ? coarse(c.series)!.map((v) => (v === null ? null : v * f)) : undefined }])) } : undefined;
+  return { ...d, stepS: d.stepS * f, n, services, endpoints, bill };
+}
+
+/** slice a dataset to buckets [from, to) */
+export function sliceDataset(d: Dataset, from: number, to: number): Dataset {
+  const cut = (a: Num[] | undefined) => a?.slice(from, to);
+  const services: Record<string, ServiceSeries> = {};
+  for (const [id, s] of Object.entries(d.services)) {
+    const o: ServiceSeries = {};
+    for (const m of SERVICE_METRICS) if (s[m]) o[m] = cut(s[m]);
+    services[id] = o;
+  }
+  const endpoints: Record<string, EndpointSeries> = {};
+  for (const [id, e] of Object.entries(d.endpoints)) endpoints[id] = { service: e.service, rps: cut(e.rps), errorRate: cut(e.errorRate), p50Ms: cut(e.p50Ms), p99Ms: cut(e.p99Ms), meanMs: cut(e.meanMs) };
+  const bill = d.bill ? { ...d.bill, components: Object.fromEntries(Object.entries(d.bill.components).map(([k, c]) => [k, { ...c, series: cut(c.series) }])) } : undefined;
+  return { ...d, start: d.start + from * d.stepS, n: Math.max(0, Math.min(d.n, to) - from), services, endpoints, bill };
+}

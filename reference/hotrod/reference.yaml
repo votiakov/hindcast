@@ -1,0 +1,24 @@
+# Reference system 1 — Jaeger HotROD (github.com/jaegertracing/jaeger/tree/main/examples/hotrod).
+# Concurrency-bound: the customer service's simulated MySQL connection is guarded by a mutex
+# (100 ms per query), so throughput is capped by lock hold time, not CPU.
+name: HotROD
+project: hotrod
+base: http://frontend:8080
+timeout: 5s
+mix: mix.json
+edge: frontend
+hostedBy: { mysql: customer, redis-manual: driver }
+slo: { p99Ms: 1000, errorRate: 0.01 }
+runs:
+  # 40 minutes of "production": a compressed day peaking at 7.5 req/s, with a push to 12 req/s
+  history: { shape: [history, 7.5, 12, 40], env: { CUSTOMER_REPLICAS: 1 } }
+  # breaking point, measured: +1 req/s every minute from 4 to 16
+  stress: { shape: [steps, 4, 16, 1, 60], env: { CUSTOMER_REPLICAS: 1 } }
+  # the strategy, actually applied: two customer replicas behind the load balancer, same day
+  replicas-2: { shape: [history, 7.5, 12, 40], env: { CUSTOMER_REPLICAS: 2 } }
+  stress-replicas-2: { shape: [steps, 8, 30, 2, 60], env: { CUSTOMER_REPLICAS: 2 } }
+# predictions checked against runs the model never saw
+validate:
+  - { run: replicas-2, strategy: strategies/1-customer-replicas.yaml }
+  - { run: stress, stress: true }
+  - { run: stress-replicas-2, strategy: strategies/1-customer-replicas.yaml, stress: true }

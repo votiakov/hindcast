@@ -1,0 +1,5 @@
+name: Two customer replicas
+description: Scale the customer service out behind its load balancer. Each replica has its own database connection, so the lock is shared by half the traffic.
+changes:
+  - service: customer
+    replicas: 2

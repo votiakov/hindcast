@@ -1,0 +1,12 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+scrape_configs:
+  - job_name: cadvisor
+    static_configs: [{ targets: ['cadvisor:8080'] }]
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'container_(cpu_usage_seconds_total|spec_cpu_quota|spec_cpu_period|network_transmit_bytes_total|spec_memory_limit_bytes|network_receive_bytes_total|memory_working_set_bytes|last_seen|cpu_cfs_throttled_periods_total|cpu_cfs_periods_total)'
+        action: keep
+  - job_name: spanmetrics
+    static_configs: [{ targets: ['otel-collector:8889'] }]

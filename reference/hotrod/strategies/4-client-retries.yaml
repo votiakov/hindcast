@@ -1,0 +1,5 @@
+name: Clients retry twice, no budget
+description: Clients re-send failed requests up to two times. Retries add load exactly when the system is already overloaded.
+changes:
+  - endpoint: "*"
+    retries: { attempts: 2 }

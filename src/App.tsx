@@ -16,6 +16,7 @@ import { PresentHUD, presentStep } from './ui/PresentHUD';
 import { Shortcuts } from './ui/Shortcuts';
 import { Embed } from './ui/Embed';
 import { HomeBoard } from './ui/HomeBoard';
+import { BacktestView } from './backtest-ui/BacktestView';
 import './ui/callout.css';
 import { StudioView } from './studio/StudioView';
 import { Stage } from './studio/Stage';
@@ -116,6 +117,8 @@ function useSimLoop() {
 }
 
 if (!RENDER && location.hash) openFromHash(location.hash);
+// the backtest is the main screen; links, embeds and renders open where they point
+else if (!RENDER && !EMBED) useSim.getState().setMode('backtest');
 if (EMBED) {
   const s = useSim.getState();
   if (s.mode !== 'sandbox') s.setMode('sandbox');
@@ -158,6 +161,13 @@ export default function App() {
 
   if (RENDER) return <Stage />;
   if (EMBED) return <Embed />;
+  if (mode === 'backtest')
+    return (
+      <>
+        <BacktestView />
+        <Toasts />
+      </>
+    );
 
   return (
     <div className={`app ${present ? 'presenting' : ''}`}>

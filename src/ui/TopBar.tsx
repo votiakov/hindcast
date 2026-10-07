@@ -122,7 +122,7 @@ export function TopBar() {
       </div>
 
       <div className="mode-tabs">
-        {(['home', 'lesson', 'sandbox', 'compare', 'studio'] as Mode[]).map((m) => (
+        {(['backtest', 'home', 'lesson', 'sandbox', 'compare', 'studio'] as Mode[]).map((m) => (
           <button key={m} className={mode === m ? 'on' : ''} onClick={() => mode !== m && setMode(m)}>
             {m === 'home' ? 'Live' : m[0].toUpperCase() + m.slice(1)}
           </button>

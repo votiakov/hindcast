@@ -5,3 +5,8 @@ exports
 dist-mcp
 .DS_Store
 *.log
+
+# reference recordings: raw traces and k6 logs are large; imported datasets are committed
+reference/*/runs/*/raw/
+reference/stack/run/
+scripts/.shot.mjs

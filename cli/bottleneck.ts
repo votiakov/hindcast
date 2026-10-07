@@ -13,6 +13,14 @@
  *   npm run sim -- import-k8s      <manifests.yaml …> [--name "My system"] [--out arch.yaml]      (Deployments, HPAs, StatefulSets, Services, Ingress)
  *   npm run sim -- catalog
  *
+ * Backtesting on real data (files only; see docs/backtest.md):
+ *   npm run sim -- export-prometheus --url http://prom:9090 --start 2026-09-01 --end 2026-09-15 [--step 60] [--preset otel-spanmetrics,cadvisor] --out telemetry/
+ *   npm run sim -- import        <bottleneck.import.yaml> [--out dataset.json]
+ *   npm run sim -- calibrate     <dataset.json> [--out model.json] [--p99 500] [--errors 0.01] [--timeout 5000] [--holdout 0.3]
+ *   npm run sim -- backtest      <model.json> <dataset.json> <strategy.yaml …> [--last 14d] [--draws 30] [--md r.md] [--html r.html] [--comment pr.md] [--gate]
+ *   npm run sim -- headroom      <model.json> [strategy.yaml]
+ *   npm run sim -- accuracy      <model.json>
+ *
  * Files may be YAML or JSON. A variants file is either a list of variants or { variants, scenario }.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -33,6 +41,7 @@ import { breakingPoint, catalog, compare, simulate, type SimResult } from '../sr
 import { validateSpec } from '../src/spec/validate';
 import { applyVariant, encodePayload } from '../src/spec/convert';
 import { ArchitectureSpec, VariantSpec } from '../src/spec/schema';
+import { backtestCommand } from './backtest';
 
 const APP_URL = process.env.BOTTLENECK_APP_URL ?? 'http://localhost:5173';
 
@@ -120,9 +129,10 @@ function variantsFile(path: string): { variants: VariantSpec[]; scenario?: unkno
   return { variants: o.variants.map((v) => VariantSpec.parse(v)), scenario: o.scenario };
 }
 
-function main() {
+async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
   const { pos, opt } = flags(rest);
+  if (cmd && (await backtestCommand(cmd, pos, opt))) return;
   const json = !!opt.json;
   const scenarioFrom = (path?: string) => {
     const base = (path ? load(path) : {}) as Record<string, unknown>;
@@ -240,9 +250,12 @@ function main() {
     case 'catalog':
       return console.log(JSON.stringify(catalog(), null, 2));
     default:
-      console.log(readFileSync(new URL(import.meta.url), 'utf8').split('\n').slice(1, 16).map((l) => l.replace(/^ \*\s?/, '')).join('\n'));
+      console.log(readFileSync(new URL(import.meta.url), 'utf8').split('\n').slice(1, 25).map((l) => l.replace(/^ \*\s?/, '')).join('\n'));
       process.exitCode = cmd ? 1 : 0;
   }
 }
 
-main();
+main().catch((e) => {
+  console.error(e instanceof Error ? e.message : e);
+  process.exitCode = 1;
+});

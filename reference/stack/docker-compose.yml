@@ -1,0 +1,31 @@
+# Shared recording stack for the reference systems: OTel collector (traces → file + RED metrics),
+# container metrics with cAdvisor names (CPU / network / limits) and Prometheus scraping both every 5 s.
+name: bnref
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.111.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    user: "0"
+    volumes:
+      - ./otel-collector.yaml:/etc/otelcol/config.yaml:ro
+      - ${RUN_DIR:-./run}:/data
+    ports: ["4317:4317", "4318:4318"]
+    networks: [ref]
+  cadvisor:
+    # cAdvisor-compatible container metrics from the Docker Engine API (see docker_exporter.py)
+    image: python:3.12-alpine
+    command: ["python", "-u", "/exporter.py"]
+    volumes:
+      - ./docker_exporter.py:/exporter.py:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [ref]
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=7d"]
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports: ["9090:9090"]
+    networks: [ref]
+networks:
+  ref:
+    name: bnref

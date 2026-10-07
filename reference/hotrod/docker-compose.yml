@@ -1,0 +1,48 @@
+# Reference system 1: Jaeger HotROD ("Hot R.O.D. — Rides on Demand"), split into its four services,
+# each in its own CPU-limited container, with an nginx load balancer in front of `customer` so the
+# customer service can be scaled out. Traces go to the shared recording stack (../stack).
+#
+#   CUSTOMER_REPLICAS=2 docker compose up -d
+name: hotrod
+x-hotrod: &hotrod
+  image: jaegertracing/example-hotrod:latest
+  environment:
+    OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+  # -D 100ms: customer has one simulated MySQL connection guarded by a mutex, 100 ms per query
+  # -W 20:    the frontend computes ETAs with a pool of 20 route workers
+  networks: [ref]
+services:
+  frontend:
+    <<: *hotrod
+    command: ["frontend", "--customer-service-hostname=customer-lb", "--driver-service-hostname=driver", "--route-service-hostname=route", "-D", "100ms", "-W", "20"]
+    ports: ["18080:8080"]
+    cpus: 1.0
+    mem_limit: 256m
+  customer:
+    <<: *hotrod
+    command: ["customer", "--customer-service-hostname=0.0.0.0", "-D", "100ms", "-W", "20"]
+    cpus: 0.5
+    mem_limit: 128m
+    deploy:
+      replicas: ${CUSTOMER_REPLICAS:-1}
+  customer-lb:
+    image: nginx:1.27-alpine
+    volumes: ["./nginx.conf:/etc/nginx/nginx.conf:ro"]
+    depends_on: [customer]
+    cpus: 0.25
+    mem_limit: 64m
+    networks: [ref]
+  driver:
+    <<: *hotrod
+    command: ["driver", "--driver-service-hostname=0.0.0.0", "-D", "100ms", "-W", "20"]
+    cpus: 0.5
+    mem_limit: 128m
+  route:
+    <<: *hotrod
+    command: ["route", "--route-service-hostname=0.0.0.0", "-D", "100ms", "-W", "20"]
+    cpus: 0.5
+    mem_limit: 128m
+networks:
+  ref:
+    name: bnref
+    external: true

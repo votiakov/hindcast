@@ -1,0 +1,262 @@
+import { describe, expect, it } from 'vitest';
+import { DatasetBuilder, regrid, sliceDataset, type Dataset } from '../src/backtest/dataset';
+import { importCloudWatch, importLongCsv, importPrometheus, importWideCsv } from '../src/backtest/import/metrics';
+import { buildTopology, parseTraceFile } from '../src/backtest/import/traces';
+import { parseCur, parseGcpBilling, summariseBill } from '../src/backtest/import/billing';
+import { parseCsv } from '../src/backtest/import/csv';
+import { importBundle } from '../src/backtest/import/manifest';
+import { erlangC, mmcWait } from '../src/backtest/queueing';
+import { calibrate } from '../src/backtest/calibrate';
+import { basePlan, runPlan } from '../src/backtest/engine';
+import { applyStrategy } from '../src/backtest/strategy';
+import { backtest } from '../src/backtest/backtest';
+import type { Model } from '../src/backtest/model';
+
+const T0 = 1_790_000_000;
+
+describe('importers', () => {
+  it('parses quoted CSV', () => {
+    expect(parseCsv('a,b\n"x, y","he said ""hi"""\n')).toEqual([
+      ['a', 'b'],
+      ['x, y', 'he said "hi"'],
+    ]);
+  });
+
+  it('reads a Prometheus query_range matrix with unit conversion', () => {
+    const b = new DatasetBuilder();
+    const json = { status: 'success', data: { resultType: 'matrix', result: [{ metric: { service_name: 'api' }, values: [[T0, '0.120'], [T0 + 60, '0.240'], [T0 + 120, 'NaN']] }] } };
+    expect(importPrometheus(b, json, { metric: 'p99Ms', by: 'service_name', unit: 's' })).toBe(2);
+    const d = b.build({ name: 't' });
+    expect(d.stepS).toBe(60);
+    expect(d.services.api.p99Ms).toEqual([120, 240]);
+  });
+
+  it('reads endpoint series from Prometheus labels', () => {
+    const b = new DatasetBuilder();
+    importPrometheus(b, { data: { result: [{ metric: { service_name: 'api', http_route: '/orders', http_request_method: 'POST' }, values: [[T0, '5']] }] } }, { metric: 'rps', by: 'service_name', endpointBy: 'http_route', methodBy: 'http_request_method' });
+    expect(b.build({ name: 't' }).endpoints['POST /orders']).toMatchObject({ service: 'api', rps: [5] });
+  });
+
+  it('reads CloudWatch GetMetricData (sum per period → req/s)', () => {
+    const b = new DatasetBuilder();
+    const json = { MetricDataResults: [{ Id: 'req', Label: 'api RequestCount', Timestamps: ['2026-09-14T12:01:00Z', '2026-09-14T12:00:00Z'], Values: [1200, 600], StatusCode: 'Complete' }, { Id: 'api__cpuPercent', Timestamps: ['2026-09-14T12:00:00Z'], Values: [50] }] };
+    importCloudWatch(b, json, { req: { service: 'api', metric: 'rps', unit: 'count-per-period' } });
+    const d = b.build({ name: 't' });
+    expect(d.services.api.rps).toEqual([10, 20]);
+    expect(d.services.api.cpuCores?.[0]).toBe(0.5);
+  });
+
+  it('reads long and wide CSV', () => {
+    const b = new DatasetBuilder();
+    importLongCsv(b, 'timestamp,service,metric,value\n2026-09-14T12:00:00Z,api,rps,12\n2026-09-14T12:01:00Z,api,rps,14\n');
+    importWideCsv(b, 'time,api p99,db cpu\n2026-09-14T12:00:00Z,0.2,40\n2026-09-14T12:01:00Z,0.3,60\n', { 'api p99': { metric: 'p99Ms', service: 'api', unit: 's' }, 'db cpu': { metric: 'cpuPercent', service: 'db', scale: 2 } });
+    const d = b.build({ name: 't' });
+    expect(d.services.api.rps).toEqual([12, 14]);
+    expect(d.services.api.p99Ms).toEqual([200, 300]);
+    expect(d.services.db.cpuCores).toEqual([0.8, 1.2]);
+  });
+
+  const span = (traceId: string, spanId: string, parent: string | null, name: string, kind: number, start: number, end: number, attrs: Record<string, string | number> = {}) => ({
+    traceId,
+    spanId,
+    ...(parent ? { parentSpanId: parent } : {}),
+    name,
+    kind,
+    startTimeUnixNano: String(BigInt(Math.round(start * 1e6))),
+    endTimeUnixNano: String(BigInt(Math.round(end * 1e6))),
+    attributes: Object.entries(attrs).map(([key, v]) => ({ key, value: typeof v === 'number' ? { intValue: String(v) } : { stringValue: v } })),
+  });
+  const rs = (service: string, spans: unknown[]) => ({ resource: { attributes: [{ key: 'service.name', value: { stringValue: service } }] }, scopeSpans: [{ spans }] });
+  const ms = T0 * 1000;
+  // web → api (server) → db (uninstrumented client span), and api → cache twice in parallel
+  const traceDoc = (id: string, t: number) =>
+    JSON.stringify({
+      resourceSpans: [
+        rs('web', [span(id, 'a1', null, 'GET /checkout', 2, t, t + 100, { 'http.route': '/checkout', 'http.request.method': 'GET', 'http.response.body.size': 2000 }), span(id, 'a2', 'a1', 'POST', 3, t + 5, t + 95)]),
+        rs('api', [
+          span(id, 'b1', 'a2', 'POST /pay', 2, t + 10, t + 90, { 'http.request.body.size': 300 }),
+          span(id, 'b2', 'b1', 'SELECT', 3, t + 20, t + 60, { 'db.system': 'postgresql', 'peer.service': 'orders-db' }),
+          span(id, 'b3', 'b1', 'GET', 3, t + 62, t + 70, { 'db.system': 'redis' }),
+          span(id, 'b4', 'b1', 'GET', 3, t + 62, t + 72, { 'db.system': 'redis' }),
+        ]),
+      ],
+    });
+
+  it('builds topology, critical path and payloads from OTLP traces', () => {
+    const spans = parseTraceFile([traceDoc('t1', ms), traceDoc('t2', ms + 30_000)].join('\n'));
+    const b = new DatasetBuilder();
+    const topo = buildTopology(spans, b, { stepS: 60 });
+    expect(Object.keys(topo.services).sort()).toEqual(['api', 'orders-db', 'redis', 'web']);
+    expect(topo.services['orders-db'].kind).toBe('db');
+    expect(topo.services.redis.kind).toBe('cache');
+    const ep = topo.endpoints['web GET /checkout'];
+    expect(ep.traces).toBe(2);
+    expect(ep.visits).toMatchObject({ web: 1, api: 1, 'orders-db': 1, redis: 2 });
+    expect(ep.calls['api>redis']).toBe(2);
+    // critical path sums to the request duration; only one of the two parallel redis calls is on it
+    const cp = Object.values(ep.criticalMs).reduce((a, x) => a + x, 0);
+    expect(cp).toBeCloseTo(100, 5);
+    expect(ep.criticalMs.redis).toBeCloseTo(10, 5);
+    expect(ep.criticalMs['orders-db']).toBeCloseTo(40, 5);
+    expect(topo.services.api.selfMeanMs).toBeCloseTo(80 - 40 - 10, 5);
+    expect(ep.bytes['web>api']).toBe(300);
+    const d = b.build({ name: 't', stepS: 60 });
+    expect(d.endpoints['web GET /checkout'].rps?.[0]).toBeCloseTo(2 / 60, 6);
+  });
+
+  it('reads Jaeger JSON', () => {
+    const doc = { data: [{ traceID: 'x', spans: [{ traceID: 'x', spanID: '1', operationName: 'HTTP GET /dispatch', startTime: T0 * 1e6, duration: 50_000, tags: [{ key: 'span.kind', value: 'server' }], processID: 'p1' }, { traceID: 'x', spanID: '2', operationName: 'SQL SELECT', references: [{ refType: 'CHILD_OF', spanID: '1' }], startTime: T0 * 1e6 + 1000, duration: 30_000, tags: [], processID: 'p2' }], processes: { p1: { serviceName: 'frontend' }, p2: { serviceName: 'mysql' } } }] };
+    const topo = buildTopology(parseTraceFile(JSON.stringify(doc)), null, { stepS: 10 });
+    expect(topo.endpoints['frontend GET /dispatch'].visits.mysql).toBe(1);
+    expect(topo.services.frontend.selfMeanMs).toBeCloseTo(20, 5);
+  });
+
+  it('reads AWS CUR (legacy and 2.0) and attributes by tag', () => {
+    const legacy = `lineItem/LineItemType,lineItem/UsageStartDate,lineItem/UsageEndDate,lineItem/ProductCode,lineItem/UsageType,lineItem/ResourceId,lineItem/UsageAmount,lineItem/UnblendedCost,product/instanceType,resourceTags/user:service
+Usage,2026-09-14T12:00:00Z,2026-09-14T13:00:00Z,AmazonEC2,BoxUsage:m7g.large,i-1,1,0.0816,m7g.large,api
+Usage,2026-09-14T12:00:00Z,2026-09-14T13:00:00Z,AWSDataTransfer,USE1-DataTransfer-Out-Bytes,i-1,10,0.9,,api
+Usage,2026-09-14T12:00:00Z,2026-09-14T13:00:00Z,AmazonRDS,InstanceUsage:db.r7g.large,db-1,1,0.239,db.r7g.large,
+Tax,2026-09-14T12:00:00Z,2026-09-14T13:00:00Z,AmazonEC2,,,,5,,
+`;
+    const lines = parseCur(legacy, { tag: 'user:service', resources: { 'db-1': 'db' } });
+    expect(lines).toHaveLength(3);
+    const bill = summariseBill(lines, 'aws-cur');
+    expect(bill.components.api.byCategory).toEqual({ compute: 0.0816, transfer: 0.9 });
+    expect(bill.components.db.total).toBeCloseTo(0.239);
+    const v2 = `line_item_line_item_type,line_item_usage_start_date,line_item_usage_end_date,line_item_usage_type,line_item_resource_id,line_item_usage_amount,line_item_unblended_cost,resource_tags
+Usage,2026-09-14T12:00:00Z,2026-09-14T13:00:00Z,BoxUsage:m7g.large,i-2,1,0.0816,"{""user_service"":""web""}"
+`;
+    expect(parseCur(v2, { tag: 'user:service' })[0].component).toBe('web');
+  });
+
+  it('reads the GCP billing export (CSV and JSON lines)', () => {
+    const csv = `service.description,sku.description,usage_start_time,usage_end_time,cost,usage.amount,labels\nCompute Engine,C4A Instance Core running in Americas,2026-09-14 12:00:00 UTC,2026-09-14 13:00:00 UTC,0.04,3600,"[{""key"":""app"",""value"":""api""}]"\n`;
+    const l = parseGcpBilling(csv, { tag: 'app' });
+    expect(l[0]).toMatchObject({ component: 'api', category: 'compute', cost: 0.04 });
+    const jl = JSON.stringify({ service: { description: 'Networking' }, sku: { description: 'Network Inter Zone Data Transfer Out' }, usage_start_time: '2026-09-14T12:00:00Z', cost: 0.01, labels: [{ key: 'app', value: 'api' }] });
+    expect(parseGcpBilling(jl, { tag: 'app' })[0].category).toBe('transfer');
+  });
+
+  it('imports a bundle from a manifest', () => {
+    const files: Record<string, string> = {
+      'm/rps.json': JSON.stringify({ data: { result: [{ metric: { svc: 'API' }, values: [[T0, '10'], [T0 + 60, '20']] }] } }),
+      'm/cpu.csv': 'timestamp,service,metric,value\n' + `${T0},api,cpuCores,0.2\n${T0 + 60},api,cpuCores,0.4\n`,
+    };
+    const { dataset } = importBundle({ name: 'b', step: '1m', rename: { API: 'api' }, metrics: [{ prometheus: 'm/rps.json', metric: 'rps', by: 'svc' }, { csv: 'm/cpu.csv' }] }, { read: (p) => files[p], glob: (p) => (files[p] ? [p] : []) });
+    expect(dataset.services.api.rps).toEqual([10, 20]);
+    expect(dataset.services.api.cpuCores).toEqual([0.2, 0.4]);
+  });
+
+  it('regrids and slices', () => {
+    const b = new DatasetBuilder();
+    for (let i = 0; i < 6; i++) b.addService('a', 'rps', T0 + i * 10, i);
+    const d = b.build({ name: 't' });
+    expect(regrid(d, 30).services.a.rps).toEqual([1, 4]);
+    expect(sliceDataset(d, 2, 4).services.a.rps).toEqual([2, 3]);
+  });
+});
+
+describe('queueing', () => {
+  it('Erlang C matches M/M/1', () => {
+    expect(erlangC(1, 0.5)).toBeCloseTo(0.5);
+    // M/M/1, K=10, λ=5: mean wait ρ/(μ−λ) = 0.5/5 s = 100 ms
+    expect(mmcWait(5, 1, 10).meanMs).toBeCloseTo(100, 6);
+    expect(mmcWait(10, 1, 10).meanMs).toBe(Infinity);
+    // more servers at the same total capacity wait less
+    expect(mmcWait(8, 8, 10).meanMs).toBeLessThan(mmcWait(8, 1, 10).meanMs);
+  });
+});
+
+/** a synthetic system with a known truth, recorded the way calibrate() expects */
+function synthetic(truth: { K: number; c: number; S: number }, peak = 0.9): Dataset {
+  const n = 240;
+  const stepS = 15;
+  const truthModel: Model = {
+    version: 1,
+    name: 'truth',
+    timeoutMs: 5000,
+    slo: { p99Ms: 500, errorRate: 0.01 },
+    services: {
+      api: { id: 'api', kind: 'server', replicas: 2, cpuLimit: 1, memoryGb: 1, cpu: { base: 0.02, perReq: 0.9 / truth.K, r2: 1 }, capacity: { limit: 'concurrency', servers: truth.c, perReplicaRps: truth.K }, self: { mean: truth.S, p99: truth.S * 3 }, tail: 1, cost: { perReplicaHour: 0.1, perRequest: 0, cpuShare: 0.8, arch: 'x86', source: 'bill' }, fit: { status: 'good', samples: 0, notes: [] } },
+    },
+    endpoints: {
+      'api GET /x': { id: 'api GET /x', service: 'api', share: 1, visits: { api: 1 }, calls: {}, weights: { api: 1 }, overheadMs: 5, baseExcessMs: truth.S * 2, tail: 1, errorRate: 0, bytes: {}, egressBytes: 0, slo: { p99Ms: 500, errorRate: 0.01 }, fit: { status: 'good', samples: 0, notes: [] } },
+    },
+    transfer: { crossZoneGb: 0.01, crossRegionGb: 0.02, internetGb: 0.09, source: '' },
+    unattributedPerHour: 0,
+    accuracy: [],
+    fittedOn: { start: T0, end: T0 + n * stepS, stepS, buckets: n },
+  };
+  const rps = Array.from({ length: n }, (_, i) => 2 * truth.K * peak * (0.3 + 0.7 * Math.sin((Math.PI * i) / n) ** 2));
+  const r = runPlan(basePlan(truthModel), { start: T0, stepS, n, endpoints: { 'api GET /x': rps } });
+  const s = r.services.api;
+  return {
+    version: 1,
+    name: 'synthetic',
+    start: T0,
+    stepS,
+    n,
+    services: { api: { rps: s.rps, selfMeanMs: s.selfMeanMs, selfP99Ms: s.selfP99Ms, replicas: s.replicas, cpuCores: s.cpuCores, cpuLimitCores: new Array(n).fill(1) } },
+    endpoints: { 'api GET /x': { service: 'api', rps, p99Ms: r.endpoints['api GET /x'].p99Ms, meanMs: r.endpoints['api GET /x'].meanMs, errorRate: r.endpoints['api GET /x'].errorRate } },
+    topology: { services: { api: { spans: 1000, selfMeanMs: truth.S, selfP50Ms: truth.S, selfP99Ms: truth.S * 3, meanMs: truth.S, p99Ms: truth.S * 3, kind: 'server' } }, edges: [], endpoints: { 'api GET /x': { service: 'api', traces: 1000, calls: {}, visits: { api: 1 }, criticalMs: { api: truth.S }, meanMs: truth.S + 5, p99Ms: truth.S * 3, bytes: {}, errorRate: 0 } }, start: T0, end: T0 + n * stepS, traces: 1000 },
+    bill: { source: 'aws-cur', currency: 'USD', start: T0, end: T0 + n * stepS, total: 0.1 * 2 * (n * stepS) / 3600, components: { api: { total: 0.1 * 2 * (n * stepS) / 3600, byCategory: { compute: 0.1 * 2 * (n * stepS) / 3600 }, usage: {}, skus: [] } }, unattributed: 0 },
+    sources: [],
+  };
+}
+
+describe('calibration', () => {
+  it('recovers a concurrency limit from latency under load', () => {
+    const d = synthetic({ K: 40, c: 4, S: 20 });
+    const m = calibrate(d, { bootstrap: 10 });
+    const api = m.services.api;
+    expect(api.capacity.perReplicaRps).toBeGreaterThan(40 * 0.9);
+    expect(api.capacity.perReplicaRps).toBeLessThan(40 * 1.1);
+    expect(api.fit.status).toBe('good');
+    expect(api.cost.perReplicaHour).toBeCloseTo(0.1, 3);
+    expect(api.capacity.band![0]).toBeLessThanOrEqual(api.capacity.band![1]);
+    expect(m.endpoints['api GET /x'].fit.p99Mape!).toBeLessThan(0.15);
+  });
+
+  it('extrapolates the CPU limit when load never came close', () => {
+    const d = synthetic({ K: 40, c: 4, S: 20 }, 0.3);
+    const m = calibrate(d, { bootstrap: 0 });
+    expect(m.services.api.capacity.limit).toBe('cpu');
+    expect(m.services.api.capacity.perReplicaRps).toBeGreaterThan(30);
+  });
+});
+
+describe('strategies and backtest', () => {
+  const d = synthetic({ K: 40, c: 4, S: 20 }, 1.1);
+  const m = calibrate(d, { bootstrap: 10, slo: { p99Ms: 300, errorRate: 0.01 } });
+
+  it('applies changes with notes', () => {
+    const base = basePlan(m);
+    const a = applyStrategy(m, base, { name: 'x', changes: [{ service: 'api', replicas: 4, arch: 'arm' }, { endpoint: '*', retries: { attempts: 2, budget: 0.1 } }] });
+    expect(a.plan.services.api.replicas).toBe(4);
+    expect(a.plan.services.api.replicaHour).toBeCloseTo(base.services.api.replicaHour * 0.8);
+    expect(a.plan.endpoints['api GET /x'].retries).toEqual({ attempts: 2, budget: 0.1 });
+    expect(a.notes.join(' ')).toMatch(/Graviton/);
+    expect(() => applyStrategy(m, base, { name: 'bad', changes: [{ service: 'nope', replicas: 1 }] })).toThrow(/no service/);
+  });
+
+  it('ranks strategies: more replicas remove the overload, at a price', () => {
+    const r = backtest(m, d, [{ name: 'four', changes: [{ service: 'api', replicas: 4 }] }, { name: 'one', changes: [{ service: 'api', replicas: 1 }] }], { draws: 5 });
+    expect(r.baseline.summary.minutesOutOfSlo.p50).toBeGreaterThan(0);
+    const four = r.strategies.find((s) => s.name === 'four')!;
+    const one = r.strategies.find((s) => s.name === 'one')!;
+    expect(four.summary.minutesOutOfSlo.p50).toBe(0);
+    expect(four.delta.monthly.p50).toBeGreaterThan(0);
+    expect(one.delta.monthly.p50).toBeLessThan(0);
+    expect(one.delta.minutesOutOfSlo.p50).toBeGreaterThan(0);
+    expect(r.ranking[0].name).toBe('four');
+    expect(r.baseline.worst.why).toMatch(/api at \d+% of capacity/);
+    expect(r.baseline.series.cumulativeCost.p50.at(-1)).toBeCloseTo(r.baseline.summary.cost.p50, 6);
+  });
+
+  it('autoscaling follows the load and bills the replicas it runs', () => {
+    const r = backtest(m, d, [{ name: 'auto', changes: [{ service: 'api', autoscale: { min: 1, max: 6, targetCpu: 0.6, warmupS: 30, cooldownS: 120 } }] }], { draws: 1 });
+    const reps = r.strategies[0].series.replicas.api;
+    expect(Math.max(...reps)).toBeGreaterThan(Math.min(...reps));
+    expect(r.strategies[0].events.some((e) => /scale out/.test(e.what))).toBe(true);
+  });
+});

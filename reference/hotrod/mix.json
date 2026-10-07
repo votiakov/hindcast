@@ -1,0 +1,1 @@
+[{ "name": "frontend GET /dispatch", "method": "GET", "path": "/dispatch?customer={customer}&nonse={rand}", "weight": 1, "vars": { "customer": [123, 392, 731, 567] } }]

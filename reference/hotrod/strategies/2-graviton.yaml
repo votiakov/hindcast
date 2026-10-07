@@ -1,0 +1,13 @@
+name: Everything on Graviton
+description: Move every container to Arm (Fargate Graviton). Same vCPU and memory, about 20% cheaper.
+changes:
+  - service: frontend
+    arch: arm
+  - service: customer
+    arch: arm
+  - service: driver
+    arch: arm
+  - service: route
+    arch: arm
+  - service: customer-lb
+    arch: arm

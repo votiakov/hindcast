@@ -1,0 +1,38 @@
+# Records every span to a file (OTLP JSON lines) and turns spans into RED metrics for Prometheus.
+receivers:
+  otlp:
+    protocols:
+      grpc: { endpoint: 0.0.0.0:4317 }
+      http: { endpoint: 0.0.0.0:4318 }
+processors:
+  batch: { timeout: 2s }
+  # the trace file keeps 20% of traces (whole traces, by trace id), like a production sampler;
+  # spanmetrics still sees every span
+  probabilistic_sampler: { sampling_percentage: 20 }
+connectors:
+  spanmetrics:
+    histogram:
+      explicit:
+        buckets: [2ms, 5ms, 10ms, 20ms, 30ms, 50ms, 75ms, 100ms, 150ms, 200ms, 300ms, 400ms, 500ms, 750ms, 1s, 1500ms, 2s, 3s, 5s, 10s, 30s]
+    dimensions:
+      - name: http.route
+      - name: http.method
+    metrics_flush_interval: 5s
+exporters:
+  file:
+    path: /data/traces.jsonl
+  prometheus:
+    endpoint: 0.0.0.0:8889
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [spanmetrics]
+    traces/sampled:
+      receivers: [otlp]
+      processors: [probabilistic_sampler, batch]
+      exporters: [file]
+    metrics:
+      receivers: [spanmetrics]
+      exporters: [prometheus]

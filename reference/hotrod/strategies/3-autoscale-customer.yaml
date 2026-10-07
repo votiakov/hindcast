@@ -1,0 +1,5 @@
+name: Autoscale customer on CPU
+description: Target-tracking at 60% CPU, 1–4 replicas. The customer service waits on a lock, not on CPU — does CPU autoscaling ever react?
+changes:
+  - service: customer
+    autoscale: { min: 1, max: 4, targetCpu: 0.6, warmupS: 20, cooldownS: 120 }
