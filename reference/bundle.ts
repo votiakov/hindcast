@@ -85,6 +85,11 @@ function main() {
   const strategies = existsSync(stratDir) ? readdirSync(stratDir).filter((f) => f.endsWith('.yaml')).sort().map((f) => readFileSync(join(stratDir, f), 'utf8')) : [];
   mkdirSync(join(ROOT, '..', 'public', 'reference'), { recursive: true });
   writeFileSync(join(ROOT, '..', 'public', 'reference', `${system}.json`), JSON.stringify({ name: cfg.name, source: `reference/${system} — recorded ${new Date(history.start * 1000).toISOString().slice(0, 10)}`, dataset: history, model, strategies }));
+  // the app lists what is bundled
+  const indexPath = join(ROOT, '..', 'public', 'reference', 'index.json');
+  const index = (existsSync(indexPath) ? JSON.parse(readFileSync(indexPath, 'utf8')) : []) as { id: string; label: string }[];
+  const entry = { id: system, label: `${cfg.name} (reference)` };
+  writeFileSync(indexPath, JSON.stringify([...index.filter((x) => x.id !== system), entry].sort((a, b) => ['hotrod', 'shop', 'petclinic'].indexOf(a.id) - ['hotrod', 'shop', 'petclinic'].indexOf(b.id)), null, 1));
   console.log(`\nwrote public/reference/${system}.json (${strategies.length} strategies)`);
 }
 

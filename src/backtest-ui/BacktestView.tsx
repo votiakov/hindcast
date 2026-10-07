@@ -3,7 +3,7 @@ import { useBacktest, strategyName, type Tab } from './store';
 import { AXIS_W, Pane, TimeAxis, bandPath, candles, makeScale, path, useWidth, yScale } from './chart';
 import { headline } from '../backtest/report';
 import type { StrategyResult } from '../backtest/backtest';
-import { closeOutage, loadReference, openOutage, REFERENCES, openWorkspaceFiles } from './workspace';
+import { closeOutage, loadReference, loadReferenceIndex, openOutage, REFERENCES, openWorkspaceFiles } from './workspace';
 import { OUTAGES } from '../backtest/outages';
 import { openMomentOnBoard } from './bridge';
 import { cardData } from '../backtest/card';
@@ -631,7 +631,7 @@ export function BacktestView() {
   const loading = useBacktest((s) => s.loading);
   const [drag, setDrag] = useState(false);
   useEffect(() => {
-    if (!useBacktest.getState().workspace && !useBacktest.getState().loading) loadReference(REFERENCES[0].id);
+    if (!useBacktest.getState().workspace && !useBacktest.getState().loading) loadReferenceIndex().then(() => loadReference(REFERENCES[0].id));
   }, []);
   const body = useMemo(() => (w && r ? 'ready' : 'wait'), [w, r]);
   return (

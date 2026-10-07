@@ -6,8 +6,8 @@ project: petclinic
 base: http://app-lb:9966
 timeout: 5s
 warmupS: 200
-# the JVM compiles hot paths under load: two minutes of light traffic before recording
-warmupLoad: [steps, 1, 4, 1, 30]
+# the JVM compiles hot paths under load for many minutes: an 8-minute ramp before recording
+warmupLoad: [steps, 2, 30, 4, 60]
 thin: 10
 mix: mix.json
 edge: app-lb

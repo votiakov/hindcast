@@ -9,11 +9,22 @@ import { useSim } from '../sim/store';
 import { outageById, outageScenario } from '../backtest/outages';
 
 /** Reference systems recorded under real load (see reference/README.md), served from /reference/. */
-export const REFERENCES = [
+export const REFERENCES: { id: string; label: string }[] = [
   { id: 'hotrod', label: 'HotROD (reference)' },
   { id: 'shop', label: 'Astronomy Shop (reference)' },
-  { id: 'petclinic', label: 'PetClinic + Postgres (reference)' },
 ];
+
+/** the bundled list (reference/bundle.ts writes it); keeps the static one if unavailable */
+export async function loadReferenceIndex() {
+  try {
+    const r = await fetch('reference/index.json');
+    if (!r.ok) return;
+    const list = (await r.json()) as { id: string; label: string }[];
+    if (Array.isArray(list) && list.length) REFERENCES.splice(0, REFERENCES.length, ...list);
+  } catch {
+    /* static list */
+  }
+}
 
 export interface WorkspaceFile {
   name: string;
