@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSim } from '../sim/store';
 import { KINDS, isSystem } from '../sim/catalog';
-import { PRICING } from '../sim/pricing';
+import { PRICING, type PricingId } from '../sim/pricing';
+import { useMemo } from 'react';
+import { graphToSpec } from '../spec/convert';
+import { simulate } from '../sim/headless';
 import './lens.css';
 
 const TARGETS = [0.99, 0.995, 0.999, 0.9995, 0.9999];
@@ -19,6 +22,20 @@ export function Lens({ onClose }: { onClose: () => void }) {
   const nodes = useSim((s) => s.boards[s.mode === 'compare' ? s.focus : 'main'].nodes);
   const stats = useSim((s) => s.boards[s.mode === 'compare' ? s.focus : 'main'].nodeStats);
   const pricing = useSim((s) => s.settings.pricing);
+  const edges = useSim((s) => s.boards[s.mode === 'compare' ? s.focus : 'main'].edges);
+  const rpsKey = Math.round(g.rps / 50) * 50;
+  // the same design, same load, under every pricing profile (a short headless run each)
+  const perCloud = useMemo(() => {
+    if (!nodes.some((n) => n.type === 'system')) return [];
+    const spec = graphToSpec(nodes, edges);
+    return (Object.keys(PRICING) as PricingId[]).map((id) => {
+      try {
+        return { id, monthly: Math.round(simulate({ ...spec, pricing: id }, { duration: 8, rps: rpsKey, readRatio: useSim.getState().readRatio }).summary.meanCostPerHour * 730) };
+      } catch {
+        return { id, monthly: NaN };
+      }
+    });
+  }, [nodes, edges, rpsKey]);
 
   useEffect(() => {
     const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && !(e.target as HTMLElement).closest('.metrics') && onClose();
@@ -48,6 +65,16 @@ export function Lens({ onClose }: { onClose: () => void }) {
         <div className="lens-sub">
           {money(total)}/h · {perMillion !== null ? <>{money(perMillion)} per million requests</> : 'no traffic'} · {PRICING[pricing].label}
         </div>
+        {perCloud.length > 1 && (
+          <div className="lens-clouds">
+            {perCloud.map((c) => (
+              <button key={c.id} className={c.id === pricing ? 'on' : ''} onClick={() => useSim.getState().setSetting('pricing', c.id)} title={`${PRICING[c.id].label} — click to switch`}>
+                <span>{PRICING[c.id].short}</span>
+                <b>{isFinite(c.monthly) ? money(c.monthly) : '—'}</b>
+              </button>
+            ))}
+          </div>
+        )}
         <table className="lens-table">
           <tbody>
             {rows.map((r) => (

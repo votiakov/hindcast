@@ -20,3 +20,10 @@
 .lens-num { text-align: right; font-family: var(--mono); font-size: 11.5px; color: var(--text); }
 .lens-alert { font-size: 11px; color: var(--red); border-left: 2px solid var(--red); padding-left: 7px; }
 .metrics { position: relative; cursor: pointer; }
+
+.lens-clouds { display: flex; gap: 0; margin: 4px 0 10px; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+.lens-clouds button { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 5px 8px; border: 0; border-right: 1px solid var(--border); background: none; text-align: left; }
+.lens-clouds button:last-child { border-right: 0; }
+.lens-clouds button.on { background: rgba(148, 163, 184, 0.1); }
+.lens-clouds span { font-size: 10px; color: var(--muted); }
+.lens-clouds b { font-family: var(--mono); font-size: 12.5px; color: var(--text); font-weight: 600; }
