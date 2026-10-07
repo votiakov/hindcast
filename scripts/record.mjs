@@ -2,7 +2,7 @@
 /**
  * Frame-perfect episode renderer.
  *
- *   npm run record -- <episode-id | --ep-file episode.json> [--aspect 4:5] [--brand personal] [--theme neon|transit] [--fps 30] [--gif] [--no-stills]
+ *   npm run record -- <episode-id | --ep-file episode.json | --card card.json> [--aspect 4:5] [--brand personal] [--theme neon|transit] [--fps 30] [--gif] [--no-stills]
  *                                  [--url http://localhost:5173] [--out exports]
  *
  * Opens the app in render mode inside headless Chromium with a fake clock, steps time one frame
@@ -34,6 +34,11 @@ function parseArgs(argv) {
     o.epData = Buffer.from(readFileSync(o['ep-file'], 'utf8')).toString('base64url');
     o.ep = JSON.parse(readFileSync(o['ep-file'], 'utf8')).id;
   }
+  if (o.card) {
+    // a backtest card (bottleneck backtest … --card card.json)
+    o.cardData = readFileSync(o.card, 'utf8');
+    o.ep = `backtest-${JSON.parse(readFileSync(o.card, 'utf8')).system.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+  }
   if (!o.ep) throw new Error('usage: npm run record -- <episode-id> [--aspect 4:5] [--brand personal] [--gif]');
   if (!SIZES[o.aspect]) throw new Error(`unknown aspect ${o.aspect}; use one of ${Object.keys(SIZES).join(', ')}`);
   return o;
@@ -48,7 +53,7 @@ function ffmpeg(args) {
 async function main() {
   const o = parseArgs(process.argv.slice(2));
   const [w, h] = SIZES[o.aspect];
-  const name = `${o.ep}_${o.aspect.replace(':', 'x')}_${o.brand}_${o.theme}`;
+  const name = o.cardData ? `${o.ep}_${o.aspect.replace(':', 'x')}` : `${o.ep}_${o.aspect.replace(':', 'x')}_${o.brand}_${o.theme}`;
   const dir = resolve(o.out, name);
   mkdirSync(dir, { recursive: true });
   const mp4 = join(dir, `${name}.mp4`);
@@ -56,7 +61,9 @@ async function main() {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: 1 });
   await page.clock.install({ time: new Date('2026-01-01T00:00:00Z') });
-  const q = new URLSearchParams({ render: '1', ep: o.ep, aspect: o.aspect, brand: o.brand, theme: o.theme, ...(o.epData ? { epData: o.epData } : {}) });
+  // card data can be larger than a URL: hand it over through local storage
+  if (o.cardData) await page.addInitScript((json) => localStorage.setItem('bottleneck.card', json), o.cardData);
+  const q = new URLSearchParams(o.cardData ? { render: '1', card: 'local', aspect: o.aspect } : { render: '1', ep: o.ep, aspect: o.aspect, brand: o.brand, theme: o.theme, ...(o.epData ? { epData: o.epData } : {}) });
   await page.goto(`${o.url}/?${q}`);
   await page.waitForFunction(() => window.studio);
   await page.evaluate(() => document.fonts.ready);

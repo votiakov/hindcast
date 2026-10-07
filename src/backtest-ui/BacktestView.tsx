@@ -5,6 +5,7 @@ import { headline } from '../backtest/report';
 import type { StrategyResult } from '../backtest/backtest';
 import { loadReference, REFERENCES, openWorkspaceFiles } from './workspace';
 import { openMomentOnBoard } from './bridge';
+import { cardData } from '../backtest/card';
 import { useSim, type Mode } from '../sim/store';
 import './terminal.css';
 
@@ -60,6 +61,22 @@ function Bar() {
           </option>
         ))}
       </select>
+      {r && (
+        <button
+          className="bt-chip"
+          title="A Studio card / clip of the focused strategy, at post size"
+          onClick={() => {
+            try {
+              localStorage.setItem('bottleneck.card', JSON.stringify(cardData(r, useBacktest.getState().focus)));
+            } catch {
+              /* storage full or blocked: the card page says so */
+            }
+            window.open(`${location.pathname}?render=1&card=local&play=1&aspect=4:5`, '_blank');
+          }}
+        >
+          Card ↗
+        </button>
+      )}
       <label className="bt-chip">
         Open files…
         <input type="file" multiple hidden onChange={(e) => e.target.files && openWorkspaceFiles([...e.target.files])} />

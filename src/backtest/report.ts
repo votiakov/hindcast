@@ -96,7 +96,8 @@ export function backtestMarkdown(r: BacktestResult, model: Model): string {
 /** the comment a CI check posts on a pull request */
 export function prComment(r: BacktestResult, opts: { title?: string; runUrl?: string } = {}): string {
   const days = (r.window.end - r.window.start) / 86400;
-  const span = days >= 1 ? `the last ${Math.round(days)} day${Math.round(days) === 1 ? '' : 's'}` : `the last ${Math.round(days * 24)} hours`;
+  const hrs = Math.round(days * 24);
+  const span = days >= 1.5 ? `the last ${Math.round(days)} days` : days >= 1 ? 'the last day' : hrs > 1 ? `the last ${hrs} hours` : `the last ${Math.max(1, Math.round(days * 1440))} minutes`;
   const L: string[] = [];
   L.push(`### ${opts.title ?? 'Bottleneck backtest'}`, '');
   for (const s of r.strategies) L.push(`**${s.name}** ${headline(s, r.baseline)}.`, '');

@@ -12,6 +12,7 @@ import { basePlan } from '../src/backtest/engine';
 import { applyStrategy } from '../src/backtest/strategy';
 import { backtestMarkdown, headline, prComment } from '../src/backtest/report';
 import { backtestHtml } from '../src/backtest/reportHtml';
+import { cardData } from '../src/backtest/card';
 import { reviveModel, type Model } from '../src/backtest/model';
 import { fileAccess } from './files';
 import { readWorkloads, strategyFromDiff } from '../src/backtest/configDiff';
@@ -22,7 +23,7 @@ import { OUTAGES, outageById, replayOutage, type Role } from '../src/backtest/ou
  *   export-prometheus --url http://prom:9090 --start 2026-09-01 --end 2026-09-15 [--step 60] [--preset otel-spanmetrics,cadvisor] [--selector 'namespace="shop"'] --out data/
  *   import        <bottleneck.import.yaml> [--out dataset.json]
  *   calibrate     <dataset.json> [--out model.json] [--p99 500] [--errors 0.01] [--timeout 5000] [--holdout 0.3]
- *   backtest      <model.json> <dataset.json> <strategy.yaml …> [--last 14d] [--draws 30] [--md r.md] [--html r.html] [--comment pr.md] [--json]
+ *   backtest      <model.json> <dataset.json> <strategy.yaml …> [--last 14d] [--draws 30] [--md r.md] [--html r.html] [--comment pr.md] [--card card.json] [--json]
  *   headroom      <model.json> [strategy.yaml]
  *   accuracy      <model.json>
  *   outage        <model.json> <outage-id | list> [strategy.yaml …] [--rps 120] [--role primary-db=orders-db,edge=web] [--md r.md] [--html r.html]
@@ -145,9 +146,11 @@ export async function backtestCommand(cmd: string, pos: string[], opt: Opt): Pro
       if (opt.html) writeFileSync(String(opt.html), backtestHtml(r, m));
       if (opt.comment) writeFileSync(String(opt.comment), prComment(r, { title: opt.title ? String(opt.title) : undefined, runUrl: opt['run-url'] ? String(opt['run-url']) : undefined }));
       if (opt.out) writeFileSync(String(opt.out), JSON.stringify(r));
+      // a Studio card / clip: npm run record -- --card card.json
+      if (opt.card) writeFileSync(String(opt.card), JSON.stringify(cardData(r, Number(opt['card-strategy'] ?? 0))));
       if (json) return console.log(JSON.stringify(r, null, 2)), true;
       printBacktest(r);
-      for (const f of [opt.md, opt.html, opt.comment, opt.out].filter(Boolean)) console.log(c.dim(`  written ${f}`));
+      for (const f of [opt.md, opt.html, opt.comment, opt.out, opt.card].filter(Boolean)) console.log(c.dim(`  written ${f}`));
       // exit 2 when a strategy adds time out of SLO (CI gate)
       process.exitCode = opt.gate && r.strategies.some((s) => s.delta.minutesOutOfSlo.p50 > Number(opt.gate === true ? 0.5 : opt.gate)) ? 2 : 0;
       return true;

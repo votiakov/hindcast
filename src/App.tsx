@@ -18,6 +18,7 @@ import { Embed } from './ui/Embed';
 import { HomeBoard } from './ui/HomeBoard';
 import { BacktestView } from './backtest-ui/BacktestView';
 import { BoardReturn } from './backtest-ui/BoardReturn';
+import { CardStage } from './backtest-ui/Card';
 import './ui/callout.css';
 import { StudioView } from './studio/StudioView';
 import { Stage } from './studio/Stage';
@@ -41,7 +42,9 @@ import './theme/neon-chrome.css';
 const params = new URLSearchParams(location.search);
 const RENDER = params.get('render') === '1';
 const EMBED = params.get('embed') === '1';
-if (RENDER) {
+/** a backtest Studio card / clip (see src/backtest-ui/Card.tsx) */
+const CARD = RENDER && params.has('card');
+if (RENDER && !CARD) {
   const s = useSim.getState();
   s.setStudio({ aspect: (params.get('aspect') as Aspect) ?? '4:5', brandId: params.get('brand') ?? 'personal' });
   if (params.get('theme')) s.setSetting('theme', params.get('theme') as ThemeId);
@@ -160,6 +163,7 @@ export default function App() {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
 
+  if (CARD) return <CardStage />;
   if (RENDER) return <Stage />;
   if (EMBED) return <Embed />;
   if (mode === 'backtest')
