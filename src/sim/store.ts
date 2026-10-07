@@ -155,6 +155,11 @@ interface State {
   setAuditOpen: (open: boolean) => void;
   specOpen: boolean;
   setSpecOpen: (open: boolean) => void;
+  /** presentation mode: chrome-free board, big numbers, captions; ←/→ walks the audit's incidents */
+  present: boolean;
+  presentIdx: number;
+  setPresent: (on: boolean) => void;
+  setPresentIdx: (i: number) => void;
   audit: AuditState;
   setAudit: (p: Partial<AuditState>) => void;
   /** apply a verified fix from the audit to the main board */
@@ -359,6 +364,10 @@ export const useSim = create<State>()((set, get) => {
     setAnalysisOpen: (analysisOpen) => set(analysisOpen ? { analysisOpen, auditOpen: false, specOpen: false } : { analysisOpen }),
     auditOpen: false,
     setAuditOpen: (auditOpen) => set(auditOpen ? { auditOpen, analysisOpen: false, specOpen: false } : { auditOpen, audit: { ...get().audit, selected: null } }),
+    present: false,
+    presentIdx: -1,
+    setPresent: (present) => set({ present, presentIdx: -1 }),
+    setPresentIdx: (presentIdx) => set({ presentIdx }),
     specOpen: false,
     setSpecOpen: (specOpen) => set(specOpen ? { specOpen, analysisOpen: false, auditOpen: false } : { specOpen }),
     audit: { status: 'idle', progress: null, result: null, specKey: null, selected: null, error: null, costPerMinute: 0 },

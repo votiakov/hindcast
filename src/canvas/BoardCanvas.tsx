@@ -48,7 +48,7 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
     const t = setTimeout(() => fitView({ padding, duration: fitDuration, maxZoom: 1.1 }), 60);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version, fitView, padding.right]);
+  }, [version, fitView, padding.right, padding.left, padding.top]);
 
   // scripted camera moves (studio episodes)
   useEffect(() => {

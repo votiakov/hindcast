@@ -38,7 +38,7 @@ export function Timeline() {
   useEffect(() => {
     if (!scrub) return;
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement).closest('input, select, textarea')) return;
+      if ((e.target as HTMLElement).closest?.('input, select, textarea')) return;
       const s = useSim.getState();
       if (!s.scrub) return;
       if (e.key === 'ArrowLeft') s.setScrub(s.scrub.index - (e.shiftKey ? 20 : 4));

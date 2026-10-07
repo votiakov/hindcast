@@ -12,6 +12,7 @@ import { AnalysisPanel } from './ui/AnalysisPanel';
 import { AuditPanel } from './ui/AuditPanel';
 import { CommandPalette } from './ui/CommandPalette';
 import { SpecEditor } from './ui/SpecEditor';
+import { PresentHUD, presentStep } from './ui/PresentHUD';
 import { HomeBoard } from './ui/HomeBoard';
 import './ui/callout.css';
 import { StudioView } from './studio/StudioView';
@@ -64,7 +65,7 @@ function useSimLoop() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement).closest('input, select, textarea')) return;
+      if ((e.target as HTMLElement).closest?.('input, select, textarea')) return;
       const s = useSim.getState();
       const mod = e.metaKey || e.ctrlKey;
       if (mod && (e.key === 'z' || e.key === 'Z' || e.key === 'y') && (s.mode === 'sandbox' || s.mode === 'compare')) {
@@ -77,6 +78,26 @@ function useSimLoop() {
         e.preventDefault();
         saveCurrent();
         return;
+      }
+      if (!mod && !e.altKey && (e.key === 'p' || e.key === 'P') && s.mode !== 'studio') {
+        s.setPresent(!s.present);
+        return;
+      }
+      if (s.present) {
+        if (e.key === 'Escape') {
+          s.setPresent(false);
+          if (document.fullscreenElement) document.exitFullscreen();
+          return;
+        }
+        if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+          if (!s.scrub) presentStep(e.key === 'ArrowRight' ? 1 : -1);
+          return;
+        }
+        if (e.key === 'f' || e.key === 'F') {
+          if (document.fullscreenElement) document.exitFullscreen();
+          else document.documentElement.requestFullscreen?.();
+          return;
+        }
       }
       if (e.code !== 'Space') return;
       e.preventDefault();
@@ -112,6 +133,7 @@ export default function App() {
   const analysisOpen = useSim((s) => s.analysisOpen);
   const auditOpen = useSim((s) => s.auditOpen);
   const specOpen = useSim((s) => s.specOpen);
+  const present = useSim((s) => s.present);
   useSimLoop();
   const [dropping, setDropping] = useState(false);
   const hasFiles = (e: React.DragEvent) => e.dataTransfer.types.includes('Files');
@@ -122,7 +144,7 @@ export default function App() {
   if (RENDER) return <Stage />;
 
   return (
-    <div className="app">
+    <div className={`app ${present ? 'presenting' : ''}`}>
       <TopBar />
       <div
         className="board"
@@ -149,7 +171,7 @@ export default function App() {
           <CompareView />
         ) : (
           <ReactFlowProvider>
-            <BoardCanvas id="main" padding={{ top: '60px', left: '270px', right: mode === 'lesson' ? '380px' : mode === 'sandbox' && (auditOpen || analysisOpen || specOpen) ? '450px' : '60px', bottom: '110px' }} />
+            <BoardCanvas id="main" padding={present ? { top: '150px', left: '60px', right: '60px', bottom: '140px' } : { top: '60px', left: '270px', right: mode === 'lesson' ? '380px' : mode === 'sandbox' && (auditOpen || analysisOpen || specOpen) ? '450px' : '60px', bottom: '110px' }} />
           </ReactFlowProvider>
         )}
         {mode !== 'studio' && mode !== 'home' && <Palette key={mode} compact={mode === 'compare'} />}
@@ -160,6 +182,7 @@ export default function App() {
         {mode !== 'studio' && mode !== 'home' && <ControlBar />}
         <Toasts />
         <CommandPalette />
+        {present && mode !== 'studio' && <PresentHUD />}
       </div>
     </div>
   );

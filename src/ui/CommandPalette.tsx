@@ -65,6 +65,8 @@ function buildCommands(q: string): Cmd[] {
   cmds.push(
     { id: 'audit', group: 'Analyse', label: 'Run failure audit', hint: 'what breaks first, and what it costs', run: () => (sandbox(), useSim.getState().setAuditOpen(true), runAudit()) },
     { id: 'analysis', group: 'Analyse', label: 'Open analysis', hint: 'Monte Carlo, breaking point, cost optimizer', run: () => useSim.getState().setAnalysisOpen(true) },
+    { id: 'present', group: 'View', label: s.present ? 'Exit present mode' : 'Present', hint: 'P — chrome-free, big numbers; ←/→ walks audit incidents', run: () => s.setPresent(!s.present) },
+    { id: 'spec', group: 'Design', label: 'Edit as YAML (architecture as code)', run: () => (sandbox(), useSim.getState().setSpecOpen(true)) },
     { id: 'play', group: 'Simulation', label: s.running ? 'Pause' : 'Play', hint: 'Space', run: () => s.setRunning(!s.running) },
     { id: 'reset', group: 'Simulation', label: 'Reset simulation', run: () => s.reset() },
     { id: 'spike', group: 'Simulation', label: 'Traffic spike ×3', run: () => s.spike() },

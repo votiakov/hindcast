@@ -1,0 +1,27 @@
+/* Present mode — the board is the slide */
+.presenting .topbar, .presenting .palette, .presenting .audit, .presenting .spec, .presenting .analysis, .presenting .toasts, .presenting .react-flow__minimap, .presenting .lesson-panel, .presenting .react-flow__controls { display: none !important; }
+.presenting .controlbar { opacity: 0; transition: opacity 0.25s; }
+.presenting .controlbar:hover, .presenting .controlbar:focus-within { opacity: 1; }
+.presenting .react-flow__node-toolbar { display: none; }
+
+.ph { position: absolute; inset: 0; pointer-events: none; z-index: 20; }
+.ph-top { position: absolute; top: 28px; left: 36px; right: 36px; display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; }
+.ph-t1 { font-size: 30px; font-weight: 700; letter-spacing: -0.5px; color: var(--text); }
+.ph-t2 { margin-top: 4px; font-size: 18px; color: var(--amber); font-family: var(--mono); }
+.ph-nums { display: flex; gap: 34px; }
+.ph-num { text-align: right; }
+.ph-v { font-family: var(--mono); font-size: 40px; font-weight: 600; line-height: 1; letter-spacing: -1.5px; color: var(--text); font-variant-numeric: tabular-nums; }
+.ph-l { margin-top: 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+.ph-num.bad .ph-v { color: var(--red); }
+.ph-num.good .ph-v { color: var(--green); }
+.ph-caption {
+  position: absolute; left: 50%; bottom: 64px; transform: translateX(-50%); max-width: 80%;
+  padding: 14px 24px; border-radius: 10px; font-size: 24px; font-weight: 600; color: var(--text);
+  background: var(--panel-solid); border: 1px solid var(--border-strong); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  animation: ph-in 0.35s ease-out;
+}
+.ph-caption.bad { border-left: 5px solid var(--red); }
+.ph-caption.good { border-left: 5px solid var(--green); }
+.ph-caption.info { border-left: 5px solid var(--cyan); }
+@keyframes ph-in { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.ph-keys { position: absolute; left: 36px; bottom: 22px; display: flex; gap: 18px; font-family: var(--mono); font-size: 11px; color: var(--dim); }

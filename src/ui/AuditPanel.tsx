@@ -46,7 +46,7 @@ function recoveryText(f: Finding): string {
   return `down while it lasts`;
 }
 
-function replay(f: Finding) {
+export function replay(f: Finding) {
   const sc = f.scenario as { duration: number; rps?: number; traffic?: { at: number; rps: number }[]; events?: { at: number; action: SimAction; note?: string }[] };
   const events = (sc.events ?? []).map((e, i) => ({ ...e, note: e.note ?? (i === 0 ? `▶ ${f.title}` : '✓ fault cleared') }));
   useSim.getState().play({ title: f.title, duration: sc.duration, rps: sc.rps ?? 0, traffic: sc.traffic ?? null, events, findingId: f.id });
