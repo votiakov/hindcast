@@ -26,7 +26,7 @@ services:
       OTEL_LOGS_EXPORTER: none
       OTEL_INSTRUMENTATION_COMMON_PEER_SERVICE_MAPPING: postgres=postgres
     volumes: ["./otel:/otel:ro"]
-    cpus: ${APP_CPUS:-2.0}
+    cpus: ${APP_CPUS:-1.0}
     mem_limit: 1536m
     depends_on: [postgres]
     deploy: { replicas: "${APP_REPLICAS:-1}" }
