@@ -18,6 +18,8 @@ import './ui/callout.css';
 import { StudioView } from './studio/StudioView';
 import { Stage } from './studio/Stage';
 import { openFromHash } from './spec/links';
+import { decodePayload } from './spec/convert';
+import { registerEpisode, type Episode } from './studio/episodes';
 import { writeAutosave } from './sim/designs';
 import { saveCurrent } from './ui/DesignMenu';
 import { openFile } from './spec/openFile';
@@ -39,6 +41,8 @@ if (RENDER) {
   s.setStudio({ aspect: (params.get('aspect') as Aspect) ?? '4:5', brandId: params.get('brand') ?? 'personal' });
   if (params.get('theme')) s.setSetting('theme', params.get('theme') as ThemeId);
   s.setMode('studio');
+  // episodes made in the app travel in the URL (the recorder's browser has no local storage)
+  if (params.get('epData')) registerEpisode(decodePayload<Episode>(params.get('epData')!), false);
   if (params.get('ep')) s.loadEpisode(params.get('ep')!);
   (window as unknown as { studio: unknown }).studio = {
     start: () => useSim.getState().setRunning(true),

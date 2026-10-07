@@ -1,5 +1,8 @@
 import { useMemo } from 'react';
-import { ClipboardCopy, Play, ShieldAlert, Square, Wrench, X } from 'lucide-react';
+import { Clapperboard, ClipboardCopy, Play, ShieldAlert, Square, Wrench, X } from 'lucide-react';
+import { episodeFromFinding } from '../studio/fromAudit';
+import { registerEpisode } from '../studio/episodes';
+import { cleanGraph } from '../sim/designs';
 import { useSim } from '../sim/store';
 import { graphToSpec } from '../spec/convert';
 import { auditInBrowser } from '../sim/des/browserPool';
@@ -51,6 +54,20 @@ export function replay(f: Finding) {
   const sc = f.scenario as { duration: number; rps?: number; traffic?: { at: number; rps: number }[]; events?: { at: number; action: SimAction; note?: string }[] };
   const events = (sc.events ?? []).map((e, i) => ({ ...e, note: e.note ?? (i === 0 ? `▶ ${f.title}` : '✓ fault cleared') }));
   useSim.getState().play({ title: f.title, duration: sc.duration, rps: sc.rps ?? 0, traffic: sc.traffic ?? null, events, findingId: f.id });
+}
+
+function toStudio(f: Finding) {
+  const s = useSim.getState();
+  const r = s.audit.result;
+  if (!r) return;
+  const m = s.boards.main;
+  const live = s.scrub?.live.nodes ?? m.nodes;
+  // the clip starts from a healthy board
+  const healthy = live.map((n) => (isSystem(n) ? { ...n, selected: false, data: { ...n.data, alive: true, down: 0, degraded: undefined, faultRate: undefined, faultLatencyMs: undefined } } : { ...n, selected: false }));
+  const ep = registerEpisode(episodeFromFinding(f, r, cleanGraph({ nodes: healthy, edges: m.edges }), m.title));
+  s.setMode('studio');
+  useSim.getState().loadEpisode(ep.id);
+  useSim.getState().toast('good', 'Studio clip ready — press play, or render it with the recorder');
 }
 
 function FindingRow({ f, open, names }: { f: Finding; open: boolean; names: Map<string, string> }) {
@@ -105,9 +122,14 @@ function FindingRow({ f, open, names }: { f: Finding; open: boolean; names: Map<
             </div>
           )}
           {f.kind !== 'headroom' && (
-            <button className="chip au-replay" onClick={() => replay(f)} title="Play this incident on the board, from a clean start">
-              <Play size={13} /> Replay on the board
-            </button>
+            <div className="au-acts">
+              <button className="chip" onClick={() => replay(f)} title="Play this incident on the board, from a clean start">
+                <Play size={13} /> Replay on the board
+              </button>
+              <button className="chip" onClick={() => toStudio(f)} title={f.fixes.length ? 'A clip for posts and talks: this design vs the fixed one, same incident' : 'A clip of this incident for posts and talks'}>
+                <Clapperboard size={13} /> Studio clip
+              </button>
+            </div>
           )}
           {f.fixes.length > 0 && (
             <div className="au-fixes">

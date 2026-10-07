@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { Clapperboard, Copy, Pause, Play, RotateCcw } from 'lucide-react';
 import { useSim, type Aspect } from '../sim/store';
-import { EPISODES, episodeDuration, OUTRO_SECONDS } from './episodes';
+import { episodeById, episodeDuration, isCustomEpisode, listEpisodes, OUTRO_SECONDS } from './episodes';
 import { BRANDS } from './brands';
 import { ASPECTS, Stage } from './Stage';
 import { THEMES } from '../theme/themes';
@@ -30,15 +30,16 @@ export function StudioView() {
   const { loadEpisode, setStudio, setRunning, reset, toast } = useSim.getState();
   const { w, h } = ASPECTS[studio.aspect];
   const { ref, scale } = useFitScale(w, h);
-  const ep = EPISODES.find((e) => e.id === studio.episodeId)!;
-  const cmd = `npm run record -- ${studio.episodeId} --aspect ${studio.aspect} --brand ${studio.brandId} --theme ${theme}`;
+  const ep = episodeById(studio.episodeId);
+  const custom = isCustomEpisode(studio.episodeId);
+  const cmd = `npm run record -- ${custom ? `--ep-file ${studio.episodeId}.json` : studio.episodeId} --aspect ${studio.aspect} --brand ${studio.brandId} --theme ${theme}`;
 
   return (
     <div className="studio">
       <div className="studio-panel panel">
         <div className="panel-title">Episodes</div>
         <div className="ep-list">
-          {EPISODES.map((e) => (
+          {listEpisodes().map((e) => (
             <button key={e.id} className={`ep-item ${e.id === studio.episodeId ? 'on' : ''}`} onClick={() => loadEpisode(e.id)}>
               <span className="ep-series">
                 {e.series}
@@ -92,6 +93,20 @@ export function StudioView() {
           <Clapperboard size={11} /> Export
         </div>
         <p className="studio-note">Renders frame-perfect MP4 + GIF + per-beat PNGs (carousel) at {w}×{h}. Needs this dev server running.</p>
+        {custom && (
+          <button
+            className="chip"
+            onClick={() => {
+              const a = document.createElement('a');
+              a.href = URL.createObjectURL(new Blob([JSON.stringify(ep)], { type: 'application/json' }));
+              a.download = `${ep.id}.json`;
+              a.click();
+            }}
+            title="Made in the app — download it to render with the recorder"
+          >
+            Download episode file
+          </button>
+        )}
         <div className="cmd">
           <code>{cmd}</code>
           <button

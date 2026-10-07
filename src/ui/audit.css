@@ -61,7 +61,7 @@
 .au-facts .bad b { color: var(--red); }
 .au-blast { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-bottom: 9px; font-size: 11px; }
 .au-blast code { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radius: 4px; border: 1px solid var(--border-strong); color: var(--text); }
-.au-replay { margin-bottom: 9px; }
+.au-acts { display: flex; gap: 6px; margin-bottom: 9px; }
 
 .au-fixes { border-top: 1px dashed var(--border-strong); padding-top: 8px; }
 .au-fixes-h { font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 700; margin-bottom: 6px; }

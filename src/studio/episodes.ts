@@ -165,4 +165,35 @@ function fromScenario(s: Scenario): Episode {
 }
 
 export const EPISODES: Episode[] = [ep1, ...SCENARIOS.map(fromScenario)];
-export const episodeById = (id: string) => EPISODES.find((e) => e.id === id) ?? EPISODES[0];
+
+// episodes made in the app (e.g. from a failure-audit incident), kept in browser storage
+const CUSTOM_KEY = 'bottleneck.episodes.v1';
+const custom = new Map<string, Episode>();
+try {
+  for (const e of JSON.parse(localStorage.getItem(CUSTOM_KEY) ?? '[]') as Episode[]) custom.set(e.id, e);
+} catch {
+  /* storage unavailable (node, private mode) */
+}
+const persist = () => {
+  try {
+    localStorage.setItem(CUSTOM_KEY, JSON.stringify([...custom.values()].slice(-20)));
+  } catch {
+    /* ignore */
+  }
+};
+
+/** add an episode built at runtime; `save` keeps it across reloads */
+export function registerEpisode(e: Episode, save = true): Episode {
+  custom.delete(e.id);
+  custom.set(e.id, e);
+  if (save) persist();
+  return e;
+}
+export function removeEpisode(id: string) {
+  custom.delete(id);
+  persist();
+}
+export const isCustomEpisode = (id: string) => custom.has(id);
+/** custom episodes first (newest first), then the built-in ones */
+export const listEpisodes = (): Episode[] => [...[...custom.values()].reverse(), ...EPISODES];
+export const episodeById = (id: string) => custom.get(id) ?? EPISODES.find((e) => e.id === id) ?? EPISODES[0];
