@@ -7,7 +7,7 @@
  *   npm run sim -- optimize        <arch.yaml> [scenario.yaml] [--runtimes] [--out optimized.yaml]
  *   npm run sim -- compare         <arch.yaml> <variants.yaml> [scenario.yaml] [--json]
  *   npm run sim -- breaking-point  <arch.yaml> [--p99 300] [--errors 0.01]
- *   npm run sim -- audit           <arch.yaml> [--rps 500] [--cost-per-min 1000] [--md report.md]   (what breaks first, and what it costs)
+ *   npm run sim -- audit           <arch.yaml> [--rps 500] [--cost-per-min 1000] [--md report.md] [--html report.html]   (what breaks first, and what it costs)
  *   npm run sim -- link            <arch.yaml> [variants.yaml]     → open in the app
  *   npm run sim -- import-terraform <terraform-show.json> [--name "My system"] [--out arch.yaml]
  *   npm run sim -- import-k8s      <manifests.yaml …> [--name "My system"] [--out arch.yaml]      (Deployments, HPAs, StatefulSets, Services, Ingress)
@@ -24,6 +24,7 @@ import type { Analysis } from '../src/sim/des/analyze';
 import { optimize } from '../src/sim/optimize';
 import { audit, type AuditResult } from '../src/sim/audit';
 import { auditMarkdown } from '../src/sim/auditReport';
+import { auditHtml } from '../src/sim/auditHtml';
 import { importTerraform } from '../src/spec/terraform';
 import { importKubernetes } from '../src/spec/kubernetes';
 import { parseAllDocuments } from 'yaml';
@@ -189,9 +190,10 @@ function main() {
         slo: { maxP99Ms: opt.p99 ? Number(opt.p99) : undefined, maxErrorRate: opt.errors ? Number(opt.errors) : undefined },
       });
       if (opt.md) writeFileSync(String(opt.md), auditMarkdown(r));
+      if (opt.html) writeFileSync(String(opt.html), auditHtml(r));
       if (json) return console.log(JSON.stringify(r, null, 2));
       printAudit(r);
-      if (opt.md) console.log(c.dim(`  report written to ${opt.md}\n`));
+      for (const f of [opt.md, opt.html].filter(Boolean)) console.log(c.dim(`  report written to ${f}`));
       process.exitCode = r.findings.some((f) => f.severity === 'critical') ? 2 : 0;
       return;
     }

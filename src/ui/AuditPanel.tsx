@@ -7,6 +7,7 @@ import { useSim } from '../sim/store';
 import { graphToSpec } from '../spec/convert';
 import { auditInBrowser } from '../sim/des/browserPool';
 import { auditMarkdown } from '../sim/auditReport';
+import { auditHtml } from '../sim/auditHtml';
 import type { Finding, Severity } from '../sim/audit';
 import type { SimAction } from '../sim/actions';
 import { isSystem } from '../sim/catalog';
@@ -247,6 +248,18 @@ export function AuditPanel() {
               }}
             >
               <ClipboardCopy size={13} /> Copy report
+            </button>
+            <button
+              className="chip"
+              title="A self-contained HTML report to attach to a design review"
+              onClick={() => {
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(new Blob([auditHtml(r)], { type: 'text/html' }));
+                a.download = `failure-audit-${useSim.getState().boards.main.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.html`;
+                a.click();
+              }}
+            >
+              HTML
             </button>
             <span>
               {r.findings.length} scenarios · {(r.wallMs / 1000).toFixed(1)}s
