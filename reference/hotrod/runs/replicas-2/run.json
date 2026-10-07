@@ -1,0 +1,18 @@
+{
+  "system": "hotrod",
+  "run": "replicas-2",
+  "start": 1791393411,
+  "end": 1791395812,
+  "env": {
+    "CUSTOMER_REPLICAS": "2"
+  },
+  "shape": [
+    "history",
+    7.5,
+    12,
+    40
+  ],
+  "autoscale": null,
+  "sampling": 0.2,
+  "recordedAt": "2026-10-07T17:57:22.640Z"
+}

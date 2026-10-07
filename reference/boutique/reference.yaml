@@ -1,0 +1,13 @@
+# Reference system 2 — Google Online Boutique (github.com/GoogleCloudPlatform/microservices-demo).
+# CPU-bound: the frontend renders every page and fans out to currency, catalog, ads and
+# recommendations; every service runs under a CPU limit.
+name: Online Boutique
+project: boutique
+base: http://frontend-lb:8080
+timeout: 5s
+mix: mix.json
+edge: frontend-lb
+slo: { p99Ms: 800, errorRate: 0.01 }
+runs:
+  # quick capacity probe (not used for calibration)
+  probe: { shape: [steps, 5, 125, 10, 25] }

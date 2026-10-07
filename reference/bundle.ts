@@ -27,11 +27,19 @@ interface Validate {
   stress?: boolean;
 }
 
+/**
+ * A run's dataset: imported from its files when the raw traces are here (they are not committed —
+ * too large), otherwise the imported dataset committed next to them.
+ */
 export function importRun(system: string, run: string): Dataset {
   const dir = join(ROOT, system, 'runs', run);
+  const saved = join(dir, 'dataset.json');
+  if (!existsSync(join(dir, 'raw', 'traces.jsonl')) && existsSync(saved)) return JSON.parse(readFileSync(saved, 'utf8')) as Dataset;
   if (!existsSync(join(dir, 'bottleneck.import.yaml'))) writeManifest(system, run);
   const path = join(dir, 'bottleneck.import.yaml');
-  return importBundle(parse(readFileSync(path, 'utf8')), fileAccess(path)).dataset;
+  const d = importBundle(parse(readFileSync(path, 'utf8')), fileAccess(path)).dataset;
+  writeFileSync(saved, JSON.stringify(d));
+  return d;
 }
 
 function main() {

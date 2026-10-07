@@ -1,0 +1,53 @@
+# Recorded reference run (hotrod/history); see reference/README.md
+name: HotROD — history
+step: 30s
+metrics:
+  - prometheus: metrics/otel-spanmetrics-rps.json
+    metric: rps
+    by: service_name
+  - prometheus: metrics/otel-spanmetrics-errors.json
+    metric: errorRate
+    by: service_name
+    unit: ratio
+  - prometheus: metrics/otel-spanmetrics-p50.json
+    metric: p50Ms
+    by: service_name
+    unit: ms
+  - prometheus: metrics/otel-spanmetrics-p99.json
+    metric: p99Ms
+    by: service_name
+    unit: ms
+  - prometheus: metrics/cadvisor-cpu.json
+    metric: cpuCores
+    by: container_label_com_docker_compose_service
+  - prometheus: metrics/cadvisor-cpu-limit.json
+    metric: cpuLimitCores
+    by: container_label_com_docker_compose_service
+  - prometheus: metrics/cadvisor-replicas.json
+    metric: replicas
+    by: container_label_com_docker_compose_service
+  - prometheus: metrics/cadvisor-net-tx.json
+    metric: netTxBps
+    by: container_label_com_docker_compose_service
+  - prometheus: metrics/cadvisor-memory.json
+    metric: memoryBytes
+    by: container_label_com_docker_compose_service
+  - csv: client.csv
+traces:
+  - file: raw/traces.jsonl
+    sampling: 0.2
+    series:
+      rps: false
+      latency: false
+      endpoints: false
+billing:
+  - cur: bill.csv
+    tag: user:service
+model:
+  slo:
+    p99Ms: 1000
+    errorRate: 0.03
+  timeoutMs: 5000
+  hostedBy:
+    mysql: customer
+    redis-manual: driver

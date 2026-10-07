@@ -1,0 +1,19 @@
+{
+  "system": "hotrod",
+  "run": "stress",
+  "start": 1791392542,
+  "end": 1791393328,
+  "env": {
+    "CUSTOMER_REPLICAS": "1"
+  },
+  "shape": [
+    "steps",
+    4,
+    16,
+    1,
+    60
+  ],
+  "autoscale": null,
+  "sampling": 0.2,
+  "recordedAt": "2026-10-07T17:15:58.733Z"
+}
