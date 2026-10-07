@@ -1,6 +1,16 @@
 # Bottleneck
 
-An architecture simulator that tells you what breaks first, and what it costs.
+Backtest infrastructure changes on your real production data before they ship — and an
+architecture simulator that tells you what breaks first, and what it costs.
+
+**Backtesting** (the app's main screen, the CLI and a pull-request check): import metric exports
+(Prometheus, CloudWatch), OpenTelemetry traces and the cloud bill (AWS CUR, GCP export); Bottleneck
+builds a model of the system calibrated from them and shows how well each component is explained;
+then any change — resize, autoscaling policy, a cache, a replica, a retry budget, Graviton — is
+replayed over the real history as "what would have happened": $ saved or spent, minutes out of SLO,
+failed requests, the worst moment and why, with confidence bands. Famous public outages replay
+against your model too. Accuracy is measured against real runs of three open demo systems
+([reference/](reference/README.md)). Guide: [docs/backtest.md](docs/backtest.md).
 
 Draw a system (or import it from Terraform or Kubernetes manifests, or paste a YAML spec), push traffic and failures through
 it, and watch where it gives out. Then run the failure audit: every component dying, every dependency
@@ -21,6 +31,8 @@ Documentation: [docs/](docs/README.md).
 
 ## What's in the app
 
+- **Backtest** (main screen) – real history as a chart, strategies drawn over it, ranked; open any
+  moment on the board; Studio card of the result.
 - **Live** – a running system that fails on arrival, with the next move pinned to the component under stress.
 - **Lessons** – guided steps with objectives: scaling basics, retry storms, elasticity (autoscaling lag,
   cold-cache stampedes), AI serving, language runtimes.

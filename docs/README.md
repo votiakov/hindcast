@@ -2,6 +2,7 @@
 
 | document | what's in it |
 |---|---|
+| [backtest.md](backtest.md) | Backtesting changes on real telemetry: import (Prometheus, CloudWatch, OTel traces, AWS CUR, GCP billing), calibration, strategies, reports, PR check, outage replays, accuracy |
 | [architecture.md](architecture.md) | How the codebase is organised: app, store, boards, engines, themes, studio, headless tools |
 | [engines.md](engines.md) | The two simulation engines — models, formulas, constants, validation, limitations, which to use when |
 | [spec.md](spec.md) | Architecture spec v1 (components, connections, zones), scenarios, actions, variants |
@@ -10,5 +11,5 @@
 | [tools.md](tools.md) | CLI, MCP server, app links, the Analysis panel |
 | [content.md](content.md) | Authoring lessons, comparison scenarios and studio episodes; rendering video; brands and themes |
 
-Start with **architecture.md** if you want to change code, **spec.md** if you want to model a system,
+Start with **backtest.md** to test a change against your own production data, **architecture.md** if you want to change code, **spec.md** if you want to model a system,
 and **content.md** if you want to make lessons or videos.
