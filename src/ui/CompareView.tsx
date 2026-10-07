@@ -1,12 +1,83 @@
 import { ReactFlowProvider } from '@xyflow/react';
-import { Eye, Lightbulb, RotateCcw, Shuffle, X } from 'lucide-react';
-import { useState } from 'react';
+import { Eye, Lightbulb, RotateCcw, ShieldAlert, Shuffle, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { auditInBrowser } from '../sim/des/browserPool';
+import { graphToSpec } from '../spec/convert';
+import type { AuditResult } from '../sim/audit';
+import './audit.css';
 import { BoardCanvas } from '../canvas/BoardCanvas';
 import { useSim, scenarioById, type BoardId } from '../sim/store';
 import { SCENARIOS, scenarioCaption, scenarioDuration } from '../scenarios/scenarios';
 import { TEMPLATES, templateGroups } from '../scenarios/templates';
 
 const fmtMs = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}s` : `${n.toFixed(0)}ms`);
+
+const SEV = { critical: 'CRIT', major: 'MAJOR', minor: 'minor', ok: 'ok' } as const;
+
+/** failure audit of one side, at the scenario's peak load (or the traffic slider in free play) */
+function PaneAudit({ b }: { b: BoardId }) {
+  const [state, setState] = useState<{ busy: boolean; r: AuditResult | null; open: boolean; err?: string }>({ busy: false, r: null, open: false });
+  const nodes = useSim((s) => s.boards[b].nodes);
+  useEffect(() => setState((x) => ({ ...x, r: null, open: false })), [nodes.length]);
+  const run = async () => {
+    const s = useSim.getState();
+    const sc = scenarioById(s.compare.scenarioId);
+    const rps = sc ? Math.max(...sc.timeline.map((k) => k.rps)) : s.traffic;
+    const { nodes: ns, edges, title } = s.boards[b];
+    setState({ busy: true, r: null, open: false });
+    try {
+      const r = await auditInBrowser(
+        { ...graphToSpec(ns, edges, title), pricing: s.settings.pricing },
+        { rps, readRatio: sc?.readRatio ?? s.readRatio, slo: { maxErrorRate: s.settings.sloErrorRate, maxP99Ms: s.settings.sloP99Ms } },
+        undefined,
+        `cmp-${b}`,
+      );
+      setState({ busy: false, r, open: false });
+    } catch (e) {
+      setState({ busy: false, r: null, open: false, err: e instanceof Error ? e.message : String(e) });
+    }
+  };
+  const r = state.r;
+  return (
+    <div className="pane-audit">
+      {r ? (
+        <button className={`pa-score ${r.score >= 80 ? 'good' : r.score >= 50 ? 'warn' : 'bad'}`} onClick={() => setState({ ...state, open: !state.open })} title="Failure audit of this side">
+          <ShieldAlert size={12} /> {r.score}
+          <small>/100</small>
+        </button>
+      ) : (
+        <button className="pa-run" disabled={state.busy} onClick={run} title="Failure audit of this side: what breaks first, and what it costs">
+          <ShieldAlert size={12} /> {state.busy ? 'auditing…' : 'audit'}
+        </button>
+      )}
+      {r && state.open && (
+        <div className="pa-pop">
+          <div className="pa-head">
+            survives <b>{r.survived}</b>/{r.total} · headroom <b>{r.headroom.ratio.toFixed(1)}×</b> · <b>${r.baseline.monthly.toLocaleString('en-US')}</b>/mo · at {r.load.rps.toLocaleString('en-US')} req/s
+          </div>
+          {r.findings
+            .filter((f) => f.severity === 'critical' || f.severity === 'major')
+            .slice(0, 8)
+            .map((f) => (
+              <div key={f.id} className={`pa-row sev-${f.severity}`}>
+                <span className="au-sev">{SEV[f.severity]}</span>
+                <span>{f.title}</span>
+                {f.fixes[0] && (
+                  <em>
+                    {f.fixes[0].title} · {f.fixes[0].monthlyDelta >= 0 ? '+' : '−'}${Math.abs(f.fixes[0].monthlyDelta)}/mo
+                  </em>
+                )}
+              </div>
+            ))}
+          <button className="pa-run" onClick={run}>
+            re-run
+          </button>
+        </div>
+      )}
+      {state.err && <span className="bad">{state.err}</span>}
+    </div>
+  );
+}
 
 function PaneHeader({ b }: { b: BoardId }) {
   const title = useSim((s) => s.boards[b].title);
@@ -23,6 +94,7 @@ function PaneHeader({ b }: { b: BoardId }) {
         <span>{fmtMs(g.p99)} p99</span>
         {showCost && <span>${g.cost.toFixed(2)}/h</span>}
       </div>
+      <PaneAudit b={b} />
       <select
         className="pane-template"
         value=""

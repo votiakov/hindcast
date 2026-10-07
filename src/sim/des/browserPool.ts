@@ -63,16 +63,17 @@ export async function breakingPointInBrowser(spec: unknown, readRatio: number, s
   }
 }
 
-let auditWorker: Worker | null = null;
+const auditWorkers = new Map<string, Worker>();
 
-/** Failure audit off the main thread. Starting a new one cancels the previous. */
-export async function auditInBrowser(spec: unknown, opts: Omit<AuditOptions, 'onProgress'>, onProgress?: (p: Progress) => void): Promise<AuditResult> {
-  auditWorker?.terminate();
-  const w = (auditWorker = spawn());
+/** Failure audit off the main thread. Starting a new one with the same key cancels the previous. */
+export async function auditInBrowser(spec: unknown, opts: Omit<AuditOptions, 'onProgress'>, onProgress?: (p: Progress) => void, key = 'main'): Promise<AuditResult> {
+  auditWorkers.get(key)?.terminate();
+  const w = spawn();
+  auditWorkers.set(key, w);
   try {
     return await ask<AuditResult>(w, { type: 'audit', spec, opts }, onProgress);
   } finally {
     w.terminate();
-    if (auditWorker === w) auditWorker = null;
+    if (auditWorkers.get(key) === w) auditWorkers.delete(key);
   }
 }

@@ -167,7 +167,7 @@ export default function App() {
           openFile(f);
         }}
       >
-        {dropping && <div className="drop-hint">Drop an architecture spec (.yaml / .json) or terraform show -json output</div>}
+        {dropping && <div className="drop-hint">Drop an architecture spec (.yaml / .json), Kubernetes manifests or terraform show -json output</div>}
         {mode === 'home' ? (
           <HomeBoard />
         ) : mode === 'studio' ? (

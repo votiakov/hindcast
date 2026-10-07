@@ -62,7 +62,7 @@ export function Shortcuts() {
       <div className="sc-h">An empty board</div>
       <p>
         Drag components in from the left and wire a caller's right handle to its callee's left handle, or start from a template in the design menu at the top. You can also drop an architecture spec
-        (.yaml / .json) or <code>terraform show -json</code> output anywhere on the board.
+        (.yaml / .json), Kubernetes manifests or <code>terraform show -json</code> output anywhere on the board.
       </p>
       <Keys />
     </div>
