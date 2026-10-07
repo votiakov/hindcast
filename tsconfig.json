@@ -23,6 +23,7 @@
   "include": [
     "src",
     "cli",
-    "mcp"
+    "mcp",
+    "test"
   ]
 }

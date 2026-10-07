@@ -11,7 +11,9 @@
     "record": "node scripts/record.mjs",
     "sim": "tsx cli/bottleneck.ts",
     "mcp": "tsx mcp/server.ts",
-    "build:mcp": "vite build --config vite.mcp.config.ts"
+    "build:mcp": "vite build --config vite.mcp.config.ts",
+    "test": "vitest run",
+    "check": "tsc --noEmit && vitest run"
   },
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "^1.7.5",
@@ -34,6 +36,7 @@
     "tsx": "^4.23.15",
     "typescript": "~5.6.3",
     "vite": "^5.4.10",
-    "vite-plugin-singlefile": "^2.3.3"
+    "vite-plugin-singlefile": "^2.3.3",
+    "vitest": "^2.1.9"
   }
 }
