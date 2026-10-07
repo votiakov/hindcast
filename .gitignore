@@ -12,3 +12,4 @@ reference/stack/run/
 scripts/.shot.mjs
 dist-cli
 reference/petclinic/otel/*.jar
+reference/.dbg/

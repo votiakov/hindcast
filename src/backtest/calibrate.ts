@@ -180,7 +180,10 @@ function regress(x: number[], y: number[]) {
   const slope = sxy / sxx;
   const intercept = my - slope * mx;
   const r2 = syy > 0 ? (sxy * sxy) / (sxx * syy) : 0;
-  return { slope, intercept, r2 };
+  let sse = 0;
+  for (let i = 0; i < n; i++) sse += (y[i] - intercept - slope * x[i]) ** 2;
+  const se = n > 2 ? Math.sqrt(sse / (n - 2) / sxx) : Infinity;
+  return { slope, intercept, r2, se };
 }
 
 /** endpoint ids from different sources ("frontend GET /dispatch" vs "frontend HTTP GET /dispatch") */
@@ -227,6 +230,7 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
 
     // CPU per request (per replica)
     let cpu: ServiceModel['cpu'] = null;
+    let cpuSe = Infinity;
     if (s.cpuCores && !hostedBy[id]) {
       const xs: number[] = [];
       const ys: number[] = [];
@@ -240,6 +244,7 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
       const fit = regress(xs, ys);
       if (fit) {
         cpu = { base: Math.max(0, fit.intercept), perReq: Math.max(0, fit.slope), r2: fit.r2 };
+        cpuSe = fit.se;
         if (fit.r2 < 0.3 && xs.length > 10) notes.push(`CPU barely follows load (R² ${fit.r2.toFixed(2)}) — capacity is not CPU-bound or CPU data is noisy`);
       }
     }
@@ -300,8 +305,21 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
       }
       const tiedK = chosen && 'tied' in chosen && (chosen as Fitted & { tied: boolean }).tied;
 
-      // bootstrap the capacity (blocks of 6 buckets), server count and variability fixed
-      if (isFinite(capacity.perReplicaRps) && B > 0 && !ov?.perReplicaRps) {
+      const cpuOnly = capacity.limit === 'cpu' && chosen === cpuFit && cpu && cpuLimit && isFinite(cpuSe);
+      if (cpuOnly && B > 0) {
+        // the latency history says little about a limit it never reached: the band comes from how
+        // well CPU per request is known (slope ± its standard error)
+        const draws: number[] = [];
+        for (let b = 0; b < B; b++) {
+          const z = Math.sqrt(-2 * Math.log(Math.max(1e-12, rand()))) * Math.cos(2 * Math.PI * rand());
+          const slope = Math.max(cpu!.perReq * 0.2, cpu!.perReq + z * cpuSe);
+          draws.push((cpuLimit! - cpu!.base) / slope);
+        }
+        draws.sort((a, b) => a - b);
+        capacity.band = [quantile(draws, 0.1), quantile(draws, 0.9)];
+        capacity.samples = draws;
+      } else if (isFinite(capacity.perReplicaRps) && B > 0 && !ov?.perReplicaRps) {
+        // bootstrap the capacity (blocks of 6 buckets), server count and variability fixed
         const draws: number[] = [];
         const blocks = Math.ceil(d.n / 6);
         for (let b = 0; b < B; b++) {
@@ -428,7 +446,17 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
     const pathMean = Object.entries(weights).reduce((a, [svc, w]) => a + w * (services[svc]?.self.mean ?? 0), 0);
     const measuredMean = isFinite(lowMean) ? lowMean : shape?.meanMs ?? pathMean;
     const measuredP99 = isFinite(lowP99) ? lowP99 : shape?.p99Ms ?? measuredMean * 1.5;
-    const errs = lowIdx.map((i) => vals(ser?.errorRate, i)).filter((x): x is number => x !== null);
+    // baseline errors: request-weighted over the low-traffic buckets (a median would read 0 for rare errors)
+    let errN = 0;
+    let errF = 0;
+    for (const i of lowIdx) {
+      const e = vals(ser?.errorRate, i);
+      const n = vals(ser?.rps, i);
+      if (e === null || n === null) continue;
+      errN += n;
+      errF += n * e;
+    }
+    const errs = errN > 0 ? [errF / errN] : [];
     const e: EndpointModel = {
       id,
       service: shape?.service ?? ser?.service ?? id.split(' ')[0],
@@ -439,7 +467,7 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
       overheadMs: Math.max(0, measuredMean - pathMean),
       baseExcessMs: Math.max(0, measuredP99 - measuredMean),
       tail: 1,
-      errorRate: errs.length ? Math.min(0.5, median(errs)) : shape?.errorRate ?? 0,
+      errorRate: errs.length ? Math.min(0.5, errs[0]) : shape?.errorRate ?? 0,
       bytes: shape?.bytes ?? {},
       egressBytes: 0,
       slo: opts.endpoints?.[id]?.slo ?? slo,

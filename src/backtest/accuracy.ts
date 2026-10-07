@@ -108,7 +108,11 @@ export function breakingPointOf(s: Obs, slo: { p99Ms: number; errorRate: number 
 /** where the SLO score (≤ 1 = within SLO) crosses 1, interpolated log-linearly between plateaus */
 export function crossing(plateausIn: { rps: number; score: number }[]): number {
   const plateaus = [...plateausIn].sort((a, b) => a.rps - b.rps);
-  const first = plateaus.findIndex((p) => p.score > 1);
+  // the breaking point is where failing *stays*: a lone noisy plateau below it (a few random errors
+  // in 30 seconds of traffic) is not a break — the first plateau of the failing tail is
+  let first = plateaus.length;
+  while (first > 0 && plateaus[first - 1].score > 1) first--;
+  if (first === plateaus.length) first = -1;
   if (first < 0) return plateaus.at(-1)?.rps ?? 0;
   if (first === 0) return plateaus[0].rps;
   const a = plateaus[first - 1];

@@ -8,7 +8,8 @@ timeout: 5s
 mix: mix.json
 edge: frontend
 hostedBy: { mysql: customer, redis-manual: driver }
-slo: { p99Ms: 1000, errorRate: 0.01 }
+# HotROD's driver fails ~1.5% of lookups on purpose (simulated Redis timeouts), so the error SLO is 3%
+slo: { p99Ms: 1000, errorRate: 0.03 }
 runs:
   # 40 minutes of "production": a compressed day peaking at 7.5 req/s, with a push to 12 req/s
   history: { shape: [history, 7.5, 12, 40], env: { CUSTOMER_REPLICAS: 1 } }

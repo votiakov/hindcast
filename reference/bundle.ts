@@ -80,4 +80,4 @@ function main() {
   console.log(`\nwrote public/reference/${system}.json (${strategies.length} strategies)`);
 }
 
-main();
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main();
