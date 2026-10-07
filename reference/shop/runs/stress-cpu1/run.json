@@ -1,0 +1,19 @@
+{
+  "system": "shop",
+  "run": "stress-cpu1",
+  "start": 1791407775,
+  "end": 1791408740,
+  "env": {
+    "FRONTEND_CPUS": "1"
+  },
+  "shape": [
+    "steps",
+    150,
+    900,
+    50,
+    60
+  ],
+  "autoscale": null,
+  "sampling": 0.2,
+  "recordedAt": "2026-10-07T21:32:53.199Z"
+}

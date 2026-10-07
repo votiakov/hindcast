@@ -1,5 +1,5 @@
-# Recorded reference run (petclinic/probe); see reference/README.md
-name: PetClinic — probe
+# Recorded reference run (shop/stress-cpu1); see reference/README.md
+name: Astronomy Shop — stress-cpu1
 step: 30s
 metrics:
   - prometheus: metrics/otel-spanmetrics-rps.json
@@ -45,6 +45,6 @@ billing:
     tag: user:service
 model:
   slo:
-    p99Ms: 500
+    p99Ms: 800
     errorRate: 0.01
   timeoutMs: 5000

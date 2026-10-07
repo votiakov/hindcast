@@ -1531,15 +1531,15 @@
     },
     {
      "metric": "breaking-point",
-     "predicted": 581.1126947884018,
-     "measured": 589.6363636363636,
-     "error": 0.014455805940114159,
+     "predicted": 573.9452807508853,
+     "measured": 613.7015103376133,
+     "error": 0.06478105221682934,
      "tolerance": 0.15,
      "pass": true,
      "note": "stress-cpu1: step load test, p99 and errors over every request of each plateau (SLO p99 ≤ 800 ms, errors ≤ 1%)"
     }
    ],
-   "measuredAt": "2026-10-07T21:06:04.972Z"
+   "measuredAt": "2026-10-07T21:33:46.044Z"
   },
   {
    "method": "holdout",
@@ -1564,7 +1564,7 @@
      "note": "model cost vs the bill over the held-out window"
     }
    ],
-   "measuredAt": "2026-10-07T21:06:13.612Z"
+   "measuredAt": "2026-10-07T21:33:54.747Z"
   }
  ],
  "fittedOn": {
