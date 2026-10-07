@@ -1,0 +1,5 @@
+name: Cache in front of the product catalog
+description: 80% of catalog lookups served from a cache node (ElastiCache cache.r7g.large).
+changes:
+  - service: product-catalog
+    cache: { hitRate: 0.8 }

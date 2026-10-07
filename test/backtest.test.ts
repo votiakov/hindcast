@@ -115,6 +115,25 @@ describe('importers', () => {
     expect(dataset.services['orders-db'].doneRps![0]).toBeCloseTo(20 / 60, 5);
   });
 
+  it('takes the route from a framework span and ignores background roots', () => {
+    const t0 = ms;
+    const doc = JSON.stringify({
+      resourceSpans: [
+        rs('frontend', [
+          span('n1', 'r', null, 'GET', 2, t0, t0 + 20, { 'http.method': 'GET', 'http.target': '/api/products/HQTGWGPNH4' }),
+          span('n1', 'h', 'r', 'GET /api/products/HQTGWGPNH4', 2, t0 + 1, t0 + 19, { 'http.method': 'GET' }),
+          span('n1', 'x', 'h', 'executing api route (pages) /api/products/[productId]', 1, t0 + 2, t0 + 18),
+          span('n2', 'r2', null, 'GET', 2, t0, t0 + 10, { 'http.method': 'GET', 'http.target': '/api/orders/12345?x=1' }),
+          span('n3', 'd', null, 'dns.lookup', 1, t0, t0 + 5),
+        ]),
+      ],
+    });
+    const topo = buildTopology(parseTraceFile(doc), null, { stepS: 60 });
+    expect(Object.keys(topo.endpoints).sort()).toEqual(['frontend GET /api/orders/{id}', 'frontend GET /api/products/[productId]']);
+    // the framework's own SERVER span is part of the same visit
+    expect(topo.endpoints['frontend GET /api/products/[productId]'].visits.frontend).toBe(1);
+  });
+
   it('reads Jaeger JSON', () => {
     const doc = { data: [{ traceID: 'x', spans: [{ traceID: 'x', spanID: '1', operationName: 'HTTP GET /dispatch', startTime: T0 * 1e6, duration: 50_000, tags: [{ key: 'span.kind', value: 'server' }], processID: 'p1' }, { traceID: 'x', spanID: '2', operationName: 'SQL SELECT', references: [{ refType: 'CHILD_OF', spanID: '1' }], startTime: T0 * 1e6 + 1000, duration: 30_000, tags: [], processID: 'p2' }], processes: { p1: { serviceName: 'frontend' }, p2: { serviceName: 'mysql' } } }] };
     const topo = buildTopology(parseTraceFile(JSON.stringify(doc)), null, { stepS: 10 });

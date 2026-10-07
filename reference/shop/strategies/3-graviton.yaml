@@ -1,0 +1,7 @@
+name: Frontend and cart on Graviton
+description: Arm pricing for the two busiest services; equal throughput assumed until benchmarked.
+changes:
+  - service: frontend
+    arch: arm
+  - service: cart
+    arch: arm

@@ -48,7 +48,7 @@ function otlpKind(k: unknown): Span['kind'] {
   return (['server', 'client', 'producer', 'consumer'] as const).find((x) => x === s) ?? 'internal';
 }
 
-const KEEP = /^(http\.(route|method|request\.method|status_code|response\.status_code|request\.body\.size|response\.body\.size|request_content_length|response_content_length)|rpc\.(system|service|method|request\.size|response\.size)|db\.system|messaging\.(system|message)|peer\.service|server\.address|net\.peer\.name|error|otel\.status_code|span\.kind)/;
+const KEEP = /^(url\.path|http\.target|http\.(route|method|request\.method|status_code|response\.status_code|request\.body\.size|response\.body\.size|request_content_length|response_content_length)|rpc\.(system|service|method|request\.size|response\.size)|db\.system|messaging\.(system|message)|peer\.service|server\.address|net\.peer\.name|error|otel\.status_code|span\.kind)/;
 
 export function parseOtlp(doc: unknown, out: Span[] = []): Span[] {
   const rs = (doc as { resourceSpans?: unknown[] }).resourceSpans;
@@ -188,7 +188,10 @@ interface Visit {
   error: boolean;
   name: string;
   route?: string;
+  /** request path (for endpoints without a route template) */
+  target?: string;
   method?: string;
+  spanKind: Span['kind'];
   bytes: number | null;
   children: Visit[];
   /** set by critical-path pass */
@@ -222,7 +225,9 @@ function visitsOf(spans: Span[], ignore: Set<string>): Visit[] {
     const ignored = ignore.has(sp.service);
     let current = owner;
     if (!ignored) {
-      const boundary = !owner || sp.kind === 'server' || sp.kind === 'consumer' || (parent && parent.service !== sp.service);
+      // a new visit starts at a service boundary; a framework's own SERVER span inside the same
+      // service (Next.js, Spring) is part of the visit that is already open
+      const boundary = !owner || (parent && parent.service !== sp.service) || ((sp.kind === 'server' || sp.kind === 'consumer') && !!parent && parent.service !== sp.service);
       const childSpans = kids.get(sp.spanId) ?? [];
       const dep = (sp.kind === 'client' || sp.kind === 'producer') && !childSpans.some((c) => c.service !== sp.service) ? dependencyOf(sp) : null;
       if (boundary || dep) {
@@ -237,7 +242,9 @@ function visitsOf(spans: Span[], ignore: Set<string>): Visit[] {
           error: sp.error,
           name: sp.name,
           route: (sp.attrs['http.route'] as string) ?? undefined,
+          target: (sp.attrs['url.path'] ?? sp.attrs['http.target']) as string | undefined,
           method: (sp.attrs['http.request.method'] ?? sp.attrs['http.method']) as string | undefined,
+          spanKind: sp.kind,
           bytes: payloadBytes(viaClient, sp),
           children: [],
           self: 0,
@@ -245,6 +252,11 @@ function visitsOf(spans: Span[], ignore: Set<string>): Visit[] {
         if (owner) owner.children.push(v);
         else visits.push(v);
         current = v;
+      } else if (current && !current.route) {
+        // the route template often sits on a framework span inside the visit
+        // ("executing api route (pages) /api/products/[productId]", a span with http.route)
+        const r = (sp.attrs['http.route'] as string | undefined) ?? /\s(\/[^\s?]*[\[{:][^\s?]*)$/.exec(sp.name)?.[1];
+        if (r) current.route = r;
       }
     }
     for (const c of kids.get(sp.spanId) ?? []) walk(c, current, sp.kind === 'client' || sp.kind === 'producer' ? sp : undefined);
@@ -301,9 +313,19 @@ export interface TraceImportOptions {
   series?: { rps: boolean; latency: boolean; endpoints: boolean };
 }
 
-export const endpointId = (v: { service: string; name: string; route?: string; method?: string }) => {
-  const label = v.route ? `${v.method ? v.method.toUpperCase() + ' ' : ''}${v.route}` : v.name.replace(/^HTTP /, '');
-  return `${v.service} ${label}`;
+/** an id-looking path segment: numbers, UUIDs, hex, or opaque codes with digits */
+const ID_SEGMENT = /^(\d+|[0-9a-f]{8,}|[0-9a-f-]{36}|(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9_-]{6,})$/;
+
+export const endpointId = (v: { service: string; name: string; route?: string; target?: string; method?: string }) => {
+  const method = v.method ? v.method.toUpperCase() + ' ' : '';
+  if (v.route) return `${v.service} ${method}${v.route}`;
+  // a bare method name ("GET") says nothing: fall back to the request path with ids templated
+  const generic = /^(HTTP )?(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)$/i.test(v.name.trim());
+  if (v.target && (generic || !v.name.includes('/'))) {
+    const path = v.target.split('?')[0].split('/').map((seg) => (ID_SEGMENT.test(seg) ? '{id}' : seg)).join('/') || '/';
+    return `${v.service} ${method}${path}`;
+  }
+  return `${v.service} ${v.name.replace(/^HTTP /, '')}`;
 };
 
 /** fold spans into topology + per-bucket series on the builder */
@@ -330,6 +352,8 @@ export function buildTopology(spans: Span[], b: DatasetBuilder | null, opts: Tra
   for (const tr of byTrace.values()) {
     const roots = visitsOf(tr, ignore);
     for (const root of roots) {
+      // background work (timers, DNS lookups at startup) is not a request anyone made
+      if (root.spanKind !== 'server' && root.spanKind !== 'consumer' && root.kind === 'server') continue;
       traces++;
       selfTimes(root);
       const cp = new Map<string, number>();

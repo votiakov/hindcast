@@ -1,0 +1,17 @@
+{
+  "system": "shop",
+  "run": "probe",
+  "start": 1791398336,
+  "end": 1791398663,
+  "env": {},
+  "shape": [
+    "steps",
+    40,
+    280,
+    20,
+    25
+  ],
+  "autoscale": null,
+  "sampling": 0.2,
+  "recordedAt": "2026-10-07T18:44:53.537Z"
+}

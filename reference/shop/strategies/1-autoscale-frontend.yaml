@@ -1,0 +1,5 @@
+name: Autoscale the frontend
+description: Target-tracking on CPU, 1–4 replicas behind the load balancer — instead of sizing for the peak.
+changes:
+  - service: frontend
+    autoscale: { min: 1, max: 4, targetCpu: 0.6, warmupS: 10, cooldownS: 120, intervalS: 15 }

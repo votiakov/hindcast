@@ -1,0 +1,5 @@
+name: Frontend on 1 vCPU
+description: Double the frontend's CPU limit (0.5 → 1 core). It is CPU-bound, so capacity should follow.
+changes:
+  - service: frontend
+    cpu: 1
