@@ -64,7 +64,8 @@ function main() {
     });
   }
   if (runs.length) model.accuracy.push(referenceAccuracy(model, runs, `recorded runs the model never saw: ${runs.map((r) => r.label).join(', ')}`));
-  model.accuracy.push(holdoutAccuracy(history, { holdout: 0.3 }));
+  const histReq = join(sysDir, 'runs', 'history', 'requests.csv');
+  model.accuracy.push(holdoutAccuracy(history, { holdout: 0.3, requests: existsSync(histReq) ? parseRequestLog(readFileSync(histReq, 'utf8')) : undefined }));
   writeFileSync(join(sysDir, 'model.json'), JSON.stringify(model, null, 1));
 
   for (const a of model.accuracy) {

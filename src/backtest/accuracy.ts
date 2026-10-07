@@ -249,7 +249,7 @@ export function billTotal(d: Dataset): number | null {
 }
 
 /** calibrate on the first part, predict the rest */
-export function holdoutAccuracy(d: Dataset, opts: CalibrateOptions & { holdout?: number } = {}): AccuracyRecord {
+export function holdoutAccuracy(d: Dataset, opts: CalibrateOptions & { holdout?: number; requests?: RequestLog } = {}): AccuracyRecord {
   const cut = Math.floor(d.n * (1 - (opts.holdout ?? 0.3)));
   const train = sliceDataset(d, 0, cut);
   const test = sliceDataset(d, cut, d.n);
@@ -257,10 +257,17 @@ export function holdoutAccuracy(d: Dataset, opts: CalibrateOptions & { holdout?:
   const r = runPlan(basePlan(model, observedReplicas(test, model)), trafficOf(test, model));
   const obs = clientSeries(test);
   const checks: AccuracyCheck[] = [];
-  const ape = medianApe(r.p99Ms, obs.p99Ms);
-  if (isFinite(ape)) checks.push(check('p99', avg(r.p99Ms.map((x, i) => (obs.p99Ms[i] === null ? null : x))), avg(obs.p99Ms), TOLERANCE.p99, `typical error per ${test.stepS}s bucket ${(ape * 100).toFixed(0)}% on the last ${Math.round((test.n * test.stepS) / 60)} min, calibrated on the ${Math.round((train.n * train.stepS) / 60)} min before`));
-  // the per-bucket check decides pass/fail for p99
-  if (checks.length) checks[0] = { ...checks[0], error: ape, pass: ape <= TOLERANCE.p99 };
+  const span = `on the last ${Math.round((test.n * test.stepS) / 60)} min, calibrated on the ${Math.round((train.n * train.stepS) / 60)} min before`;
+  const w = opts.requests ? windowP99(r, opts.requests, test.start, test.stepS) : null;
+  if (w && w.rows.length) {
+    const pm = w.rows.reduce((a, x) => a + x.predicted, 0) / w.rows.length;
+    const mm = w.rows.reduce((a, x) => a + x.measured, 0) / w.rows.length;
+    checks.push({ metric: 'p99', predicted: pm, measured: mm, error: w.median, tolerance: TOLERANCE.p99, pass: w.median <= TOLERANCE.p99, note: `p99 over every request in each 5-minute window ${span} — typical error ${(w.median * 100).toFixed(0)}%, worst ${(w.max * 100).toFixed(0)}%` });
+  } else {
+    // per-bucket p99s decide pass/fail
+    const ape = medianApe(r.p99Ms, obs.p99Ms);
+    if (isFinite(ape)) checks.push({ ...check('p99', avg(r.p99Ms.map((x, i) => (obs.p99Ms[i] === null ? null : x))), avg(obs.p99Ms), TOLERANCE.p99, `typical error per ${test.stepS}s bucket ${(ape * 100).toFixed(0)}% ${span}`), error: ape, pass: ape <= TOLERANCE.p99 });
+  }
   const bill = billTotal(test);
   if (bill !== null) {
     const pred = r.cost.compute.reduce((a, x, i) => a + x + r.cost.requests[i] + r.cost.transfer[i] + r.cost.other[i], 0);
