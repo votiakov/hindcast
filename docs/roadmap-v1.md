@@ -34,3 +34,21 @@ enough to teach with, present with, and make real platform decisions with.
 
 ## Docs
 - [x] README + docs updated for every feature above
+
+## Round 2 — shipped
+- [x] Load curve (p99, errors, $ per million requests to 2× the breaking point) in the audit
+- [x] Audit → Studio clip (as built vs fixed, same incident); recorder renders app-made episodes
+- [x] Self-contained HTML audit report; CI gate example (`examples/ci/architecture-audit.yml`)
+- [x] Kubernetes import (Deployments, StatefulSets, HPAs → autoscale, Services, Ingress, env wiring)
+- [x] Audit settles autoscaled fleets before testing; queue consumers are not user-facing bottlenecks
+- [x] Configurable SLO; per-side audit in Compare; calibrate components from production numbers
+- [x] Cited GCP us-central1 pricing; same design priced on every cloud in the cost lens
+- [x] Replay real traffic from a metrics CSV; postmortem-style timeline export
+- [x] Embed mode for posts and docs; keyboard sheet; empty-board guidance
+- [x] Lesson *Elastic*; compare scenarios *Fleet vs autoscaling*, *One region vs two*
+
+## Next
+- Azure pricing profile; regional price differences
+- Hot keys / uneven load balancing; data transfer cost between AZs and regions
+- Audit the zone layout (suggest spreading members across zones)
+- Canvas-based particle renderer for very large boards
