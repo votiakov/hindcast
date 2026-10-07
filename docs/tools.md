@@ -125,6 +125,10 @@ on critical findings.
 
 ## App links
 
+`?embed=1` (+ `&rps=800`, `&theme=reference`) with `#spec=…` shows only the running board, its numbers
+and a traffic slider — for an `<iframe>` in a blog post, docs or slides. *Copy embed code* in the design
+menu produces the snippet.
+
 | hash | opens |
 |---|---|
 | `#spec=<base64url(JSON spec)>` | Sandbox with the spec auto-laid-out |

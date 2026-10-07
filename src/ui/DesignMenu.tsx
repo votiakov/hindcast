@@ -122,6 +122,17 @@ export function DesignMenu() {
             >
               Copy share link
             </button>
+            <button
+              onClick={act(() => {
+                const s2 = useSim.getState();
+                const m = s2.boards.main;
+                const url = `${location.origin}${location.pathname}?embed=1&rps=${s2.traffic}&theme=${s2.settings.theme}#spec=${encodePayload({ ...graphToSpec(m.nodes, m.edges, m.title), pricing: s2.settings.pricing })}`;
+                navigator.clipboard?.writeText(`<iframe src="${url}" width="100%" height="460" style="border:0;border-radius:12px" title="${m.title.replace(/"/g, '')} — live architecture"></iframe>`);
+                s.toast('good', 'Embed code copied — a live, running board for posts and docs');
+              })}
+            >
+              Copy embed code
+            </button>
           </div>
 
           {designs.length > 0 && (

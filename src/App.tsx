@@ -14,6 +14,7 @@ import { CommandPalette } from './ui/CommandPalette';
 import { SpecEditor } from './ui/SpecEditor';
 import { PresentHUD, presentStep } from './ui/PresentHUD';
 import { Shortcuts } from './ui/Shortcuts';
+import { Embed } from './ui/Embed';
 import { HomeBoard } from './ui/HomeBoard';
 import './ui/callout.css';
 import { StudioView } from './studio/StudioView';
@@ -37,6 +38,7 @@ import './theme/neon-chrome.css';
  */
 const params = new URLSearchParams(location.search);
 const RENDER = params.get('render') === '1';
+const EMBED = params.get('embed') === '1';
 if (RENDER) {
   const s = useSim.getState();
   s.setStudio({ aspect: (params.get('aspect') as Aspect) ?? '4:5', brandId: params.get('brand') ?? 'personal' });
@@ -114,9 +116,17 @@ function useSimLoop() {
 }
 
 if (!RENDER && location.hash) openFromHash(location.hash);
+if (EMBED) {
+  const s = useSim.getState();
+  if (s.mode !== 'sandbox') s.setMode('sandbox');
+  if (params.get('theme')) s.setSetting('theme', params.get('theme') as ThemeId);
+  s.setSetting('alerts', false);
+  s.setTraffic(Number(params.get('rps') ?? 300));
+  s.setRunning(true);
+}
 
 // autosave the sandbox design (debounced); survives reloads and mode switches
-if (!RENDER) {
+if (!RENDER && !EMBED) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   useSim.subscribe((s, prev) => {
     if (s.mode !== 'sandbox') return;
@@ -147,6 +157,7 @@ export default function App() {
   }, [theme]);
 
   if (RENDER) return <Stage />;
+  if (EMBED) return <Embed />;
 
   return (
     <div className={`app ${present ? 'presenting' : ''}`}>
