@@ -110,6 +110,10 @@ board* plays an incident live, *Apply* applies a fix (undoable), *Copy report* g
 | Present mode | P — chrome-free board, large numbers, event captions; with an audit, ←/→ replays each incident live; F fullscreen |
 | Faults | select a component → *fault…*: 10/50 % errors, +100/500/2000 ms, 50 % capacity, flush cache, restore |
 | Links | select a connection → network latency preset |
+| Calibrate | select a component → *calibrate*: one instance served R req/s at C % CPU with p50 L ms and costs $/h → capacity, latency and price overrides that reproduce it at the current size and runtime |
+| Audit in Compare | *audit* on each side's header: score, incidents survived, headroom, cost and the top risks with their fixes, at the scenario's peak load |
+| Studio clip | in the audit, *Studio clip* turns an incident into an episode (as built vs fixed, same incident); render it with `npm run record -- --ep-file <file>.json` |
+| Timeline export | *copy timeline* on the recorder: the run as a postmortem-style Markdown timeline |
 
 ## App links
 
