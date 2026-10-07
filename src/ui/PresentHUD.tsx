@@ -14,7 +14,6 @@ export function deck() {
 export function presentStep(dir: 1 | -1) {
   const s = useSim.getState();
   const d = deck();
-  const slo = useSim((s) => s.settings);
   if (!d.length || s.mode !== 'sandbox') return;
   const i = Math.max(0, Math.min(d.length - 1, s.presentIdx + dir));
   s.setPresentIdx(i);
