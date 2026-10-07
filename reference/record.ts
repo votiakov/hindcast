@@ -71,8 +71,10 @@ async function main() {
   const start = Math.floor(Date.now() / 1000);
   let scaling: { stop: () => Promise<void> } | null = null;
   if (r.autoscale) scaling = autoscaleLoop({ prom: PROM, compose: join(sysDir, 'docker-compose.yml'), project: cfg.project, env, ...r.autoscale, log: join(out, 'autoscaler.log') });
+  // one load generator at a time: a leftover k6 from an interrupted run would double the load
+  execSync('docker rm -f bnref-k6 >/dev/null 2>&1 || true');
   sh(
-    `docker run --rm --network bnref -v ${join(ROOT, 'load')}:/load:ro -v ${out}:/out -e SHAPE=/out/shape.json -e MIX=/out/mix.json -e BASE=${cfg.base} -e TIMEOUT=${cfg.timeout ?? '5s'} grafana/k6:latest run --quiet --out csv=/out/raw/k6.csv /load/replay.js`,
+    `docker run --rm --name bnref-k6 --network bnref -v ${join(ROOT, 'load')}:/load:ro -v ${out}:/out -e SHAPE=/out/shape.json -e MIX=/out/mix.json -e BASE=${cfg.base} -e TIMEOUT=${cfg.timeout ?? '5s'} grafana/k6:latest run --quiet --out csv=/out/raw/k6.csv /load/replay.js`,
   );
   const end = Math.floor(Date.now() / 1000);
   if (scaling) await scaling.stop();

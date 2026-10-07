@@ -1,0 +1,44 @@
+# Reference system 3: Spring PetClinic REST (github.com/spring-petclinic/spring-petclinic-rest) on
+# PostgreSQL. A JVM app with a 10-connection pool in front of a CPU-limited database, traced by the
+# OpenTelemetry Java agent (download: reference/petclinic/setup.sh). nginx in front so the app can scale
+# out (APP_REPLICAS, or the autoscaler).
+name: petclinic
+services:
+  app-lb:
+    image: nginx:1.27-alpine
+    volumes: ["./nginx.conf:/etc/nginx/nginx.conf:ro"]
+    cpus: 0.5
+    mem_limit: 64m
+    networks: [ref]
+  app:
+    image: springcommunity/spring-petclinic-rest:latest
+    environment:
+      SPRING_PROFILES_ACTIVE: postgres,spring-data-jpa
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/petclinic
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: petclinic
+      SPRING_SQL_INIT_MODE: always
+      JAVA_TOOL_OPTIONS: -javaagent:/otel/opentelemetry-javaagent.jar -XX:MaxRAMPercentage=70
+      OTEL_SERVICE_NAME: app
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+      OTEL_INSTRUMENTATION_COMMON_PEER_SERVICE_MAPPING: postgres=postgres
+    volumes: ["./otel:/otel:ro"]
+    cpus: 1.0
+    mem_limit: 768m
+    depends_on: [postgres]
+    deploy: { replicas: "${APP_REPLICAS:-1}" }
+    networks: [ref]
+  postgres:
+    image: postgres:16-alpine
+    environment: { POSTGRES_PASSWORD: petclinic, POSTGRES_DB: petclinic }
+    command: ["postgres", "-c", "max_connections=200"]
+    cpus: 1.0
+    mem_limit: 512m
+    networks: [ref]
+networks:
+  ref:
+    name: bnref
+    external: true

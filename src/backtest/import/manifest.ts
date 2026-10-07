@@ -65,6 +65,7 @@ export const ImportManifest = z.object({
       slo: z.object({ p99Ms: z.number().positive(), errorRate: z.number().min(0).max(1) }).optional(),
       timeoutMs: z.number().positive().optional().describe('client deadline: slower answers count as failures'),
       hostedBy: z.record(z.string(), z.string()).optional().describe('in-process dependencies seen in traces → the service they run in'),
+      endpoints: z.record(z.string(), z.object({ slo: z.object({ p99Ms: z.number().positive(), errorRate: z.number().min(0).max(1) }).optional() })).optional().describe('endpoints with their own SLO, by endpoint id'),
       services: z.record(z.string(), z.object({ kind: z.enum(['server', 'db', 'cache', 'queue', 'external', 'lb']).optional(), servers: z.number().int().positive().optional(), perReplicaRps: z.number().positive().optional(), arch: z.enum(['x86', 'arm']).optional() })).optional(),
     })
     .optional()

@@ -28,7 +28,7 @@ export interface Workspace {
   strategies: StrategyFile[];
 }
 
-export type Tab = 'overview' | 'incidents' | 'changes' | 'model';
+export type Tab = 'overview' | 'incidents' | 'endpoints' | 'changes' | 'model';
 
 interface State {
   workspace: Workspace | null;

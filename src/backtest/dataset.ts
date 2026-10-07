@@ -155,6 +155,8 @@ export interface Dataset {
     timeoutMs?: number;
     hostedBy?: Record<string, string>;
     services?: Record<string, { kind?: 'server' | 'db' | 'cache' | 'queue' | 'external' | 'lb'; servers?: number; perReplicaRps?: number; arch?: 'x86' | 'arm' }>;
+    /** endpoints with their own SLO */
+    endpoints?: Record<string, { slo?: { p99Ms: number; errorRate: number } }>;
   };
 }
 

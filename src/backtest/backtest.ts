@@ -53,6 +53,8 @@ export interface StrategyResult {
   /** strategy − baseline, per draw, summarised */
   delta: { cost: Ranged; monthly: Ranged; minutesOutOfSlo: Ranged; failedRequests: Ranged };
   worst: WorstMoment;
+  /** per endpoint, against its own SLO (point estimate) */
+  endpoints: Record<string, { requests: number; failedRequests: number; minutesOutOfSlo: number; peakP99Ms: number; cost: number; costPerMillion: number; slo: { p99Ms: number; errorRate: number } }>;
   /** contiguous runs of buckets out of SLO */
   incidents: { start: number; end: number; minutes: number; peakP99Ms: number; peakErrorRate: number; why: string }[];
   events: { t: number; what: string }[];
@@ -259,6 +261,21 @@ export function backtest(model: Model, d: Dataset, strategies: unknown[], opts: 
       });
     };
     const keys = Object.keys(sums[0]) as (keyof Summary)[];
+    const endpoints: StrategyResult['endpoints'] = {};
+    for (const [id, e] of Object.entries(point.endpoints)) {
+      const sl = plan.endpoints[id]?.slo ?? slo;
+      let requests = 0;
+      let failed = 0;
+      let out = 0;
+      let cost = 0;
+      for (let i = 0; i < e.rps.length; i++) {
+        requests += e.rps[i] * traffic.stepS;
+        failed += e.rps[i] * e.errorRate[i] * traffic.stepS;
+        cost += e.cost[i];
+        if (e.rps[i] > 0 && (e.p99Ms[i] > sl.p99Ms || e.errorRate[i] > sl.errorRate)) out += traffic.stepS / 60;
+      }
+      endpoints[id] = { requests, failedRequests: failed, minutesOutOfSlo: out, peakP99Ms: Math.max(0, ...e.p99Ms), cost, costPerMillion: requests > 0 ? (cost / requests) * 1e6 : 0, slo: sl };
+    }
     return {
       name,
       description,
@@ -279,6 +296,7 @@ export function backtest(model: Model, d: Dataset, strategies: unknown[], opts: 
         failedRequests: rangeOf(sums.map((s, k) => s.failedRequests - baseSums[k].failedRequests)),
       },
       worst: { t: point.t[worstI], p99Ms: point.p99Ms[worstI], errorRate: point.errorRate[worstI], ...why },
+      endpoints,
       incidents: incidents(point, plan, slo, traffic.stepS),
       events: point.events,
     };

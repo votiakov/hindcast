@@ -25,6 +25,7 @@ export interface CalibrateOptions {
   bootstrap?: number;
   /** per-service overrides */
   services?: Record<string, { kind?: ServiceModel['kind']; servers?: number; perReplicaRps?: number; arch?: 'x86' | 'arm' }>;
+  endpoints?: Record<string, { slo?: { p99Ms: number; errorRate: number } }>;
   seed?: number;
 }
 
@@ -161,7 +162,7 @@ export function sameEndpoint(a: string, b: string) {
 }
 
 export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
-  const opts: CalibrateOptions = { ...d.hints, ...options, hostedBy: { ...d.hints?.hostedBy, ...options.hostedBy }, services: { ...d.hints?.services, ...options.services } };
+  const opts: CalibrateOptions = { ...d.hints, ...options, hostedBy: { ...d.hints?.hostedBy, ...options.hostedBy }, services: { ...d.hints?.services, ...options.services }, endpoints: { ...d.hints?.endpoints, ...options.endpoints } };
   const slo = opts.slo ?? { p99Ms: 500, errorRate: 0.01 };
   const timeoutMs = opts.timeoutMs ?? 5000;
   const hostedBy = opts.hostedBy ?? {};
@@ -385,7 +386,7 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
       errorRate: errs.length ? Math.min(0.5, median(errs)) : shape?.errorRate ?? 0,
       bytes: shape?.bytes ?? {},
       egressBytes: 0,
-      slo,
+      slo: opts.endpoints?.[id]?.slo ?? slo,
       fit: { status: shape ? 'good' : 'poor', samples: rps.filter((x) => x !== null).length, notes },
     };
     endpoints[id] = e;

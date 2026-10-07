@@ -428,6 +428,43 @@ function Changes() {
   );
 }
 
+function Endpoints({ st }: { st: StrategyResult | undefined }) {
+  const r = useBacktest((s) => s.result)!;
+  const rows = Object.entries(r.baseline.endpoints);
+  return (
+    <table className="bt-table">
+      <thead>
+        <tr>
+          <th>endpoint</th>
+          <th>own SLO</th>
+          <th>requests</th>
+          <th>failed{st ? ` (as built → ${st.name})` : ''}</th>
+          <th>min out of SLO</th>
+          <th>$ / 1M requests</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(([id, b]) => {
+          const e = st?.endpoints[id];
+          const arrow = (a: number, z: number | undefined, f: (x: number) => string) => (z === undefined ? f(a) : `${f(a)} → ${f(z)}`);
+          return (
+            <tr key={id}>
+              <td>{id}</td>
+              <td className="bt-dim">
+                p99 ≤ {b.slo.p99Ms} ms · err ≤ {pct(b.slo.errorRate)}
+              </td>
+              <td>{Math.round(b.requests).toLocaleString('en-US')}</td>
+              <td>{arrow(b.failedRequests, e?.failedRequests, (x) => Math.round(x).toLocaleString('en-US'))}</td>
+              <td className={e && e.minutesOutOfSlo > b.minutesOutOfSlo + 0.5 ? 'neg' : e && e.minutesOutOfSlo < b.minutesOutOfSlo - 0.5 ? 'pos' : ''}>{arrow(b.minutesOutOfSlo, e?.minutesOutOfSlo, (x) => x.toFixed(1))}</td>
+              <td>{arrow(b.costPerMillion, e?.costPerMillion, (x) => `$${x.toFixed(x < 10 ? 3 : 2)}`)}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
 function ModelTab() {
   const w = useBacktest((s) => s.workspace)!;
   const m = w.model;
@@ -476,6 +513,7 @@ function Tester() {
   const tabs: [Tab, string][] = [
     ['overview', 'Overview'],
     ['incidents', `Incidents${st ? ` (${st.incidents.length})` : ''}`],
+    ['endpoints', 'Endpoints'],
     ['changes', 'Changes'],
     ['model', 'Model'],
   ];
@@ -493,6 +531,7 @@ function Tester() {
       <div className="bt-tabbody">
         {tab === 'overview' && <Overview st={st} />}
         {tab === 'incidents' && <Incidents st={st} />}
+        {tab === 'endpoints' && <Endpoints st={st} />}
         {tab === 'changes' && <Changes />}
         {tab === 'model' && <ModelTab />}
       </div>

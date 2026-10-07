@@ -315,3 +315,29 @@ describe('public-outage replays', () => {
     expect(cf.result.baseline.summary.minutesOutOfSlo.p50).toBeGreaterThan(15);
   });
 });
+
+describe('endpoints and data transfer', () => {
+  const svc = (id: string, zone: string, extra: Partial<Model['services'][string]> = {}): Model['services'][string] => ({ id, kind: 'server', replicas: 1, cpuLimit: 1, memoryGb: 1, cpu: null, capacity: { limit: 'none', servers: 1, perReplicaRps: Infinity }, self: { mean: 10, p99: 30 }, tail: 1, cost: { perReplicaHour: 0.1, perRequest: 0, cpuShare: 0.8, arch: 'x86', source: 'bill' }, placement: { zone }, fit: { status: 'good', samples: 0, notes: [] }, ...extra });
+  const ep = (id: string, calls: Record<string, number>, bytes: Record<string, number>, slo = { p99Ms: 500, errorRate: 0.01 }): Model['endpoints'][string] => ({ id, service: 'web', share: 0.5, visits: { web: 1, api: calls['web>api'] ?? 0 }, calls, weights: { web: 1, api: calls['web>api'] ?? 0 }, overheadMs: 0, baseExcessMs: 10, tail: 1, errorRate: 0, bytes, egressBytes: 50_000, slo, fit: { status: 'good', samples: 0, notes: [] } });
+  const model: Model = {
+    version: 1, name: 'zones', timeoutMs: 5000, slo: { p99Ms: 500, errorRate: 0.01 },
+    services: { web: svc('web', 'a'), api: svc('api', 'b') },
+    endpoints: { 'web GET /a': ep('web GET /a', { 'web>api': 3 }, { 'web>api': 3 * 200_000 }), 'web GET /b': ep('web GET /b', {}, {}, { p99Ms: 15, errorRate: 0.01 }) },
+    transfer: { crossZoneGb: 0.01, crossRegionGb: 0.02, internetGb: 0.09, source: '' }, unattributedPerHour: 0.05, accuracy: [], fittedOn: { start: T0, end: T0 + 3600, stepS: 60, buckets: 60 },
+  };
+  const d: Dataset = { version: 1, name: 'z', start: T0, stepS: 60, n: 60, services: {}, endpoints: { 'web GET /a': { service: 'web', rps: new Array(60).fill(100) }, 'web GET /b': { service: 'web', rps: new Array(60).fill(100) } }, sources: [] };
+
+  it('attributes every dollar to an endpoint and prices cross-zone bytes', () => {
+    const r = backtest(model, d, [{ name: 'same zone', changes: [{ service: 'api', zone: 'a' }] }], { draws: 1, observed: false });
+    const total = r.baseline.summary.cost.p50;
+    const perEp = Object.values(r.baseline.endpoints).reduce((a, e) => a + e.cost, 0);
+    expect(perEp).toBeCloseTo(total, 6);
+    // /a calls the api 3× with 200 kB each across zones: 100 req/s × 600 kB × 2 × $0.01/GB for an hour
+    const xzone = (100 * 3600 * 600_000 / 2 ** 30) * 0.02;
+    expect(r.strategies[0].delta.cost.p50).toBeCloseTo(-xzone, 2);
+    expect(r.baseline.endpoints['web GET /a'].costPerMillion).toBeGreaterThan(r.baseline.endpoints['web GET /b'].costPerMillion);
+    // /b has its own tight SLO (15 ms p99) and breaks it all hour; /a meets the global one
+    expect(r.baseline.endpoints['web GET /b'].minutesOutOfSlo).toBe(60);
+    expect(r.baseline.endpoints['web GET /a'].minutesOutOfSlo).toBe(0);
+  });
+});

@@ -120,6 +120,8 @@ export interface EndpointTrace {
   errorRate: number[];
   meanMs: number[];
   p99Ms: number[];
+  /** $ per bucket attributed to this endpoint (by its share of each component's load) */
+  cost: number[];
 }
 
 export interface RunResult {
@@ -240,7 +242,7 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
     costPerHour: z(),
     cost: { compute: z(), requests: z(), transfer: z(), other: z() },
     services: Object.fromEntries(svcIds.map((id) => [id, { rps: z(), util: z(), replicas: z(), waitMs: z(), selfMeanMs: z(), selfP99Ms: z(), backlog: z(), cpuCores: z() }])),
-    endpoints: Object.fromEntries(epIds.map((id) => [id, { rps: z(), errorRate: z(), meanMs: z(), p99Ms: z() }])),
+    endpoints: Object.fromEntries(epIds.map((id) => [id, { rps: z(), errorRate: z(), meanMs: z(), p99Ms: z(), cost: z() }])),
     events: [],
   };
 
@@ -390,14 +392,28 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
       // cost of this substep, $/h
       let compute = 0;
       let requests = 0;
+      const lamTot = epIds.reduce((a, e) => a + lam[e], 0);
+      // each component's $/h is shared by the endpoints in proportion to the load they put on it
+      // (idle or untraced components by traffic share)
+      const share = (id: string, e: string) => {
+        const host = svcIds.filter((x) => plan.services[x].hostedBy === id || x === id);
+        const load = host.reduce((a, x) => a + svcLam[x], 0);
+        if (load > 0) return host.reduce((a, x) => a + lam[e] * (visits[e][x] ?? 0), 0) / load;
+        return lamTot > 0 ? lam[e] / lamTot : 1 / Math.max(1, epIds.length);
+      };
       for (const id of svcIds) {
         const s = plan.services[id];
-        if (!s.hostedBy) compute += (st[id].live + st[id].pending.reduce((a, p) => a + p.n, 0)) * s.replicaHour;
-        requests += svcLam[id] * 3600 * s.perRequest;
-        if (s.cache) compute += s.cache.costPerHour;
+        const own = (s.hostedBy ? 0 : (st[id].live + st[id].pending.reduce((a, p) => a + p.n, 0)) * s.replicaHour) + (s.cache ? s.cache.costPerHour : 0);
+        const req = svcLam[id] * 3600 * s.perRequest;
+        compute += own;
+        requests += req;
+        if (own + req > 0) for (const e of epIds) out.endpoints[e].cost[i] += ((own * share(id, e) + req * (svcLam[id] > 0 ? (lam[e] * (visits[e][id] ?? 0)) / svcLam[id] : 0)) * dt) / 3600;
       }
       let transfer = 0;
-      for (const e of epIds) transfer += lam[e] * 3600 * transferPerReq[e];
+      for (const e of epIds) {
+        transfer += lam[e] * 3600 * transferPerReq[e];
+        out.endpoints[e].cost[i] += ((lam[e] * 3600 * transferPerReq[e] + (lamTot > 0 ? (plan.unattributedPerHour * lam[e]) / lamTot : 0)) * dt) / 3600;
+      }
       out.cost.compute[i] += (compute * dt) / 3600;
       out.cost.requests[i] += (requests * dt) / 3600;
       out.cost.transfer[i] += (transfer * dt) / 3600;

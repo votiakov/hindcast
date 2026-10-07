@@ -73,6 +73,15 @@ export function backtestMarkdown(r: BacktestResult, model: Model): string {
     }
     L.push('');
   }
+  L.push('## Endpoints', '', '| endpoint | SLO | | requests | failed | min out of own SLO | $ per 1M requests |', '|---|---|---|---|---|---|---|');
+  for (const id of Object.keys(r.baseline.endpoints)) {
+    for (const s of [r.baseline, ...r.strategies]) {
+      const e = s.endpoints[id];
+      if (!e) continue;
+      L.push(`| ${s === r.baseline ? id : ''} | ${s === r.baseline ? `p99 ≤ ${e.slo.p99Ms} ms, err ≤ ${(e.slo.errorRate * 100).toFixed(1)}%` : ''} | ${s.name} | ${Math.round(e.requests).toLocaleString('en-US')} | ${Math.round(e.failedRequests).toLocaleString('en-US')} | ${e.minutesOutOfSlo.toFixed(1)} | $${e.costPerMillion.toFixed(e.costPerMillion < 10 ? 3 : 2)} |`);
+    }
+  }
+  L.push('');
   L.push('## Model', '');
   L.push('| component | capacity / replica | limited by | replicas | $/replica-h | fit | notes |', '|---|---|---|---|---|---|---|');
   for (const s of Object.values(model.services)) {
