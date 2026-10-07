@@ -130,3 +130,9 @@
   .bt-tester { height: auto; }
 }
 @media (prefers-reduced-motion: reduce) { .bt * { transition: none !important; } }
+
+/* on the board: a way back to the backtest */
+.bt-return { position: absolute; left: 50%; transform: translateX(-50%); top: 12px; z-index: 20; display: flex; gap: 10px; align-items: center; padding: 6px 8px 6px 12px; background: #10161d; color: #c9d4de; border: 1px solid #22303c; font: 12.5px 'IBM Plex Mono', ui-monospace, monospace; }
+.bt-return b { color: #f2a93b; font-weight: 500; }
+.bt-return button { border: 1px solid #22303c; background: none; color: #e6edf3; padding: 3px 9px; font: inherit; cursor: pointer; }
+.bt-return button:first-of-type { border-color: #f2a93b; color: #f2a93b; }

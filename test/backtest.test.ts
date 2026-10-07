@@ -341,3 +341,20 @@ describe('endpoints and data transfer', () => {
     expect(r.baseline.endpoints['web GET /a'].minutesOutOfSlo).toBe(0);
   });
 });
+
+describe('strategies from the board and from audit fixes', () => {
+  it('turns board edits into a strategy the backtest can run', async () => {
+    const { modelToSpec } = await import('../src/backtest/toSpec');
+    const { specDiffToStrategy, fixToStrategy } = await import('../src/backtest/fromBoard');
+    const m = calibrate(synthetic({ K: 40, c: 4, S: 20 }, 0.8), { bootstrap: 0 });
+    const { spec } = modelToSpec(m, basePlan(m));
+    expect(spec.components.find((c) => c.id === 'api')).toMatchObject({ kind: 'server', instances: 2 });
+    expect(spec.connections).toContainEqual(['users', 'api-lb']);
+    const edited = { ...spec, components: [...spec.components.map((c) => (c.id === 'api' ? { ...c, instances: 3, tier: 'M' as const } : c)), { id: 'redis', kind: 'cache' as const, hitRate: 0.7 }], connections: [...spec.connections.filter((c) => !(Array.isArray(c) && c[0] === 'users')), ['users', 'redis'] as [string, string], ['redis', 'api-lb'] as [string, string]] };
+    const { strategy } = specDiffToStrategy('edits', spec, edited, m);
+    expect(strategy!.changes).toEqual([{ service: 'api', replicas: 3, cpu: 2, cache: { hitRate: 0.7 } }]);
+    const fix = fixToStrategy('Autoscale the API', spec, [{ op: 'set', id: 'api', fields: { autoscale: { min: 2, max: 6, targetUtil: 0.6 } } }], m);
+    expect(fix.strategy!.changes[0]).toMatchObject({ service: 'api', autoscale: { min: 2, max: 6, targetCpu: 0.6 } });
+    expect(() => backtest(m, synthetic({ K: 40, c: 4, S: 20 }, 0.8), [strategy, fix.strategy], { draws: 1 })).not.toThrow();
+  });
+});

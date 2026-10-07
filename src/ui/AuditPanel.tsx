@@ -13,6 +13,8 @@ import type { SimAction } from '../sim/actions';
 import { isSystem } from '../sim/catalog';
 import './audit.css';
 import { LoadCurve } from './LoadCurve';
+import { useBacktest } from '../backtest-ui/store';
+import { backtestBoard } from '../backtest-ui/bridge';
 
 const pct = (n: number) => `${(n * 100).toFixed(n > 0 && n < 0.01 ? 2 : n < 0.1 ? 1 : 0)}%`;
 const ms = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}s` : `${Math.round(n)}ms`);
@@ -72,6 +74,7 @@ function toStudio(f: Finding) {
 }
 
 function FindingRow({ f, open, names }: { f: Finding; open: boolean; names: Map<string, string> }) {
+  const fromBacktest = useBacktest((s) => !!s.origin);
   const { setAudit, applyFix } = useSim.getState();
   const nm = (id: string) => names.get(id) ?? id;
   const bar = Math.min(1, f.kind === 'headroom' ? 0 : f.impact.errorRate);
@@ -147,6 +150,11 @@ function FindingRow({ f, open, names }: { f: Finding; open: boolean; names: Map<
                     <button className="chip good" onClick={() => applyFix(f.id, i)}>
                       <Wrench size={12} /> Apply
                     </button>
+                    {fromBacktest && (
+                      <button className="chip" title="Replay this fix over the real history the board came from" onClick={() => backtestBoard({ title: x.title, changes: x.changes })}>
+                        Backtest
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}

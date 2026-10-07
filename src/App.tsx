@@ -17,6 +17,7 @@ import { Shortcuts } from './ui/Shortcuts';
 import { Embed } from './ui/Embed';
 import { HomeBoard } from './ui/HomeBoard';
 import { BacktestView } from './backtest-ui/BacktestView';
+import { BoardReturn } from './backtest-ui/BoardReturn';
 import './ui/callout.css';
 import { StudioView } from './studio/StudioView';
 import { Stage } from './studio/Stage';
@@ -206,6 +207,7 @@ export default function App() {
         {auditOpen && mode === 'sandbox' && <AuditPanel />}
         {specOpen && mode === 'sandbox' && <SpecEditor />}
         {mode !== 'studio' && mode !== 'home' && <ControlBar />}
+        {mode === 'sandbox' && !present && <BoardReturn />}
         <Toasts />
         <CommandPalette />
         {!present && <Shortcuts />}

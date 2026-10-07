@@ -4,6 +4,7 @@ import type { Dataset } from '../backtest/dataset';
 import type { Model } from '../backtest/model';
 import { backtest, type BacktestResult } from '../backtest/backtest';
 import { StrategySpec } from '../backtest/strategy';
+import type { ArchitectureSpec } from '../spec/schema';
 
 /**
  * Backtest screen state: the workspace (dataset + calibrated model + strategy files), what is
@@ -42,6 +43,9 @@ interface State {
   hover: number | null;
   tab: Tab;
   draws: number;
+  /** the board was opened from this backtest: edits on it can come back as a strategy */
+  origin: { spec: ArchitectureSpec; label: string } | null;
+  setOrigin: (o: { spec: ArchitectureSpec; label: string } | null) => void;
   setWorkspace: (w: Workspace) => void;
   setLoading: (what: string | null) => void;
   setFocus: (i: number) => void;
@@ -75,6 +79,8 @@ export const useBacktest = create<State>((set, get) => ({
   hover: null,
   tab: 'overview',
   draws: 20,
+  origin: null,
+  setOrigin: (origin) => set({ origin }),
   setWorkspace: (w) => {
     set({ workspace: w, focus: 0, view: null, hover: null, result: null });
     get().recompute();
