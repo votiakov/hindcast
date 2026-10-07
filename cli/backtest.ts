@@ -78,6 +78,13 @@ function printModel(m: Model) {
   console.log('');
 }
 
+/** one line: how well this model predicted runs it never saw */
+function accuracyLine(acc: Model['accuracy']): string {
+  const checks = acc.flatMap((a) => a.checks.map((c) => ({ ...c, method: a.method }))).filter((c) => c.metric !== 'errors');
+  if (!checks.length) return c.yellow('  model accuracy: not measured yet (bottleneck calibrate --holdout 0.3)');
+  return `  ${c.bold('model accuracy')} ${checks.map((x) => `${x.metric}${x.method === 'holdout' ? ' (holdout)' : ''} ${(x.pass ? c.green : c.red)(`${(x.error * 100).toFixed(0)}%`)}`).join(c.dim(' · '))} ${c.dim('— bottleneck accuracy <model> for details')}`;
+}
+
 function printBacktest(r: BacktestResult) {
   const f$ = (x: number) => `${x < 0 ? '−' : '+'}$${Math.abs(x).toFixed(Math.abs(x) < 100 ? 2 : 0)}`;
   console.log(`\n${c.bold(`Backtest — ${r.model}`)} ${c.dim(`· ${((r.window.end - r.window.start) / 3600).toFixed(1)} h of history · ${r.draws} draws`)}`);
@@ -89,7 +96,7 @@ function printBacktest(r: BacktestResult) {
     console.log(`  ${(good ? c.green : c.yellow)(s.name.padEnd(30))} ${f$(s.delta.monthly.p50)}/month ${Math.abs(s.delta.monthly.hi - s.delta.monthly.lo) > 0.005 ? c.dim(`(${f$(s.delta.monthly.lo)} … ${f$(s.delta.monthly.hi)})`) : ''}   ${Math.round(s.summary.minutesOutOfSlo.p50)} min out of SLO   ${Math.round(s.summary.failedRequests.p50).toLocaleString()} failed`);
     console.log(`  ${''.padEnd(30)} ${c.dim(headline(s, r.baseline))}`);
   }
-  console.log('');
+  console.log(`\n${accuracyLine(r.accuracy)}\n`);
 }
 
 export async function backtestCommand(cmd: string, pos: string[], opt: Opt): Promise<boolean> {
@@ -191,7 +198,8 @@ export async function backtestCommand(cmd: string, pos: string[], opt: Opt): Pro
       const verdict = (s: { summary: { minutesOutOfSlo: { p50: number }; failedRequests: { p50: number } } }) => (s.summary.minutesOutOfSlo.p50 < 1 ? c.green('survives') : c.red(`${Math.round(s.summary.minutesOutOfSlo.p50)} min out of SLO, ${Math.round(s.summary.failedRequests.p50).toLocaleString()} failed requests`));
       console.log(`\n  ${'As built'.padEnd(30)} ${verdict(result.baseline)}   ${c.dim(result.baseline.worst.why)}`);
       for (const st of result.strategies) console.log(`  ${st.name.padEnd(30)} ${verdict(st)}`);
-      console.log(c.dim(`\n  assumptions: ${o.assumptions.join(' ')}\n  source: ${o.sources.map((x) => x.url).join(' ')}\n`));
+      console.log(c.dim(`\n  assumptions: ${o.assumptions.join(' ')}\n  source: ${o.sources.map((x) => x.url).join(' ')}`));
+      console.log(`${accuracyLine(m.accuracy)}\n`);
       return true;
     }
     case 'diff-strategy': {
