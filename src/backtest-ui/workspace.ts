@@ -11,7 +11,7 @@ import { outageById, outageScenario } from '../backtest/outages';
 /** Reference systems recorded under real load (see reference/README.md), served from /reference/. */
 export const REFERENCES = [
   { id: 'hotrod', label: 'HotROD (reference)' },
-  { id: 'boutique', label: 'Online Boutique (reference)' },
+  { id: 'shop', label: 'Astronomy Shop (reference)' },
   { id: 'petclinic', label: 'PetClinic + Postgres (reference)' },
 ];
 

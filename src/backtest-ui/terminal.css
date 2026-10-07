@@ -35,7 +35,9 @@
 .bt-spacer { flex: 1; }
 
 /* bar */
-.bt-bar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--bt-line); flex-wrap: wrap; }
+.bt-bar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--bt-line); flex-wrap: nowrap; overflow: hidden; white-space: nowrap; }
+.bt-bar .bt-select { max-width: 190px; min-width: 0; }
+@media (max-width: 1100px) { .bt-bar { flex-wrap: wrap; } }
 .bt-brand { font: 600 12px var(--bt-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--bt-amber); margin-right: 8px; }
 .bt-sym { font: 600 14px var(--bt-mono); color: var(--bt-hi); margin-right: 10px; }
 .bt-chip { border: 1px solid var(--bt-line) !important; padding: 2px 9px !important; color: var(--bt-dim) !important; font: 12.5px var(--bt-mono) !important; white-space: nowrap; cursor: pointer; }
