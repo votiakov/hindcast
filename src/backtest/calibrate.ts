@@ -330,13 +330,19 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
           }
           let bestK = capacity.perReplicaRps;
           let bestE = Infinity;
-          for (let j = -12; j <= 12; j++) {
-            const K = capacity.perReplicaRps * 1.04 ** j;
-            // for a lock, more capacity means a shorter hold time
-            const s = tiedK ? (capacity.servers * 1000) / K : selfMean;
-            const e = logErr(replayQueue(perRep, d.stepS, capacity.servers, K, s, selfP99 + (s - selfMean), 1, variability).mean, selfObs, w);
-            if (e < bestE) [bestE, bestK] = [e, K];
-          }
+          // servers and variability are refitted too: with little load near the limit they trade
+          // off against capacity, and the band has to show that
+          const cs = tiedK ? [...new Set([Math.max(1, capacity.servers - 1), capacity.servers, capacity.servers + 1])] : [capacity.servers];
+          for (const c of cs)
+            for (const v of VARIABILITY)
+              for (let j = -12; j <= 12; j++) {
+                const K = capacity.perReplicaRps * 1.04 ** j * (tiedK ? c / capacity.servers : 1);
+                // for a lock, more capacity means a shorter hold time
+                const sv = tiedK ? (c * 1000) / K : selfMean;
+                if (tiedK && (sv < S * 0.4 || sv > S * 1.05)) continue;
+                const e = logErr(replayQueue(perRep, d.stepS, c, K, sv, selfP99 + (sv - selfMean), 1, v).mean, selfObs, w);
+                if (e < bestE) [bestE, bestK] = [e, K];
+              }
           draws.push(bestK);
         }
         draws.sort((a, b) => a - b);
