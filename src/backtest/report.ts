@@ -22,7 +22,7 @@ export function headline(s: StrategyResult, base: StrategyResult): string {
     const w = [...newInc].sort((a, b) => b.minutes - a.minutes || b.peakP99Ms - a.peakP99Ms)[0];
     const total = Math.max(w.minutes, s.delta.minutesOutOfSlo.p50);
     const mins = (x: number) => `${Math.max(1, Math.round(x))} minute${Math.max(1, Math.round(x)) === 1 ? '' : 's'}`;
-    if (newInc.length === 1 || total < w.minutes + 0.5) return `${money}; on ${when(w.start)} it would have caused ${mins(w.minutes)} out of SLO (${w.why})`;
+    if (total < w.minutes + 0.5) return `${money}; on ${when(w.start)} it would have caused ${mins(w.minutes)} out of SLO (${w.why})`;
     return `${money}; it would have caused ${mins(total)} out of SLO, the worst on ${when(w.start)} (${w.why})`;
   }
   const ds = s.delta.minutesOutOfSlo.p50;
