@@ -85,8 +85,10 @@ export interface EndpointModel {
   baseExcessMs: number;
   /** tail multiplier fitted on history */
   tail: number;
-  /** baseline error share (not overload) */
+  /** baseline error share (not overload), at zero load */
   errorRate: number;
+  /** baseline errors that grow with traffic: + this × the endpoint's req/s */
+  errorSlope?: number;
   /** bytes per request per edge, and back to the client */
   bytes: Record<string, number>;
   egressBytes: number;

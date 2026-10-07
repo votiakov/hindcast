@@ -495,6 +495,27 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
       errF += n * e;
     }
     const errs = errN > 0 ? [errF / errN] : [];
+    // errors that grow with traffic (rate limits, timeouts inside, contention): a line through the
+    // buckets that were not overloaded
+    let errorSlope: number | undefined;
+    {
+      const xs: number[] = [];
+      const ys: number[] = [];
+      for (let i = 0; i < rps.length; i++) {
+        const e = vals(ser?.errorRate, i);
+        const n = vals(ser?.rps, i);
+        const p = vals(ser?.p99Ms, i);
+        if (e === null || n === null || n <= 0 || e > 0.2 || (p !== null && p >= timeoutMs * 0.5)) continue;
+        xs.push(n);
+        ys.push(e);
+      }
+      const fit = regress(xs, ys);
+      if (fit && fit.slope > 0 && fit.se < fit.slope / 2 && xs.length >= 10) {
+        errorSlope = fit.slope;
+        errs[0] = Math.max(0, fit.intercept);
+        notes.push(`errors grow with traffic: ${(fit.intercept * 100).toFixed(2)}% + ${(fit.slope * 100).toFixed(3)}% per req/s`);
+      }
+    }
     const e: EndpointModel = {
       id,
       service: shape?.service ?? ser?.service ?? id.split(' ')[0],
@@ -506,6 +527,7 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
       baseExcessMs: Math.max(0, measuredP99 - measuredMean),
       tail: 1,
       errorRate: errs.length ? Math.min(0.5, errs[0]) : shape?.errorRate ?? 0,
+      ...(errorSlope ? { errorSlope } : {}),
       bytes: shape?.bytes ?? {},
       egressBytes: 0,
       slo: opts.endpoints?.[id]?.slo ?? slo,

@@ -82,6 +82,7 @@ export interface EndpointPlan {
   baseExcessMs: number;
   tail: number;
   errorRate: number;
+  errorSlope?: number;
   bytes: Record<string, number>;
   egressBytes: number;
   /** client retries per failed request, capped by a budget (share of extra load) */
@@ -275,6 +276,7 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
       fail: 0,
       parts: [] as { w: number; mean: number; p99: number }[],
       timeout: 0,
+      late: 0,
     };
     for (const id of svcIds) {
       const s = plan.services[id];
@@ -375,11 +377,13 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
         // a failed call to any service on the request's path fails the request
         let ok = 1;
         for (const [s, v] of Object.entries(visits[e])) if (lat[s]?.err) ok *= (1 - lat[s].err) ** Math.max(1, v);
-        const fail = 1 - (1 - ep.errorRate) * (1 - late) * ok;
+        const base0 = Math.min(1, Math.max(0, ep.errorRate + (ep.errorSlope ?? 0) * (traffic.endpoints[e][i] ?? 0)));
+        const fail = 1 - (1 - base0) * (1 - late) * ok;
         epFail[e] = fail;
         const base = traffic.endpoints[e][i] ?? 0;
         // what the client sees: answers capped at its deadline
-        const seenP99 = fail > 0.01 ? ep.timeoutMs : Math.min(p99, ep.timeoutMs);
+        // fast failures answer quickly; only requests that ran into the deadline sit at the timeout
+        const seenP99 = late > 0.01 ? ep.timeoutMs : Math.min(p99, ep.timeoutMs);
         const seenMean = isFinite(mean) ? Math.min(mean, ep.timeoutMs) : ep.timeoutMs;
         const o = out.endpoints[e];
         o.rps[i] += base / sub;
@@ -388,6 +392,7 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
         o.p99Ms[i] += seenP99 / sub;
         acc.rps += base / sub;
         acc.fail += (base * fail) / sub;
+        acc.late += (base * late) / sub;
         acc.parts.push({ w: base / sub, mean: seenMean, p99: seenP99 });
         acc.timeout = Math.max(acc.timeout, ep.timeoutMs);
       }
@@ -458,8 +463,8 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
     }
     out.rps[i] = acc.rps;
     out.errorRate[i] = acc.rps > 0 ? acc.fail / acc.rps : 0;
-    // with more than 1% of requests failing, the 99th percentile is a timeout
-    out.p99Ms[i] = out.errorRate[i] > 0.01 ? acc.timeout : Math.min(acc.timeout || Infinity, mixtureQuantile(acc.parts));
+    // with more than 1% of requests running into the deadline, the 99th percentile is the timeout
+    out.p99Ms[i] = acc.rps > 0 && acc.late / acc.rps > 0.01 ? acc.timeout : Math.min(acc.timeout || Infinity, mixtureQuantile(acc.parts));
     const total = out.cost.compute[i] + out.cost.requests[i] + out.cost.transfer[i] + out.cost.other[i];
     out.costPerHour[i] = (total * 3600) / stepS;
   }
@@ -491,6 +496,6 @@ export function basePlan(model: Model, observed?: Record<string, Num[] | undefin
   }
   const endpoints: Record<string, EndpointPlan> = {};
   for (const [id, e] of Object.entries(model.endpoints))
-    endpoints[id] = { id, service: e.service, visits: e.visits, calls: e.calls, weights: e.weights, overheadMs: e.overheadMs, baseExcessMs: e.baseExcessMs, tail: e.tail, errorRate: e.errorRate, bytes: e.bytes, egressBytes: e.egressBytes, timeoutMs: model.timeoutMs, slo: e.slo };
+    endpoints[id] = { id, service: e.service, visits: e.visits, calls: e.calls, weights: e.weights, overheadMs: e.overheadMs, baseExcessMs: e.baseExcessMs, tail: e.tail, errorRate: e.errorRate, errorSlope: e.errorSlope, bytes: e.bytes, egressBytes: e.egressBytes, timeoutMs: model.timeoutMs, slo: e.slo };
   return { services, endpoints, transfer: model.transfer, unattributedPerHour: model.unattributedPerHour, slo: model.slo };
 }
