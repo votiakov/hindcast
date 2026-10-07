@@ -55,7 +55,7 @@ export const ArchitectureSpec = z.object({
   version: z.literal(1).default(1),
   name: z.string().optional(),
   description: z.string().optional(),
-  pricing: z.enum(['illustrative', 'aws-us-east-1']).optional().describe('cost model: illustrative teaching defaults, or cited AWS us-east-1 on-demand prices'),
+  pricing: z.enum(['illustrative', 'aws-us-east-1', 'gcp-us-central1']).optional().describe('cost model: illustrative teaching defaults, or cited AWS us-east-1 / Google Cloud us-central1 on-demand prices'),
   components: z.array(ComponentSpec).min(1),
   connections: z
     .array(

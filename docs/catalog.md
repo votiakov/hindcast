@@ -50,7 +50,8 @@ With a runtime set, serverless price = $0.20 / 1M requests + $0.0000166667 per G
 ## Pricing profiles
 
 Costs follow the active **pricing profile** (Settings → Pricing in the app, `pricing:` at the root of
-a spec for the CLI/MCP). `illustrative` is the teaching default above. `aws-us-east-1` prices every
+a spec for the CLI/MCP). `illustrative` is the teaching default above; `aws-us-east-1` and
+`gcp-us-central1` are cited real-cloud profiles. `aws-us-east-1` prices every
 component as a concrete SKU or usage line, on-demand, checked 2026-10-02:
 
 | component | S / M / L (or unit) | price | source / assumption |
@@ -66,6 +67,22 @@ component as a concrete SKU or usage line, on-demand, checked 2026-10-02:
 | queue | SQS standard | $1.20 per million messages | [SQS pricing](https://cloudburn.io/blog/amazon-sqs-pricing): $0.40/M calls × send+receive+delete |
 | function | Lambda | $0.20/M + $0.0000166667 per GB-s | [Lambda pricing](https://aws.amazon.com/lambda/pricing/); memory from the runtime profile |
 | llmapi | GPT-4o-mini-class API | ≈ $0.00033 per request | [token prices](https://pricepertoken.com/pricing-page/model/openai-gpt-4o-mini): $0.15/$0.60 per M tokens, ~1,000 in + 300 out |
+
+`gcp-us-central1` (checked 2026-10-07):
+
+| component | S / M / L (or unit) | price | source / assumption |
+|---|---|---|---|
+| server, worker | c4a-standard-2 / -4 / -8 | $0.0898 / $0.1796 / $0.3592 per hour | [gcloud-compute.com: c4a](https://gcloud-compute.com/c4a-standard-2.html), Axion (Arm), linear per vCPU + GB |
+| db, replica | Cloud SQL 2/4/8 vCPU, 16/32/64 GB | $0.1946 / $0.3892 / $0.7784 per hour | [Cloud SQL pricing](https://cloud.google.com/sql/pricing): Enterprise, $0.0413/vCPU-h + $0.007/GB-h; HA ×2 |
+| cache | Memorystore Standard 5 / 10 / 26 GB | $0.27 / $0.54 / $1.196 per hour | [Memorystore pricing](https://cloud.google.com/memorystore/docs/redis/pricing): $0.054/GB-h (M2), $0.046/GB-h (M3) |
+| llm | g2-standard-4 (1× NVIDIA L4) | $0.7068 per GPU-hour | [accelerator pricing](https://cloud.google.com/products/compute/pricing/accelerator-optimized) |
+| lb | Application Load Balancer | $0.025/h + $0.008/GB processed | [Cloud Load Balancing pricing](https://cloud.google.com/load-balancing/pricing), ~10 KB per request |
+| gateway | API Gateway | $3.00 per million | [API Gateway pricing](https://cloud.google.com/api-gateway/pricing) |
+| cdn | Cloud CDN | ≈ $1.51 per million | [Cloud CDN pricing](https://cloud.google.com/cdn/pricing): $0.0075/10k lookups + ~$0.08/GB, ~10 KB/response |
+| storage | Cloud Storage class B ops | $0.40 per million | [Cloud Storage pricing](https://cloud.google.com/storage/pricing) |
+| queue | Pub/Sub | ≈ $0.11 per million messages | [Pub/Sub pricing](https://cloud.google.com/pubsub/pricing): $40/TiB, 1 KB minimum × publish/pull/ack |
+| function | Cloud Run | $0.40/M requests (+ compute, approximated Lambda-like) | [Cloud Run pricing](https://cloud.google.com/run/pricing) |
+| llmapi | same hosted model as AWS | ≈ $0.00033 per request | provider prices don't depend on your cloud |
 
 Under a real profile, size tiers are priced as the actual SKUs (cloud instance prices are linear, so
 the illustrative vertical-scaling premium disappears), and nodes show their SKU next to the price.

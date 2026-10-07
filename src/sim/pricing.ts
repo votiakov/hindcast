@@ -6,7 +6,7 @@ import type { Kind, Tier } from './catalog';
  * so a cost claim can be traced and challenged.
  */
 
-export type PricingId = 'illustrative' | 'aws-us-east-1';
+export type PricingId = 'illustrative' | 'aws-us-east-1' | 'gcp-us-central1';
 
 export interface SkuPrice {
   sku: string;
@@ -28,6 +28,8 @@ export interface KindPricing {
 export interface PricingProfile {
   id: PricingId;
   label: string;
+  /** for compact pickers */
+  short: string;
   region?: string;
   asOf?: string;
   kinds: Partial<Record<Kind, KindPricing>>;
@@ -36,10 +38,11 @@ export interface PricingProfile {
 const VANTAGE = (path: string) => `https://instances.vantage.sh/aws/${path}`;
 
 export const PRICING: Record<PricingId, PricingProfile> = {
-  illustrative: { id: 'illustrative', label: 'Illustrative (teaching defaults)', kinds: {} },
+  illustrative: { id: 'illustrative', label: 'Illustrative (teaching defaults)', short: 'Illustrative', kinds: {} },
   'aws-us-east-1': {
     id: 'aws-us-east-1',
     label: 'AWS us-east-1, on-demand',
+    short: 'AWS us-east-1',
     region: 'us-east-1',
     asOf: '2026-10-02',
     kinds: {
@@ -99,6 +102,72 @@ export const PRICING: Record<PricingId, PricingProfile> = {
       },
       llmapi: {
         perRequest: { price: 0.15 / 1_000_000 * 1000 + 0.6 / 1_000_000 * 300, basis: 'GPT-4o-mini: $0.15 / $0.60 per million input / output tokens, ~1,000 in + 300 out per request' },
+        source: 'https://pricepertoken.com/pricing-page/model/openai-gpt-4o-mini',
+      },
+    },
+  },
+  'gcp-us-central1': {
+    id: 'gcp-us-central1',
+    label: 'Google Cloud us-central1, on-demand',
+    short: 'GCP us-central1',
+    region: 'us-central1',
+    asOf: '2026-10-07',
+    kinds: {
+      server: {
+        tiers: { S: { sku: 'c4a-standard-2', hourly: 0.0898 }, M: { sku: 'c4a-standard-4', hourly: 0.1796 }, L: { sku: 'c4a-standard-8', hourly: 0.3592 } },
+        source: 'https://gcloud-compute.com/c4a-standard-2.html',
+        note: 'Compute Engine Axion (Arm), on-demand; priced per vCPU + GB, so sizes scale linearly',
+      },
+      worker: {
+        tiers: { S: { sku: 'c4a-standard-2', hourly: 0.0898 }, M: { sku: 'c4a-standard-4', hourly: 0.1796 }, L: { sku: 'c4a-standard-8', hourly: 0.3592 } },
+        source: 'https://gcloud-compute.com/c4a-standard-2.html',
+      },
+      db: {
+        tiers: { S: { sku: 'Cloud SQL 2 vCPU / 16 GB', hourly: 0.1946 }, M: { sku: 'Cloud SQL 4 vCPU / 32 GB', hourly: 0.3892 }, L: { sku: 'Cloud SQL 8 vCPU / 64 GB', hourly: 0.7784 } },
+        source: 'https://cloud.google.com/sql/pricing',
+        note: 'Cloud SQL for PostgreSQL Enterprise: $0.0413 per vCPU-hour + $0.007 per GB-hour; HA doubles it',
+      },
+      replica: {
+        tiers: { S: { sku: 'Cloud SQL replica 2 vCPU / 16 GB', hourly: 0.1946 }, M: { sku: 'Cloud SQL replica 4 vCPU / 32 GB', hourly: 0.3892 }, L: { sku: 'Cloud SQL replica 8 vCPU / 64 GB', hourly: 0.7784 } },
+        source: 'https://cloud.google.com/sql/pricing',
+      },
+      cache: {
+        tiers: { S: { sku: 'Memorystore Standard 5 GB', hourly: 0.27 }, M: { sku: 'Memorystore Standard 10 GB', hourly: 0.54 }, L: { sku: 'Memorystore Standard 26 GB', hourly: 1.196 } },
+        source: 'https://cloud.google.com/memorystore/docs/redis/pricing',
+        note: 'Memorystore for Redis, Standard (HA) tier: $0.054/GB-h (5–10 GB), $0.046/GB-h (11–35 GB)',
+      },
+      llm: {
+        fixed: { sku: 'g2-standard-4 (1× NVIDIA L4)', hourly: 0.7068 },
+        source: 'https://cloud.google.com/products/compute/pricing/accelerator-optimized',
+        note: 'one GPU instance; capacity assumes a small (7–8B) model',
+      },
+      lb: {
+        fixed: { sku: 'Application Load Balancer forwarding rule', hourly: 0.025 },
+        perRequest: { price: 0.008 * (10 / 1_048_576), basis: '$0.008 per GB processed, assuming ~10 KB per request' },
+        source: 'https://cloud.google.com/load-balancing/pricing',
+      },
+      gateway: {
+        perRequest: { price: 3.0 / 1_000_000, basis: 'API Gateway $3.00 per million calls (2M–1B per month)' },
+        source: 'https://cloud.google.com/api-gateway/pricing',
+      },
+      cdn: {
+        perRequest: { price: 0.75 / 1_000_000 + 0.08 * (10 / 1_048_576), basis: 'Cloud CDN: $0.0075 per 10k cache lookups + ~$0.08/GB egress, assuming ~10 KB per response' },
+        source: 'https://cloud.google.com/cdn/pricing',
+      },
+      storage: {
+        perRequest: { price: 0.4 / 1_000_000, basis: 'Cloud Storage Standard class B operations, $0.0004 per 1,000' },
+        source: 'https://cloud.google.com/storage/pricing',
+      },
+      queue: {
+        perRequest: { price: 0.11 / 1_000_000, basis: 'Pub/Sub $40 per TiB, 1 KB minimum per publish / pull / ack (~3 KB per message)' },
+        source: 'https://cloud.google.com/pubsub/pricing',
+      },
+      function: {
+        perRequest: { price: 0.4 / 1_000_000, basis: 'Cloud Run $0.40 per million requests + $0.000024 per vCPU-second + $0.0000025 per GiB-second' },
+        source: 'https://cloud.google.com/run/pricing',
+      },
+      llmapi: {
+        perRequest: { price: 0.15 / 1_000_000 * 1000 + 0.6 / 1_000_000 * 300, basis: 'same hosted model as the AWS profile (GPT-4o-mini, ~1,000 in + 300 out tokens)' },
         source: 'https://pricepertoken.com/pricing-page/model/openai-gpt-4o-mini',
       },
     },

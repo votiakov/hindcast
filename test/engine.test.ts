@@ -76,3 +76,15 @@ describe('load curve', () => {
     expect(c[3].perMillion).toBeLessThan(c[0].perMillion);
   });
 });
+
+describe('pricing profiles', () => {
+  it('prices the same design differently per cloud, from cited SKUs', () => {
+    const cost = (pricing?: string) => simulate({ ...shop, ...(pricing ? { pricing } : {}) }, steady(300, 5)).summary.meanCostPerHour;
+    const aws = cost('aws-us-east-1');
+    const gcp = cost('gcp-us-central1');
+    expect(aws).toBeGreaterThan(0);
+    expect(gcp).toBeGreaterThan(0);
+    expect(Math.abs(aws - gcp) / aws).toBeLessThan(0.5); // same ballpark, not identical
+    expect(aws).not.toBe(gcp);
+  });
+});

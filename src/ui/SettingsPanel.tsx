@@ -61,7 +61,7 @@ export function SettingsButton() {
             <div className="seg">
               {(Object.keys(PRICING) as PricingId[]).map((p) => (
                 <button key={p} className={settings.pricing === p ? 'on' : ''} onClick={() => setSetting('pricing', p)} title={PRICING[p].label}>
-                  {p === 'illustrative' ? 'Illustrative' : 'AWS us-east-1'}
+                  {PRICING[p].short}
                 </button>
               ))}
             </div>
