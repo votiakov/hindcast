@@ -10,7 +10,7 @@ warmupS: 90
 warmupLoad: [steps, 10, 130, 20, 45]
 # …on 4 cores (the JIT compiler needs them), then the app's real limit is set live
 warmupCpus: { app: { env: APP_CPUS, warm: 4, cpus: 2 } }
-thin: 5
+thin: 3
 mix: mix.json
 edge: app-lb
 slo: { p99Ms: 500, errorRate: 0.01 }
@@ -19,12 +19,12 @@ runs:
   probe: { shape: [steps, 2, 16, 1, 30] }
   # 40 minutes of "production": a compressed day peaking at 160 req/s, with a push to 280 req/s
   history: { shape: [history, 160, 280, 40] }
-  # breaking point, measured: +20 req/s every minute from 160 to 440
-  stress: { shape: [steps, 160, 440, 20, 60] }
+  # breaking point, measured: +40 req/s every minute from 200 to 720
+  stress: { shape: [steps, 200, 720, 40, 60] }
   # the strategy, actually applied: two app replicas behind the load balancer, same day
   replicas-2: { shape: [history, 160, 280, 40], env: { APP_REPLICAS: 2 } }
   # the other strategy, actually applied: a 4-core app, stepped to its breaking point
-  stress-cpu4: { shape: [steps, 300, 860, 40, 60], env: { APP_CPUS: 4.0 } }
+  stress-cpu4: { shape: [steps, 400, 1360, 80, 60], env: { APP_CPUS: 4.0 } }
 validate:
   - { run: replicas-2, strategy: strategies/1-app-replicas.yaml }
   - { run: stress, stress: true }
