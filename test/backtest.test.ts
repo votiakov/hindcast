@@ -427,3 +427,22 @@ describe('endpoint matching', () => {
     expect(sameEndpoint('frontend GET /api/cart', 'frontend POST /api/cart')).toBe(false);
   });
 });
+
+describe('metastable failures', () => {
+  it('once overloaded, finishes only its overloaded rate until the backlog is gone', () => {
+    const d = synthetic({ K: 40, c: 4, S: 20 }, 0.5);
+    const m = calibrate(d, { bootstrap: 0 });
+    const plan = basePlan(m);
+    plan.services.api.perReplicaRps = 40;
+    const n = 60;
+    // 10 minutes at 30/s, a minute at 50/s, then 20/s
+    const rps = Array.from({ length: n }, (_, i) => (i < 20 ? 60 : i < 24 ? 100 : 40));
+    const healthy = runPlan(plan, { start: 0, stepS: 15, n, endpoints: { 'api GET /x': rps } });
+    plan.services.api.overloadedRps = 15;
+    const meta = runPlan(plan, { start: 0, stepS: 15, n, endpoints: { 'api GET /x': rps } });
+    const after = (r: typeof meta) => r.endpoints['api GET /x'].errorRate.slice(40).reduce((a, x) => a + x, 0);
+    // the ordinary service has recovered by then; the metastable one is still failing at 20 req/s per replica
+    expect(after(healthy)).toBeLessThan(0.1);
+    expect(after(meta)).toBeGreaterThan(after(healthy) + 1);
+  });
+});
