@@ -19,63 +19,63 @@
     "r2": 0.3186231276839908
    },
    "capacity": {
-    "limit": "concurrency",
+    "limit": "cpu",
     "servers": 1,
-    "perReplicaRps": 255.58350000000002,
+    "perReplicaRps": 235.16750000000002,
     "band": [
-     255.5,
+     214.668,
      255.667
     ],
     "overloadedRps": 145.41666666666666,
     "samples": [
-     255.60472134807821,
-     255.5004568654371,
-     255.5880836556733,
-     255.66383551156778,
-     255.6617191090018,
-     255.54694428499417,
-     255.6023440897204,
-     255.6203641045699,
-     255.57110809100047,
-     255.66613543192832,
-     255.57603027823708,
-     255.5816276490097,
-     255.52320190842707,
-     255.5674253757703,
-     255.54133649069817,
-     255.52580035353407,
-     255.5816870305403,
-     255.5112507705302,
-     255.56590142578796,
-     255.62810704033544,
-     255.54773889947987,
-     255.53187588759675,
-     255.5071358615693,
-     255.5713727866162,
-     255.59859387638676,
-     255.6333802640117,
-     255.54924326843675,
-     255.53431345437141,
-     255.60990765064489,
-     255.59119575438743,
-     255.62665995437,
-     255.53219994320207,
-     255.6203982712026,
-     255.57584071472428,
-     255.62865910870653,
-     255.66608717824263,
-     255.5399686649749,
-     255.62641921610734,
-     255.52559624730168,
-     255.55399638047535
+     240.37740449017403,
+     214.78016183266766,
+     236.2928011913181,
+     254.89010861537116,
+     254.37052544889156,
+     226.19296251781657,
+     239.79378044578806,
+     244.21774804347848,
+     232.12524923909083,
+     255.45474594987718,
+     233.33366094276448,
+     234.70783222603845,
+     220.3641379856344,
+     231.2211316239941,
+     224.81623222834617,
+     221.00206403917772,
+     234.7224105695947,
+     217.43009785010526,
+     230.84699734059885,
+     246.11866195635963,
+     226.38804275314067,
+     222.4936258417906,
+     216.41987538012233,
+     232.19023280525698,
+     238.8730918441962,
+     247.4132541569746,
+     226.75736983615812,
+     223.0920557830748,
+     241.65065729814302,
+     237.0568307432914,
+     245.76339801925513,
+     222.57318246312673,
+     244.22613605409813,
+     233.28712253281614,
+     246.25419639436225,
+     255.44289952556534,
+     224.48042691800092,
+     245.70429605500004,
+     220.9519553480309,
+     227.92427307250816
     ]
    },
    "self": {
     "mean": 5.941876449592074,
     "p99": 9.774898218133862
    },
-   "tail": 1.3,
-   "variability": 1,
+   "tail": 3.5,
+   "variability": 0.3,
    "cost": {
     "perReplicaHour": 0.08762749994999999,
     "perRequest": 0,
@@ -84,15 +84,15 @@
     "source": "bill"
    },
    "fit": {
-    "status": "unexplained",
-    "latencyMape": 0.7971035693343301,
-    "p99Mape": 2.112168576630986,
+    "status": "poor",
+    "latencyMape": 0.5773858757429858,
+    "p99Mape": 2.0323637342551244,
     "cpuMape": 0.23306439283319,
     "cpuR2": 0.3186231276839908,
     "samples": 81,
     "notes": [
-     "broke between 256 and 256 req/s per replica, and while overloaded finished only 145 req/s — a metastable failure: it stays down until the backlog is gone",
-     "replaying the history reproduces its self time within 80% (mean abs. error)"
+     "broke between 215 and 256 req/s per replica, and while overloaded finished only 145 req/s — a metastable failure: it stays down until the backlog is gone",
+     "replaying the history reproduces its self time within 58% (mean abs. error)"
     ]
    }
   },
@@ -109,62 +109,61 @@
     "r2": 0.3770708575151239
    },
    "capacity": {
-    "limit": "concurrency",
+    "limit": "cpu",
     "servers": 1,
-    "perReplicaRps": 1934.1666666666665,
+    "perReplicaRps": 18707.46561626676,
     "band": [
-     1934.1666666666665,
-     1934.1666666666665
+     15085.302569088333,
+     20857.826474904716
     ],
-    "overloadedRps": 1086,
     "samples": [
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665,
-     1934.1666666666665
+     13515.54830267906,
+     14483.021343775134,
+     14838.14825214476,
+     15034.509253948921,
+     15090.94627077049,
+     15273.570211789822,
+     15618.155719795217,
+     15912.7736034216,
+     16065.737988526365,
+     16155.31658764594,
+     16309.562231546852,
+     16347.862275299185,
+     16397.1031438008,
+     16709.463666625037,
+     16881.558082644082,
+     16916.882123779138,
+     17016.133794006862,
+     17105.241288672423,
+     17328.15720658078,
+     17536.702655454086,
+     17571.927811519363,
+     17689.95816515871,
+     17989.265118202333,
+     18133.472028621658,
+     18155.907804015023,
+     18414.74099252032,
+     18689.689497463743,
+     18989.996329862468,
+     19111.959838976774,
+     19476.131189769512,
+     19527.184994954154,
+     20171.396363339012,
+     20512.20429509125,
+     20697.672118922008,
+     20757.409644763888,
+     20809.056325546062,
+     21296.7578191326,
+     21425.35198116462,
+     21557.35004632476,
+     22443.68813795682
     ]
    },
    "self": {
-    "mean": 0.14015240997738307,
-    "p99": 0.48006196402978774
+    "mean": 0.13876476235384463,
+    "p99": 0.4786743164062493
    },
-   "tail": 0.5,
+   "tail": 3.5,
    "variability": 1.7,
    "cost": {
     "perReplicaHour": 0.04270250009999999,
@@ -174,15 +173,14 @@
     "source": "bill"
    },
    "fit": {
-    "status": "fair",
-    "latencyMape": 0.26073449010895805,
-    "p99Mape": 0.821342745549924,
+    "status": "good",
+    "latencyMape": 0.09870391135138347,
+    "p99Mape": 0.1648502556548806,
     "cpuMape": 0.2682452445322313,
     "cpuR2": 0.3770708575151239,
     "samples": 81,
     "notes": [
-     "broke between 1934 and 1934 req/s per replica, and while overloaded finished only 1086 req/s — a metastable failure: it stays down until the backlog is gone",
-     "replaying the history reproduces its self time within 26% (mean abs. error)"
+     "replaying the history reproduces its self time within 10% (mean abs. error)"
     ]
    }
   },
@@ -236,7 +234,7 @@
     "app": 0.9567590400945863,
     "postgres": 9.775706326496573
    },
-   "overheadMs": 2.369467190838013,
+   "overheadMs": 2.383032426490386,
    "baseExcessMs": 4.599500000000001,
    "baseP50Ms": 9.2735,
    "tail": 0.5,
@@ -251,10 +249,10 @@
     "status": "unexplained",
     "samples": 81,
     "notes": [
-     "replaying the history reproduces its p99 within 151% (mean abs. error)"
+     "replaying the history reproduces its p99 within 583% (mean abs. error)"
     ],
-    "p99Mape": 1.5080200301627653,
-    "latencyMape": 2.100162308779463
+    "p99Mape": 5.834380108587707,
+    "latencyMape": 12.8229548513961
    }
   },
   "app GET /petclinic/api/owners/{ownerId}": {
@@ -272,7 +270,7 @@
     "app": 0.9693874496278448,
     "postgres": 4.098901824897805
    },
-   "overheadMs": 0.6530485735060649,
+   "overheadMs": 0.658736404882502,
    "baseExcessMs": 4.041499999999999,
    "baseP50Ms": 6.8134999999999994,
    "tail": 0.5,
@@ -287,10 +285,10 @@
     "status": "unexplained",
     "samples": 81,
     "notes": [
-     "replaying the history reproduces its p99 within 124% (mean abs. error)"
+     "replaying the history reproduces its p99 within 787% (mean abs. error)"
     ],
-    "p99Mape": 1.2377658193853058,
-    "latencyMape": 1.835671692099822
+    "p99Mape": 7.866749418923439,
+    "latencyMape": 17.36071685720893
    }
   },
   "app GET /petclinic/api/pets": {
@@ -308,7 +306,7 @@
     "app": 0.9308436820712545,
     "postgres": 10.39869300224014
    },
-   "overheadMs": 2.274139962370336,
+   "overheadMs": 2.2885696840028,
    "baseExcessMs": 4.7010000000000005,
    "baseP50Ms": 9.145,
    "tail": 0.5,
@@ -323,10 +321,10 @@
     "status": "unexplained",
     "samples": 81,
     "notes": [
-     "replaying the history reproduces its p99 within 135% (mean abs. error)"
+     "replaying the history reproduces its p99 within 493% (mean abs. error)"
     ],
-    "p99Mape": 1.3454904951194075,
-    "latencyMape": 2.1223105919965635
+    "p99Mape": 4.927206521410327,
+    "latencyMape": 12.575247334493199
    }
   },
   "app GET /petclinic/api/vets": {
@@ -344,7 +342,7 @@
     "app": 0.9347406058894141,
     "postgres": 7.485682833703768
    },
-   "overheadMs": 1.3467503179183549,
+   "overheadMs": 1.357137807913106,
    "baseExcessMs": 4.158499999999999,
    "baseP50Ms": 7.871,
    "tail": 0.5,
@@ -359,10 +357,10 @@
     "status": "unexplained",
     "samples": 81,
     "notes": [
-     "replaying the history reproduces its p99 within 141% (mean abs. error)"
+     "replaying the history reproduces its p99 within 748% (mean abs. error)"
     ],
-    "p99Mape": 1.4130335628535509,
-    "latencyMape": 2.062601116783928
+    "p99Mape": 7.484541416242942,
+    "latencyMape": 15.529284492450318
    }
   },
   "app PUT /petclinic/api/owners/{ownerId}": {
@@ -395,10 +393,10 @@
     "status": "unexplained",
     "samples": 81,
     "notes": [
-     "replaying the history reproduces its p99 within 168% (mean abs. error)"
+     "replaying the history reproduces its p99 within 795% (mean abs. error)"
     ],
-    "p99Mape": 1.67841592494658,
-    "latencyMape": 2.134183236375565
+    "p99Mape": 7.951846056288313,
+    "latencyMape": 15.609927736798861
    }
   }
  },
@@ -411,17 +409,69 @@
  "unattributedPerHour": 0,
  "accuracy": [
   {
+   "method": "reference",
+   "label": "recorded runs the model never saw: replicas-2, stress, stress-cpu4",
+   "checks": [
+    {
+     "metric": "p99",
+     "predicted": 19.97248489097247,
+     "measured": 18.3,
+     "error": 0.09139261699303114,
+     "tolerance": 0.2,
+     "pass": true,
+     "note": "replicas-2: p99 of all 255,476 requests of the run; per 5-minute window the typical error is 59%, worst 96%"
+    },
+    {
+     "metric": "errors",
+     "predicted": 0,
+     "measured": 0,
+     "error": 0,
+     "tolerance": null,
+     "pass": true,
+     "note": "replicas-2: failed requests (informational)"
+    },
+    {
+     "metric": "cost",
+     "predicted": 0.20759443288285445,
+     "measured": 0.21054389280000077,
+     "error": 0.014008765003447813,
+     "tolerance": 0.1,
+     "pass": true,
+     "note": "replicas-2: predicted cost vs the run's bill"
+    },
+    {
+     "metric": "breaking-point",
+     "predicted": 230.55020250398633,
+     "measured": 213.04244045022662,
+     "error": 0.0821796915992899,
+     "tolerance": 0.15,
+     "pass": true,
+     "note": "stress: step load test, p99 and errors over every request of each plateau (SLO p99 ≤ 500 ms, errors ≤ 1%)"
+    },
+    {
+     "metric": "breaking-point",
+     "predicted": 487.17399583732777,
+     "measured": 470.3353727740983,
+     "error": 0.035801311230140145,
+     "tolerance": 0.15,
+     "pass": true,
+     "note": "stress-cpu4: step load test, p99 and errors over every request of each plateau (SLO p99 ≤ 500 ms, errors ≤ 1%)"
+    }
+   ],
+   "measuredAt": "2026-10-08T03:56:39.123Z"
+  },
+  {
    "method": "holdout",
    "label": "last 30% of the history",
    "checks": [
     {
      "metric": "p99",
-     "predicted": 22.724077237734832,
-     "measured": 2508.2000000000003,
-     "error": 0.5075134489963709,
+     "predicted": 28.746605421063805,
+     "measured": 5002.9,
+     "error": 0.9942540115890657,
      "tolerance": 0.2,
      "pass": false,
-     "note": "p99 over every request in each 5-minute window on the last 13 min, calibrated on the 28 min before — typical error 51%, worst 99%; measured inside the model's 10–90% band in 1 of 2 windows"
+     "note": "p99 of all 70,836 requests on the last 13 min, calibrated on the 28 min before; per 5-minute window the typical error is 51%, and the measurement fell inside the model's 10–90% band in 1 of 2 windows"
     },
     {
      "metric": "cost",
@@ -433,7 +483,7 @@
      "note": "model cost vs the bill over the held-out window"
     }
    ],
-   "measuredAt": "2026-10-08T01:54:51.832Z"
+   "measuredAt": "2026-10-08T03:56:40.945Z"
   }
  ],
  "fittedOn": {

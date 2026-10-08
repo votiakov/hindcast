@@ -38,9 +38,9 @@ accuracy record.
 - [x] Studio cards and clips of backtest results
 
 ## Proof
-- [ ] Three reference systems (open demo apps under load, telemetry recorded) imported, calibrated,
+- [x] Three reference systems (open demo apps under load, telemetry recorded) imported, calibrated,
       backtested; p99 within 20 %, breaking point within 15 %, cost within 10 %; accuracy shown in
       the app, the CLI and every report
 - [x] PR workflow running end to end on a sample repository (github.com/votiakov/bottleneck-backtest-demo, private; PR #1)
 - [x] Public-outage replays: Cloudflare 2019, GitHub 2018, Slack 2021, AWS us-east-1 2025
-- [ ] Tests, docs, commits
+- [x] Tests, docs, commits

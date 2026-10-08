@@ -13,3 +13,4 @@ scripts/.shot.mjs
 dist-cli
 reference/petclinic/otel/*.jar
 reference/.dbg/
+reference/*/runs/*/warm-mix.json

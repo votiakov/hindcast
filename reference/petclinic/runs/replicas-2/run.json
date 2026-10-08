@@ -1,0 +1,18 @@
+{
+  "system": "petclinic",
+  "run": "replicas-2",
+  "start": 1791426060,
+  "end": 1791428461,
+  "env": {
+    "APP_REPLICAS": "2"
+  },
+  "shape": [
+    "history",
+    160,
+    280,
+    40
+  ],
+  "autoscale": null,
+  "sampling": 0.2,
+  "recordedAt": "2026-10-08T03:01:32.389Z"
+}

@@ -113,7 +113,9 @@ export function applyStrategy(model: Model, base: Plan, input: unknown): Applied
         if (m.capacity.limit === 'cpu') {
           // the fitted capacity scales with the CPU left for requests (the idle baseline stays)
           const base = m.cpu?.base ?? 0;
-          s.perReplicaRps = c0 > base ? (s.perReplicaRps * Math.max(0, c1! - base)) / (c0 - base) : s.perReplicaRps * scale;
+          const f = c0 > base ? Math.max(0, c1! - base) / (c0 - base) : scale;
+          s.perReplicaRps *= f;
+          if (s.overloadedRps) s.overloadedRps *= f;
           s.servers = Math.max(1, Math.round(c1!));
           notes.push(`${ch.service}: ${c0} → ${c1} cores per replica; CPU-bound, so capacity scales to ${s.perReplicaRps.toFixed(1)} req/s per replica`);
         } else {

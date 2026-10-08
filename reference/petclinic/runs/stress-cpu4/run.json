@@ -1,0 +1,19 @@
+{
+  "system": "petclinic",
+  "run": "stress-cpu4",
+  "start": 1791428936,
+  "end": 1791429958,
+  "env": {
+    "APP_CPUS": "4"
+  },
+  "shape": [
+    "steps",
+    100,
+    580,
+    30,
+    60
+  ],
+  "autoscale": null,
+  "sampling": 0.2,
+  "recordedAt": "2026-10-08T03:26:29.663Z"
+}

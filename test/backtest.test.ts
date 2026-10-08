@@ -445,4 +445,16 @@ describe('metastable failures', () => {
     expect(after(healthy)).toBeLessThan(0.1);
     expect(after(meta)).toBeGreaterThan(after(healthy) + 1);
   });
+
+  it('a CPU-bound collapse moves with the cores: a resize scales the overloaded rate too', () => {
+    const m = calibrate(synthetic({ K: 40, c: 4, S: 20 }, 0.5), { bootstrap: 0 });
+    m.services.api.capacity = { limit: 'cpu', servers: 1, perReplicaRps: 40, overloadedRps: 20 };
+    m.services.api.cpu = { base: 0.2, perReq: 0.02, r2: 1 };
+    m.services.api.cpuLimit = 1;
+    const plan = basePlan(m);
+    const { plan: p } = applyStrategy(m, plan, { name: 'double', changes: [{ service: 'api', cpu: 1.8 }] });
+    // (1.8 − 0.2) / (1 − 0.2) = ×2 of the CPU left for requests
+    expect(p.services.api.perReplicaRps).toBeCloseTo(plan.services.api.perReplicaRps * 2, 6);
+    expect(p.services.api.overloadedRps).toBeCloseTo(40, 6);
+  });
 });

@@ -1,0 +1,17 @@
+{
+  "system": "petclinic",
+  "run": "stress",
+  "start": 1791430648,
+  "end": 1791431674,
+  "env": {},
+  "shape": [
+    "steps",
+    100,
+    420,
+    20,
+    60
+  ],
+  "autoscale": null,
+  "sampling": 0.2,
+  "recordedAt": "2026-10-08T03:55:05.820Z"
+}
