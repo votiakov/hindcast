@@ -1,0 +1,450 @@
+{
+ "version": 1,
+ "name": "PetClinic",
+ "timeoutMs": 5000,
+ "slo": {
+  "p99Ms": 500,
+  "errorRate": 0.01
+ },
+ "services": {
+  "app": {
+   "id": "app",
+   "kind": "server",
+   "replicas": 1,
+   "cpuLimit": 2,
+   "memoryGb": 1.13604736328125,
+   "cpu": {
+    "base": 0.19056864953966546,
+    "perReq": 0.004965861435236451,
+    "r2": 0.3186231276839908
+   },
+   "capacity": {
+    "limit": "concurrency",
+    "servers": 1,
+    "perReplicaRps": 255.5,
+    "band": [
+     255.5,
+     255.5
+    ],
+    "overloadedRps": 145.41666666666666,
+    "samples": [
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5,
+     255.5
+    ]
+   },
+   "self": {
+    "mean": 5.941876449592074,
+    "p99": 9.774898218133862
+   },
+   "tail": 1.3,
+   "variability": 1,
+   "cost": {
+    "perReplicaHour": 0.08762749994999999,
+    "perRequest": 0,
+    "cpuShare": 0.8,
+    "arch": "x86",
+    "source": "bill"
+   },
+   "fit": {
+    "status": "unexplained",
+    "latencyMape": 0.7978846992376575,
+    "p99Mape": 2.11382181658644,
+    "cpuMape": 0.23306439283319,
+    "cpuR2": 0.3186231276839908,
+    "samples": 81,
+    "notes": [
+     "broke between 256 and 256 req/s per replica, and while overloaded finished only 145 req/s — a metastable failure: it stays down until the backlog is gone",
+     "replaying the history reproduces its self time within 80% (mean abs. error)"
+    ]
+   }
+  },
+  "postgres": {
+   "id": "postgres",
+   "kind": "db",
+   "system": "postgresql",
+   "replicas": 1,
+   "cpuLimit": 1,
+   "memoryGb": 0.04830042521158854,
+   "cpu": {
+    "base": 0.006423846168531824,
+    "perReq": 0.00005311121101126177,
+    "r2": 0.3770708575151239
+   },
+   "capacity": {
+    "limit": "concurrency",
+    "servers": 1,
+    "perReplicaRps": 1934.1666666666665,
+    "band": [
+     1934.1666666666665,
+     1934.1666666666665
+    ],
+    "overloadedRps": 1086,
+    "samples": [
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665,
+     1934.1666666666665
+    ]
+   },
+   "self": {
+    "mean": 0.14015240997738307,
+    "p99": 0.48006196402978774
+   },
+   "tail": 0.5,
+   "variability": 1.7,
+   "cost": {
+    "perReplicaHour": 0.04270250009999999,
+    "perRequest": 0,
+    "cpuShare": 0.8,
+    "arch": "x86",
+    "source": "bill"
+   },
+   "fit": {
+    "status": "fair",
+    "latencyMape": 0.26073449010895805,
+    "p99Mape": 0.821342745549924,
+    "cpuMape": 0.2682452445322313,
+    "cpuR2": 0.3770708575151239,
+    "samples": 81,
+    "notes": [
+     "broke between 1934 and 1934 req/s per replica, and while overloaded finished only 1086 req/s — a metastable failure: it stays down until the backlog is gone",
+     "replaying the history reproduces its self time within 26% (mean abs. error)"
+    ]
+   }
+  },
+  "app-lb": {
+   "id": "app-lb",
+   "kind": "lb",
+   "replicas": 1,
+   "cpuLimit": 0.5,
+   "memoryGb": 0.008251190185546875,
+   "cpu": null,
+   "capacity": {
+    "limit": "none",
+    "servers": 1,
+    "perReplicaRps": null
+   },
+   "self": {
+    "mean": 0,
+    "p99": 0
+   },
+   "tail": 1,
+   "variability": 1,
+   "cost": {
+    "perReplicaHour": 0.020517812399999998,
+    "perRequest": 0,
+    "cpuShare": 0.8,
+    "arch": "x86",
+    "source": "bill"
+   },
+   "fit": {
+    "status": "cost-only",
+    "samples": 0,
+    "notes": [
+     "not seen in traces or request metrics — modelled for cost only"
+    ]
+   }
+  }
+ },
+ "endpoints": {
+  "app GET /petclinic/api/owners": {
+   "id": "app GET /petclinic/api/owners",
+   "service": "app",
+   "share": 0.2507445650552923,
+   "visits": {
+    "app": 1,
+    "postgres": 11.021909978566326
+   },
+   "calls": {
+    "app>postgres": 11.021909978566326
+   },
+   "weights": {
+    "app": 0.9567590400945863,
+    "postgres": 9.775706326496573
+   },
+   "overheadMs": 2.369467190838013,
+   "baseExcessMs": 4.599500000000001,
+   "baseP50Ms": 9.2735,
+   "tail": 0.5,
+   "errorRate": 0,
+   "bytes": {},
+   "egressBytes": 2177.2728598367025,
+   "slo": {
+    "p99Ms": 500,
+    "errorRate": 0.01
+   },
+   "fit": {
+    "status": "unexplained",
+    "samples": 81,
+    "notes": [
+     "replaying the history reproduces its p99 within 151% (mean abs. error)"
+    ],
+    "p99Mape": 1.5094900484440492,
+    "latencyMape": 2.1103156941793904
+   }
+  },
+  "app GET /petclinic/api/owners/{ownerId}": {
+   "id": "app GET /petclinic/api/owners/{ownerId}",
+   "service": "app",
+   "share": 0.29997127015730923,
+   "visits": {
+    "app": 1,
+    "postgres": 3.4159727231001247
+   },
+   "calls": {
+    "app>postgres": 3.4159727231001247
+   },
+   "weights": {
+    "app": 0.9693874496278448,
+    "postgres": 4.098901824897805
+   },
+   "overheadMs": 0.6530485735060649,
+   "baseExcessMs": 4.041499999999999,
+   "baseP50Ms": 6.8134999999999994,
+   "tail": 0.5,
+   "errorRate": 0,
+   "bytes": {},
+   "egressBytes": 2177.2728598367025,
+   "slo": {
+    "p99Ms": 500,
+    "errorRate": 0.01
+   },
+   "fit": {
+    "status": "unexplained",
+    "samples": 81,
+    "notes": [
+     "replaying the history reproduces its p99 within 124% (mean abs. error)"
+    ],
+    "p99Mape": 1.2394787046649651,
+    "latencyMape": 1.8496828077063387
+   }
+  },
+  "app GET /petclinic/api/pets": {
+   "id": "app GET /petclinic/api/pets",
+   "service": "app",
+   "share": 0.1995645371648279,
+   "visits": {
+    "app": 1,
+    "postgres": 11.023569023569024
+   },
+   "calls": {
+    "app>postgres": 11.023569023569024
+   },
+   "weights": {
+    "app": 0.9308436820712545,
+    "postgres": 10.39869300224014
+   },
+   "overheadMs": 2.274139962370336,
+   "baseExcessMs": 4.7010000000000005,
+   "baseP50Ms": 9.145,
+   "tail": 0.5,
+   "errorRate": 0,
+   "bytes": {},
+   "egressBytes": 2177.2728598367025,
+   "slo": {
+    "p99Ms": 500,
+    "errorRate": 0.01
+   },
+   "fit": {
+    "status": "unexplained",
+    "samples": 81,
+    "notes": [
+     "replaying the history reproduces its p99 within 135% (mean abs. error)"
+    ],
+    "p99Mape": 1.3468200154525163,
+    "latencyMape": 2.1321069733555267
+   }
+  },
+  "app GET /petclinic/api/vets": {
+   "id": "app GET /petclinic/api/vets",
+   "service": "app",
+   "share": 0.15102972966951014,
+   "visits": {
+    "app": 1,
+    "postgres": 7.025108452740897
+   },
+   "calls": {
+    "app>postgres": 7.025108452740897
+   },
+   "weights": {
+    "app": 0.9347406058894141,
+    "postgres": 7.485682833703768
+   },
+   "overheadMs": 1.3467503179183549,
+   "baseExcessMs": 4.158499999999999,
+   "baseP50Ms": 7.871,
+   "tail": 0.5,
+   "errorRate": 0,
+   "bytes": {},
+   "egressBytes": 2177.2728598367025,
+   "slo": {
+    "p99Ms": 500,
+    "errorRate": 0.01
+   },
+   "fit": {
+    "status": "unexplained",
+    "samples": 81,
+    "notes": [
+     "replaying the history reproduces its p99 within 141% (mean abs. error)"
+    ],
+    "p99Mape": 1.4144065909687245,
+    "latencyMape": 2.0736675049835958
+   }
+  },
+  "app PUT /petclinic/api/owners/{ownerId}": {
+   "id": "app PUT /petclinic/api/owners/{ownerId}",
+   "service": "app",
+   "share": 0.09868989795306063,
+   "visits": {
+    "app": 1,
+    "postgres": 4.395769151776546
+   },
+   "calls": {
+    "app>postgres": 4.395769151776546
+   },
+   "weights": {
+    "app": 1.4531417307656473,
+    "postgres": 5.945600988191389
+   },
+   "overheadMs": 0,
+   "baseExcessMs": 4.058,
+   "baseP50Ms": 9.129000000000001,
+   "tail": 0.5,
+   "errorRate": 0,
+   "bytes": {},
+   "egressBytes": 2177.2728598367025,
+   "slo": {
+    "p99Ms": 500,
+    "errorRate": 0.01
+   },
+   "fit": {
+    "status": "unexplained",
+    "samples": 81,
+    "notes": [
+     "replaying the history reproduces its p99 within 168% (mean abs. error)"
+    ],
+    "p99Mape": 1.6807798547767332,
+    "latencyMape": 2.1507818948237754
+   }
+  }
+ },
+ "transfer": {
+  "crossZoneGb": 0.01,
+  "crossRegionGb": 0.02,
+  "internetGb": 0.09,
+  "source": "https://aws.amazon.com/ec2/pricing/on-demand/#Data_Transfer (us-east-1: $0.01/GB each way between AZs, $0.02/GB between regions, $0.09/GB out to the internet, first 10 TB)"
+ },
+ "unattributedPerHour": 0,
+ "accuracy": [
+  {
+   "method": "holdout",
+   "label": "last 30% of the history",
+   "checks": [
+    {
+     "metric": "p99",
+     "predicted": 22.724077237734832,
+     "measured": 2508.2000000000003,
+     "error": 0.5075134489963709,
+     "tolerance": 0.2,
+     "pass": false,
+     "note": "p99 over every request in each 5-minute window on the last 13 min, calibrated on the 28 min before — typical error 51%, worst 99%; measured inside the model's 10–90% band in 1 of 2 windows"
+    },
+    {
+     "metric": "cost",
+     "predicted": 0.043811551769591936,
+     "measured": 0.043929778680000066,
+     "error": 0.0026912703400883537,
+     "tolerance": 0.1,
+     "pass": true,
+     "note": "model cost vs the bill over the held-out window"
+    }
+   ],
+   "measuredAt": "2026-10-08T01:54:15.947Z"
+  }
+ ],
+ "fittedOn": {
+  "start": 1791421860,
+  "end": 1791424290,
+  "stepS": 30,
+  "buckets": 81
+ },
+ "traffic": {
+  "mean": 104.72183950617286,
+  "p90": 158.9,
+  "peak": 264.83299999999997
+ }
+}

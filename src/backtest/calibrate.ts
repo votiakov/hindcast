@@ -242,6 +242,10 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
     return d.services[id]?.replicas ?? new Array(d.n).fill(1);
   };
 
+  /** buckets where users were timing out: some endpoint failing ≥ 5% with p99 at the deadline */
+  const overloaded = Array.from({ length: d.n }, (_, i) =>
+    Object.values(d.endpoints).some((e) => (vals(e.errorRate, i) ?? 0) >= 0.05 && (vals(e.p99Ms, i) ?? 0) >= timeoutMs * 0.8),
+  );
   const services: Record<string, ServiceModel> = {};
   /** services whose queue sits outside their spans (CPU pinned, latency fit blind to it) */
   const hiddenQueue = new Set<string>();
@@ -340,22 +344,65 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
           if (c !== null && r > 0) cpuPeak = Math.max(cpuPeak, c / (r * cpuLimit));
         }
       /** completions per replica in buckets where CPU was pinned (needs completion rates from traces) */
+      const pinned = (i: number) => {
+        const c = vals(s.cpuCores, i);
+        const r = vals(reps, i) ?? replicas;
+        return c !== null && r > 0 && !!cpuLimit && c / (r * cpuLimit) >= 0.95;
+      };
       const seenAtSaturation = () => {
         let seen = 0;
         if (s.doneRps && cpu && cpuLimit)
           for (let i = 0; i < d.n; i++) {
-            const c = vals(s.cpuCores, i);
-            const r = vals(reps, i) ?? replicas;
             const k = vals(s.doneRps, i);
-            if (c !== null && k !== null && r > 0 && c / (r * cpuLimit) >= 0.95) seen = Math.max(seen, k / r);
+            if (k !== null && pinned(i)) seen = Math.max(seen, k / (vals(reps, i) ?? replicas));
           }
         return seen;
+      };
+      /** completions in pinned buckets where users were already timing out: then that *is* the capacity
+       *  (throughput can even fall under overload — garbage collection, thrashing), not a lower bound */
+      const seenWhileOverloaded = () => {
+        const ks: number[] = [];
+        if (s.doneRps && cpu && cpuLimit)
+          for (let i = 0; i < d.n; i++) {
+            const k = vals(s.doneRps, i);
+            if (k !== null && pinned(i) && overloaded[i]) ks.push(k / (vals(reps, i) ?? replicas));
+          }
+        return ks.length >= 2 ? median(ks) : 0;
       };
       const cpuSeenK = (fallback: number) => seenAtSaturation() || fallback;
       let chosen: Fitted | null = null;
       let cpuSaturated = false;
+      // an overload in the history brackets the limit: the highest rate it finished without users
+      // timing out, and the rate at which they started to
+      let knee: { healthy: number; broke: number; collapse: number } | null = null;
+      {
+        const done = s.doneRps ?? s.rps;
+        let healthy = 0;
+        let broke = Infinity;
+        const collapse: number[] = [];
+        for (let i = 1; i < d.n; i++) {
+          const r = vals(reps, i) ?? replicas;
+          const k = vals(done, i);
+          const lam0 = perRep[i];
+          if (!overloaded[i] && !overloaded[i - 1] && k !== null) healthy = Math.max(healthy, k / r);
+          if (overloaded[i] && !overloaded[i - 1]) broke = Math.min(broke, Math.max(lam0, perRep[i - 1]));
+          if (overloaded[i] && overloaded[i - 1] && k !== null) collapse.push(k / r);
+        }
+        if (isFinite(broke) && healthy > 0 && broke >= healthy * 0.9) knee = { healthy, broke: Math.max(broke, healthy), collapse: collapse.length >= 2 ? median(collapse) : 0 };
+      }
       if (ov?.perReplicaRps) capacity = { limit: 'concurrency', servers: ov.servers ?? 1, perReplicaRps: ov.perReplicaRps };
-      else if (cpuPeak >= 0.9 && isFinite(cpuK) && cpuSeenK(cpuK) < (isFinite(queue.K) && queue.err < simple * 0.85 ? queue.K / 1.1 : Infinity)) {
+      else if (knee && !(cpuPeak >= 0.9 && !knee.collapse)) {
+        // seen breaking: the limit lies between what it handled and where it broke
+        const K = (knee.healthy + knee.broke) / 2;
+        const lim = isFinite(cpuK) && Math.abs(cpuK - K) / K < 0.25 ? 'cpu' : 'concurrency';
+        capacity = { limit: lim, servers: lim === 'cpu' ? cpuC : Math.max(1, queue.c), perReplicaRps: K, band: [knee.healthy, knee.broke] };
+        chosen = { ...(lim === 'cpu' ? cpuFit : queue), K, v: Math.max(1, (lim === 'cpu' ? cpuFit : queue).v) };
+        cpuSaturated = true; // the band is set, keep it
+        if (knee.collapse && knee.collapse < K * 0.8) {
+          capacity.overloadedRps = knee.collapse;
+          notes.push(`broke between ${knee.healthy.toFixed(0)} and ${knee.broke.toFixed(0)} req/s per replica, and while overloaded finished only ${knee.collapse.toFixed(0)} req/s — a metastable failure: it stays down until the backlog is gone`);
+        } else notes.push(`broke between ${knee.healthy.toFixed(0)} and ${knee.broke.toFixed(0)} req/s per replica in the history`);
+      } else if (cpuPeak >= 0.9 && isFinite(cpuK) && cpuSeenK(cpuK) < (isFinite(queue.K) && queue.err < simple * 0.85 ? queue.K / 1.1 : Infinity)) {
         // what finished per second while CPU was pinned is the capacity; CPU per request measured at
         // low load can drift (runtimes get more efficient when busy). Taken when the latency fit claims
         // more than that — the queue then sits where spans can't see it (an event loop too busy to accept)
@@ -370,12 +417,17 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
           if (c !== null && c > 0 && r > 0 && cpuLimit) eff.push((perRep[i] * cpuLimit) / (c / r));
         }
         const atLimit = eff.length ? median(eff) : 0;
-        const K = Math.max(seen, atLimit) || cpuK;
+        const collapsed = seenWhileOverloaded();
+        const K = collapsed || Math.max(seen, atLimit) || cpuK;
         capacity = { limit: 'cpu', servers: cpuC, perReplicaRps: K };
         chosen = { ...cpuFit, K, v: Math.max(1, cpuFit.v) };
         cpuSaturated = true;
         hiddenQueue.add(id);
-        notes.push(`CPU reached ${Math.round(cpuPeak * 100)}% of its limit in the history; capacity ${K.toFixed(1)} req/s per replica (${seen > 0 ? `${seen.toFixed(1)} finished while pinned, ` : ''}${atLimit.toFixed(1)} from CPU efficiency in the busiest buckets)`);
+        notes.push(
+          collapsed
+            ? `CPU reached ${Math.round(cpuPeak * 100)}% of its limit while users were timing out: ${collapsed.toFixed(1)} req/s per replica is what it could still finish (${atLimit.toFixed(1)} would follow from CPU efficiency when it was not overloaded)`
+            : `CPU reached ${Math.round(cpuPeak * 100)}% of its limit in the history; capacity ${K.toFixed(1)} req/s per replica (${seen > 0 ? `${seen.toFixed(1)} finished while pinned, ` : ''}${atLimit.toFixed(1)} from CPU efficiency in the busiest buckets)`,
+        );
       } else if (queue.err < simple * 0.85 && isFinite(queue.K) && queue.K < maxLam * 40) {
         const limitedByCpu = isFinite(cpuK) && Math.abs(queue.K - cpuK) / cpuK < 0.25;
         capacity = { limit: limitedByCpu ? 'cpu' : 'concurrency', servers: queue.c, perReplicaRps: queue.K };
@@ -398,7 +450,10 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
       const tiedK = chosen && 'tied' in chosen && (chosen as Fitted & { tied: boolean }).tied;
 
       const cpuOnly = capacity.limit === 'cpu' && (chosen === cpuFit || cpuSaturated) && cpu && cpuLimit && isFinite(cpuSe);
-      if (cpuSaturated && B > 0) {
+      if (cpuSaturated && B > 0 && knee && capacity.band) {
+        const [lo, hi] = capacity.band;
+        capacity.samples = Array.from({ length: B }, () => lo + (hi - lo) * rand());
+      } else if (cpuSaturated && B > 0) {
         // seen directly at saturation: a narrow band around it, widened by how well CPU per request is known
         const rel = cpu && isFinite(cpuSe) && cpu.perReq > 0 ? Math.min(0.15, cpuSe / cpu.perReq) : 0.05;
         capacity.band = [capacity.perReplicaRps * (1 - 1.28 * rel - 0.03), capacity.perReplicaRps * (1 + 1.28 * rel + 0.03)];

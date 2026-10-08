@@ -32,6 +32,9 @@ export interface Capacity {
   band?: [number, number];
   /** bootstrap draws of perReplicaRps, for Monte Carlo bands */
   samples?: number[];
+  /** metastable: once overloaded, it only finishes this many req/s per replica until the backlog
+   *  is gone (garbage collection, thread and pool thrash) */
+  overloadedRps?: number;
 }
 
 export interface ServiceModel {

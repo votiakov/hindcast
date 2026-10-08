@@ -57,6 +57,8 @@ export interface ServicePlan {
   observedReplicas?: Num[];
   autoscale?: AutoscalePolicy;
   perReplicaRps: number;
+  /** throughput per replica while overloaded (metastable services) */
+  overloadedRps?: number;
   servers: number;
   selfMean: number;
   selfP99: number;
@@ -244,7 +246,7 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
       const s = plan.services[id];
       const first = s.observedReplicas?.find((x) => x !== null) ?? null;
       const live = s.replicas ?? first ?? 1;
-      return [id, { backlog: 0, live: s.autoscale ? Math.max(s.autoscale.min, Math.min(s.autoscale.max, live)) : live, pending: [] as { at: number; n: number }[], lastScale: -Infinity, nextEval: 0, blockedSaid: false, util: 0 }];
+      return [id, { backlog: 0, live: s.autoscale ? Math.max(s.autoscale.min, Math.min(s.autoscale.max, live)) : live, pending: [] as { at: number; n: number }[], lastScale: -Infinity, nextEval: 0, blockedSaid: false, util: 0, collapsed: false }];
     }),
   );
   const epFail = Object.fromEntries(epIds.map((id) => [id, 0]));
@@ -378,7 +380,12 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
         } else if (live <= 0 && svcLam[id] > 0) {
           waitMean = waitP99 = Infinity;
         } else if (isFinite(K)) {
-          const served = Math.min(K, perRep + S.backlog / dt);
+          // a metastable service, once more than a second of work is queued, only finishes its
+          // overloaded rate until the queue is empty again
+          if (s.overloadedRps && S.backlog > K) S.collapsed = true;
+          if (S.collapsed && S.backlog <= 0) S.collapsed = false;
+          const Keff = S.collapsed && s.overloadedRps ? Math.min(K, s.overloadedRps * fx[id].capacity) : K;
+          const served = Math.min(Keff, perRep + S.backlog / dt);
           S.backlog = Math.max(0, S.backlog + (perRep - served) * dt);
           const w = mmcWait(Math.min(perRep, K * RHO_MAX), s.servers, K);
           const drain = (S.backlog / K) * 1000;
@@ -531,6 +538,7 @@ export function basePlan(model: Model, observed?: Record<string, Num[] | undefin
       replicas: observed?.[id] ? null : s.replicas,
       observedReplicas: observed?.[id],
       perReplicaRps: s.capacity.perReplicaRps,
+      overloadedRps: s.capacity.overloadedRps,
       servers: s.capacity.servers,
       selfMean: s.self.mean,
       selfP99: s.self.p99,
