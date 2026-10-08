@@ -5,9 +5,11 @@ name: PetClinic
 project: petclinic
 base: http://app-lb:9966
 timeout: 5s
-warmupS: 200
+warmupS: 90
 # the JVM compiles hot paths under load for many minutes: an 8-minute ramp before recording
 warmupLoad: [steps, 5, 60, 5, 40]
+# …on 4 cores (the JIT compiler needs them), then the app's real limit is set live
+warmupCpus: { app: { env: APP_CPUS, warm: 4, cpus: 1 } }
 thin: 5
 mix: mix.json
 edge: app-lb

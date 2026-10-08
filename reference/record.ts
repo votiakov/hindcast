@@ -31,6 +31,9 @@ export interface ReferenceConfig {
   warmupS?: number;
   /** a gentle load (shape args) run before recording, so a JIT-compiled runtime starts warm */
   warmupLoad?: (string | number)[];
+  /** warm these compose services on more CPU, then set their real limit live before recording
+   *  ({ service: { env: 'APP_CPUS', warm: 4, cpus: 1 } }); the run's env overrides `cpus` */
+  warmupCpus?: Record<string, { env: string; warm: number; cpus: number }>;
   /** k6 Poisson thinning factor (default 20; lower for high request rates) */
   thin?: number;
   mix: string;
@@ -62,7 +65,8 @@ async function main() {
 
   // 1. fresh trace file for this run, fresh system
   sh(`docker compose -f ${join(ROOT, 'stack/docker-compose.yml')} up -d --force-recreate otel-collector`, { RUN_DIR: resolve(out, 'raw') });
-  sh(`docker compose -f ${join(sysDir, 'docker-compose.yml')} up -d --force-recreate --remove-orphans`, env);
+  const warmEnv = Object.fromEntries(Object.values(cfg.warmupCpus ?? {}).map((w) => [w.env, String(w.warm)]));
+  sh(`docker compose -f ${join(sysDir, 'docker-compose.yml')} up -d --force-recreate --remove-orphans`, { ...env, ...warmEnv });
   console.log(`warming up ${cfg.warmupS ?? 45} s…`);
   await sleep((cfg.warmupS ?? 45) * 1000);
   if (cfg.warmupLoad) {
@@ -72,6 +76,13 @@ async function main() {
     execSync('docker rm -f bnref-k6 >/dev/null 2>&1 || true');
     spawnSync('docker', ['run', '--rm', '--name', 'bnref-k6', '--network', 'bnref', '-v', `${join(ROOT, 'load')}:/load:ro`, '-v', `${out}:/out`, '-v', `${join(sysDir, cfg.mix)}:/out/warm-mix.json:ro`, '-e', 'SHAPE=/out/raw/warmup-shape.json', '-e', 'MIX=/out/warm-mix.json', '-e', `BASE=${cfg.base}`, '-e', 'TIMEOUT=30s', '-e', `THIN=${cfg.thin ?? 20}`, 'grafana/k6:latest', 'run', '--quiet', '/load/replay.js'], { stdio: 'ignore' });
     await sleep(20_000);
+  }
+  for (const [svc, w] of Object.entries(cfg.warmupCpus ?? {})) {
+    const cpus = Number(env[w.env] ?? w.cpus);
+    const ids = execSync(`docker ps -q --filter label=com.docker.compose.project=${cfg.project} --filter label=com.docker.compose.service=${svc}`, { encoding: 'utf8' }).trim().split('\n').filter(Boolean);
+    for (const id of ids) execSync(`docker update --cpus ${cpus} ${id}`, { stdio: 'ignore' });
+    console.log(`${svc}: warmed on ${w.warm} CPUs, now limited to ${cpus} (${ids.length} container${ids.length === 1 ? '' : 's'})`);
+    await sleep(10_000);
   }
   // drop warm-up spans: restart the collector into the run directory
   rmSync(join(out, 'raw', 'traces.jsonl'), { force: true });
