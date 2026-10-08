@@ -131,6 +131,7 @@ for every user's data, not just these systems.
   minutes of light traffic before it is fast; without that, the first requests back up the
   10-connection pool, abandoned requests keep running and it never recovers, even at 5 req/s. .NET's
   thread pool ramps slowly too: the Astronomy Shop's cart timed out for minutes when load jumped
-  straight to 300 req/s. Runs warm up first; the model does not (yet) model cold starts.
+  straight to 300 req/s. Runs warm up first — PetClinic on 4 cores, then its real limit is set live with `docker update`, as
+  a warm production instance would be; the model does not (yet) model cold starts.
 - **Extrapolation is a range.** When the history never came near a limit and the CPU and latency
   reads disagree, the capacity band spans both and the point estimate sits mid-band.
