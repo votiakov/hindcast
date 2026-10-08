@@ -384,13 +384,15 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
         let healthy = 0;
         let broke = Infinity;
         const collapse: number[] = [];
+        // only where this service itself was the queue: users timing out *and* its own time exploding
+        const mine = (i: number) => overloaded[i] && (selfObs[i] ?? 0) > Math.max(4 * S, S + 200);
         for (let i = 1; i < d.n; i++) {
           const r = vals(reps, i) ?? replicas;
           const k = vals(done, i);
           const lam0 = offered(i);
           if (!overloaded[i] && !overloaded[i - 1] && k !== null) healthy = Math.max(healthy, k / r);
-          if (overloaded[i] && !overloaded[i - 1]) broke = Math.min(broke, Math.max(lam0, offered(i - 1)));
-          if (overloaded[i] && overloaded[i - 1] && k !== null) collapse.push(k / r);
+          if (mine(i) && !overloaded[i - 1]) broke = Math.min(broke, Math.max(lam0, offered(i - 1)));
+          if (mine(i) && mine(i - 1) && k !== null) collapse.push(k / r);
         }
         if (isFinite(broke) && healthy > 0 && broke >= healthy * 0.9) knee = { healthy, broke: Math.max(broke, healthy), collapse: collapse.length >= 2 ? median(collapse) : 0 };
       }
@@ -399,8 +401,10 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
         // seen breaking: the limit lies between what it handled and where it broke
         const K = (knee.healthy + knee.broke) / 2;
         const lim = isFinite(cpuK) && Math.abs(cpuK - K) / K < 0.25 ? 'cpu' : 'concurrency';
-        capacity = { limit: lim, servers: lim === 'cpu' ? cpuC : Math.max(1, queue.c), perReplicaRps: K, band: [knee.healthy, knee.broke] };
-        chosen = { ...(lim === 'cpu' ? cpuFit : queue), K, v: Math.max(1, (lim === 'cpu' ? cpuFit : queue).v) };
+        capacity = { limit: lim, servers: Math.max(1, (queue.err <= cpuFit.err ? queue : cpuFit).c), perReplicaRps: K, band: [knee.healthy, knee.broke] };
+        // its queue showed in its own spans (that's how the knee was found): keep the latency fit's shape
+        const shape = queue.err <= cpuFit.err ? queue : cpuFit;
+        chosen = { ...shape, K, S: shape.S };
         cpuSaturated = true; // the band is set, keep it
         if (knee.collapse && knee.collapse < K * 0.8) {
           capacity.overloadedRps = knee.collapse;

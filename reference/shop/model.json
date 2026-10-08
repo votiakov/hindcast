@@ -1495,12 +1495,12 @@
    "checks": [
     {
      "metric": "p99",
-     "predicted": 96.7075228626752,
-     "measured": 94.04337500000005,
-     "error": 0.08608137671678458,
+     "predicted": 99.46414666873162,
+     "measured": 90.9,
+     "error": 0.09421503485953366,
      "tolerance": 0.2,
      "pass": true,
-     "note": "autoscale: p99 over every request in each 5-minute window, 8 windows — typical error 9%, worst 27%"
+     "note": "autoscale: p99 of all 269,414 requests of the run; per 5-minute window the typical error is 9%, worst 27%"
     },
     {
      "metric": "errors",
@@ -1539,7 +1539,7 @@
      "note": "stress-cpu1: step load test, p99 and errors over every request of each plateau (SLO p99 ≤ 800 ms, errors ≤ 1%)"
     }
    ],
-   "measuredAt": "2026-10-07T21:33:46.044Z"
+   "measuredAt": "2026-10-08T03:06:15.103Z"
   },
   {
    "method": "holdout",
@@ -1547,12 +1547,12 @@
    "checks": [
     {
      "metric": "p99",
-     "predicted": 153.89035907423715,
-     "measured": 571.4209999999981,
-     "error": 0.4631331403152047,
+     "predicted": 175.98897385774404,
+     "measured": 1022.8389999999999,
+     "error": 0.8279406887518524,
      "tolerance": 0.2,
      "pass": false,
-     "note": "p99 over every request in each 5-minute window on the last 13 min, calibrated on the 28 min before — typical error 46%, worst 80%; measured inside the model's 10–90% band in 1 of 2 windows"
+     "note": "p99 of all 77,762 requests on the last 13 min, calibrated on the 28 min before; per 5-minute window the typical error is 46%, and the measurement fell inside the model's 10–90% band in 1 of 2 windows"
     },
     {
      "metric": "cost",
@@ -1564,7 +1564,7 @@
      "note": "model cost vs the bill over the held-out window"
     }
    ],
-   "measuredAt": "2026-10-07T21:33:54.747Z"
+   "measuredAt": "2026-10-08T03:06:24.641Z"
   }
  ],
  "fittedOn": {

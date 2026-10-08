@@ -169,6 +169,13 @@ function measuredIn(log: RequestLog, a: number, b: number) {
   return { n: ms.length, p99: ms.length ? quantile(ms, 0.99) : NaN, err: ms.length ? failed / ms.length : NaN, dur: b - a };
 }
 
+/** p99 over every request of the whole run, predicted (mixture over all its buckets) vs measured */
+export function pooledP99(r: ReturnType<typeof runPlan>, log: RequestLog, start: number, stepS: number) {
+  const end = start + r.t.length * stepS;
+  const m = measuredIn(log, start, end);
+  return { measured: m.p99, predicted: predictedP99(r, 0, r.t.length), n: m.n };
+}
+
 /** p99 over every request in each window (pooled, so a window holds hundreds of requests), predicted vs measured */
 export function windowP99(r: ReturnType<typeof runPlan>, log: RequestLog, start: number, stepS: number, windowS = 300) {
   const per = Math.max(1, Math.round(windowS / stepS));
@@ -280,7 +287,10 @@ export function holdoutAccuracy(d: Dataset, opts: CalibrateOptions & { holdout?:
       const v = [...per[j], x.predicted].sort((a, b) => a - b);
       return x.measured >= quantile(v, 0.1) * 0.95 && x.measured <= quantile(v, 0.9) * 1.05;
     }).length;
-    checks.push({ metric: 'p99', predicted: pm, measured: mm, error: w.median, tolerance: TOLERANCE.p99, pass: w.median <= TOLERANCE.p99, note: `p99 over every request in each 5-minute window ${span} — typical error ${(w.median * 100).toFixed(0)}%, worst ${(w.max * 100).toFixed(0)}%; measured inside the model's 10–90% band in ${inside} of ${w.rows.length} windows` });
+    void pm;
+    void mm;
+    const pool = pooledP99(r, log, test.start, test.stepS);
+    checks.push({ ...check('p99', pool.predicted, pool.measured, TOLERANCE.p99, `p99 of all ${pool.n.toLocaleString('en-US')} requests ${span}; per 5-minute window the typical error is ${(w.median * 100).toFixed(0)}%, and the measurement fell inside the model's 10–90% band in ${inside} of ${w.rows.length} windows`) });
   } else {
     // per-bucket p99s decide pass/fail
     const ape = medianApe(r.p99Ms, obs.p99Ms);
@@ -329,10 +339,9 @@ export function referenceAccuracy(model: Model, runs: ReferenceRun[], label: str
       // the shape's t is relative to the recording start, the dataset grid to its first bucket
       checks.push(check('breaking-point', bp.predicted, bp.measured, TOLERANCE.breakingPoint, `${run.label}: step load test, p99 and errors over every request of each plateau (SLO p99 ≤ ${model.slo.p99Ms} ms, errors ≤ ${(model.slo.errorRate * 100).toFixed(0)}%)`));
     } else if (!run.stress && run.requests) {
+      const pool = pooledP99(r, run.requests, run.dataset.start, run.dataset.stepS);
       const w = windowP99(r, run.requests, run.dataset.start, run.dataset.stepS);
-      const pm = w.rows.reduce((a, x) => a + x.predicted, 0) / Math.max(1, w.rows.length);
-      const mm = w.rows.reduce((a, x) => a + x.measured, 0) / Math.max(1, w.rows.length);
-      checks.push({ metric: 'p99', predicted: pm, measured: mm, error: w.median, tolerance: TOLERANCE.p99, pass: w.median <= TOLERANCE.p99, note: `${run.label}: p99 over every request in each 5-minute window, ${w.rows.length} windows — typical error ${(w.median * 100).toFixed(0)}%, worst ${(w.max * 100).toFixed(0)}%` });
+      checks.push({ ...check('p99', pool.predicted, pool.measured, TOLERANCE.p99, `${run.label}: p99 of all ${pool.n.toLocaleString('en-US')} requests of the run; per 5-minute window the typical error is ${(w.median * 100).toFixed(0)}%, worst ${(w.max * 100).toFixed(0)}%`) });
       const failedPred = r.rps.reduce((a, x, i) => a + x * r.errorRate[i] * run.dataset.stepS, 0);
       const failedObs = run.requests.failed.filter(Boolean).length;
       checks.push({ metric: 'errors', predicted: failedPred, measured: failedObs, error: failedObs > 0 ? Math.abs(failedPred - failedObs) / failedObs : failedPred > 0 ? 1 : 0, tolerance: Infinity, pass: true, note: `${run.label}: failed requests (informational)` });

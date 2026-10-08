@@ -62,9 +62,10 @@ npx tsx reference/bundle.ts hotrod               # import, calibrate, check, wri
 
 ## How accuracy is measured
 
-- **p99** — the 99th percentile over *every request* in each 5-minute window (hundreds of requests per
-  window, so the measurement itself is stable), predicted vs measured. The figure is the typical
-  (median) error over the windows; the worst window is reported too. Target: within 20%.
+- **p99** — the 99th percentile over *every request* of the run (tens to hundreds of thousands),
+  predicted vs measured. Target: within 20%. Each report also gives the typical and worst error over
+  5-minute windows: a JVM's garbage-collection pauses land in random windows, so one window's p99
+  can swing 5× at the same load — a spread no capacity model reproduces bucket by bucket.
 - **breaking point** — for each plateau of the step load test, the SLO score (the larger of p99 / SLO
   and error rate / SLO) over every request in the plateau's second half; the breaking point is where
   the score crosses 1, interpolated between plateaus. The same definition is applied to the
