@@ -64,8 +64,9 @@ function Chart({ c, w, h, p }: { c: CardData; w: number; h: number; p: number })
           </text>
         </g>
       )}
-      {marks.map((i) => (
-        <text key={i} x={x(i)} y={h - 8} textAnchor="middle" className="cd-tick">
+      {marks.map((i, k) => (
+        // the first and last labels hang inwards so they stay inside the card
+        <text key={i} x={x(i)} y={h - 8} textAnchor={k === 0 ? 'start' : k === marks.length - 1 ? 'end' : 'middle'} className="cd-tick">
           {span > 2 * 86400 ? day(c.t[i]) : clock(c.t[i])}
         </text>
       ))}
