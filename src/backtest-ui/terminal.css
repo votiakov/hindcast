@@ -19,6 +19,7 @@
   inset: 0;
   display: grid;
   grid-template-rows: auto 1fr auto;
+  grid-template-columns: minmax(0, 1fr);
   background: var(--bt-bg);
   color: var(--bt-text);
   font: 13.5px/1.4 var(--bt-sans);
@@ -35,17 +36,14 @@
 .bt-spacer { flex: 1; }
 
 /* bar */
-.bt-bar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--bt-line); flex-wrap: nowrap; overflow: hidden; white-space: nowrap; }
+.bt-bar { display: flex; align-items: center; gap: 6px 8px; padding: 6px 12px; border-bottom: 1px solid var(--bt-line); flex-wrap: wrap; white-space: nowrap; min-width: 0; }
 .bt-bar .bt-select { max-width: 190px; min-width: 0; }
-@media (max-width: 1100px) { .bt-bar { flex-wrap: wrap; } }
 .bt-brand { font: 600 12px var(--bt-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--bt-amber); margin-right: 8px; }
 .bt-sym { font: 600 14px var(--bt-mono); color: var(--bt-hi); margin-right: 10px; }
 .bt-chip { border: 1px solid var(--bt-line) !important; padding: 2px 9px !important; color: var(--bt-dim) !important; font: 12.5px var(--bt-mono) !important; white-space: nowrap; cursor: pointer; }
 .bt-chip.on { color: var(--bt-hi) !important; border-color: var(--bt-dim) !important; }
 .bt-chip.dim { cursor: default; }
 .bt-chip:hover { color: var(--bt-hi) !important; }
-.bt-modes { display: flex; gap: 4px; margin-left: 6px; }
-.bt-modes .bt-chip { cursor: pointer; }
 .bt-select { background: var(--bt-pane); color: var(--bt-text); border: 1px solid var(--bt-line); font: 12.5px var(--bt-mono); padding: 2px 6px; }
 
 /* main */
@@ -150,3 +148,11 @@
 .bt-outage a { color: var(--bt-amber); }
 .bt-marker line { stroke: var(--bt-amber); stroke-dasharray: 2 4; opacity: .7; }
 .bt-marker text { fill: var(--bt-amber); font: 10.5px var(--bt-mono); }
+
+/* the other views, always visible: the simulator, lessons and studio are one click away */
+.bt-modes { display: flex; flex-shrink: 0; border: 1px solid var(--bt-line); margin-right: 12px; }
+.bt-slo { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.bt-modes button { background: none; border: 0; border-left: 1px solid var(--bt-line); color: var(--bt-dim); font: 12px var(--bt-mono); padding: 3px 9px; cursor: pointer; white-space: nowrap; }
+.bt-modes button:first-child { border-left: 0; }
+.bt-modes button:hover { color: var(--bt-hi); }
+.bt-modes button.on { color: var(--bt-amber); background: var(--bt-pane); }

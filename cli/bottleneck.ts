@@ -37,9 +37,10 @@ Backtesting on real data (files only; see docs/backtest.md):
   npm run sim -- export-prometheus --url http://prom:9090 --start 2026-09-01 --end 2026-09-15 [--step 60] [--preset otel-spanmetrics,cadvisor] --out telemetry/
   npm run sim -- import        <bottleneck.import.yaml> [--out dataset.json]
   npm run sim -- calibrate     <dataset.json> [--out model.json] [--p99 500] [--errors 0.01] [--timeout 5000] [--holdout 0.3]
-  npm run sim -- backtest      <model.json> <dataset.json> <strategy.yaml …> [--last 14d] [--draws 30] [--md r.md] [--html r.html] [--comment pr.md] [--gate]
+  npm run sim -- backtest      <model.json> <dataset.json> <strategy.yaml …> [--last 14d] [--draws 30] [--md r.md] [--html r.html] [--comment pr.md] [--card card.json] [--gate]
   npm run sim -- headroom      <model.json> [strategy.yaml]
   npm run sim -- accuracy      <model.json>
+  npm run sim -- outage        <model.json> <outage-id | list> [strategy.yaml …] [--role primary-db=orders-db] [--md r.md] [--html r.html]
   npm run sim -- diff-strategy --base <dir> --head <dir> [--model model.json] [--out strategy.yaml]   (k8s manifests before/after → strategy)
 
 Files may be YAML or JSON. A variants file is either a list of variants or { variants, scenario }.`;

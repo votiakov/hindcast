@@ -40,6 +40,13 @@ function Bar() {
   return (
     <div className="bt-bar">
       <span className="bt-brand">Bottleneck</span>
+      <nav className="bt-modes" aria-label="Views">
+        {(['backtest', 'home', 'lesson', 'sandbox', 'compare', 'studio'] as Mode[]).map((m) => (
+          <button key={m} className={m === 'backtest' ? 'on' : ''} onClick={() => m !== 'backtest' && setMode(m)}>
+            {m === 'home' ? 'Live' : m === 'lesson' ? 'Lessons' : m[0].toUpperCase() + m.slice(1)}
+          </button>
+        ))}
+      </nav>
       <span className="bt-sym">{w?.model.name ?? '—'}</span>
       {ranges.map(([label, k]) => (
         <button key={label} className={`bt-chip ${cur === k ? 'on' : ''}`} onClick={() => setView(label === 'ALL' ? null : [Math.max(0, (view?.[1] ?? n) - k), view?.[1] ?? n])}>
@@ -50,7 +57,7 @@ function Bar() {
       {computing && <span className="bt-chip dim">computing…</span>}
       <span className="bt-spacer" />
       {r && (
-        <span className="bt-dim">
+        <span className="bt-dim bt-slo">
           SLO p99 ≤ {r.slo.p99Ms} ms · err ≤ {pct(r.slo.errorRate)}
         </span>
       )}
@@ -90,14 +97,6 @@ function Bar() {
         Open files…
         <input type="file" multiple hidden onChange={(e) => e.target.files && openWorkspaceFiles([...e.target.files])} />
       </label>
-      <select className="bt-select" aria-label="Other views" value="" onChange={(e) => e.target.value && setMode(e.target.value as Mode)}>
-        <option value="">Board ▾</option>
-        <option value="sandbox">Sandbox</option>
-        <option value="compare">Compare</option>
-        <option value="lesson">Lessons</option>
-        <option value="home">Live</option>
-        <option value="studio">Studio</option>
-      </select>
     </div>
   );
 }
