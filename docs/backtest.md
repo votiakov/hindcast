@@ -192,5 +192,5 @@ cites its source.
 How well this works is measured, not claimed. See [reference/README.md](../reference/README.md): three
 open demo systems were run under load in Docker with telemetry recorded, imported, calibrated on one
 run and checked against runs the model never saw — a strategy actually applied, and step load tests
-to the breaking point. Targets: p99 within 20% (typical per-bucket error), breaking point within 15%,
+to the breaking point. Targets: p99 within 20% (over every request of the run), breaking point within 15%,
 cost within 10% of the bill.
