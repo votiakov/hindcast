@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bring your data · Bottleneck docs</title>
+<meta name="description" content="Bottleneck works from files you export: metrics, traces and the cloud bill. Nothing connects to your systems, and nothing leaves your machine.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="index.html">Bottleneck<span>docs</span></a>
+  <nav class="bar-links" aria-label="The app">
+    <a href="../#backtest">Backtest</a><a href="../#live">Live</a><a href="../#lessons">Lessons</a><a href="../#sandbox">Sandbox</a><a href="../#compare">Compare</a><a href="../#studio">Studio</a>
+  </nav>
+  <a class="bar-open" href="../">Open the app ↗</a>
+</header>
+<div class="page">
+<nav class="rail" aria-label="Chapters"><a href="index.html">Overview</a><div class="rail-h">Backtest on real data</div><a href="backtest.html">The backtest screen</a><a href="data.html" aria-current="page">Bring your data</a><a href="calibration.html">How the model is fitted</a><a href="strategies.html">Strategies</a><a href="outages.html">Public-outage replays</a><a href="ci.html">CLI, pull requests, MCP</a><div class="rail-h">Design simulator</div><a href="live.html">Live</a><a href="lessons.html">Lessons</a><a href="sandbox.html">Sandbox</a><a href="audit.html">Failure audit and analysis</a><a href="compare.html">Compare</a><a href="studio.html">Studio</a><div class="rail-h">Reference</div><a href="use-cases.html">Use cases</a><a href="accuracy.html">Accuracy</a><a href="capabilities.html">Everything it does</a></nav>
+<main>
+<header class="head">
+  <div class="kicker">Backtest on real data</div>
+  <h1>Bring your data</h1>
+  <p class="lede">Bottleneck works from files you export: metrics, traces and the cloud bill. Nothing connects to your systems, and nothing leaves your machine.</p>
+</header>
+<section class="screen" data-shot="bt-drop">
+<figure class="shot"><div class="shot-frame"><a class="shot-full" href="shots/bt-drop.png" target="_blank" rel="noopener" title="Open full size"><img src="shots/bt-drop.png" width="1280" height="800" alt="Drop the files on the backtest screen — screenshot" loading="lazy"></a><a class="pin" href="#bt-drop-drop" data-for="bt-drop-drop" style="left:50%;top:46.25%" aria-label="Note 1">1</a><a class="pin" href="#bt-drop-files" data-for="bt-drop-files" style="left:26.12%;top:8.38%" aria-label="Note 2">2</a></div></figure>
+<div class="notes">
+<div>
+<h2>Drop the files on the backtest screen</h2>
+<ol class="pins">
+<li id="bt-drop-drop" data-n="1"><h3>Drop anywhere</h3><p>An import manifest with the files it names (Prometheus or CloudWatch exports, OTLP traces, a CUR or GCP bill), or a <code>dataset.json</code> and <code>model.json</code> made by the CLI, plus any strategy YAML files. The app imports, calibrates and backtests in the browser.</p></li>
+<li id="bt-drop-files" data-n="2"><h3>Or pick them</h3><p><b>Open files…</b> does the same with a file picker.</p></li>
+</ol>
+</div>
+</div>
+</section>
+
+<section class="prose">
+<h2>What each source gives the model</h2>
+<div class="table-wrap"><table>
+<tr><th>source</th><th>formats</th><th>gives</th></tr>
+<tr><td>Request metrics</td><td>Prometheus <code>query_range</code> JSON, CloudWatch <code>get-metric-data</code> output, long or wide CSV (Grafana exports)</td><td>load per service and endpoint; latency (p50, p95, p99, mean) and errors per bucket</td></tr>
+<tr><td>Container metrics</td><td>the same formats; presets for cAdvisor and Kubernetes</td><td>CPU used, CPU and memory limits, replicas, network: CPU per request, capacity per replica, replica-hours</td></tr>
+<tr><td>Traces</td><td>OpenTelemetry OTLP JSON lines (the collector's file exporter), one OTLP document, or Jaeger JSON</td><td>the topology; which services each endpoint visits and how often; how many milliseconds of each request each service owns (the critical path); self time per service; payload sizes; uninstrumented databases, caches and queues as their own components</td></tr>
+<tr><td>The bill</td><td>AWS Cost and Usage Report (legacy or 2.0 columns), GCP billing export (CSV or JSON lines)</td><td>$ per replica-hour, per request and per GB for each component; spend no component explains, shown separately</td></tr>
+</table></div>
+<p>Missing values stay missing: a gap in a scrape is not a quiet minute.</p>
+
+<h2>The import manifest</h2>
+<p>One YAML file names the files and says what each series is. Units are converted (<code>s</code>, <code>ms</code>, <code>us</code>, <code>percent</code>, <code>ratio</code>, <code>cores</code>, <code>millicores</code>, <code>rpm</code>, <code>count-per-period</code>).</p>
+<pre><code>name: checkout
+step: 1m                              # bucket size (default: the metrics' own resolution)
+rename: { checkout-svc: checkout }    # raw names → one id across every source
+metrics:
+  - prometheus: metrics/rps.json      # a query_range response
+    metric: rps                       # rps errorRate p50Ms p95Ms p99Ms meanMs cpuCores cpuPercent
+    by: service_name                  #   cpuLimitCores replicas netTxBps netRxBps memoryBytes
+  - prometheus: metrics/endpoint-rps.json
+    metric: rps
+    by: service_name
+    endpointBy: http_route            # endpoint-level series
+    methodBy: http_request_method
+  - cloudwatch: cw/getmetricdata.json
+    map:
+      req: { service: api, metric: rps, unit: count-per-period }
+      cpu: { service: api, metric: cpuPercent, scale: 2 }   # % of a 2-vCPU instance → cores
+traces:
+  - file: traces/*.jsonl
+    sampling: 0.1                     # share of requests traced (the real share is measured)
+    ignore: [loadgenerator]
+billing:
+  - cur: bill/cur-2026-09.csv
+    tag: user:service                 # the cost-allocation tag naming the component
+    resources: { "db-7XK2": orders-db }
+placement:                            # zones and regions, to price data transfer
+  checkout: { zone: us-east-1a, region: us-east-1 }
+model:                                # hints for calibration
+  slo: { p99Ms: 400, errorRate: 0.01 }
+  timeoutMs: 5000                     # the client deadline: slower answers are failures
+  hostedBy: { sqlite: checkout }      # in-process dependencies seen in traces
+  endpoints:
+    "checkout POST /orders": { slo: { p99Ms: 800, errorRate: 0.005 } }</code></pre>
+
+<h2>Export from Prometheus in one command</h2>
+<p><code>export-prometheus</code> runs ready-made queries and writes both the JSON files and the <code>metrics:</code> block of the manifest. Presets: <code>otel-spanmetrics</code> (the OpenTelemetry Collector's spanmetrics connector), <code>http-server</code> (OpenTelemetry HTTP histograms, with per-route series), <code>cadvisor</code>, <code>kubernetes</code> (kubelet + kube-state-metrics). <code>--selector 'namespace="shop"'</code> scopes every query.</p>
+<pre><code>bottleneck export-prometheus --url http://prometheus:9090 \
+  --start 2026-09-01 --end 2026-09-15 --preset otel-spanmetrics,kubernetes --out telemetry/
+# add traces and the bill to telemetry/bottleneck.import.yaml, then:
+bottleneck import    telemetry/bottleneck.import.yaml --out dataset.json
+bottleneck calibrate dataset.json --holdout 0.3 --out model.json</code></pre>
+<p><code>import</code> prints what each source gave. <code>calibrate</code> prints every component with its capacity, what limits it, how well the model reproduces it and why. Next: <a href="calibration.html">how the model is fitted</a>.</p>
+</section>
+
+<nav class="pager"><a href="backtest.html">← The backtest screen</a><a href="calibration.html">How the model is fitted →</a></nav>
+</main>
+</div>
+<script src="docs.js"></script>
+</body>
+</html>

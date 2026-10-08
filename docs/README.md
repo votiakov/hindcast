@@ -1,5 +1,9 @@
 # Bottleneck — documentation
 
+The user-facing guide, screen by screen, is served with the app at `/docs/` (built from
+`docs-site/pages/` by `npm run docs:build`; screenshots and pin positions by `npm run docs:shots`).
+These pages are the reference behind it.
+
 | document | what's in it |
 |---|---|
 | [capabilities.md](capabilities.md) | Everything Bottleneck does, in one list, with where to find it |

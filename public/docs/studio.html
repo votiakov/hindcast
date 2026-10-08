@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Studio · Bottleneck docs</title>
+<meta name="description" content="Comparisons and backtest results rendered as video and carousels for posts and talks.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="index.html">Bottleneck<span>docs</span></a>
+  <nav class="bar-links" aria-label="The app">
+    <a href="../#backtest">Backtest</a><a href="../#live">Live</a><a href="../#lessons">Lessons</a><a href="../#sandbox">Sandbox</a><a href="../#compare">Compare</a><a href="../#studio">Studio</a>
+  </nav>
+  <a class="bar-open" href="../">Open the app ↗</a>
+</header>
+<div class="page">
+<nav class="rail" aria-label="Chapters"><a href="index.html">Overview</a><div class="rail-h">Backtest on real data</div><a href="backtest.html">The backtest screen</a><a href="data.html">Bring your data</a><a href="calibration.html">How the model is fitted</a><a href="strategies.html">Strategies</a><a href="outages.html">Public-outage replays</a><a href="ci.html">CLI, pull requests, MCP</a><div class="rail-h">Design simulator</div><a href="live.html">Live</a><a href="lessons.html">Lessons</a><a href="sandbox.html">Sandbox</a><a href="audit.html">Failure audit and analysis</a><a href="compare.html">Compare</a><a href="studio.html" aria-current="page">Studio</a><div class="rail-h">Reference</div><a href="use-cases.html">Use cases</a><a href="accuracy.html">Accuracy</a><a href="capabilities.html">Everything it does</a></nav>
+<main>
+<header class="head">
+  <div class="kicker">Design simulator</div>
+  <h1>Studio</h1>
+  <p class="lede">Comparisons and backtest results rendered as video and carousels for posts and talks.</p>
+</header>
+<section class="screen" data-shot="studio">
+<figure class="shot"><div class="shot-frame"><a class="shot-full" href="shots/studio.png" target="_blank" rel="noopener" title="Open full size"><img src="shots/studio.png" width="1280" height="800" alt="Episodes — screenshot" loading="lazy"></a><a class="pin" href="#studio-episodes" data-for="studio-episodes" style="left:22.42%;top:15.88%" aria-label="Note 1">1</a><a class="pin" href="#studio-stage" data-for="studio-stage" style="left:25.78%;top:9.25%" aria-label="Note 2">2</a></div></figure>
+<div class="notes">
+<div>
+<h2>Episodes</h2>
+<ol class="pins">
+<li id="studio-episodes" data-n="1"><h3>Scripted episodes</h3><p>A single board or two side by side, captions on a timeline, camera moves onto components, live swaps to the fixed design. Episodes are also generated from any comparison and from any audit incident.</p></li>
+<li id="studio-stage" data-n="2"><h3>The stage</h3><p>What gets rendered, at the chosen format (Feed 4:5, Square 1:1, Story 9:16, Slide 16:9), brand and theme. Below the list: the exact <code>npm run record</code> command for this selection.</p></li>
+</ol>
+</div>
+</div>
+</section>
+
+<section class="prose">
+<h2>Rendering</h2>
+<pre><code>npm run dev
+npm run record -- &lt;episode-id&gt; --aspect 4:5 --brand personal --theme neon [--gif]
+npm run record -- --card card.json        # a backtest card or clip</code></pre>
+<p>Output: an MP4 (H.264), a PNG still after every caption, a PDF carousel of the stills, and optionally a GIF. Rendering is deterministic (a fake clock drives every animation) and takes about real time.</p>
+<p>Backtest results become cards too: see <a href="ci.html#card-verdict">cards and clips</a>.</p>
+</section>
+
+<nav class="pager"><a href="compare.html">← Compare</a><a href="use-cases.html">Use cases →</a></nav>
+</main>
+</div>
+<script src="docs.js"></script>
+</body>
+</html>

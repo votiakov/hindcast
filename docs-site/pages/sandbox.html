@@ -1,0 +1,79 @@
+<!-- title: Sandbox | lede: Build any system, push traffic and failures through it, and watch where it gives out. Every run is recorded, so you can rewind the whole board. -->
+<section class="screen" data-shot="sandbox">
+<div>
+<h2>The board</h2>
+<ol class="pins">
+<li data-pin="palette"><h3>Components</h3><p>Users, CDN, Load Balancer, API Gateway, API Server, Worker, Serverless Fn, Cache, Database, Read Replica, Object Storage, Queue, GPU Inference, LLM Provider API. Drag onto the board or click; connect right handle to left handle.</p></li>
+<li data-pin="node"><h3>A component, live</h3><p>Load in, dropped, capacity, CPU and instances. It glows red when it saturates.</p></li>
+<li data-pin="flow"><h3>Requests flowing</h3><p>Each connection shows its rate. Particles turn red where requests fail.</p></li>
+<li data-pin="metrics"><h3>What users see</h3><p>Throughput, error rate, p99, cost. Click for the cost breakdown per component, $ per million requests and the error-budget burn rate.</p></li>
+<li data-pin="design"><h3>Design</h3><p>Save (⌘S), open, save a copy, download YAML, share a link, embed code, templates, a new blank design.</p></li>
+<li data-pin="spec"><h3>Architecture as code</h3><p>The design as YAML, synced with the board both ways.</p></li>
+<li data-pin="audit"><h3>Failure audit</h3><p>What breaks first, and what it costs. See <a href="audit.html">failure audit</a>.</p></li>
+<li data-pin="analysis"><h3>Analysis</h3><p>Monte Carlo, breaking point, cheapest sizing.</p></li>
+<li data-pin="timeline"><h3>Rewind</h3><p>Every run is recorded. Drag to rewind the whole board to any moment; ←/→ steps. <b>copy timeline</b> gives the run as an incident timeline in Markdown.</p></li>
+<li data-pin="traffic"><h3>Traffic</h3><p>Requests per second, the share of reads, and the pattern: steady, day/night, spiky or a ramp. Drop a CSV of real traffic (time, req/s) on the board to replay it.</p></li>
+<li data-pin="chaos"><h3>Chaos</h3><p>Spike ×3, kill a server, kill the database, heal everything. More per component.</p></li>
+<li data-pin="minimap"><h3>Minimap</h3><p>Where you are on a large board.</p></li>
+</ol>
+</div>
+</section>
+
+<section class="screen" data-shot="sandbox-node">
+<div>
+<h2>Everything a component can do</h2>
+<p>Select a component to get its controls.</p>
+<ol class="pins">
+<li data-pin="tier"><h3>Size</h3><p>S, M or L: capacity, latency and price per instance. Exact numbers per kind in the component catalogue.</p></li>
+<li data-pin="instances"><h3>Instances</h3><p>Add or remove; the load balances across them.</p></li>
+<li data-pin="autoscale"><h3>Autoscale</h3><p>Target tracking with min, max and warm-up: "k8s pod 5–20 s · Fargate 30–60 s · EC2 ASG 90–180 s".</p></li>
+<li data-pin="runtime"><h3>Runtime</h3><p>Node.js, Python, Java, Go or Rust. Changes throughput per instance, latency, cold starts and the serverless bill.</p></li>
+<li data-pin="fault"><h3>Faults</h3><p>10% or 50% errors, +100, +500 or +2000 ms, half capacity, flush the cache, restore. The skull kills it.</p></li>
+<li data-pin="calibrate"><h3>Calibrate</h3><p>From your production numbers: one instance served R req/s at C% CPU with a p50 of L ms and costs $/h. Capacity, latency and price follow.</p></li>
+<li data-pin="retries"><h3>Retries</h3><p>Per failed call: immediate, with backoff, or with a budget.</p></li>
+<li data-pin="breaker"><h3>Circuit breaker</h3><p>Stop calling a failing dependency for a while, with an optional degraded fallback.</p></li>
+<li data-pin="routing"><h3>Routing</h3><p>How calls spread over what it connects to: split, fan-out to all, or failover.</p></li>
+<li data-pin="fanout"><h3>Fan-out</h3><p>Scatter-gather: each call goes to N partitions and waits for the slowest. The tail at scale, made visible.</p></li>
+<li data-pin="queue"><h3>Queue</h3><p>A bounded queue: how many seconds of work it holds before it sheds load.</p></li>
+<li data-pin="node"><h3>The rest is on the component</h3><p>Client timeouts on Users, hit rates on caches, rate limits on gateways, continuous batching on GPUs.</p></li>
+</ol>
+</div>
+</section>
+
+<section class="screen" data-shot="spec">
+<div>
+<h2>Architecture as code</h2>
+<ol class="pins">
+<li data-pin="editor"><h3>The design as YAML</h3><p>Type here and the board follows; change the board and the YAML follows. Components, connections, zones, scenarios, variants.</p></li>
+<li data-pin="status"><h3>Checked as you type</h3><p>Schema errors and lint warnings inline. A valid spec is the same file the CLI and the MCP server take.</p></li>
+</ol>
+<p>Drop a spec, Kubernetes manifests or <code>terraform show -json</code> output on the board to open it; imports list the assumptions they made.</p>
+</div>
+</section>
+
+<section class="screen" data-shot="palette">
+<div>
+<h2>⌘K, everything by name</h2>
+<ol class="pins">
+<li data-pin="input"><h3>Type anything</h3><p>A command, a component, a design, a template, a lesson, a comparison, a chaos action. A number sets the traffic.</p></li>
+<li data-pin="list"><h3>Grouped results</h3><p>Enter runs, ↑↓ chooses, Esc closes.</p></li>
+</ol>
+</div>
+</section>
+
+<section class="prose">
+<h2>Shortcuts and settings</h2>
+<div class="table-wrap"><table>
+<tr><th>keys</th><th></th></tr>
+<tr><td><kbd>⌘K</kbd></td><td>command palette</td></tr>
+<tr><td><kbd>Space</kbd></td><td>play / pause</td></tr>
+<tr><td><kbd>⌘Z</kbd> <kbd>⇧⌘Z</kbd></td><td>undo / redo (board edits, applied fixes, YAML edits)</td></tr>
+<tr><td><kbd>⌘S</kbd></td><td>save the design</td></tr>
+<tr><td><kbd>P</kbd></td><td>present: no chrome, large numbers, captions; ←/→ walks the audit's incidents; F fullscreen</td></tr>
+<tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>step through the recording while rewinding</td></tr>
+<tr><td><kbd>Del</kbd></td><td>delete the selected component or connection</td></tr>
+<tr><td><kbd>?</kbd></td><td>the shortcut sheet</td></tr>
+</table></div>
+<p>The gear opens the settings: theme (Neon, Reference, Transit), pricing (illustrative, AWS us-east-1, GCP us-central1), the cost model, automatic database failover and its timing, serverless cold starts, traffic jitter, request particles, explanations, alert toasts, the request timeout and the error-rate SLO.</p>
+<p><code>?embed=1</code> with a <code>#spec=…</code> link shows just the running board and a traffic slider, for an iframe in a blog post or slides.</p>
+</section>

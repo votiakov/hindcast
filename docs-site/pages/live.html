@@ -1,0 +1,12 @@
+<!-- title: Live | lede: The app opens on a system that is already failing. Traffic is past what it can take, and the next move is pinned to the component under stress. -->
+<section class="screen" data-shot="live">
+<div>
+<h2>A failing system, explained</h2>
+<ol class="pins">
+<li data-pin="metrics"><h3>What users see</h3><p>Throughput, error rate, p99 and cost, live. Red when the SLO is broken.</p></li>
+<li data-pin="node"><h3>The component under stress</h3><p>713 req/s offered to a server that serves 250. CPU at 286% of what it has, 458 req/s dropped. The sparkline shows how it got there.</p></li>
+<li data-pin="callout"><h3>In plain English</h3><p>"Overloaded: 713 req/s offered vs 250 req/s capacity. The excess queues, then gets dropped." What is happening, with the numbers that prove it.</p></li>
+<li data-pin="actions"><h3>The next move</h3><p><b>scale it out</b> fixes it here, <b>compare the fix side by side</b> opens it in Compare, <b>learn it step by step</b> opens the matching lesson, <b>take over the board</b> opens it in the Sandbox.</p></li>
+</ol>
+</div>
+</section>

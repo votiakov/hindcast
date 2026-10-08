@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lessons · Bottleneck docs</title>
+<meta name="description" content="Guided levels with an objective the engine checks: keep the system inside its SLO while the traffic, the failures and the bill get worse.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="index.html">Bottleneck<span>docs</span></a>
+  <nav class="bar-links" aria-label="The app">
+    <a href="../#backtest">Backtest</a><a href="../#live">Live</a><a href="../#lessons">Lessons</a><a href="../#sandbox">Sandbox</a><a href="../#compare">Compare</a><a href="../#studio">Studio</a>
+  </nav>
+  <a class="bar-open" href="../">Open the app ↗</a>
+</header>
+<div class="page">
+<nav class="rail" aria-label="Chapters"><a href="index.html">Overview</a><div class="rail-h">Backtest on real data</div><a href="backtest.html">The backtest screen</a><a href="data.html">Bring your data</a><a href="calibration.html">How the model is fitted</a><a href="strategies.html">Strategies</a><a href="outages.html">Public-outage replays</a><a href="ci.html">CLI, pull requests, MCP</a><div class="rail-h">Design simulator</div><a href="live.html">Live</a><a href="lessons.html" aria-current="page">Lessons</a><a href="sandbox.html">Sandbox</a><a href="audit.html">Failure audit and analysis</a><a href="compare.html">Compare</a><a href="studio.html">Studio</a><div class="rail-h">Reference</div><a href="use-cases.html">Use cases</a><a href="accuracy.html">Accuracy</a><a href="capabilities.html">Everything it does</a></nav>
+<main>
+<header class="head">
+  <div class="kicker">Design simulator</div>
+  <h1>Lessons</h1>
+  <p class="lede">Guided levels with an objective the engine checks: keep the system inside its SLO while the traffic, the failures and the bill get worse.</p>
+</header>
+<section class="screen" data-shot="lesson">
+<figure class="shot"><div class="shot-frame"><a class="shot-full" href="shots/lesson.png" target="_blank" rel="noopener" title="Open full size"><img src="shots/lesson.png" width="1280" height="800" alt="A level — screenshot" loading="lazy"></a><a class="pin" href="#lesson-picker" data-for="lesson-picker" style="left:73.05%;top:16.75%" aria-label="Note 1">1</a><a class="pin" href="#lesson-level" data-for="lesson-level" style="left:72.89%;top:27.06%" aria-label="Note 2">2</a><a class="pin" href="#lesson-objective" data-for="lesson-objective" style="left:72.89%;top:44.55%" aria-label="Note 3">3</a><a class="pin" href="#lesson-progress" data-for="lesson-progress" style="left:72.89%;top:51.16%" aria-label="Note 4">4</a><a class="pin" href="#lesson-palette" data-for="lesson-palette" style="left:16.95%;top:20%" aria-label="Note 5">5</a><a class="pin" href="#lesson-play" data-for="lesson-play" style="left:42.29%;top:91.13%" aria-label="Note 6">6</a></div></figure>
+<div class="notes">
+<div>
+<h2>A level</h2>
+<ol class="pins">
+<li id="lesson-picker" data-n="1"><h3>Pick a lesson</h3><p>Five lessons, sixteen levels, in order.</p></li>
+<li id="lesson-level" data-n="2"><h3>The situation</h3><p>Each level tells a short story: launch day, the front page of Hacker News, a database brownout, the bill arriving.</p></li>
+<li id="lesson-objective" data-n="3"><h3>The objective</h3><p>"Serve 120 req/s with &lt;1% errors and p99 &lt; 300ms for 5s." The engine checks it while you play.</p></li>
+<li id="lesson-progress" data-n="4"><h3>Hold it</h3><p>The bar fills while the objective holds; break it and it resets.</p></li>
+<li id="lesson-palette" data-n="5"><h3>Change the design</h3><p>Add components from the palette, scale what you have, connect things differently.</p></li>
+<li id="lesson-play" data-n="6"><h3>Play</h3><p>Space plays and pauses. 1×, 2×, 4× speed.</p></li>
+</ol>
+</div>
+</div>
+</section>
+
+<section class="prose">
+<h2>The lessons</h2>
+<div class="table-wrap"><table>
+<tr><th>lesson</th><th>levels</th></tr>
+<tr><td>Scale 101: From One Box to Web Scale</td><td>Launch day · Front page of Hacker News · Going viral · Chaos Monday</td></tr>
+<tr><td>Retry Storms: When the Fix Becomes the Outage</td><td>A normal Tuesday · The six-second blip · Database brownout</td></tr>
+<tr><td>Elastic: Paying for Peak vs Surviving It</td><td>Paying for peak, all day · The lunch rush · The cache restarts</td></tr>
+<tr><td>Shipping an AI Feature to Real Traffic</td><td>Launch the assistant · It went viral · Finance saw the bill</td></tr>
+<tr><td>Does the Language Matter? Runtime Economics</td><td>Ten Node.js instances · Cut the compute bill · Black Friday: 3× traffic</td></tr>
+</table></div>
+</section>
+
+<nav class="pager"><a href="live.html">← Live</a><a href="sandbox.html">Sandbox →</a></nav>
+</main>
+</div>
+<script src="docs.js"></script>
+</body>
+</html>

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Failure audit and analysis · Bottleneck docs</title>
+<meta name="description" content="What breaks first, and what it costs. The audit replays every way production goes wrong, grades each by what users would have seen, and verifies and prices each fix.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="index.html">Bottleneck<span>docs</span></a>
+  <nav class="bar-links" aria-label="The app">
+    <a href="../#backtest">Backtest</a><a href="../#live">Live</a><a href="../#lessons">Lessons</a><a href="../#sandbox">Sandbox</a><a href="../#compare">Compare</a><a href="../#studio">Studio</a>
+  </nav>
+  <a class="bar-open" href="../">Open the app ↗</a>
+</header>
+<div class="page">
+<nav class="rail" aria-label="Chapters"><a href="index.html">Overview</a><div class="rail-h">Backtest on real data</div><a href="backtest.html">The backtest screen</a><a href="data.html">Bring your data</a><a href="calibration.html">How the model is fitted</a><a href="strategies.html">Strategies</a><a href="outages.html">Public-outage replays</a><a href="ci.html">CLI, pull requests, MCP</a><div class="rail-h">Design simulator</div><a href="live.html">Live</a><a href="lessons.html">Lessons</a><a href="sandbox.html">Sandbox</a><a href="audit.html" aria-current="page">Failure audit and analysis</a><a href="compare.html">Compare</a><a href="studio.html">Studio</a><div class="rail-h">Reference</div><a href="use-cases.html">Use cases</a><a href="accuracy.html">Accuracy</a><a href="capabilities.html">Everything it does</a></nav>
+<main>
+<header class="head">
+  <div class="kicker">Design simulator</div>
+  <h1>Failure audit and analysis</h1>
+  <p class="lede">What breaks first, and what it costs. The audit replays every way production goes wrong, grades each by what users would have seen, and verifies and prices each fix.</p>
+</header>
+<section class="screen" data-shot="audit">
+<figure class="shot"><div class="shot-frame"><a class="shot-full" href="shots/audit.png" target="_blank" rel="noopener" title="Open full size"><img src="shots/audit.png" width="1280" height="800" alt="The failure audit — screenshot" loading="lazy"></a><a class="pin" href="#audit-inputs" data-for="audit-inputs" style="left:66.02%;top:24.38%" aria-label="Note 1">1</a><a class="pin" href="#audit-summary" data-for="audit-summary" style="left:66.02%;top:32.72%" aria-label="Note 2">2</a><a class="pin" href="#audit-lines" data-for="audit-lines" style="left:87.74%;top:32.66%" aria-label="Note 3">3</a><a class="pin" href="#audit-curve" data-for="audit-curve" style="left:69.77%;top:39.82%" aria-label="Note 4">4</a><a class="pin" href="#audit-risk" data-for="audit-risk" style="left:66.25%;top:61.26%" aria-label="Note 5">5</a><a class="pin" href="#audit-replay" data-for="audit-replay" style="left:77.21%;top:76.32%" aria-label="Note 6">6</a><a class="pin" href="#audit-clip" data-for="audit-clip" style="left:92.33%;top:73.51%" aria-label="Note 7">7</a><a class="pin" href="#audit-fixes" data-for="audit-fixes" style="left:98.36%;top:78.32%" aria-label="Note 8">8</a><a class="pin" href="#audit-report" data-for="audit-report" style="left:77.83%;top:80.88%" aria-label="Note 9">9</a><a class="pin" href="#audit-mark" data-for="audit-mark" style="left:37.26%;top:47.53%" aria-label="Note 10">10</a></div></figure>
+<div class="notes">
+<div>
+<h2>The failure audit</h2>
+<p>The default design: one API server, one Postgres.</p>
+<ol class="pins">
+<li id="audit-inputs" data-n="1"><h3>Load and the price of an outage</h3><p>The expected load, and what a minute of outage costs you. With a price, every risk gets a dollar figure.</p></li>
+<li id="audit-summary" data-n="2"><h3>The score</h3><p>The share of incidents survived, weighted by severity. 24/100 here.</p></li>
+<li id="audit-lines" data-n="3"><h3>The headline numbers</h3><p>Incidents survived, headroom (breaking point ÷ expected load) and what first breaks, and what the design costs per month.</p></li>
+<li id="audit-curve" data-n="4"><h3>The load curve</h3><p>Latency as load rises past today's: where it crosses the SLO is the breaking point, with the cost per million requests now and at the limit.</p></li>
+<li id="audit-risk" data-n="5"><h3>The risk register</h3><p>One row per incident, worst first: every component dying, every dependency turning slow or failing 20% of requests, caches restarting cold, zones going dark, a 3× surge, a ramp past the breaking point. Each is graded critical, major, minor or ok, with its blast radius and recovery time.</p></li>
+<li id="audit-replay" data-n="6"><h3>Replay on the board</h3><p>Plays the incident live from a clean start.</p></li>
+<li id="audit-clip" data-n="7"><h3>Studio clip</h3><p>The incident as a clip: this design against the fixed one, same incident.</p></li>
+<li id="audit-fixes" data-n="8"><h3>Verified fixes</h3><p>Candidate fixes (another instance, a load balancer, a replica, a standby, timeouts and breakers, retry budgets, autoscaling) are each tested by re-running the same incident on the changed design, and priced per month. Fixes that don't help are dropped. <b>Apply</b> applies one (undoable). <b>Backtest</b> replays it over real history when the board came from a backtest.</p></li>
+<li id="audit-report" data-n="9"><h3>The report</h3><p>Markdown to paste, or a self-contained HTML page for a design review.</p></li>
+<li id="audit-mark" data-n="10"><h3>Risks on the board</h3><p>Components that take the system down alone are marked "single point of failure".</p></li>
+</ol>
+<p>From the command line, <code>bottleneck audit arch.yaml --rps 500 --cost-per-min 1000 --md report.md</code> exits with code 2 on a critical finding, so it can gate a pull request that changes an architecture spec.</p>
+</div>
+</div>
+</section>
+
+<section class="screen" data-shot="analysis">
+<figure class="shot"><div class="shot-frame"><a class="shot-full" href="shots/analysis.png" target="_blank" rel="noopener" title="Open full size"><img src="shots/analysis.png" width="1280" height="800" alt="Analysis — screenshot" loading="lazy"></a><a class="pin" href="#analysis-montecarlo" data-for="analysis-montecarlo" style="left:71.02%;top:32.19%" aria-label="Note 1">1</a><a class="pin" href="#analysis-breaking" data-for="analysis-breaking" style="left:71.02%;top:41.06%" aria-label="Note 2">2</a><a class="pin" href="#analysis-cheapest" data-for="analysis-cheapest" style="left:71.02%;top:53.44%" aria-label="Note 3">3</a></div></figure>
+<div class="notes">
+<div>
+<h2>Analysis</h2>
+<p>The discrete-event engine: every request simulated, so tails, retry storms and breaker oscillation emerge rather than being approximated.</p>
+<ol class="pins">
+<li id="analysis-montecarlo" data-n="1"><h3>Monte Carlo</h3><p>Many seeded runs of the current traffic (optionally killing the busiest server halfway): p50, p99, p99.9, errors and cost with 95% confidence intervals, and the share of runs that meet the SLO.</p></li>
+<li id="analysis-breaking" data-n="2"><h3>Breaking point</h3><p>The most req/s it serves within the SLO, and the component that limits it.</p></li>
+<li id="analysis-cheapest" data-n="3"><h3>Cheapest config meeting the SLO</h3><p>The optimizer resizes everything to the cheapest design that still meets the SLO, optionally changing language runtimes; <b>Apply to board</b> takes it.</p></li>
+</ol>
+</div>
+</div>
+</section>
+
+<nav class="pager"><a href="sandbox.html">← Sandbox</a><a href="compare.html">Compare →</a></nav>
+</main>
+</div>
+<script src="docs.js"></script>
+</body>
+</html>

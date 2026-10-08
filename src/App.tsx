@@ -29,7 +29,7 @@ import { writeAutosave } from './sim/designs';
 import { saveCurrent } from './ui/DesignMenu';
 import { openFile } from './spec/openFile';
 import { useState } from 'react';
-import type { Aspect } from './sim/store';
+import type { Aspect, Mode } from './sim/store';
 import type { ThemeId } from './theme/themes';
 import './theme/transit.css';
 import './theme/reference.css';
@@ -120,9 +120,10 @@ function useSimLoop() {
   }, []);
 }
 
-// the app opens on Live; #backtest links straight to the backtest screen
-if (!RENDER && location.hash === '#backtest') useSim.getState().setMode('backtest');
-else if (!RENDER && location.hash) openFromHash(location.hash);
+// the app opens on Live; #backtest, #live, #lessons, #sandbox, #compare and #studio link to a view
+const VIEW_HASH: Record<string, Mode> = { '#backtest': 'backtest', '#live': 'home', '#lessons': 'lesson', '#sandbox': 'sandbox', '#compare': 'compare', '#studio': 'studio' };
+const openHash = (hash: string) => (VIEW_HASH[hash] ? (useSim.getState().setMode(VIEW_HASH[hash]), true) : openFromHash(hash));
+if (!RENDER && location.hash) openHash(location.hash);
 if (EMBED) {
   const s = useSim.getState();
   if (s.mode !== 'sandbox') s.setMode('sandbox');
@@ -147,7 +148,7 @@ if (!RENDER && !EMBED) {
     }, 500);
   });
 }
-window.addEventListener('hashchange', () => (location.hash === '#backtest' ? useSim.getState().setMode('backtest') : openFromHash(location.hash)));
+window.addEventListener('hashchange', () => openHash(location.hash));
 
 export default function App() {
   const mode = useSim((s) => s.mode);

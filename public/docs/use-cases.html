@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Use cases · Bottleneck docs</title>
+<meta name="description" content="Start from your question. Each row says what you need, how to answer it, and where it's explained.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="index.html">Bottleneck<span>docs</span></a>
+  <nav class="bar-links" aria-label="The app">
+    <a href="../#backtest">Backtest</a><a href="../#live">Live</a><a href="../#lessons">Lessons</a><a href="../#sandbox">Sandbox</a><a href="../#compare">Compare</a><a href="../#studio">Studio</a>
+  </nav>
+  <a class="bar-open" href="../">Open the app ↗</a>
+</header>
+<div class="page">
+<nav class="rail" aria-label="Chapters"><a href="index.html">Overview</a><div class="rail-h">Backtest on real data</div><a href="backtest.html">The backtest screen</a><a href="data.html">Bring your data</a><a href="calibration.html">How the model is fitted</a><a href="strategies.html">Strategies</a><a href="outages.html">Public-outage replays</a><a href="ci.html">CLI, pull requests, MCP</a><div class="rail-h">Design simulator</div><a href="live.html">Live</a><a href="lessons.html">Lessons</a><a href="sandbox.html">Sandbox</a><a href="audit.html">Failure audit and analysis</a><a href="compare.html">Compare</a><a href="studio.html">Studio</a><div class="rail-h">Reference</div><a href="use-cases.html" aria-current="page">Use cases</a><a href="accuracy.html">Accuracy</a><a href="capabilities.html">Everything it does</a></nav>
+<main>
+<header class="head">
+  <div class="kicker">Reference</div>
+  <h1>Use cases</h1>
+  <p class="lede">Start from your question. Each row says what you need, how to answer it, and where it's explained.</p>
+</header>
+<section class="prose">
+<h2>With your real data</h2>
+<p>Needs metric exports, traces and the bill from a running system. Answers are about your system, with the model's accuracy shown.</p>
+<div class="table-wrap"><table class="ledger">
+<tr><th>#</th><th>question</th><th>how</th><th>read</th></tr>
+<tr><td>1</td><td>Will this resize save money without hurting users?</td><td><code>cpu: 1</code> as a strategy, backtested over the last 14 days. A limit below the CPU in use shows up as minutes out of SLO.</td><td><a href="strategies.html">strategies</a></td></tr>
+<tr><td>2</td><td>Should we move to Graviton?</td><td><code>arch: arm</code>, with <code>perf:</code> from your benchmark.</td><td><a href="strategies.html">strategies</a></td></tr>
+<tr><td>3</td><td>Which autoscaling policy: target 60% or 75%, 15-second or 60-second metrics, how much warm-up?</td><td>One strategy per candidate, ranked side by side; the scaler runs on its own clock.</td><td><a href="strategies.html">strategies</a></td></tr>
+<tr><td>4</td><td>Is a replica, a cache or a read replica worth it?</td><td><code>replicas</code>, <code>cache</code>, <code>readReplicas</code>: cost against the time out of SLO it removes.</td><td><a href="backtest.html">backtest</a></td></tr>
+<tr><td>5</td><td>How much more traffic can we take, and what gives out first?</td><td><code>bottleneck headroom</code>; the Model tab's capacities and limits.</td><td><a href="calibration.html">calibration</a></td></tr>
+<tr><td>6</td><td>Would retries turn a blip into an outage?</td><td><code>retries</code> with and without a budget, per endpoint or all.</td><td><a href="strategies.html">strategies</a></td></tr>
+<tr><td>7</td><td>What will this pull request do to production?</td><td>The ready-made workflow backtests the manifest diff and comments on the PR; <code>--gate</code> fails the check.</td><td><a href="ci.html">pull requests</a></td></tr>
+<tr><td>8</td><td>Would we survive a famous outage?</td><td><b>Replay an outage…</b> or <code>bottleneck outage</code>.</td><td><a href="outages.html">outages</a></td></tr>
+<tr><td>9</td><td>Where does the money go, per endpoint and across zones?</td><td>Endpoints tab: $ per million requests; <code>zone</code> / <code>region</code> strategies price the transfer.</td><td><a href="backtest.html#bt-endpoints-price">endpoints</a></td></tr>
+<tr><td>10</td><td>Are our critical endpoints inside their own SLOs?</td><td>Per-endpoint SLOs in the manifest; minutes out of each endpoint's own SLO.</td><td><a href="data.html">data</a></td></tr>
+<tr><td>11</td><td>What in our telemetry doesn't add up?</td><td>Fit status and notes per component: unexplained, poor, cost only.</td><td><a href="calibration.html">calibration</a></td></tr>
+<tr><td>12</td><td>What was going on at 12:03 on Sep 14?</td><td>Click the moment: the system replays it on the board. Edit it, backtest the edits.</td><td><a href="backtest.html#bt-board-node">board</a></td></tr>
+<tr><td>13</td><td>How do I show the result?</td><td>The HTML report, the PR comment, a card or clip.</td><td><a href="ci.html">reports and cards</a></td></tr>
+</table></div>
+
+<h2>Without data</h2>
+<p>A design you draw, write as YAML, or import from Terraform or Kubernetes. Answers are directional: good for comparing designs, finding the weak spot and teaching. Calibrate components from production numbers before making claims about a real system.</p>
+<div class="table-wrap"><table class="ledger">
+<tr><th>#</th><th>question</th><th>how</th><th>read</th></tr>
+<tr><td>14</td><td>What breaks first in this design, and what does it cost?</td><td>The failure audit: a risk register with verified, priced fixes; <code>bottleneck audit</code> in CI.</td><td><a href="audit.html">audit</a></td></tr>
+<tr><td>15</td><td>Which of two designs is better here?</td><td>Compare: same traffic, same failures, a computed takeaway.</td><td><a href="compare.html">compare</a></td></tr>
+<tr><td>16</td><td>What is the cheapest sizing that meets the SLO?</td><td>Analysis → cheapest config, or <code>bottleneck optimize</code>.</td><td><a href="audit.html#analysis-cheapest">analysis</a></td></tr>
+<tr><td>17</td><td>How sure is that number?</td><td>Monte Carlo with 95% confidence intervals.</td><td><a href="audit.html#analysis-montecarlo">analysis</a></td></tr>
+<tr><td>18</td><td>How do I learn this?</td><td>Lessons, and the Live board's next moves.</td><td><a href="lessons.html">lessons</a></td></tr>
+<tr><td>19</td><td>How do I walk a room through an incident?</td><td>Present mode (P); the recorder's incident timeline.</td><td><a href="sandbox.html">sandbox</a></td></tr>
+<tr><td>20</td><td>Can an AI assistant do this for me?</td><td>The MCP server: import, audit, compare, optimize, backtest, replay outages; a live canvas inline.</td><td><a href="ci.html">MCP</a></td></tr>
+<tr><td>21</td><td>How do I make a video of it?</td><td>Studio: episodes rendered to MP4 and carousels.</td><td><a href="studio.html">studio</a></td></tr>
+</table></div>
+</section>
+
+<nav class="pager"><a href="studio.html">← Studio</a><a href="accuracy.html">Accuracy →</a></nav>
+</main>
+</div>
+<script src="docs.js"></script>
+</body>
+</html>

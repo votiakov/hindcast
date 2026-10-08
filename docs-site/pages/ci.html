@@ -1,0 +1,81 @@
+<!-- title: CLI, pull requests, MCP | lede: The same backtest runs without the app: a command-line tool, a ready-made check that backtests every infrastructure pull request, reports to attach to a review, and tools for AI assistants. -->
+<section class="prose">
+<h2>The command line</h2>
+<pre><code>bottleneck export-prometheus --url http://prometheus:9090 --start 2026-09-01 --end 2026-09-15 --out telemetry/
+bottleneck import    telemetry/bottleneck.import.yaml --out dataset.json
+bottleneck calibrate dataset.json --holdout 0.3 --out model.json
+bottleneck backtest  model.json dataset.json graviton.yaml autoscale.yaml --last 14d --html report.html
+bottleneck headroom  model.json [strategy.yaml]
+bottleneck accuracy  model.json
+bottleneck outage    model.json slack-2021-01-04 [strategy.yaml]
+bottleneck diff-strategy --base old/deploy --head deploy --model model.json --out strategy.yaml</code></pre>
+<p>In the repository: <code>npm run sim -- &lt;command&gt;</code>. As one file with no install: <code>npm run build:cli</code> → <code>dist-cli/bottleneck.mjs</code> (Node 20). Every command takes <code>--json</code>.</p>
+<p>The terminal output of a backtest, HotROD with three strategies:</p>
+<pre><code>Backtest — HotROD · 0.7 h of history · 30 draws
+  As built                        $96/month   14 min out of SLO   683 failed
+  Everything on Graviton          −$16.66/month    14 min out of SLO   683 failed
+                                  saves $17/month, with no change in time out of SLO
+  Two customer replicas           +$15.15/month    14 min out of SLO   342 failed
+                                  costs $15/month more, with no change in time out of SLO
+  Clients retry twice, no budget  +$6.16/month (+$5.56 … +$6.98)   23 min out of SLO   3137 failed
+                                  costs $6/month more and adds 9 minutes out of SLO
+
+  model accuracy p99 2% · cost 0% · breaking-point 13% · breaking-point 0% · p99 (holdout) 72% · cost (holdout) 1%</code></pre>
+<p><code>headroom</code> answers "how much more can it take":</p>
+<pre><code>Sustains 6.1 req/s with today's endpoint mix within SLO (p99 ≤ 1000 ms, errors ≤ 3.0%), then mysql saturates.</code></pre>
+</section>
+
+<section class="screen" data-shot="report">
+<div>
+<h2>The HTML report</h2>
+<p><code>--html report.html</code> writes one self-contained page to attach to a design review. <a href="examples/hotrod-report.html">Open the HotROD report</a>.</p>
+<ol class="pins">
+<li data-pin="verdict"><h3>One verdict per strategy</h3><p>The same sentences as the app and the pull-request comment.</p></li>
+<li data-pin="p99"><h3>p99 over the history</h3><p>Measured, as built, and every strategy with its band, against the SLO.</p></li>
+<li data-pin="errors"><h3>Errors, cost, cumulative cost, error budget</h3><p>Then the model's accuracy and the full Markdown report.</p></li>
+</ol>
+</div>
+</section>
+
+<section class="prose">
+<h2>The pull-request check</h2>
+<p>A GitHub Actions workflow, ready to copy (<code>examples/backtest-ci</code> in the repository). On a pull request that touches the deployment manifests it:</p>
+<ul>
+<li>turns the manifest diff into a strategy: replicas, CPU and memory limits, HPAs, <code>kubernetes.io/arch</code>;</li>
+<li>backtests it against the last 14 days of recorded traffic;</li>
+<li>posts the result on the pull request and uploads the HTML report;</li>
+<li>fails the check (<code>--gate</code>) if the change would have added time out of SLO.</li>
+</ul>
+<p>The repository holds the CLI file, the calibrated model and the recent history in <code>.bottleneck/</code>. <code>scripts/make-backtest-demo.sh</code> assembles a working example repository.</p>
+<p>What it posted on a real pull request that trimmed a frontend to 50 millicores:</p>
+<p class="verdict"><b>frontend CPU 1 → 0.05</b> saves $23/month; it would have caused 20 minutes out of SLO, the worst on Oct 7 at 16:26 UTC (frontend at 59% of capacity (3.3 req/s on 1 × 5.5 req/s), 78 ms wait).</p>
+<p>The check failed, as it should. The comment also carries a table with $/month, minutes out of SLO, failed requests and the worst moment for each strategy, and the model's accuracy.</p>
+</section>
+
+<section class="screen" data-shot="card">
+<div>
+<h2>Cards and clips</h2>
+<p>Any backtest result as a post-sized card, or a clip of the chart drawing itself and then the verdict. In the app: <b>Card ↗</b>. From the CLI: <code>bottleneck backtest … --card card.json</code>, then <code>npm run record -- --card card.json</code> renders MP4 and PNG stills.</p>
+<ol class="pins">
+<li data-pin="verdict"><h3>The verdict</h3><p>The focused strategy's sentence.</p></li>
+<li data-pin="chart"><h3>Measured, as built, what would have happened</h3><p>Measured p99 as bars (red where it broke the SLO), the model's as-built replay dashed, the strategy in amber.</p></li>
+<li data-pin="foot"><h3>How far to trust it</h3><p>Every card carries the model's measured accuracy, misses included.</p></li>
+</ol>
+</div>
+</section>
+
+<section class="prose">
+<h2>For AI assistants (MCP)</h2>
+<p><code>npm run mcp</code> starts an MCP server over stdio; Claude Code picks it up from <code>.mcp.json</code>. Fourteen tools, two of them for backtests:</p>
+<div class="table-wrap"><table>
+<tr><th>tool</th><th>what it does</th></tr>
+<tr><td><code>backtest_strategy</code></td><td>backtests strategies (objects or YAML) over a recorded history and returns the Markdown report</td></tr>
+<tr><td><code>replay_outage</code></td><td>replays a public outage against a model, as built and with strategies</td></tr>
+<tr><td><code>audit_resilience</code></td><td>what breaks first in a design, and what it costs; verified, priced fixes</td></tr>
+<tr><td><code>simulate</code>, <code>analyze</code></td><td>one run (fluid or discrete-event), or Monte Carlo with confidence intervals</td></tr>
+<tr><td><code>compare_architectures</code>, <code>find_breaking_point</code>, <code>optimize_cost</code></td><td>rank variants, find the max req/s within SLO, find the cheapest sizing that meets it</td></tr>
+<tr><td><code>import_terraform</code>, <code>import_kubernetes</code></td><td>infrastructure code → an architecture, with the assumptions to confirm</td></tr>
+<tr><td><code>show_architecture</code>, <code>open_in_app</code></td><td>a live canvas inline in hosts that support MCP Apps, or a link into the app</td></tr>
+<tr><td><code>list_components</code>, <code>validate_architecture</code></td><td>the component catalogue; schema and lint</td></tr>
+</table></div>
+</section>

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Everything it does · Bottleneck docs</title>
+<meta name="description" content="Every capability in one place, with where to find it: A the app, C the CLI, M the MCP server.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="index.html">Bottleneck<span>docs</span></a>
+  <nav class="bar-links" aria-label="The app">
+    <a href="../#backtest">Backtest</a><a href="../#live">Live</a><a href="../#lessons">Lessons</a><a href="../#sandbox">Sandbox</a><a href="../#compare">Compare</a><a href="../#studio">Studio</a>
+  </nav>
+  <a class="bar-open" href="../">Open the app ↗</a>
+</header>
+<div class="page">
+<nav class="rail" aria-label="Chapters"><a href="index.html">Overview</a><div class="rail-h">Backtest on real data</div><a href="backtest.html">The backtest screen</a><a href="data.html">Bring your data</a><a href="calibration.html">How the model is fitted</a><a href="strategies.html">Strategies</a><a href="outages.html">Public-outage replays</a><a href="ci.html">CLI, pull requests, MCP</a><div class="rail-h">Design simulator</div><a href="live.html">Live</a><a href="lessons.html">Lessons</a><a href="sandbox.html">Sandbox</a><a href="audit.html">Failure audit and analysis</a><a href="compare.html">Compare</a><a href="studio.html">Studio</a><div class="rail-h">Reference</div><a href="use-cases.html">Use cases</a><a href="accuracy.html">Accuracy</a><a href="capabilities.html" aria-current="page">Everything it does</a></nav>
+<main>
+<header class="head">
+  <div class="kicker">Reference</div>
+  <h1>Everything it does</h1>
+  <p class="lede">Every capability in one place, with where to find it: A the app, C the CLI, M the MCP server.</p>
+</header>
+<section class="prose">
+<h2>Real data in</h2>
+<div class="table-wrap"><table>
+<tr><th>capability</th><th>where</th></tr>
+<tr><td>Prometheus <code>query_range</code> JSON, by any label, with endpoint and method labels</td><td>A C</td></tr>
+<tr><td>Prometheus export presets: otel-spanmetrics, http-server, cadvisor, kubernetes, with a label selector</td><td>C</td></tr>
+<tr><td>CloudWatch <code>get-metric-data</code> output; long CSV; wide CSV and Grafana exports; unit conversion</td><td>A C</td></tr>
+<tr><td>OpenTelemetry traces (OTLP JSON lines or document) and Jaeger JSON, streamed at any size</td><td>A C</td></tr>
+<tr><td>AWS Cost and Usage Report (legacy and 2.0) and GCP billing export, by tag or resource id</td><td>A C</td></tr>
+<tr><td>Renaming across sources; zones and regions; SLOs, deadline, in-process dependencies and per-endpoint SLOs as hints</td><td>A C</td></tr>
+</table></div>
+<h2>The calibrated model</h2>
+<div class="table-wrap"><table>
+<tr><th>capability</th><th>where</th></tr>
+<tr><td>Topology from traces: visits, call graph, critical path, self time, payload sizes, uninstrumented databases, caches and queues</td><td>A C</td></tr>
+<tr><td>Endpoint names from route templates, framework spans or templated paths</td><td>A C</td></tr>
+<tr><td>Corrections: double SERVER spans, measured sampling rate, background work skipped</td><td>A C</td></tr>
+<tr><td>CPU per request; capacity per replica as none, CPU, worker pool, lock or pool, or seen while overloaded</td><td>A C</td></tr>
+<tr><td>Knees and metastable failures from overloads; CPU-pinned collapses that scale with cores; queues outside the spans</td><td>A C</td></tr>
+<tr><td>Service-time variability, latency tails, lognormal endpoint latency, errors that grow with load</td><td>A C</td></tr>
+<tr><td>Capacity bands from bootstrap, CPU slope error, knee brackets, extrapolation spread</td><td>A C</td></tr>
+<tr><td>Cost from the bill per replica-hour, per request and per GB; unattributed spend shown</td><td>A C</td></tr>
+<tr><td>Fit status and notes per component and endpoint; holdout accuracy and accuracy against recorded runs</td><td>A C M</td></tr>
+</table></div>
+<h2>Backtest</h2>
+<div class="table-wrap"><table>
+<tr><th>capability</th><th>where</th></tr>
+<tr><td>Strategies: replicas, autoscaling, resize, Graviton, performance factor, capacity override, cache, read replicas, placement, retries with budget, client timeout</td><td>A C M</td></tr>
+<tr><td>Strategies from the board, from audit fixes, from Kubernetes manifest diffs</td><td>A C</td></tr>
+<tr><td>30 paired draws with bands: $/month, minutes out of SLO, failed requests, error budget, worst moment and why, incidents, per-endpoint results, ranking</td><td>A C M</td></tr>
+<tr><td>Data transfer priced across zones, regions and to the internet</td><td>A C M</td></tr>
+<tr><td>The chart-first screen; any moment on the board</td><td>A</td></tr>
+<tr><td>Headroom: req/s sustained within SLO and what saturates next</td><td>C</td></tr>
+<tr><td>Reports: terminal, Markdown, self-contained HTML, PR comment; the PR check with a gate</td><td>C M</td></tr>
+<tr><td>Public-outage replays: Cloudflare 2019, GitHub 2018, Slack 2021, AWS us-east-1 2025</td><td>A C M</td></tr>
+<tr><td>Cards and clips of results</td><td>A C</td></tr>
+<tr><td>Three reference systems with recorded telemetry and measured accuracy</td><td>A</td></tr>
+</table></div>
+<h2>Design simulator</h2>
+<div class="table-wrap"><table>
+<tr><th>capability</th><th>where</th></tr>
+<tr><td>Live: a failing system with the next move</td><td>A</td></tr>
+<tr><td>Five lessons, sixteen levels with engine-checked objectives</td><td>A</td></tr>
+<tr><td>Sandbox: 14 component kinds, zones, link latency, templates, runtimes, autoscaling, retries, timeouts, breakers, bounded queues, routing, fan-out, batching, calibration from production numbers</td><td>A</td></tr>
+<tr><td>Chaos: kill, faults, cache flush, zone failure; traffic patterns, spikes, real traffic from a CSV</td><td>A C</td></tr>
+<tr><td>Flight recorder: rewind the board; incident timeline as Markdown</td><td>A</td></tr>
+<tr><td>Architecture as code: YAML synced with the board; validation and lint</td><td>A C M</td></tr>
+<tr><td>Import from Terraform and Kubernetes, with assumptions</td><td>A C M</td></tr>
+<tr><td>Failure audit: risk register, blast radius, recovery, $ at risk, verified priced fixes, one-click apply, CI gate</td><td>A C M</td></tr>
+<tr><td>Compare: two designs, one scenario, a computed takeaway; 17 built in</td><td>A C M</td></tr>
+<tr><td>Monte Carlo with confidence intervals, breaking point, cost optimizer</td><td>A C M</td></tr>
+<tr><td>Two engines: fluid (fast, live) and discrete-event (every request)</td><td>A C M</td></tr>
+<tr><td>Pricing: illustrative, AWS us-east-1, GCP us-central1</td><td>A C</td></tr>
+<tr><td>Present mode, embeds, share links; themes Neon, Reference, Transit</td><td>A</td></tr>
+</table></div>
+<h2>Content and integrations</h2>
+<div class="table-wrap"><table>
+<tr><th>capability</th><th>where</th></tr>
+<tr><td>Studio episodes, also generated from comparisons and audit incidents</td><td>A</td></tr>
+<tr><td>Rendering to MP4, PNG stills, PDF carousel, GIF in four formats, with brands and themes</td><td>C</td></tr>
+<tr><td>MCP server with 14 tools; a live canvas in MCP Apps hosts</td><td>M</td></tr>
+<tr><td>GitHub Actions: architecture audit and backtest pull-request checks</td><td>C</td></tr>
+<tr><td>A standalone CLI in one file</td><td>C</td></tr>
+</table></div>
+</section>
+
+<nav class="pager"><a href="accuracy.html">← Accuracy</a></nav>
+</main>
+</div>
+<script src="docs.js"></script>
+</body>
+</html>

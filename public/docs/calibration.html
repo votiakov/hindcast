@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How the model is fitted · Bottleneck docs</title>
+<meta name="description" content="From your files, Bottleneck builds a model of the system: what each component costs, how much load it takes, how its latency grows. Then it replays your history through the model and shows how well it reproduces what was measured. Components it can't explain are flagged.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="index.html">Bottleneck<span>docs</span></a>
+  <nav class="bar-links" aria-label="The app">
+    <a href="../#backtest">Backtest</a><a href="../#live">Live</a><a href="../#lessons">Lessons</a><a href="../#sandbox">Sandbox</a><a href="../#compare">Compare</a><a href="../#studio">Studio</a>
+  </nav>
+  <a class="bar-open" href="../">Open the app ↗</a>
+</header>
+<div class="page">
+<nav class="rail" aria-label="Chapters"><a href="index.html">Overview</a><div class="rail-h">Backtest on real data</div><a href="backtest.html">The backtest screen</a><a href="data.html">Bring your data</a><a href="calibration.html" aria-current="page">How the model is fitted</a><a href="strategies.html">Strategies</a><a href="outages.html">Public-outage replays</a><a href="ci.html">CLI, pull requests, MCP</a><div class="rail-h">Design simulator</div><a href="live.html">Live</a><a href="lessons.html">Lessons</a><a href="sandbox.html">Sandbox</a><a href="audit.html">Failure audit and analysis</a><a href="compare.html">Compare</a><a href="studio.html">Studio</a><div class="rail-h">Reference</div><a href="use-cases.html">Use cases</a><a href="accuracy.html">Accuracy</a><a href="capabilities.html">Everything it does</a></nav>
+<main>
+<header class="head">
+  <div class="kicker">Backtest on real data</div>
+  <h1>How the model is fitted</h1>
+  <p class="lede">From your files, Bottleneck builds a model of the system: what each component costs, how much load it takes, how its latency grows. Then it replays your history through the model and shows how well it reproduces what was measured. Components it can't explain are flagged.</p>
+</header>
+<section class="screen" data-shot="bt-model">
+<figure class="shot"><div class="shot-frame"><a class="shot-full" href="shots/bt-model.png" target="_blank" rel="noopener" title="Open full size"><img src="shots/bt-model.png" width="1280" height="640" alt="The Model tab — screenshot" loading="lazy"></a><a class="pin" href="#bt-model-frontend" data-for="bt-model-frontend" style="left:0.94%;top:15.79%" aria-label="Note 1">1</a><a class="pin" href="#bt-model-fit" data-for="bt-model-fit" style="left:18.03%;top:8.77%" aria-label="Note 2">2</a><a class="pin" href="#bt-model-capacity" data-for="bt-model-capacity" style="left:27.87%;top:8.77%" aria-label="Note 3">3</a><a class="pin" href="#bt-model-limit" data-for="bt-model-limit" style="left:34.22%;top:8.77%" aria-label="Note 4">4</a><a class="pin" href="#bt-model-cost" data-for="bt-model-cost" style="left:47.9%;top:8.77%" aria-label="Note 5">5</a><a class="pin" href="#bt-model-notes" data-for="bt-model-notes" style="left:99.06%;top:8.77%" aria-label="Note 6">6</a><a class="pin" href="#bt-model-virtual" data-for="bt-model-virtual" style="left:0.94%;top:60.21%" aria-label="Note 7">7</a></div></figure>
+<div class="notes">
+<div>
+<h2>The Model tab</h2>
+<p>The Astronomy Shop, calibrated from 40 minutes of telemetry: 11 services in eight languages.</p>
+<ol class="pins">
+<li id="bt-model-frontend" data-n="1"><h3>A flagged component</h3><p>The Next.js frontend is marked <b>unexplained</b>: replaying the history through its spans misses its self time by 362%. Its queue sits outside the spans. A busy event loop doesn't accept a request, so no span starts, and clients wait seconds while traced time stays at 18 ms. Bottleneck reads its capacity from CPU instead and says so. The model is still right about it: the frontend's 1-core breaking point was predicted within 6.5%.</p></li>
+<li id="bt-model-fit" data-n="2"><h3>Fit status</h3><p>The whole history replayed through the model, compared bucket by bucket with what was measured: <b>good</b> under 15% error, <b>fair</b> under 30%, <b>poor</b> under 60%, otherwise <b>unexplained</b>. <b>cost only</b> means the component is in the bill or container metrics but never in traces.</p></li>
+<li id="bt-model-capacity" data-n="3"><h3>Capacity per replica, with its band</h3><p>The req/s one replica can serve and its 10th–90th percentile range. The backtest draws from this range, so uncertain capacities show as wider bands on the chart.</p></li>
+<li id="bt-model-limit" data-n="4"><h3>What limits it</h3><p><b>CPU</b> (the limit is reached at the fitted CPU per request), <b>n at a time</b> (a lock, connection pool or worker pool), or nothing seen.</p></li>
+<li id="bt-model-cost" data-n="5"><h3>Cost from the bill</h3><p>Compute spend divided by the replica-hours that actually ran.</p></li>
+<li id="bt-model-notes" data-n="6"><h3>Why</h3><p>How the capacity was read and what it rests on. "load never approached capacity; the CPU limit is extrapolated" tells you which numbers are a stretch.</p></li>
+<li id="bt-model-virtual" data-n="7"><h3>Components nobody instrumented</h3><p>Valkey has no tracing of its own. The frontend's spans call it (<code>db.system: redis</code>), so it becomes a component with its own load, latency and capacity.</p></li>
+</ol>
+</div>
+</div>
+</section>
+
+<section class="screen" data-shot="bt-model-pet">
+<figure class="shot"><div class="shot-frame"><a class="shot-full" href="shots/bt-model-pet.png" target="_blank" rel="noopener" title="Open full size"><img src="shots/bt-model-pet.png" width="1280" height="250" alt="Learned from an overload — screenshot" loading="lazy"></a><a class="pin" href="#bt-model-pet-knee" data-for="bt-model-pet-knee" style="left:98.44%;top:40.43%" aria-label="Note 1">1</a><a class="pin" href="#bt-model-pet-costonly" data-for="bt-model-pet-costonly" style="left:0.94%;top:78.33%" aria-label="Note 2">2</a></div></figure>
+<div class="notes">
+<div>
+<h2>Learned from an overload</h2>
+<p>PetClinic, a Java app on PostgreSQL. Its history includes a push to 280 req/s that the 2-core JVM didn't survive.</p>
+<ol class="pins">
+<li id="bt-model-pet-knee" data-n="1"><h3>A knee, and a metastable failure</h3><p>"broke between 215 and 256 req/s per replica, and while overloaded finished only 145 req/s". Once it tipped over, it stayed down until the backlog was gone. The model keeps both numbers, so a backtest shows the same collapse. Because the CPU ran pinned while it collapsed, the limit counts as CPU: on 4 cores the model predicted a break at 487 req/s, and a stress test measured 470.</p></li>
+<li id="bt-model-pet-costonly" data-n="2"><h3>Cost only</h3><p>The nginx in front has no traces and no request metrics. It is priced from the bill and left out of the latency model.</p></li>
+</ol>
+</div>
+</div>
+</section>
+
+<section class="prose">
+<h2>The fitting rules</h2>
+<p>Each rule below was added when a recording of a real system broke a prediction. The full list, with formulas, is in <code>docs/calibration.md</code> in the repository.</p>
+<div class="table-wrap"><table>
+<tr><th>rule</th><th>what it does</th><th>learned from</th></tr>
+<tr><td>Visits and the critical path</td><td>Traces are folded into visits: one service handling one call. Self time excludes child visits. The critical path says how many ms of each endpoint every service owns.</td><td>—</td></tr>
+<tr><td>Uninstrumented dependencies</td><td>CLIENT spans to databases, caches and queues (<code>db.system</code>, <code>peer.service</code>, <code>messaging.system</code>) become components of their own.</td><td>Astronomy Shop's Valkey, PetClinic's PostgreSQL</td></tr>
+<tr><td>Framework spans</td><td>A framework's second SERVER span inside the same service belongs to the visit already open, and request rates from span metrics are divided by the SERVER spans per visit.</td><td>Next.js counted every request twice</td></tr>
+<tr><td>Sampling drift</td><td>The real share a sampler kept is measured against request metrics; trace-only rates are rescaled.</td><td>a 20% sampler kept 20.7%</td></tr>
+<tr><td>CPU per request</td><td>A regression of CPU on load, with its standard error.</td><td>—</td></tr>
+<tr><td>Capacity: none, CPU, pool or lock</td><td>Each explanation is replayed through the measured history, backlog included; the one that reproduces the measured self time best wins. A lock is c holders each held s ms: capacity c / s.</td><td>HotROD's MySQL mutex</td></tr>
+<tr><td>Service-time variability</td><td>Waits scale with how variable service times are (Allen–Cunneen), fitted rather than assumed.</td><td>Poisson arrivals on near-constant service times</td></tr>
+<tr><td>Seen while overloaded</td><td>What finished per second while a service was saturated is its capacity.</td><td>HotROD</td></tr>
+<tr><td>Queues outside the spans</td><td>When CPU hit its limit, capacity comes from what finished while pinned and from CPU efficiency, and the hidden queue's steepness is read from end-to-end latency.</td><td>the Node.js frontend</td></tr>
+<tr><td>Knees and metastable failures</td><td>An overload in the history brackets the limit. A rate counts as handled only if the bucket after it was healthy too. A collapse that pinned the CPU scales with cores.</td><td>PetClinic</td></tr>
+<tr><td>Errors that grow with load</td><td>A line through the buckets that weren't overloaded.</td><td>HotROD's driver</td></tr>
+<tr><td>Skewed latency</td><td>Each endpoint is lognormal through its own p50 and p99; a system p99 is a quantile of the traffic-weighted mix. Tails are fitted on everyday buckets, not overloads.</td><td>"mostly 3 ms, rarely 300 ms"</td></tr>
+<tr><td>Extrapolation is a range</td><td>When the history never came near a limit and CPU and latency disagree, the band spans both.</td><td>Astronomy Shop's ad service</td></tr>
+<tr><td>Cost</td><td>$ per replica-hour from compute spend over replica-hours actually run; per request from usage-billed lines; transfer from placement at AWS rates (cross-zone $0.01/GB each way, cross-region $0.02/GB, internet $0.09/GB).</td><td>—</td></tr>
+</table></div>
+<h2>What it doesn't do</h2>
+<ul>
+<li>A limit the history never approached is an extrapolation; the band shows how wide it is. One overload in the history is worth more than a month of quiet days.</li>
+<li>Cold starts after a deploy (JIT warm-up, empty caches) are not part of the backtest.</li>
+<li>Errors unrelated to load (a bad deploy, a bug) are a baseline rate, not predicted.</li>
+<li>A garbage-collected runtime's p99 over 5 minutes can swing 5× at the same load. The model predicts the distribution, not which window a pause lands in.</li>
+</ul>
+</section>
+
+<nav class="pager"><a href="data.html">← Bring your data</a><a href="strategies.html">Strategies →</a></nav>
+</main>
+</div>
+<script src="docs.js"></script>
+</body>
+</html>

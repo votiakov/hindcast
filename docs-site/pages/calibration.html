@@ -1,0 +1,56 @@
+<!-- title: How the model is fitted | lede: From your files, Bottleneck builds a model of the system: what each component costs, how much load it takes, how its latency grows. Then it replays your history through the model and shows how well it reproduces what was measured. Components it can't explain are flagged. -->
+<section class="screen" data-shot="bt-model">
+<div>
+<h2>The Model tab</h2>
+<p>The Astronomy Shop, calibrated from 40 minutes of telemetry: 11 services in eight languages.</p>
+<ol class="pins">
+<li data-pin="frontend"><h3>A flagged component</h3><p>The Next.js frontend is marked <b>unexplained</b>: replaying the history through its spans misses its self time by 362%. Its queue sits outside the spans. A busy event loop doesn't accept a request, so no span starts, and clients wait seconds while traced time stays at 18 ms. Bottleneck reads its capacity from CPU instead and says so. The model is still right about it: the frontend's 1-core breaking point was predicted within 6.5%.</p></li>
+<li data-pin="fit"><h3>Fit status</h3><p>The whole history replayed through the model, compared bucket by bucket with what was measured: <b>good</b> under 15% error, <b>fair</b> under 30%, <b>poor</b> under 60%, otherwise <b>unexplained</b>. <b>cost only</b> means the component is in the bill or container metrics but never in traces.</p></li>
+<li data-pin="capacity"><h3>Capacity per replica, with its band</h3><p>The req/s one replica can serve and its 10th–90th percentile range. The backtest draws from this range, so uncertain capacities show as wider bands on the chart.</p></li>
+<li data-pin="limit"><h3>What limits it</h3><p><b>CPU</b> (the limit is reached at the fitted CPU per request), <b>n at a time</b> (a lock, connection pool or worker pool), or nothing seen.</p></li>
+<li data-pin="cost"><h3>Cost from the bill</h3><p>Compute spend divided by the replica-hours that actually ran.</p></li>
+<li data-pin="notes"><h3>Why</h3><p>How the capacity was read and what it rests on. "load never approached capacity; the CPU limit is extrapolated" tells you which numbers are a stretch.</p></li>
+<li data-pin="virtual"><h3>Components nobody instrumented</h3><p>Valkey has no tracing of its own. The frontend's spans call it (<code>db.system: redis</code>), so it becomes a component with its own load, latency and capacity.</p></li>
+</ol>
+</div>
+</section>
+
+<section class="screen" data-shot="bt-model-pet">
+<div>
+<h2>Learned from an overload</h2>
+<p>PetClinic, a Java app on PostgreSQL. Its history includes a push to 280 req/s that the 2-core JVM didn't survive.</p>
+<ol class="pins">
+<li data-pin="knee"><h3>A knee, and a metastable failure</h3><p>"broke between 215 and 256 req/s per replica, and while overloaded finished only 145 req/s". Once it tipped over, it stayed down until the backlog was gone. The model keeps both numbers, so a backtest shows the same collapse. Because the CPU ran pinned while it collapsed, the limit counts as CPU: on 4 cores the model predicted a break at 487 req/s, and a stress test measured 470.</p></li>
+<li data-pin="costonly"><h3>Cost only</h3><p>The nginx in front has no traces and no request metrics. It is priced from the bill and left out of the latency model.</p></li>
+</ol>
+</div>
+</section>
+
+<section class="prose">
+<h2>The fitting rules</h2>
+<p>Each rule below was added when a recording of a real system broke a prediction. The full list, with formulas, is in <code>docs/calibration.md</code> in the repository.</p>
+<div class="table-wrap"><table>
+<tr><th>rule</th><th>what it does</th><th>learned from</th></tr>
+<tr><td>Visits and the critical path</td><td>Traces are folded into visits: one service handling one call. Self time excludes child visits. The critical path says how many ms of each endpoint every service owns.</td><td>—</td></tr>
+<tr><td>Uninstrumented dependencies</td><td>CLIENT spans to databases, caches and queues (<code>db.system</code>, <code>peer.service</code>, <code>messaging.system</code>) become components of their own.</td><td>Astronomy Shop's Valkey, PetClinic's PostgreSQL</td></tr>
+<tr><td>Framework spans</td><td>A framework's second SERVER span inside the same service belongs to the visit already open, and request rates from span metrics are divided by the SERVER spans per visit.</td><td>Next.js counted every request twice</td></tr>
+<tr><td>Sampling drift</td><td>The real share a sampler kept is measured against request metrics; trace-only rates are rescaled.</td><td>a 20% sampler kept 20.7%</td></tr>
+<tr><td>CPU per request</td><td>A regression of CPU on load, with its standard error.</td><td>—</td></tr>
+<tr><td>Capacity: none, CPU, pool or lock</td><td>Each explanation is replayed through the measured history, backlog included; the one that reproduces the measured self time best wins. A lock is c holders each held s ms: capacity c / s.</td><td>HotROD's MySQL mutex</td></tr>
+<tr><td>Service-time variability</td><td>Waits scale with how variable service times are (Allen–Cunneen), fitted rather than assumed.</td><td>Poisson arrivals on near-constant service times</td></tr>
+<tr><td>Seen while overloaded</td><td>What finished per second while a service was saturated is its capacity.</td><td>HotROD</td></tr>
+<tr><td>Queues outside the spans</td><td>When CPU hit its limit, capacity comes from what finished while pinned and from CPU efficiency, and the hidden queue's steepness is read from end-to-end latency.</td><td>the Node.js frontend</td></tr>
+<tr><td>Knees and metastable failures</td><td>An overload in the history brackets the limit. A rate counts as handled only if the bucket after it was healthy too. A collapse that pinned the CPU scales with cores.</td><td>PetClinic</td></tr>
+<tr><td>Errors that grow with load</td><td>A line through the buckets that weren't overloaded.</td><td>HotROD's driver</td></tr>
+<tr><td>Skewed latency</td><td>Each endpoint is lognormal through its own p50 and p99; a system p99 is a quantile of the traffic-weighted mix. Tails are fitted on everyday buckets, not overloads.</td><td>"mostly 3 ms, rarely 300 ms"</td></tr>
+<tr><td>Extrapolation is a range</td><td>When the history never came near a limit and CPU and latency disagree, the band spans both.</td><td>Astronomy Shop's ad service</td></tr>
+<tr><td>Cost</td><td>$ per replica-hour from compute spend over replica-hours actually run; per request from usage-billed lines; transfer from placement at AWS rates (cross-zone $0.01/GB each way, cross-region $0.02/GB, internet $0.09/GB).</td><td>—</td></tr>
+</table></div>
+<h2>What it doesn't do</h2>
+<ul>
+<li>A limit the history never approached is an extrapolation; the band shows how wide it is. One overload in the history is worth more than a month of quiet days.</li>
+<li>Cold starts after a deploy (JIT warm-up, empty caches) are not part of the backtest.</li>
+<li>Errors unrelated to load (a bad deploy, a bug) are a baseline rate, not predicted.</li>
+<li>A garbage-collected runtime's p99 over 5 minutes can swing 5× at the same load. The model predicts the distribution, not which window a pause lands in.</li>
+</ul>
+</section>

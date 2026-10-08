@@ -1,0 +1,27 @@
+<!-- title: Public-outage replays | lede: Would your design have survived it? Famous outages, turned from their published timelines into what your system would have felt, replayed against your model as built and with each strategy. -->
+<section class="screen" data-shot="bt-outage">
+<div>
+<h2>Slack, 4 January 2021, replayed against HotROD</h2>
+<ol class="pins">
+<li data-pin="banner"><h3>The outage and your result</h3><p>Pick one from <b>Replay an outage…</b>. The headline is your system as built: here 280 minutes out of SLO and 115,047 failed requests.</p></li>
+<li data-pin="what"><h3>What happened</h3><p>The published story in one paragraph, then its timeline, minute by minute.</p></li>
+<li data-pin="timeline"><h3>How it maps onto your system</h3><p>Your normal load, which of your components play each role, every assumption the replay makes, and the source. Slack gave no traffic number, so the 1.55× morning surge is an assumption to tune, and the replay says so.</p></li>
+<li data-pin="marker"><h3>On the chart</h3><p>The timeline's events are marked on the chart, and every strategy is replayed through the same outage. Here none of HotROD's strategies shortens the 280 minutes out of SLO, though two customer replicas cut the failed requests by 70,582.</p></li>
+</ol>
+</div>
+</section>
+
+<section class="prose">
+<h2>The outages</h2>
+<div class="table-wrap"><table>
+<tr><th>id</th><th>outage</th><th>what your system feels</th></tr>
+<tr><td><code>cloudflare-2019-07-02</code></td><td>A WAF rule with a backtracking regex took every edge CPU for 27 minutes.</td><td><code>edge</code> capacity drops to ~3% for 25 minutes</td></tr>
+<tr><td><code>github-2018-10-21</code></td><td>A 43-second network partition moved the database primaries across the country for a day.</td><td><code>primary-db</code> unreachable for 43 s, then ~60 ms on every call for hours, with 2% of writes rejected while it settles</td></tr>
+<tr><td><code>slack-2021-01-04</code></td><td>The Monday after the holidays: a cold-cache surge, saturated gateways, packet loss, and autoscaling that couldn't provision.</td><td>1.55× your peak, 1.5% of calls failing and +40 ms everywhere, autoscaling blocked for 74 minutes and then 4× slower</td></tr>
+<tr><td><code>aws-use1-2025-10-20</code></td><td>DynamoDB's DNS record emptied; EC2 launches were impaired for hours afterwards.</td><td><code>managed-kv</code> unreachable for 2 h 37 min, <code>compute</code> unable to launch for hours, then <code>edge</code> errors while health checks flap</td></tr>
+</table></div>
+<p>Roles (<code>edge</code>, <code>primary-db</code>, <code>managed-kv</code>, <code>compute</code>, <code>all</code>) are resolved to your components automatically, or set them yourself:</p>
+<pre><code>bottleneck outage model.json list
+bottleneck outage model.json slack-2021-01-04 autoscale.yaml --role primary-db=orders-db</code></pre>
+<p>Every replay cites its source, the company's own postmortem, and lists the assumptions it makes.</p>
+</section>

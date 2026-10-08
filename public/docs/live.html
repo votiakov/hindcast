@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live · Bottleneck docs</title>
+<meta name="description" content="The app opens on a system that is already failing. Traffic is past what it can take, and the next move is pinned to the component under stress.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="index.html">Bottleneck<span>docs</span></a>
+  <nav class="bar-links" aria-label="The app">
+    <a href="../#backtest">Backtest</a><a href="../#live">Live</a><a href="../#lessons">Lessons</a><a href="../#sandbox">Sandbox</a><a href="../#compare">Compare</a><a href="../#studio">Studio</a>
+  </nav>
+  <a class="bar-open" href="../">Open the app ↗</a>
+</header>
+<div class="page">
+<nav class="rail" aria-label="Chapters"><a href="index.html">Overview</a><div class="rail-h">Backtest on real data</div><a href="backtest.html">The backtest screen</a><a href="data.html">Bring your data</a><a href="calibration.html">How the model is fitted</a><a href="strategies.html">Strategies</a><a href="outages.html">Public-outage replays</a><a href="ci.html">CLI, pull requests, MCP</a><div class="rail-h">Design simulator</div><a href="live.html" aria-current="page">Live</a><a href="lessons.html">Lessons</a><a href="sandbox.html">Sandbox</a><a href="audit.html">Failure audit and analysis</a><a href="compare.html">Compare</a><a href="studio.html">Studio</a><div class="rail-h">Reference</div><a href="use-cases.html">Use cases</a><a href="accuracy.html">Accuracy</a><a href="capabilities.html">Everything it does</a></nav>
+<main>
+<header class="head">
+  <div class="kicker">Design simulator</div>
+  <h1>Live</h1>
+  <p class="lede">The app opens on a system that is already failing. Traffic is past what it can take, and the next move is pinned to the component under stress.</p>
+</header>
+<section class="screen" data-shot="live">
+<figure class="shot"><div class="shot-frame"><a class="shot-full" href="shots/live.png" target="_blank" rel="noopener" title="Open full size"><img src="shots/live.png" width="1280" height="800" alt="A failing system, explained — screenshot" loading="lazy"></a><a class="pin" href="#live-metrics" data-for="live-metrics" style="left:56.6%;top:10.75%" aria-label="Note 1">1</a><a class="pin" href="#live-node" data-for="live-node" style="left:59.26%;top:40.42%" aria-label="Note 2">2</a><a class="pin" href="#live-callout" data-for="live-callout" style="left:47.14%;top:79.57%" aria-label="Note 3">3</a><a class="pin" href="#live-actions" data-for="live-actions" style="left:47.14%;top:96.07%" aria-label="Note 4">4</a></div></figure>
+<div class="notes">
+<div>
+<h2>A failing system, explained</h2>
+<ol class="pins">
+<li id="live-metrics" data-n="1"><h3>What users see</h3><p>Throughput, error rate, p99 and cost, live. Red when the SLO is broken.</p></li>
+<li id="live-node" data-n="2"><h3>The component under stress</h3><p>713 req/s offered to a server that serves 250. CPU at 286% of what it has, 458 req/s dropped. The sparkline shows how it got there.</p></li>
+<li id="live-callout" data-n="3"><h3>In plain English</h3><p>"Overloaded: 713 req/s offered vs 250 req/s capacity. The excess queues, then gets dropped." What is happening, with the numbers that prove it.</p></li>
+<li id="live-actions" data-n="4"><h3>The next move</h3><p><b>scale it out</b> fixes it here, <b>compare the fix side by side</b> opens it in Compare, <b>learn it step by step</b> opens the matching lesson, <b>take over the board</b> opens it in the Sandbox.</p></li>
+</ol>
+</div>
+</div>
+</section>
+
+<nav class="pager"><a href="ci.html">← CLI, pull requests, MCP</a><a href="lessons.html">Lessons →</a></nav>
+</main>
+</div>
+<script src="docs.js"></script>
+</body>
+</html>

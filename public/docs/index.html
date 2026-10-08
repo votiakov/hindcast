@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bottleneck · Bottleneck docs</title>
+<meta name="description" content="Backtest infrastructure changes on your real production data before they ship, and simulate any architecture to find what breaks first and what it costs.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="index.html">Bottleneck<span>docs</span></a>
+  <nav class="bar-links" aria-label="The app">
+    <a href="../#backtest">Backtest</a><a href="../#live">Live</a><a href="../#lessons">Lessons</a><a href="../#sandbox">Sandbox</a><a href="../#compare">Compare</a><a href="../#studio">Studio</a>
+  </nav>
+  <a class="bar-open" href="../">Open the app ↗</a>
+</header>
+<div class="page">
+<nav class="rail" aria-label="Chapters"><a href="index.html" aria-current="page">Overview</a><div class="rail-h">Backtest on real data</div><a href="backtest.html">The backtest screen</a><a href="data.html">Bring your data</a><a href="calibration.html">How the model is fitted</a><a href="strategies.html">Strategies</a><a href="outages.html">Public-outage replays</a><a href="ci.html">CLI, pull requests, MCP</a><div class="rail-h">Design simulator</div><a href="live.html">Live</a><a href="lessons.html">Lessons</a><a href="sandbox.html">Sandbox</a><a href="audit.html">Failure audit and analysis</a><a href="compare.html">Compare</a><a href="studio.html">Studio</a><div class="rail-h">Reference</div><a href="use-cases.html">Use cases</a><a href="accuracy.html">Accuracy</a><a href="capabilities.html">Everything it does</a></nav>
+<main>
+<header class="head">
+  <div class="kicker">Documentation</div>
+  <h1>Bottleneck</h1>
+  <p class="lede">Backtest infrastructure changes on your real production data before they ship, and simulate any architecture to find what breaks first and what it costs.</p>
+</header>
+<section class="prose">
+<figure class="still"><img src="shots/backtest.png" width="1280" height="800" alt="The backtest screen: HotROD's real history with four strategies replayed over it"></figure>
+<p>Bottleneck has two halves that share one engine.</p>
+<div class="table-wrap"><table>
+<tr><th></th><th>with your real data</th><th>without data</th></tr>
+<tr><td>Input</td><td>metric exports (Prometheus, CloudWatch), OpenTelemetry traces, the cloud bill (AWS CUR, GCP)</td><td>a design you draw, write as YAML, or import from Terraform or Kubernetes</td></tr>
+<tr><td>Model</td><td>fitted from the data, with its accuracy shown and anything it can't explain flagged</td><td>catalogue numbers, or your own</td></tr>
+<tr><td>Question</td><td>what would this change have done to the last two weeks?</td><td>what breaks first, and what does it cost?</td></tr>
+<tr><td>Answer</td><td>$ saved or spent, minutes out of SLO, failed requests, the worst moment and why, with confidence bands</td><td>a risk register with verified, priced fixes; comparisons; breaking points</td></tr>
+<tr><td>Where</td><td><a href="backtest.html">Backtest</a>, the CLI, a pull-request check</td><td><a href="live.html">Live</a>, <a href="lessons.html">Lessons</a>, <a href="sandbox.html">Sandbox</a>, <a href="compare.html">Compare</a>, <a href="studio.html">Studio</a></td></tr>
+</table></div>
+<p>Accuracy is measured, not claimed. Three open demo systems were run under load with their telemetry recorded. Calibrated on one run, the model predicted runs it never saw: p99 within 2–10%, breaking points within 0–13%, cost within 0–3%. See <a href="accuracy.html">accuracy</a>.</p>
+
+<h2>Start</h2>
+<pre><code>npm install
+npm run dev            # the app on http://localhost:5173 — the docs are at /docs/
+npm run sim -- …       # the CLI
+npm run mcp            # the MCP server for AI assistants</code></pre>
+<ul>
+<li>Open the <a href="../#backtest">Backtest</a> tab: the three reference systems are built in. Then <a href="data.html">bring your own data</a>.</li>
+<li>Or start on <a href="../#live">Live</a>, a system already failing, and follow the next move.</li>
+<li>Looking for a specific question? <a href="use-cases.html">Use cases</a>. Want the full list? <a href="capabilities.html">Everything it does</a>.</li>
+</ul>
+
+<h2>Chapters</h2>
+<div class="table-wrap"><table class="ledger">
+<tr><td>1</td><td><a href="backtest.html">The backtest screen</a></td><td>the chart, the strategies, the verdict, incidents, endpoints, any moment on the board</td></tr>
+<tr><td>2</td><td><a href="data.html">Bring your data</a></td><td>the files, the import manifest, Prometheus export presets</td></tr>
+<tr><td>3</td><td><a href="calibration.html">How the model is fitted</a></td><td>capacity, latency and cost from telemetry; what gets flagged; the rules and the recordings that taught them</td></tr>
+<tr><td>4</td><td><a href="strategies.html">Strategies</a></td><td>every change you can backtest, and where strategies come from</td></tr>
+<tr><td>5</td><td><a href="outages.html">Public-outage replays</a></td><td>Cloudflare 2019, GitHub 2018, Slack 2021, AWS us-east-1 2025</td></tr>
+<tr><td>6</td><td><a href="ci.html">CLI, pull requests, MCP</a></td><td>commands, reports, the PR check, cards, tools for AI assistants</td></tr>
+<tr><td>7</td><td><a href="live.html">Live</a></td><td>a failing system with the next move</td></tr>
+<tr><td>8</td><td><a href="lessons.html">Lessons</a></td><td>five lessons, sixteen levels</td></tr>
+<tr><td>9</td><td><a href="sandbox.html">Sandbox</a></td><td>building, every component control, chaos, rewind, YAML, ⌘K</td></tr>
+<tr><td>10</td><td><a href="audit.html">Failure audit and analysis</a></td><td>the risk register, verified fixes, Monte Carlo, breaking point, cost optimizer</td></tr>
+<tr><td>11</td><td><a href="compare.html">Compare</a></td><td>seventeen built-in comparisons</td></tr>
+<tr><td>12</td><td><a href="studio.html">Studio</a></td><td>episodes and clips, rendered</td></tr>
+</table></div>
+</section>
+
+<nav class="pager"><span></span><a href="backtest.html">The backtest screen →</a></nav>
+</main>
+</div>
+<script src="docs.js"></script>
+</body>
+</html>

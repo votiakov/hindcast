@@ -1,0 +1,15 @@
+<!-- title: Compare | lede: Two designs side by side, under the same traffic and the same failures, with a takeaway computed by the engine. -->
+<section class="screen" data-shot="compare">
+<div>
+<h2>Monolith vs Microservices, 14 seconds in</h2>
+<ol class="pins">
+<li data-pin="strip"><h3>Seventeen built-in comparisons</h3><p>Monolith vs Microservices, Single DB vs HA Cluster, Sync vs Event-driven, Servers vs Serverless, Brute Force vs CDN + Cache, Single-AZ vs Multi-AZ, Naive Retries vs Resilient Clients, LLM API vs Self-hosted GPUs, Node.js vs Go vs the Database, The Outage After the Fix, Retries at Every Layer, Cells vs One Big Fleet, Queue vs Shed, The Tail at Scale, When Your LLM Provider Goes Down, Peak-sized Fleet vs Autoscaling, One Region vs Two.</p></li>
+<li data-pin="a"><h3>Each side's numbers</h3><p>Errors, p99 and $/hour per side; the top bar shows them against each other. Here the orders database just crashed: the monolith fails 99.3% of requests, the microservices 33.1%.</p></li>
+<li data-pin="audit"><h3>Audit a side</h3><p>Score, incidents survived, headroom, cost and the top risks with their fixes, at the scenario's peak load.</p></li>
+<li data-pin="swap"><h3>Swap a design</h3><p>Put any template or your own design on either side.</p></li>
+<li data-pin="caption"><h3>What is happening</h3><p>The scenario's captions as it plays. At the end, the takeaway: what the difference was and why.</p></li>
+<li data-pin="track"><h3>The timeline</h3><p>The scenario's events (a crash, a surge, a recovery) as marks on its timeline.</p></li>
+</ol>
+<p>From the command line: <code>bottleneck compare arch.yaml variants.yaml scenario.yaml</code> ranks variants under one scenario. Share a comparison as a <code>#compare=…</code> link.</p>
+</div>
+</section>

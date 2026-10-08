@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Accuracy · Bottleneck docs</title>
+<meta name="description" content="How well the backtest predicts reality, measured on three open demo systems run under load in Docker, with their telemetry recorded the way production records it.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="index.html">Bottleneck<span>docs</span></a>
+  <nav class="bar-links" aria-label="The app">
+    <a href="../#backtest">Backtest</a><a href="../#live">Live</a><a href="../#lessons">Lessons</a><a href="../#sandbox">Sandbox</a><a href="../#compare">Compare</a><a href="../#studio">Studio</a>
+  </nav>
+  <a class="bar-open" href="../">Open the app ↗</a>
+</header>
+<div class="page">
+<nav class="rail" aria-label="Chapters"><a href="index.html">Overview</a><div class="rail-h">Backtest on real data</div><a href="backtest.html">The backtest screen</a><a href="data.html">Bring your data</a><a href="calibration.html">How the model is fitted</a><a href="strategies.html">Strategies</a><a href="outages.html">Public-outage replays</a><a href="ci.html">CLI, pull requests, MCP</a><div class="rail-h">Design simulator</div><a href="live.html">Live</a><a href="lessons.html">Lessons</a><a href="sandbox.html">Sandbox</a><a href="audit.html">Failure audit and analysis</a><a href="compare.html">Compare</a><a href="studio.html">Studio</a><div class="rail-h">Reference</div><a href="use-cases.html">Use cases</a><a href="accuracy.html" aria-current="page">Accuracy</a><a href="capabilities.html">Everything it does</a></nav>
+<main>
+<header class="head">
+  <div class="kicker">Reference</div>
+  <h1>Accuracy</h1>
+  <p class="lede">How well the backtest predicts reality, measured on three open demo systems run under load in Docker, with their telemetry recorded the way production records it.</p>
+</header>
+<section class="prose">
+<h2>How it was measured</h2>
+<p>Each system ran a 40-minute "day": a night trough, a morning ramp, a lunch peak, a three-minute push above capacity, an evening decline. The model was calibrated on that run only. Then it predicted runs it never saw:</p>
+<ul>
+<li>the same day with a change really applied (a second replica, an autoscaler, a bigger instance);</li>
+<li>step load tests up to the breaking point, as built and with the change.</li>
+</ul>
+<p>The telemetry was recorded like production: an OpenTelemetry Collector writing 20% of traces and turning every span into request metrics, container metrics scraped by Prometheus every 5 seconds, k6 sending Poisson arrivals and keeping every request. The bill is an AWS Cost and Usage Report built from what actually ran, priced as Fargate in us-east-1.</p>
+
+<h2>The systems</h2>
+<div class="table-wrap"><table>
+<tr><th>system</th><th>what limits it</th></tr>
+<tr><td>HotROD (Jaeger's demo)</td><td>a mutex around a simulated MySQL connection: concurrency, not CPU</td></tr>
+<tr><td>Astronomy Shop (the OpenTelemetry demo)</td><td>CPU: the Next.js frontend and the 11 services in eight languages it fans out to</td></tr>
+<tr><td>PetClinic REST on PostgreSQL</td><td>JVM CPU and a connection pool; it fails metastably</td></tr>
+</table></div>
+
+<h2>Results</h2>
+<p>Targets: p99 within 20% (over every request of the run), breaking point within 15%, cost within 10% of the bill.</p>
+<div class="table-wrap"><table>
+<tr><th>system</th><th>check</th><th>run</th><th>predicted</th><th>measured</th><th>off by</th></tr>
+<tr><td>HotROD</td><td>p99</td><td>2 replicas</td><td class="num">645 ms</td><td class="num">659 ms</td><td class="num pass">2.1%</td></tr>
+<tr><td>HotROD</td><td>cost</td><td>2 replicas</td><td class="num">$0.102</td><td class="num">$0.102</td><td class="num pass">0.2%</td></tr>
+<tr><td>HotROD</td><td>breaking point</td><td>stress</td><td class="num">6.6 req/s</td><td class="num">7.6 req/s</td><td class="num pass">12.7%</td></tr>
+<tr><td>HotROD</td><td>breaking point</td><td>stress, 2 replicas</td><td class="num">7.7 req/s</td><td class="num">7.7 req/s</td><td class="num pass">0.0%</td></tr>
+<tr><td>Astronomy Shop</td><td>p99</td><td>autoscaled</td><td class="num">99 ms</td><td class="num">91 ms</td><td class="num pass">9.4%</td></tr>
+<tr><td>Astronomy Shop</td><td>cost</td><td>autoscaled</td><td class="num">$0.189</td><td class="num">$0.183</td><td class="num pass">3.3%</td></tr>
+<tr><td>Astronomy Shop</td><td>breaking point</td><td>stress</td><td class="num">251.6 req/s</td><td class="num">286.0 req/s</td><td class="num pass">12.0%</td></tr>
+<tr><td>Astronomy Shop</td><td>breaking point</td><td>stress, 1-core frontend</td><td class="num">573.9 req/s</td><td class="num">613.7 req/s</td><td class="num pass">6.5%</td></tr>
+<tr><td>PetClinic</td><td>p99</td><td>2 replicas</td><td class="num">20 ms</td><td class="num">18 ms</td><td class="num pass">9.1%</td></tr>
+<tr><td>PetClinic</td><td>cost</td><td>2 replicas</td><td class="num">$0.208</td><td class="num">$0.211</td><td class="num pass">1.4%</td></tr>
+<tr><td>PetClinic</td><td>breaking point</td><td>stress, 2 cores</td><td class="num">230.6 req/s</td><td class="num">213.0 req/s</td><td class="num pass">8.2%</td></tr>
+<tr><td>PetClinic</td><td>breaking point</td><td>stress, 4 cores</td><td class="num">487.2 req/s</td><td class="num">470.3 req/s</td><td class="num pass">3.6%</td></tr>
+</table></div>
+
+<h2>Where it misses</h2>
+<p>Each model is also calibrated on the first 70% of its history and asked to predict the rest. Cost holds (0.3–6.3% off). p99 misses badly, by 72–99%, because each history ends with its push above capacity: the last 30% contains an overload the first 70% never came near. With no evidence of where the limit is, the model predicts a healthy evening. A model is only as good as the loads its history has seen, which is why every component's notes say when its capacity is an extrapolation.</p>
+<div class="table-wrap"><table>
+<tr><th>system</th><th>holdout p99</th><th>holdout cost</th></tr>
+<tr><td>HotROD</td><td class="num miss">72.4%</td><td class="num pass">1.1%</td></tr>
+<tr><td>Astronomy Shop</td><td class="num miss">82.8%</td><td class="num pass">6.3%</td></tr>
+<tr><td>PetClinic</td><td class="num miss">99.4%</td><td class="num pass">0.3%</td></tr>
+</table></div>
+
+<h2>Where you see it</h2>
+<p>The accuracy record travels with the model: the backtest screen's <b>Model accuracy</b> panel, <code>bottleneck accuracy model.json</code>, the footer of every report, pull-request comment and card. For your own data, <code>bottleneck calibrate --holdout 0.3</code> adds the same holdout check.</p>
+</section>
+
+<nav class="pager"><a href="use-cases.html">← Use cases</a><a href="capabilities.html">Everything it does →</a></nav>
+</main>
+</div>
+<script src="docs.js"></script>
+</body>
+</html>

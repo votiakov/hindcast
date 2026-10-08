@@ -93,6 +93,9 @@ function Bar() {
           </option>
         ))}
       </select>
+      <a className="bt-chip" href="docs/backtest.html" target="_blank" rel="noopener" title="How the backtest works, explained screen by screen">
+        Docs ↗
+      </a>
       <label className="bt-chip">
         Open files…
         <input type="file" multiple hidden onChange={(e) => e.target.files && openWorkspaceFiles([...e.target.files])} />

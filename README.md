@@ -27,6 +27,10 @@ npm run mcp            # MCP server (stdio); Claude Code picks it up from .mcp.j
 npm test               # engine, spec and audit tests
 ```
 
+User guide: the app's **Docs** button, or http://localhost:5173/docs/index.html — every view
+explained screen by screen (source: `docs-site/pages/`; `npm run docs:shots` recaptures the
+screenshots from a running app, `npm run docs:build` rebuilds the pages).
+
 Documentation: [docs/](docs/README.md) — start with the [guide](docs/guide.md) (every view of the
 app), [use cases](docs/use-cases.md), the [capability list](docs/capabilities.md) and
 [calibration](docs/calibration.md) (how a model is fitted from real telemetry).

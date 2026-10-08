@@ -7,7 +7,7 @@ import type { GlobalStats } from '../sim/engine';
 import { Sparkline } from '../canvas/Sparkline';
 import { SettingsButton } from './SettingsPanel';
 import { DesignMenu } from './DesignMenu';
-import { FileCode2, FlaskConical, ShieldAlert } from 'lucide-react';
+import { BookOpen, FileCode2, FlaskConical, ShieldAlert } from 'lucide-react';
 
 const fmtRps = (r: number) => (r >= 1000 ? `${(r / 1000).toFixed(2)}k` : r.toFixed(0));
 
@@ -148,6 +148,9 @@ export function TopBar() {
       )}
       {mode === 'compare' ? <CompareMetrics onClick={() => setLens(!lens)} lens={lens && <Lens onClose={() => setLens(false)} />} /> : mode === 'studio' ? <div className="metrics" /> : <SingleMetrics onClick={() => setLens(!lens)} lens={lens && <Lens onClose={() => setLens(false)} />} />}
       <SettingsButton />
+      <a className="icon-btn" href="docs/index.html" target="_blank" rel="noopener" title="Documentation: every view and feature, explained">
+        <BookOpen size={17} />
+      </a>
     </div>
   );
 }

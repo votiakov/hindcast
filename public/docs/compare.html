@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Compare · Bottleneck docs</title>
+<meta name="description" content="Two designs side by side, under the same traffic and the same failures, with a takeaway computed by the engine.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="index.html">Bottleneck<span>docs</span></a>
+  <nav class="bar-links" aria-label="The app">
+    <a href="../#backtest">Backtest</a><a href="../#live">Live</a><a href="../#lessons">Lessons</a><a href="../#sandbox">Sandbox</a><a href="../#compare">Compare</a><a href="../#studio">Studio</a>
+  </nav>
+  <a class="bar-open" href="../">Open the app ↗</a>
+</header>
+<div class="page">
+<nav class="rail" aria-label="Chapters"><a href="index.html">Overview</a><div class="rail-h">Backtest on real data</div><a href="backtest.html">The backtest screen</a><a href="data.html">Bring your data</a><a href="calibration.html">How the model is fitted</a><a href="strategies.html">Strategies</a><a href="outages.html">Public-outage replays</a><a href="ci.html">CLI, pull requests, MCP</a><div class="rail-h">Design simulator</div><a href="live.html">Live</a><a href="lessons.html">Lessons</a><a href="sandbox.html">Sandbox</a><a href="audit.html">Failure audit and analysis</a><a href="compare.html" aria-current="page">Compare</a><a href="studio.html">Studio</a><div class="rail-h">Reference</div><a href="use-cases.html">Use cases</a><a href="accuracy.html">Accuracy</a><a href="capabilities.html">Everything it does</a></nav>
+<main>
+<header class="head">
+  <div class="kicker">Design simulator</div>
+  <h1>Compare</h1>
+  <p class="lede">Two designs side by side, under the same traffic and the same failures, with a takeaway computed by the engine.</p>
+</header>
+<section class="screen" data-shot="compare">
+<figure class="shot"><div class="shot-frame"><a class="shot-full" href="shots/compare.png" target="_blank" rel="noopener" title="Open full size"><img src="shots/compare.png" width="1280" height="800" alt="Monolith vs Microservices, 14 seconds in — screenshot" loading="lazy"></a><a class="pin" href="#compare-strip" data-for="compare-strip" style="left:0.94%;top:17.25%" aria-label="Note 1">1</a><a class="pin" href="#compare-a" data-for="compare-a" style="left:9.37%;top:21.13%" aria-label="Note 2">2</a><a class="pin" href="#compare-audit" data-for="compare-audit" style="left:27.18%;top:23.5%" aria-label="Note 3">3</a><a class="pin" href="#compare-swap" data-for="compare-swap" style="left:41.63%;top:23.38%" aria-label="Note 4">4</a><a class="pin" href="#compare-caption" data-for="compare-caption" style="left:25.55%;top:84.56%" aria-label="Note 5">5</a><a class="pin" href="#compare-track" data-for="compare-track" style="left:74.45%;top:87.5%" aria-label="Note 6">6</a></div></figure>
+<div class="notes">
+<div>
+<h2>Monolith vs Microservices, 14 seconds in</h2>
+<ol class="pins">
+<li id="compare-strip" data-n="1"><h3>Seventeen built-in comparisons</h3><p>Monolith vs Microservices, Single DB vs HA Cluster, Sync vs Event-driven, Servers vs Serverless, Brute Force vs CDN + Cache, Single-AZ vs Multi-AZ, Naive Retries vs Resilient Clients, LLM API vs Self-hosted GPUs, Node.js vs Go vs the Database, The Outage After the Fix, Retries at Every Layer, Cells vs One Big Fleet, Queue vs Shed, The Tail at Scale, When Your LLM Provider Goes Down, Peak-sized Fleet vs Autoscaling, One Region vs Two.</p></li>
+<li id="compare-a" data-n="2"><h3>Each side's numbers</h3><p>Errors, p99 and $/hour per side; the top bar shows them against each other. Here the orders database just crashed: the monolith fails 99.3% of requests, the microservices 33.1%.</p></li>
+<li id="compare-audit" data-n="3"><h3>Audit a side</h3><p>Score, incidents survived, headroom, cost and the top risks with their fixes, at the scenario's peak load.</p></li>
+<li id="compare-swap" data-n="4"><h3>Swap a design</h3><p>Put any template or your own design on either side.</p></li>
+<li id="compare-caption" data-n="5"><h3>What is happening</h3><p>The scenario's captions as it plays. At the end, the takeaway: what the difference was and why.</p></li>
+<li id="compare-track" data-n="6"><h3>The timeline</h3><p>The scenario's events (a crash, a surge, a recovery) as marks on its timeline.</p></li>
+</ol>
+<p>From the command line: <code>bottleneck compare arch.yaml variants.yaml scenario.yaml</code> ranks variants under one scenario. Share a comparison as a <code>#compare=…</code> link.</p>
+</div>
+</div>
+</section>
+
+<nav class="pager"><a href="audit.html">← Failure audit and analysis</a><a href="studio.html">Studio →</a></nav>
+</main>
+</div>
+<script src="docs.js"></script>
+</body>
+</html>

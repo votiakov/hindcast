@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sandbox · Bottleneck docs</title>
+<meta name="description" content="Build any system, push traffic and failures through it, and watch where it gives out. Every run is recorded, so you can rewind the whole board.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="index.html">Bottleneck<span>docs</span></a>
+  <nav class="bar-links" aria-label="The app">
+    <a href="../#backtest">Backtest</a><a href="../#live">Live</a><a href="../#lessons">Lessons</a><a href="../#sandbox">Sandbox</a><a href="../#compare">Compare</a><a href="../#studio">Studio</a>
+  </nav>
+  <a class="bar-open" href="../">Open the app ↗</a>
+</header>
+<div class="page">
+<nav class="rail" aria-label="Chapters"><a href="index.html">Overview</a><div class="rail-h">Backtest on real data</div><a href="backtest.html">The backtest screen</a><a href="data.html">Bring your data</a><a href="calibration.html">How the model is fitted</a><a href="strategies.html">Strategies</a><a href="outages.html">Public-outage replays</a><a href="ci.html">CLI, pull requests, MCP</a><div class="rail-h">Design simulator</div><a href="live.html">Live</a><a href="lessons.html">Lessons</a><a href="sandbox.html" aria-current="page">Sandbox</a><a href="audit.html">Failure audit and analysis</a><a href="compare.html">Compare</a><a href="studio.html">Studio</a><div class="rail-h">Reference</div><a href="use-cases.html">Use cases</a><a href="accuracy.html">Accuracy</a><a href="capabilities.html">Everything it does</a></nav>
+<main>
+<header class="head">
+  <div class="kicker">Design simulator</div>
+  <h1>Sandbox</h1>
+  <p class="lede">Build any system, push traffic and failures through it, and watch where it gives out. Every run is recorded, so you can rewind the whole board.</p>
+</header>
+<section class="screen" data-shot="sandbox">
+<figure class="shot"><div class="shot-frame"><a class="shot-full" href="shots/sandbox.png" target="_blank" rel="noopener" title="Open full size"><img src="shots/sandbox.png" width="1280" height="800" alt="The board — screenshot" loading="lazy"></a><a class="pin" href="#sandbox-palette" data-for="sandbox-palette" style="left:16.95%;top:22.38%" aria-label="Note 1">1</a><a class="pin" href="#sandbox-node" data-for="sandbox-node" style="left:66.2%;top:45.41%" aria-label="Note 2">2</a><a class="pin" href="#sandbox-flow" data-for="sandbox-flow" style="left:43.96%;top:55.48%" aria-label="Note 3">3</a><a class="pin" href="#sandbox-metrics" data-for="sandbox-metrics" style="left:77.6%;top:12.38%" aria-label="Note 4">4</a><a class="pin" href="#sandbox-design" data-for="sandbox-design" style="left:45.96%;top:9.06%" aria-label="Note 5">5</a><a class="pin" href="#sandbox-spec" data-for="sandbox-spec" style="left:54.06%;top:9.44%" aria-label="Note 6">6</a><a class="pin" href="#sandbox-audit" data-for="sandbox-audit" style="left:57.37%;top:9.44%" aria-label="Note 7">7</a><a class="pin" href="#sandbox-analysis" data-for="sandbox-analysis" style="left:60.67%;top:9.44%" aria-label="Note 8">8</a><a class="pin" href="#sandbox-timeline" data-for="sandbox-timeline" style="left:6.2%;top:86.75%" aria-label="Note 9">9</a><a class="pin" href="#sandbox-traffic" data-for="sandbox-traffic" style="left:32.6%;top:92.38%" aria-label="Note 10">10</a><a class="pin" href="#sandbox-chaos" data-for="sandbox-chaos" style="left:78.93%;top:91.56%" aria-label="Note 11">11</a><a class="pin" href="#sandbox-minimap" data-for="sandbox-minimap" style="left:83.83%;top:71.63%" aria-label="Note 12">12</a></div></figure>
+<div class="notes">
+<div>
+<h2>The board</h2>
+<ol class="pins">
+<li id="sandbox-palette" data-n="1"><h3>Components</h3><p>Users, CDN, Load Balancer, API Gateway, API Server, Worker, Serverless Fn, Cache, Database, Read Replica, Object Storage, Queue, GPU Inference, LLM Provider API. Drag onto the board or click; connect right handle to left handle.</p></li>
+<li id="sandbox-node" data-n="2"><h3>A component, live</h3><p>Load in, dropped, capacity, CPU and instances. It glows red when it saturates.</p></li>
+<li id="sandbox-flow" data-n="3"><h3>Requests flowing</h3><p>Each connection shows its rate. Particles turn red where requests fail.</p></li>
+<li id="sandbox-metrics" data-n="4"><h3>What users see</h3><p>Throughput, error rate, p99, cost. Click for the cost breakdown per component, $ per million requests and the error-budget burn rate.</p></li>
+<li id="sandbox-design" data-n="5"><h3>Design</h3><p>Save (⌘S), open, save a copy, download YAML, share a link, embed code, templates, a new blank design.</p></li>
+<li id="sandbox-spec" data-n="6"><h3>Architecture as code</h3><p>The design as YAML, synced with the board both ways.</p></li>
+<li id="sandbox-audit" data-n="7"><h3>Failure audit</h3><p>What breaks first, and what it costs. See <a href="audit.html">failure audit</a>.</p></li>
+<li id="sandbox-analysis" data-n="8"><h3>Analysis</h3><p>Monte Carlo, breaking point, cheapest sizing.</p></li>
+<li id="sandbox-timeline" data-n="9"><h3>Rewind</h3><p>Every run is recorded. Drag to rewind the whole board to any moment; ←/→ steps. <b>copy timeline</b> gives the run as an incident timeline in Markdown.</p></li>
+<li id="sandbox-traffic" data-n="10"><h3>Traffic</h3><p>Requests per second, the share of reads, and the pattern: steady, day/night, spiky or a ramp. Drop a CSV of real traffic (time, req/s) on the board to replay it.</p></li>
+<li id="sandbox-chaos" data-n="11"><h3>Chaos</h3><p>Spike ×3, kill a server, kill the database, heal everything. More per component.</p></li>
+<li id="sandbox-minimap" data-n="12"><h3>Minimap</h3><p>Where you are on a large board.</p></li>
+</ol>
+</div>
+</div>
+</section>
+
+<section class="screen" data-shot="sandbox-node">
+<figure class="shot"><div class="shot-frame"><a class="shot-full" href="shots/sandbox-node.png" target="_blank" rel="noopener" title="Open full size"><img src="shots/sandbox-node.png" width="1280" height="800" alt="Everything a component can do — screenshot" loading="lazy"></a><a class="pin" href="#sandbox-node-tier" data-for="sandbox-node-tier" style="left:36.15%;top:32.66%" aria-label="Note 1">1</a><a class="pin" href="#sandbox-node-instances" data-for="sandbox-node-instances" style="left:43.96%;top:33.54%" aria-label="Note 2">2</a><a class="pin" href="#sandbox-node-autoscale" data-for="sandbox-node-autoscale" style="left:51.34%;top:33.16%" aria-label="Note 3">3</a><a class="pin" href="#sandbox-node-runtime" data-for="sandbox-node-runtime" style="left:57.02%;top:33.91%" aria-label="Note 4">4</a><a class="pin" href="#sandbox-node-fault" data-for="sandbox-node-fault" style="left:71.81%;top:33.29%" aria-label="Note 5">5</a><a class="pin" href="#sandbox-node-calibrate" data-for="sandbox-node-calibrate" style="left:78.65%;top:33.16%" aria-label="Note 6">6</a><a class="pin" href="#sandbox-node-retries" data-for="sandbox-node-retries" style="left:39.42%;top:43.41%" aria-label="Note 7">7</a><a class="pin" href="#sandbox-node-breaker" data-for="sandbox-node-breaker" style="left:47.52%;top:43.91%" aria-label="Note 8">8</a><a class="pin" href="#sandbox-node-routing" data-for="sandbox-node-routing" style="left:52.63%;top:43.41%" aria-label="Note 9">9</a><a class="pin" href="#sandbox-node-fanout" data-for="sandbox-node-fanout" style="left:62.67%;top:43.41%" aria-label="Note 10">10</a><a class="pin" href="#sandbox-node-queue" data-for="sandbox-node-queue" style="left:71.53%;top:43.41%" aria-label="Note 11">11</a><a class="pin" href="#sandbox-node-node" data-for="sandbox-node-node" style="left:67.45%;top:57.66%" aria-label="Note 12">12</a></div></figure>
+<div class="notes">
+<div>
+<h2>Everything a component can do</h2>
+<p>Select a component to get its controls.</p>
+<ol class="pins">
+<li id="sandbox-node-tier" data-n="1"><h3>Size</h3><p>S, M or L: capacity, latency and price per instance. Exact numbers per kind in the component catalogue.</p></li>
+<li id="sandbox-node-instances" data-n="2"><h3>Instances</h3><p>Add or remove; the load balances across them.</p></li>
+<li id="sandbox-node-autoscale" data-n="3"><h3>Autoscale</h3><p>Target tracking with min, max and warm-up: "k8s pod 5–20 s · Fargate 30–60 s · EC2 ASG 90–180 s".</p></li>
+<li id="sandbox-node-runtime" data-n="4"><h3>Runtime</h3><p>Node.js, Python, Java, Go or Rust. Changes throughput per instance, latency, cold starts and the serverless bill.</p></li>
+<li id="sandbox-node-fault" data-n="5"><h3>Faults</h3><p>10% or 50% errors, +100, +500 or +2000 ms, half capacity, flush the cache, restore. The skull kills it.</p></li>
+<li id="sandbox-node-calibrate" data-n="6"><h3>Calibrate</h3><p>From your production numbers: one instance served R req/s at C% CPU with a p50 of L ms and costs $/h. Capacity, latency and price follow.</p></li>
+<li id="sandbox-node-retries" data-n="7"><h3>Retries</h3><p>Per failed call: immediate, with backoff, or with a budget.</p></li>
+<li id="sandbox-node-breaker" data-n="8"><h3>Circuit breaker</h3><p>Stop calling a failing dependency for a while, with an optional degraded fallback.</p></li>
+<li id="sandbox-node-routing" data-n="9"><h3>Routing</h3><p>How calls spread over what it connects to: split, fan-out to all, or failover.</p></li>
+<li id="sandbox-node-fanout" data-n="10"><h3>Fan-out</h3><p>Scatter-gather: each call goes to N partitions and waits for the slowest. The tail at scale, made visible.</p></li>
+<li id="sandbox-node-queue" data-n="11"><h3>Queue</h3><p>A bounded queue: how many seconds of work it holds before it sheds load.</p></li>
+<li id="sandbox-node-node" data-n="12"><h3>The rest is on the component</h3><p>Client timeouts on Users, hit rates on caches, rate limits on gateways, continuous batching on GPUs.</p></li>
+</ol>
+</div>
+</div>
+</section>
+
+<section class="screen" data-shot="spec">
+<figure class="shot"><div class="shot-frame"><a class="shot-full" href="shots/spec.png" target="_blank" rel="noopener" title="Open full size"><img src="shots/spec.png" width="1280" height="800" alt="Architecture as code — screenshot" loading="lazy"></a><a class="pin" href="#spec-editor" data-for="spec-editor" style="left:66.95%;top:23.88%" aria-label="Note 1">1</a><a class="pin" href="#spec-status" data-for="spec-status" style="left:63.98%;top:81.94%" aria-label="Note 2">2</a></div></figure>
+<div class="notes">
+<div>
+<h2>Architecture as code</h2>
+<ol class="pins">
+<li id="spec-editor" data-n="1"><h3>The design as YAML</h3><p>Type here and the board follows; change the board and the YAML follows. Components, connections, zones, scenarios, variants.</p></li>
+<li id="spec-status" data-n="2"><h3>Checked as you type</h3><p>Schema errors and lint warnings inline. A valid spec is the same file the CLI and the MCP server take.</p></li>
+</ol>
+<p>Drop a spec, Kubernetes manifests or <code>terraform show -json</code> output on the board to open it; imports list the assumptions they made.</p>
+</div>
+</div>
+</section>
+
+<section class="screen" data-shot="palette">
+<figure class="shot"><div class="shot-frame"><a class="shot-full" href="shots/palette.png" target="_blank" rel="noopener" title="Open full size"><img src="shots/palette.png" width="1280" height="800" alt="⌘K, everything by name — screenshot" loading="lazy"></a><a class="pin" href="#palette-input" data-for="palette-input" style="left:25.08%;top:17.25%" aria-label="Note 1">1</a><a class="pin" href="#palette-list" data-for="palette-list" style="left:25.08%;top:22.88%" aria-label="Note 2">2</a></div></figure>
+<div class="notes">
+<div>
+<h2>⌘K, everything by name</h2>
+<ol class="pins">
+<li id="palette-input" data-n="1"><h3>Type anything</h3><p>A command, a component, a design, a template, a lesson, a comparison, a chaos action. A number sets the traffic.</p></li>
+<li id="palette-list" data-n="2"><h3>Grouped results</h3><p>Enter runs, ↑↓ chooses, Esc closes.</p></li>
+</ol>
+</div>
+</div>
+</section>
+
+<section class="prose">
+<h2>Shortcuts and settings</h2>
+<div class="table-wrap"><table>
+<tr><th>keys</th><th></th></tr>
+<tr><td><kbd>⌘K</kbd></td><td>command palette</td></tr>
+<tr><td><kbd>Space</kbd></td><td>play / pause</td></tr>
+<tr><td><kbd>⌘Z</kbd> <kbd>⇧⌘Z</kbd></td><td>undo / redo (board edits, applied fixes, YAML edits)</td></tr>
+<tr><td><kbd>⌘S</kbd></td><td>save the design</td></tr>
+<tr><td><kbd>P</kbd></td><td>present: no chrome, large numbers, captions; ←/→ walks the audit's incidents; F fullscreen</td></tr>
+<tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>step through the recording while rewinding</td></tr>
+<tr><td><kbd>Del</kbd></td><td>delete the selected component or connection</td></tr>
+<tr><td><kbd>?</kbd></td><td>the shortcut sheet</td></tr>
+</table></div>
+<p>The gear opens the settings: theme (Neon, Reference, Transit), pricing (illustrative, AWS us-east-1, GCP us-central1), the cost model, automatic database failover and its timing, serverless cold starts, traffic jitter, request particles, explanations, alert toasts, the request timeout and the error-rate SLO.</p>
+<p><code>?embed=1</code> with a <code>#spec=…</code> link shows just the running board and a traffic slider, for an iframe in a blog post or slides.</p>
+</section>
+
+<nav class="pager"><a href="lessons.html">← Lessons</a><a href="audit.html">Failure audit and analysis →</a></nav>
+</main>
+</div>
+<script src="docs.js"></script>
+</body>
+</html>

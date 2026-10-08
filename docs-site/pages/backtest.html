@@ -1,0 +1,72 @@
+<!-- title: The backtest screen | lede: Your production history as a chart, with any infrastructure change replayed over it as what would have happened. Open it from the <b>Backtest</b> tab, or go straight to <code>/#backtest</code>. -->
+<section class="screen" data-shot="backtest">
+<div>
+<h2>The chart and the strategies</h2>
+<p>Everything shares one time axis, stacked like a trading terminal. The screenshot shows HotROD, one of the three built-in reference systems: 40 minutes of real traffic with a push past capacity, and four strategies replayed over it.</p>
+<ol class="pins">
+<li data-pin="views"><h3>Views</h3><p>Every part of Bottleneck is one click away: the backtest, the Live board, Lessons, Sandbox, Compare and Studio.</p></li>
+<li data-pin="ranges"><h3>Range and bucket size</h3><p>ALL, 24H, 6H, 1H, 15M. ⌘/ctrl + wheel zooms around the cursor. The bucket size is the data's own resolution: here 30 s.</p></li>
+<li data-pin="p99"><h3>p99 latency</h3><p>Measured p99 as candles: open, high, low and close of each group of buckets. The dashed grey line is the model replaying the system <em>as built</em>. Each strategy has its own coloured line with a shaded 10–90% band. The dashed red line is the SLO.</p></li>
+<li data-pin="incident"><h3>Incidents</h3><p>Shaded columns are stretches out of SLO. Here, the push to twice the normal load: the as-built system timed out for minutes. Click any moment to open it on the board as a replay.</p></li>
+<li data-pin="errors"><h3>Errors</h3><p>Measured error rate and each strategy's replay. "Clients retry twice, no budget" turns the overload into 100% errors: the retries pile on top of a saturated database lock.</p></li>
+<li data-pin="cost"><h3>Cost per hour</h3><p>From the bill (measured), as built, and per strategy: replica-hours at the billed price, usage-billed requests, data transfer across zones and regions.</p></li>
+<li data-pin="savings"><h3>Savings</h3><p>Cumulative dollars saved or spent against as built: the equity curve. A line above zero saves money.</p></li>
+<li data-pin="watch"><h3>Strategies, ranked</h3><p>As built and each strategy with $/month and minutes out of SLO. Strategies that keep the SLO rank first, then the cheapest. Click to focus one, use the eye to hide it, <b>+ strategy</b> to write a new one.</p></li>
+<li data-pin="worst"><h3>Worst moment, and why</h3><p>For the focused strategy: when it was worst and which component limited it, with its load against capacity and its queue. "mysql at 56% of capacity (11.2 req/s on 2 × 9.9 req/s), 85 ms wait". <b>open on board</b> replays that moment.</p></li>
+<li data-pin="accuracy"><h3>Model accuracy</h3><p>How well this model predicted recorded runs it never saw, check by check, against the targets: p99 within 20%, breaking point within 15%, cost within 10%. Shown with every result, so you know how far to trust it.</p></li>
+<li data-pin="verdict"><h3>The verdict</h3><p>One sentence for the focused strategy: what it saves or costs per month and what it would have done to users. It is the same sentence the pull-request check posts.</p></li>
+<li data-pin="stats"><h3>The numbers</h3><p>Net $/month, minutes out of SLO, failed requests, error budget used, peak p99 and replica-hours. Each comes with its 10–90% range from 30 paired draws of the model's uncertain capacities.</p></li>
+<li data-pin="system"><h3>System</h3><p>Switch between the reference systems, or your own workspace once you've opened files.</p></li>
+<li data-pin="card"><h3>Card</h3><p>A Studio card of the focused strategy at post size: the chart drawing itself, then the verdict, with the model's measured accuracy.</p></li>
+<li data-pin="outage"><h3>Replay an outage</h3><p>Cloudflare 2019, GitHub 2018, Slack 2021, AWS us-east-1 2025, replayed against this system as built and with each strategy. See <a href="outages.html">public-outage replays</a>.</p></li>
+<li data-pin="files"><h3>Open files</h3><p>Your own data: an import manifest with its metric, trace and bill files, or a <code>dataset.json</code> and <code>model.json</code> from the CLI, plus strategy files. You can also drop them anywhere on the screen. See <a href="data.html">bring your data</a>.</p></li>
+</ol>
+</div>
+</section>
+
+<section class="screen" data-shot="bt-incidents">
+<div>
+<h2>Incidents</h2>
+<p>Every stretch the focused strategy spent out of SLO, with its cause.</p>
+<ol class="pins">
+<li data-pin="tab"><h3>The tester tabs</h3><p>Overview, Incidents, Endpoints, Changes and Model all describe the focused strategy. The count on Incidents is how many stretches it spent out of SLO.</p></li>
+<li data-pin="list"><h3>One row per incident</h3><p>When it started, how long it lasted, peak p99, peak errors, and why: the busiest component and how close it was to its limit. When nothing was near its limit, the row says so. HotROD's early incidents are its driver's load-dependent errors, not capacity. <b>board ↗</b> opens that moment as a replay.</p></li>
+</ol>
+</div>
+</section>
+
+<section class="screen" data-shot="bt-endpoints">
+<div>
+<h2>Endpoints</h2>
+<p>Each endpoint is judged by its own SLO and priced by its own path through the system. This is the Astronomy Shop with an autoscaled frontend.</p>
+<ol class="pins">
+<li data-pin="table"><h3>One row per endpoint</h3><p>Endpoint ids come from the traces' route templates, so <code>/api/products/{productId}</code> is one endpoint, not thousands.</p></li>
+<li data-pin="slo"><h3>Its own SLO</h3><p>Set per endpoint in the import manifest (<code>model.endpoints.&lt;id&gt;.slo</code>). A checkout that must answer in 800 ms is held to that, not to the system average.</p></li>
+<li data-pin="failed"><h3>Failed requests</h3><p>As built → with the strategy, over the whole history.</p></li>
+<li data-pin="minutes"><h3>Minutes out of its SLO</h3><p>Green when the strategy removes time out of SLO, red when it adds it.</p></li>
+<li data-pin="price"><h3>$ per million requests</h3><p>Compute along the endpoint's critical path, usage-billed requests and data transfer. Here a checkout costs about 17 times a product page ($5.15 vs $0.31 per million) because of the services it calls.</p></li>
+</ol>
+</div>
+</section>
+
+<section class="screen" data-shot="bt-changes">
+<div>
+<h2>Changes</h2>
+<ol class="pins">
+<li data-pin="yaml"><h3>The strategy, as YAML</h3><p>Edit it here and the backtest reruns as you type. The same file works with the CLI and the pull-request check. Every option is listed under <a href="strategies.html">strategies</a>.</p></li>
+<li data-pin="notes"><h3>What changed, and what is assumed</h3><p>A plain-English list of every change and every assumption it rests on. For example, a Graviton move without your own benchmark says it assumes equal throughput per vCPU.</p></li>
+</ol>
+</div>
+</section>
+
+<section class="screen" data-shot="bt-board">
+<div>
+<h2>Any moment, on the board</h2>
+<p>Click any moment on the chart, or <b>open on board</b> next to the worst moment. The system opens as a live canvas replaying that stretch of traffic through the model, ten times faster.</p>
+<ol class="pins">
+<li data-pin="node"><h3>The model as a board</h3><p>Every component with its fitted capacity, price and replicas, and requests flowing along the call paths from the traces. In-process dependencies (HotROD's simulated MySQL and Redis) sit next to the services that host them. The board is a simplified drawing; the backtest numbers come from the model itself.</p></li>
+<li data-pin="edits"><h3>Backtest these edits</h3><p>Change anything on the board — add a replica, put a cache in front, resize — and press this. The edits come back to the chart as a new strategy, replayed over the whole history.</p></li>
+<li data-pin="back"><h3>Back to the chart</h3><p>Returns to the backtest without changes.</p></li>
+</ol>
+</div>
+</section>
