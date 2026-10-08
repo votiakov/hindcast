@@ -12,7 +12,7 @@ bottleneck calibrate dataset.json --holdout 0.3 --out model.json
 bottleneck backtest  model.json dataset.json graviton.yaml autoscale.yaml --last 14d --html report.html
 ```
 
-or open the app: the backtest is its main screen. Drop the files (or a `dataset.json` + `model.json`)
+or open the app's **Backtest** tab (or go straight to `#backtest`). Drop the files (or a `dataset.json` + `model.json`)
 on it.
 
 ## 1. Data in
@@ -154,7 +154,7 @@ are used for the as-built run, so differences are paired. Results:
 
 ## 5. Surfaces
 
-- **App** — the backtest is the main screen: measured p99 as candles, the as-built replay and every
+- **App** — the Backtest tab: measured p99 as candles, the as-built replay and every
   strategy over it with bands, errors, cost and the savings curve on one time axis; ranked strategy
   list; Overview / Incidents / Endpoints / Changes (edit the YAML live) / Model tabs. Click any
   moment to open it on the board as a replay. *Card ↗* makes a Studio card of the focused strategy.

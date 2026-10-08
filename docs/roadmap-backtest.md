@@ -32,7 +32,7 @@ accuracy record.
 
 ## Surfaces
 - [x] CLI: `import`, `calibrate`, `backtest`, `accuracy`; Markdown/HTML report
-- [x] App: backtest is the main screen (chart-first), canvas secondary
+- [x] App: backtest screen (chart-first) as its own tab; the app opens on Live, as in v1
 - [x] Visual identity: 2–3 concepts shown to Andrii, chosen one built
 - [x] PR check: CI workflow backtests a changed config against the last N days and comments on the PR
 - [x] Studio cards and clips of backtest results

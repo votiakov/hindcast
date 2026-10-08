@@ -120,9 +120,9 @@ function useSimLoop() {
   }, []);
 }
 
-if (!RENDER && location.hash) openFromHash(location.hash);
-// the backtest is the main screen; links, embeds and renders open where they point
-else if (!RENDER && !EMBED) useSim.getState().setMode('backtest');
+// the app opens on Live; #backtest links straight to the backtest screen
+if (!RENDER && location.hash === '#backtest') useSim.getState().setMode('backtest');
+else if (!RENDER && location.hash) openFromHash(location.hash);
 if (EMBED) {
   const s = useSim.getState();
   if (s.mode !== 'sandbox') s.setMode('sandbox');
@@ -147,7 +147,7 @@ if (!RENDER && !EMBED) {
     }, 500);
   });
 }
-window.addEventListener('hashchange', () => openFromHash(location.hash));
+window.addEventListener('hashchange', () => (location.hash === '#backtest' ? useSim.getState().setMode('backtest') : openFromHash(location.hash)));
 
 export default function App() {
   const mode = useSim((s) => s.mode);

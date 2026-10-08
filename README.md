@@ -3,7 +3,7 @@
 Backtest infrastructure changes on your real production data before they ship — and an
 architecture simulator that tells you what breaks first, and what it costs.
 
-**Backtesting** (the app's main screen, the CLI and a pull-request check): import metric exports
+**Backtesting** (the app's Backtest tab, the CLI and a pull-request check): import metric exports
 (Prometheus, CloudWatch), OpenTelemetry traces and the cloud bill (AWS CUR, GCP export); Bottleneck
 builds a model of the system calibrated from them and shows how well each component is explained;
 then any change — resize, autoscaling policy, a cache, a replica, a retry budget, Graviton — is
@@ -31,7 +31,7 @@ Documentation: [docs/](docs/README.md).
 
 ## What's in the app
 
-- **Backtest** (main screen) – real history as a chart, strategies drawn over it, ranked; open any
+- **Backtest** –  real history as a chart, strategies drawn over it, ranked; open any
   moment on the board; Studio card of the result.
 - **Live** – a running system that fails on arrival, with the next move pinned to the component under stress.
 - **Lessons** – guided steps with objectives: scaling basics, retry storms, elasticity (autoscaling lag,
