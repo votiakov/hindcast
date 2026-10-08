@@ -132,6 +132,8 @@ for every user's data, not just these systems.
   10-connection pool, abandoned requests keep running and it never recovers, even at 5 req/s. .NET's
   thread pool ramps slowly too: the Astronomy Shop's cart timed out for minutes when load jumped
   straight to 300 req/s. Runs warm up first — PetClinic on 4 cores, then its real limit is set live with `docker update`, as
-  a warm production instance would be; the model does not (yet) model cold starts.
+  a warm production instance would be; the model does not (yet) model cold starts. On a single core
+  the same JVM collapsed for good ten minutes into a normal day (garbage collection and JIT threads
+  starved by the quota, abandoned requests holding the pool), so it runs on two.
 - **Extrapolation is a range.** When the history never came near a limit and the CPU and latency
   reads disagree, the capacity band spans both and the point estimate sits mid-band.
