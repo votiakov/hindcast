@@ -27,11 +27,13 @@ npm run mcp            # MCP server (stdio); Claude Code picks it up from .mcp.j
 npm test               # engine, spec and audit tests
 ```
 
-Documentation: [docs/](docs/README.md).
+Documentation: [docs/](docs/README.md) — start with the [guide](docs/guide.md) (every view of the
+app), [use cases](docs/use-cases.md), the [capability list](docs/capabilities.md) and
+[calibration](docs/calibration.md) (how a model is fitted from real telemetry).
 
 ## What's in the app
 
-- **Backtest** –  real history as a chart, strategies drawn over it, ranked; open any
+- **Backtest** – real history as a chart, strategies drawn over it, ranked; open any
   moment on the board; Studio card of the result.
 - **Live** – a running system that fails on arrival, with the next move pinned to the component under stress.
 - **Lessons** – guided steps with objectives: scaling basics, retry storms, elasticity (autoscaling lag,

@@ -80,6 +80,8 @@ What each source gives the model:
 
 ## 2. The calibrated model
 
+A summary; every rule, and the recording that taught it, is in [calibration.md](calibration.md).
+
 `bottleneck calibrate` fits, per component:
 
 - **CPU per request** — cores per replica = base + per-request cost × req/s per replica (least squares).

@@ -16,6 +16,23 @@
 | `link <arch> [variants]` | URL that opens the architecture (or a comparison) in the app |
 | `catalog` | component catalogue as JSON |
 
+### Backtesting on real data
+
+| command | what it does |
+|---|---|
+| `export-prometheus --url … --start … --end … [--step 60] [--preset otel-spanmetrics,http-server,cadvisor,kubernetes] [--selector 'namespace="shop"'] --out dir/` | runs the preset queries against a Prometheus and writes query_range JSON plus the `metrics:` block of an import manifest |
+| `import <bottleneck.import.yaml> [--out dataset.json]` | metric exports, traces and bills → one dataset on a time grid; prints what each source gave |
+| `calibrate <dataset.json> [--out model.json] [--p99 500] [--errors 0.01] [--timeout 5000] [--holdout 0.3]` | fits the model; prints every component with its capacity, limit, fit status and notes; `--holdout` adds an accuracy record |
+| `backtest <model.json> <dataset.json> <strategy.yaml …> [--last 14d] [--draws 30] [--md r.md] [--html r.html] [--comment pr.md] [--card card.json] [--gate]` | replays the strategies over the history: $/month, minutes out of SLO, failed requests, worst moment and why, incidents, per-endpoint results, ranking; `--gate` exits 2 if a strategy adds time out of SLO |
+| `headroom <model.json> [strategy.yaml]` | req/s sustained within SLO with today's endpoint mix, and what saturates next |
+| `accuracy <model.json>` | the model's accuracy records against the targets |
+| `outage <model.json> <outage-id \| list> [strategy.yaml …] [--rps N] [--role primary-db=orders-db]` | replays a public outage against the model, as built and with strategies |
+| `diff-strategy --base <dir> --head <dir> [--model model.json] [--out strategy.yaml]` | Kubernetes manifests before/after → a strategy (replicas, CPU/memory, HPAs, arch) |
+
+Guide: [backtest.md](backtest.md); the model: [calibration.md](calibration.md). A standalone build
+of the CLI (`npm run build:cli` → `dist-cli/bottleneck.mjs`, Node 20, no install) is what the PR
+workflow ships.
+
 Every command accepts `--json`. Files may be YAML or JSON. Examples live in `examples/`:
 
 ```bash
@@ -48,6 +65,8 @@ Registered for Claude Code in `.mcp.json` (restart Claude Code in this folder an
 | `import_kubernetes` | `manifests_yaml`, `name?` | spec, assumptions, skipped objects, lint |
 | `show_architecture` | `architecture`, `compare_with?`, `scenario?` | **live canvas**: renders the simulation inline in MCP Apps hosts (Claude, ChatGPT…); text + link elsewhere |
 | `open_in_app` | `architecture`, `compare_with?` (variant), `scenario?` | URL for the app (sandbox, or side-by-side comparison playing the scenario) |
+| `backtest_strategy` | `model`, `dataset` (paths), `strategies[]` (objects or YAML), `last?`, `draws?` | the backtest of each strategy over the recorded history: $/month, minutes out of SLO, worst moment, incidents, ranking, the model's accuracy |
+| `replay_outage` | `model`, `outage`, `strategies?`, `rps?` | a public outage replayed against the model, as built and with strategies |
 
 Suggested assistant workflow: `import_terraform` (or `list_components` → write the spec from the user's description
 from k8s manifests, diagrams, metrics) → confirm assumptions, request rates and SLOs with the user → `validate_architecture` → `simulate`/`analyze` the
@@ -131,6 +150,7 @@ menu produces the snippet.
 
 | hash | opens |
 |---|---|
+| `#backtest` | the Backtest tab |
 | `#spec=<base64url(JSON spec)>` | Sandbox with the spec auto-laid-out |
 | `#compare=<base64url({ a: {title, spec}, b: {title, spec}, scenario? })>` | Compare mode; with a scenario it plays like a built-in comparison and ends with a takeaway computed by the engine |
 
