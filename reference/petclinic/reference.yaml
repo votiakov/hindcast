@@ -7,9 +7,9 @@ base: http://app-lb:9966
 timeout: 5s
 warmupS: 90
 # the JVM compiles hot paths under load for many minutes: an 8-minute ramp before recording
-warmupLoad: [steps, 5, 60, 5, 40]
+warmupLoad: [steps, 10, 130, 20, 45]
 # …on 4 cores (the JIT compiler needs them), then the app's real limit is set live
-warmupCpus: { app: { env: APP_CPUS, warm: 4, cpus: 1 } }
+warmupCpus: { app: { env: APP_CPUS, warm: 4, cpus: 2 } }
 thin: 5
 mix: mix.json
 edge: app-lb
@@ -17,15 +17,15 @@ slo: { p99Ms: 500, errorRate: 0.01 }
 runs:
   # quick capacity probe (not used for calibration)
   probe: { shape: [steps, 2, 16, 1, 30] }
-  # 40 minutes of "production": a compressed day peaking at 90 req/s, with a push to 165 req/s
-  history: { shape: [history, 90, 165, 40] }
-  # breaking point, measured: +10 req/s every minute from 60 to 200
-  stress: { shape: [steps, 60, 200, 10, 60] }
+  # 40 minutes of "production": a compressed day peaking at 160 req/s, with a push to 280 req/s
+  history: { shape: [history, 160, 280, 40] }
+  # breaking point, measured: +20 req/s every minute from 160 to 440
+  stress: { shape: [steps, 160, 440, 20, 60] }
   # the strategy, actually applied: two app replicas behind the load balancer, same day
-  replicas-2: { shape: [history, 90, 165, 40], env: { APP_REPLICAS: 2 } }
-  # the other strategy, actually applied: a 2-core app, stepped to its breaking point
-  stress-cpu2: { shape: [steps, 150, 430, 20, 60], env: { APP_CPUS: 2.0 } }
+  replicas-2: { shape: [history, 160, 280, 40], env: { APP_REPLICAS: 2 } }
+  # the other strategy, actually applied: a 4-core app, stepped to its breaking point
+  stress-cpu4: { shape: [steps, 300, 860, 40, 60], env: { APP_CPUS: 4.0 } }
 validate:
   - { run: replicas-2, strategy: strategies/1-app-replicas.yaml }
   - { run: stress, stress: true }
-  - { run: stress-cpu2, strategy: strategies/2-app-2cpu.yaml, stress: true }
+  - { run: stress-cpu4, strategy: strategies/2-app-4cpu.yaml, stress: true }
