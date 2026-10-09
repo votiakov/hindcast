@@ -27,7 +27,27 @@ export interface CalibrateOptions {
   services?: Record<string, { kind?: ServiceModel['kind']; servers?: number; perReplicaRps?: number; arch?: 'x86' | 'arm' }>;
   endpoints?: Record<string, { slo?: { p99Ms: number; errorRate: number } }>;
   seed?: number;
+  /** price services the bill doesn't cover (or every service, without a bill) at on-demand list
+   *  prices from their CPU and memory limits — AWS Fargate us-east-1 unless given */
+  listPrices?: boolean | ListPrices;
 }
+
+export interface ListPrices {
+  perVcpuHour: number;
+  perGbHour: number;
+  /** Arm (Graviton) prices */
+  armPerVcpuHour: number;
+  armPerGbHour: number;
+  source: string;
+}
+
+export const FARGATE_PRICES: ListPrices = {
+  perVcpuHour: 0.04048,
+  perGbHour: 0.004445,
+  armPerVcpuHour: 0.03238,
+  armPerGbHour: 0.00356,
+  source: 'AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)',
+};
 
 const SERVER_GRID = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 128, 256];
 
@@ -380,7 +400,17 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
         // what was offered: for an entry service, its endpoints' request rate (span metrics count
         // requests when they finish, which an overloaded service no longer does)
         const entry = Object.values(d.endpoints).filter((e) => e.service === id && e.rps);
-        const offered = (i: number) => (entry.length ? entry.reduce((a, e) => a + (vals(e.rps, i) ?? 0), 0) / Math.max(1, vals(reps, i) ?? replicas) : perRep[i]);
+        // a service further in: the entry endpoints' requests × its visits per request (from traces).
+        // Its own span rate counts completions, and cancelled calls finish fast and early in an overload
+        const via = Object.entries(d.endpoints)
+          .map(([eid, e]) => ({ e, v: Object.entries(topo?.endpoints ?? {}).find(([tid]) => tid === eid || sameEndpoint(tid, eid))?.[1].visits[id] ?? 0 }))
+          .filter((x) => x.v > 0 && x.e.rps);
+        const offered = (i: number) =>
+          entry.length
+            ? entry.reduce((a, e) => a + (vals(e.rps, i) ?? 0), 0) / Math.max(1, vals(reps, i) ?? replicas)
+            : via.length
+              ? via.reduce((a, x) => a + (vals(x.e.rps, i) ?? 0) * x.v, 0) / Math.max(1, vals(reps, i) ?? replicas)
+              : perRep[i];
         let healthy = 0;
         let broke = Infinity;
         const collapse: number[] = [];
@@ -605,6 +635,26 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
     }
   }
 
+  // ---- list prices where the bill says nothing ----
+  if (opts.listPrices) {
+    const lp = opts.listPrices === true ? FARGATE_PRICES : opts.listPrices;
+    for (const sm of Object.values(services)) {
+      if (sm.cost.source !== 'none' || sm.hostedBy || sm.kind === 'external') continue;
+      if (!sm.cpuLimit) {
+        sm.fit.notes.push('no CPU limit in the data, so no list price: its cost reads $0');
+        continue;
+      }
+      const mem = sm.memoryGb ?? sm.cpuLimit * 2;
+      const arm = sm.cost.arch === 'arm';
+      const cpu$ = sm.cpuLimit * (arm ? lp.armPerVcpuHour : lp.perVcpuHour);
+      const mem$ = mem * (arm ? lp.armPerGbHour : lp.perGbHour);
+      sm.cost.perReplicaHour = cpu$ + mem$;
+      sm.cost.cpuShare = cpu$ / (cpu$ + mem$);
+      sm.cost.source = 'pricing';
+      sm.fit.notes.push(`priced at list price: ${sm.cpuLimit} vCPU${sm.memoryGb ? ` + ${sm.memoryGb.toFixed(2)} GB` : ` + ${mem} GB (assumed 2 GB per vCPU)`} = $${sm.cost.perReplicaHour.toFixed(4)}/replica-hour (${lp.source}); no bill`);
+    }
+  }
+
   // ---- endpoints ----
   const endpoints: Record<string, EndpointModel> = {};
   const series = d.endpoints;
@@ -632,7 +682,8 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
     const lowP99 = median(lowIdx.map((i) => vals(ser?.p99Ms, i)).filter((x): x is number => x !== null));
     const lowP50 = median(lowIdx.map((i) => vals(ser?.p50Ms, i)).filter((x): x is number => x !== null));
     const pathMean = Object.entries(weights).reduce((a, [svc, w]) => a + w * (services[svc]?.self.mean ?? 0), 0);
-    const measuredMean = isFinite(lowMean) ? lowMean : shape?.meanMs ?? pathMean;
+    // the traces' mean covers the whole history, overloads included: a low-load median is closer
+    const measuredMean = isFinite(lowMean) ? lowMean : isFinite(lowP50) && lowP50 > 0 ? lowP50 : shape?.meanMs ?? pathMean;
     const measuredP99 = isFinite(lowP99) ? lowP99 : shape?.p99Ms ?? measuredMean * 1.5;
     // baseline errors: request-weighted over the low-traffic buckets (a median would read 0 for rare errors)
     let errN = 0;

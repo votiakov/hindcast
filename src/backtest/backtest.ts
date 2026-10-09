@@ -58,6 +58,8 @@ export interface StrategyResult {
   /** contiguous runs of buckets out of SLO */
   incidents: { start: number; end: number; minutes: number; peakP99Ms: number; peakErrorRate: number; why: string }[];
   events: { t: number; what: string }[];
+  /** per service: the highest share of capacity it ran at (point estimate), and the plan's req/s per replica */
+  peakUtil: Record<string, number>;
 }
 
 export interface BacktestResult {
@@ -127,10 +129,14 @@ export function explainMoment(r: RunResult, plan: Plan, i: number): { why: strin
   const reps = Math.round(s.replicas[i] * 10) / 10;
   if (util < 0.5 && s.waitMs[i] < 50) return { why: `no component near its limit (busiest: ${worst.id} at ${Math.round(util * 100)}%)`, service: null };
   // capacity actually available at that moment (faults can cut it below the plan's)
-  const perRep = util > 0 && s.replicas[i] > 0 ? s.rps[i] / s.replicas[i] / util : p.perReplicaRps;
+  // rate ÷ utilisation only says something when a fault cut capacity below the plan's; past saturation
+  // utilisation is capped and the quotient overstates what a replica can do
+  const perRep = Math.min(util > 0 && s.replicas[i] > 0 ? s.rps[i] / s.replicas[i] / util : p.perReplicaRps, p.perReplicaRps);
   const cap = isFinite(perRep) ? `${reps} × ${perRep.toFixed(1)} req/s${perRep < p.perReplicaRps * 0.95 ? ` (normally ${p.perReplicaRps.toFixed(1)})` : ''}` : 'unbounded';
   const queue = s.backlog[i] > 0.5 ? `, ${(s.waitMs[i] / 1000).toFixed(1)} s queue` : s.waitMs[i] > 5 ? `, ${Math.round(s.waitMs[i])} ms wait` : '';
-  return { why: `${worst.id} at ${Math.round(util * 100)}% of capacity (${s.rps[i].toFixed(1)} req/s on ${cap})${queue}`, service: worst.id };
+  // offered ÷ capacity: utilisation itself is capped once the queue grows
+  const load = isFinite(perRep) && s.replicas[i] > 0 ? Math.max(util, s.rps[i] / (s.replicas[i] * perRep)) : util;
+  return { why: `${worst.id} at ${Math.round(load * 100)}% of capacity (${s.rps[i].toFixed(1)} req/s on ${cap})${queue}`, service: worst.id };
 }
 
 function incidents(r: RunResult, plan: Plan, slo: { p99Ms: number; errorRate: number }, stepS: number): StrategyResult['incidents'] {
@@ -299,6 +305,7 @@ export function backtest(model: Model, d: Dataset, strategies: unknown[], opts: 
       endpoints,
       incidents: incidents(point, plan, slo, traffic.stepS),
       events: point.events,
+      peakUtil: Object.fromEntries(Object.entries(point.services).map(([id, sv]) => [id, Math.max(0, ...sv.util.filter((u) => isFinite(u)))])),
     };
   };
 

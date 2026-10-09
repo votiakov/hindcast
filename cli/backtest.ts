@@ -168,7 +168,7 @@ export async function backtestCommand(cmd: string, pos: string[], opt: Opt): Pro
       const plan = pos[1] ? applyStrategy(m, base, readAny(pos[1])).plan : base;
       const bp = modelBreakingPoint(m, plan);
       if (json) return console.log(JSON.stringify(bp, null, 2)), true;
-      console.log(`\nSustains ${c.bold(`${bp.rps.toFixed(1)} req/s`)} with today's endpoint mix within SLO (p99 ≤ ${m.slo.p99Ms} ms, errors ≤ ${(m.slo.errorRate * 100).toFixed(1)}%)${bp.limitedBy ? `, then ${c.yellow(bp.limitedBy)} saturates` : ''}.\n`);
+      console.log(`\nSustains ${c.bold(`${bp.rps.toFixed(1)} req/s`)} with today's endpoint mix within SLO (p99 ≤ ${m.slo.p99Ms} ms, errors ≤ ${(m.slo.errorRate * 100).toFixed(1)}%)${bp.limitedBy ? (bp.limitedBy.startsWith('errors') ? `, then ${c.yellow(bp.limitedBy)} cross the error SLO` : `, then ${c.yellow(bp.limitedBy)} saturates`) : ''}.\n`);
       printAccuracy(m);
       console.log('');
       return true;

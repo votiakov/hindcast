@@ -33,7 +33,11 @@ const ServiceChange = z
       .optional(),
     cpu: z.number().positive().optional().describe('cores per replica (resize)'),
     memoryGb: z.number().positive().optional(),
-    arch: z.enum(['x86', 'arm']).optional().describe('arm = move to Graviton (cheaper per vCPU)'),
+    // the spellings agents and manifests use: arm64, aarch64, graviton; amd64, x86_64
+    arch: z
+      .preprocess((v) => (typeof v === 'string' ? ({ arm64: 'arm', aarch64: 'arm', graviton: 'arm', amd64: 'x86', x86_64: 'x86', 'x86-64': 'x86', intel: 'x86', amd: 'x86' } as Record<string, string>)[v.toLowerCase()] ?? v.toLowerCase() : v), z.enum(['x86', 'arm']))
+      .optional()
+      .describe('arm = move to Graviton (cheaper per vCPU)'),
     perf: z.number().positive().optional().describe('throughput multiplier per replica (e.g. a benchmark of the new instance family)'),
     capacityRps: z.number().positive().optional().describe('override: req/s one replica can serve (e.g. after removing a lock)'),
     cache: z
@@ -58,7 +62,20 @@ const EndpointChange = z
 export const StrategySpec = z.object({
   name: z.string(),
   description: z.string().optional(),
-  changes: z.array(z.union([ServiceChange, EndpointChange])).default([]),
+  changes: z
+    .array(
+      // pick the schema by the key that says what the change targets, so a mistake gets that
+      // schema's message ("retries.attempts: required") instead of a union of two failures
+      z.unknown().transform((c, ctx) => {
+        const o = (c ?? {}) as Record<string, unknown>;
+        const schema = 'endpoint' in o && !('service' in o) ? EndpointChange : ServiceChange;
+        const r = schema.safeParse(c);
+        if (r.success) return r.data;
+        for (const i of r.error.issues) ctx.addIssue({ code: 'custom', message: `${schema === EndpointChange ? 'endpoint change' : 'service change'}: ${i.message}${schema === EndpointChange ? ' — an endpoint change takes endpoint, retries { attempts, budget? }, timeoutMs' : ' — a service change takes service plus replicas, autoscale, cpu, memoryGb, arch, perf, capacityRps, cache, readReplicas, readShare, zone, region'}`, path: i.path });
+        return z.NEVER;
+      }),
+    )
+    .default([]),
 });
 export type StrategySpec = z.infer<typeof StrategySpec>;
 export type ServiceChange = z.infer<typeof ServiceChange>;

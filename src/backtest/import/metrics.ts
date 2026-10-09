@@ -1,5 +1,6 @@
 import type { DatasetBuilder, ServiceMetric } from '../dataset';
 import { csvObjects, parseCsv, parseTimestamp } from './csv';
+import { templatePath } from './traces';
 
 /**
  * Metric exports → dataset points.
@@ -33,6 +34,10 @@ export interface SeriesMapping {
   scale?: number;
   /** service rename map: raw label value → service id */
   rename?: Record<string, string>;
+  /** endpoint ids as traces spell them ("<service> <METHOD> <path>"), with query strings dropped and
+   *  ids templated; series that template to the same endpoint are merged (rates summed, p99 the max,
+   *  the rest averaged) */
+  template?: boolean;
 }
 
 const ENDPOINT_METRICS = new Set(['rps', 'errorRate', 'p50Ms', 'p99Ms', 'meanMs']);
@@ -57,7 +62,8 @@ function emit(b: DatasetBuilder, map: SeriesMapping, labels: Record<string, stri
   const service = map.rename?.[rawSvc] ?? rawSvc;
   const { metric, v } = convert(map.metric, raw, map.unit, periodS, map.scale);
   const epLabel = map.endpointBy ? labels[map.endpointBy] : undefined;
-  const endpoint = map.endpoint ?? (epLabel ? `${map.methodBy && labels[map.methodBy] ? labels[map.methodBy] + ' ' : ''}${epLabel}` : undefined);
+  const named = map.endpoint ?? (epLabel ? `${map.methodBy && labels[map.methodBy] ? labels[map.methodBy] + ' ' : ''}${epLabel}` : undefined);
+  const endpoint = named && map.template ? `${service} ${templatePath(named)}` : named;
   if (endpoint) {
     if (ENDPOINT_METRICS.has(metric)) b.addEndpoint(endpoint, service, metric as 'rps', t, v);
     return;
@@ -77,6 +83,7 @@ export function importPrometheus(b: DatasetBuilder, json: unknown, map: SeriesMa
   const result = Array.isArray(root) ? root : root.data?.result ?? root.result;
   if (!Array.isArray(result)) throw new Error('not a Prometheus query response (expected data.result)');
   let points = 0;
+  if (map.template && map.endpointBy) return importTemplated(b, result, map);
   for (const s of result) {
     const vals = s.values ?? (s.value ? [s.value] : []);
     const period = vals.length > 1 ? Number(vals[1][0]) - Number(vals[0][0]) : 60;
@@ -87,6 +94,38 @@ export function importPrometheus(b: DatasetBuilder, json: unknown, map: SeriesMa
       points++;
     }
   }
+  return points;
+}
+
+/** endpoint series whose names template to the same endpoint (one series per user id in a path,
+ *  say) merged before they reach the dataset: rates add up, p99 takes the worst, the rest average */
+function importTemplated(b: DatasetBuilder, result: PromSeries[], map: SeriesMapping): number {
+  const groups = new Map<string, { labels: Record<string, string>; byT: Map<number, number[]>; period: number }>();
+  for (const s of result) {
+    const labels = s.metric ?? {};
+    const raw = labels[map.endpointBy!];
+    if (!raw) continue;
+    const rawSvc = map.service ?? labels[map.by ?? 'service'] ?? labels.service_name ?? '';
+    const name = `${map.methodBy && labels[map.methodBy] ? labels[map.methodBy] + ' ' : ''}${raw}`;
+    const key = `${rawSvc}\u0000${templatePath(name)}`;
+    const vals = s.values ?? (s.value ? [s.value] : []);
+    let g = groups.get(key);
+    if (!g) groups.set(key, (g = { labels: { ...labels, [map.endpointBy!]: templatePath(name) }, byT: new Map(), period: vals.length > 1 ? Number(vals[1][0]) - Number(vals[0][0]) : 60 }));
+    for (const [ts, raw] of vals) {
+      const v = parseFloat(raw);
+      if (!isFinite(v)) continue;
+      (g.byT.get(Number(ts)) ?? g.byT.set(Number(ts), []).get(Number(ts))!).push(v);
+    }
+  }
+  const combine = map.metric === 'rps' || map.metric === 'doneRps' ? (xs: number[]) => xs.reduce((a, x) => a + x, 0) : map.metric === 'p99Ms' || map.metric === 'p95Ms' ? (xs: number[]) => Math.max(...xs) : (xs: number[]) => xs.reduce((a, x) => a + x, 0) / xs.length;
+  // the method is already part of the templated name
+  const m = { ...map, methodBy: undefined };
+  let points = 0;
+  for (const g of groups.values())
+    for (const [t, xs] of g.byT) {
+      emit(b, m, g.labels, t, combine(xs), g.period);
+      points++;
+    }
   return points;
 }
 

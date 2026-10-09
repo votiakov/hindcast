@@ -51,7 +51,9 @@ function otlpKind(k: unknown): Span['kind'] {
 const KEEP = /^(url\.path|http\.target|http\.(route|method|request\.method|status_code|response\.status_code|request\.body\.size|response\.body\.size|request_content_length|response_content_length)|rpc\.(system|service|method|request\.size|response\.size)|db\.system|messaging\.(system|message)|peer\.service|server\.address|net\.peer\.name|error|otel\.status_code|span\.kind)/;
 
 export function parseOtlp(doc: unknown, out: Span[] = []): Span[] {
-  const rs = (doc as { resourceSpans?: unknown[] }).resourceSpans;
+  // the collector's file exporter writes resourceSpans; Tempo's trace API answers batches (v1) or trace.resourceSpans (v2)
+  const d = doc as { resourceSpans?: unknown[]; batches?: unknown[]; trace?: { resourceSpans?: unknown[] } };
+  const rs = d.resourceSpans ?? d.batches ?? d.trace?.resourceSpans;
   if (!Array.isArray(rs)) return out;
   for (const r of rs as { resource?: { attributes?: AnyAttr[] }; scopeSpans?: { spans?: unknown[] }[]; instrumentationLibrarySpans?: { spans?: unknown[] }[] }[]) {
     const service = String(otlpValue(r.resource?.attributes?.find((a) => a.key === 'service.name')?.value) ?? 'unknown');
@@ -175,9 +177,13 @@ function dependencyOf(sp: Span): { name: string; kind: ServiceShape['kind']; sys
   const peer = (sp.attrs['peer.service'] ?? sp.attrs['server.address'] ?? sp.attrs['net.peer.name']) as string | undefined;
   if (db) return { name: String(peer ?? db), kind: CACHE.has(db) ? 'cache' : SQL.has(db) ? 'db' : 'db', system: db };
   if (mq) return { name: String(peer ?? mq), kind: 'queue', system: mq };
-  if (peer && sp.kind === 'client') return { name: String(peer), kind: 'external' };
+  // a bare IP is an address, not a component: usually a call to an instrumented service whose own
+  // span is missing from the trace (sampled away, failed before it started, not flushed yet)
+  if (peer && sp.kind === 'client' && !IP.test(String(peer))) return { name: String(peer), kind: 'external' };
   return null;
 }
+
+const IP = /^(\d{1,3}(\.\d{1,3}){3}|\[?[0-9a-f:]+:[0-9a-f:]*\]?)$/i;
 
 interface Visit {
   service: string;
@@ -319,6 +325,14 @@ export interface TraceImportOptions {
 
 /** an id-looking path segment: numbers, UUIDs, hex, or opaque codes with digits */
 const ID_SEGMENT = /^(\d+|[0-9a-f]{8,}|[0-9a-f-]{36}|(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9_-]{6,})$/;
+
+/** a span or route name as an endpoint name: query string dropped, id-looking path segments → {id} */
+export const templatePath = (name: string) => {
+  const m = /^((?:HTTP )?[A-Z]+ )?(\S*)(.*)$/.exec(name.trim());
+  if (!m || !m[2].startsWith('/')) return name.trim().replace(/^HTTP /, '');
+  const path = m[2].split('?')[0].split('/').map((seg) => (ID_SEGMENT.test(seg) ? '{id}' : seg)).join('/') || '/';
+  return `${(m[1] ?? '').replace(/^HTTP /, '')}${path}${m[3]}`;
+};
 
 export const endpointId = (v: { service: string; name: string; route?: string; target?: string; method?: string }) => {
   const method = v.method ? v.method.toUpperCase() + ' ' : '';

@@ -26,6 +26,7 @@ const Mapping = z.object({
   methodBy: z.string().optional(),
   unit: z.enum(['ms', 's', 'us', 'percent', 'ratio', 'cores', 'millicores', 'bytes', 'rps', 'rpm', 'count-per-period']).optional(),
   scale: z.number().optional(),
+  template: z.boolean().optional().describe('endpoint ids spelled as traces spell them, query strings dropped and ids templated; merged series'),
 });
 
 const MetricSource = z.union([

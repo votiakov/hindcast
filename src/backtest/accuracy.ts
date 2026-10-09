@@ -234,7 +234,13 @@ export function modelBreakingPoint(model: Model, plan: Plan = basePlan(model), o
   const n = steps * per;
   const rpsAt = (i: number) => (top * (Math.floor(i / per) + 1)) / steps;
   const traffic: Traffic = { start: 0, stepS, n, endpoints: Object.fromEntries(shares.map(([id, sh]) => [id, Array.from({ length: n }, (_, i) => rpsAt(i) * sh)])) };
-  const fixed: Plan = { ...plan, services: Object.fromEntries(Object.entries(plan.services).map(([id, s]) => [id, { ...s, observedReplicas: undefined, replicas: s.replicas ?? (s.autoscale ? null : model.services[id]?.replicas ?? 1) }])) };
+  // fixed replica counts for the ramp; an in-process dependency runs in its host's replicas
+  const repsOf = (id: string): number | null => {
+    const s = plan.services[id];
+    if (s.hostedBy && plan.services[s.hostedBy]) return repsOf(s.hostedBy);
+    return s.replicas ?? (s.autoscale ? null : model.services[id]?.replicas ?? 1);
+  };
+  const fixed: Plan = { ...plan, services: Object.fromEntries(Object.entries(plan.services).map(([id, s]) => [id, { ...s, observedReplicas: undefined, replicas: repsOf(id) }])) };
   const r = runPlan(fixed, traffic);
   const bp = breakingPointOf(asObs(r), model.slo);
   // which service was saturated just past the breaking point
@@ -243,6 +249,11 @@ export function modelBreakingPoint(model: Model, plan: Plan = basePlan(model), o
   if (i >= 0) {
     let best = 0;
     for (const [id, s] of Object.entries(r.services)) if (s.util[i] > best) [best, limitedBy] = [s.util[i], id];
+    // nothing saturated yet, but errors that grow with traffic crossed the error SLO
+    if (best < 0.85 && r.errorRate[i] > model.slo.errorRate && r.p99Ms[i] <= model.slo.p99Ms) {
+      const worst = Object.values(model.endpoints).sort((a, b) => (b.errorSlope ?? 0) * b.share - (a.errorSlope ?? 0) * a.share)[0];
+      limitedBy = `errors that grow with load${worst?.errorSlope ? ` (${worst.id}: +${(worst.errorSlope * 100).toFixed(2)}% per req/s)` : ''}`;
+    }
   }
   return { rps: bp.rps, limitedBy };
 }
