@@ -18,7 +18,7 @@
   <a class="bar-open" href="../">Open the app ↗</a>
 </header>
 <div class="page">
-<nav class="rail" aria-label="Chapters"><a href="index.html" aria-current="page">Overview</a><div class="rail-h">Backtest on real data</div><a href="backtest.html">The backtest screen</a><a href="data.html">Bring your data</a><a href="calibration.html">How the model is fitted</a><a href="strategies.html">Strategies</a><a href="outages.html">Public-outage replays</a><a href="ci.html">CLI, pull requests, MCP</a><div class="rail-h">Design simulator</div><a href="live.html">Live</a><a href="lessons.html">Lessons</a><a href="sandbox.html">Sandbox</a><a href="audit.html">Failure audit and analysis</a><a href="compare.html">Compare</a><a href="studio.html">Studio</a><div class="rail-h">Reference</div><a href="use-cases.html">Use cases</a><a href="accuracy.html">Accuracy</a><a href="capabilities.html">Everything it does</a></nav>
+<nav class="rail" aria-label="Chapters"><a href="index.html" aria-current="page">Overview</a><a href="agents.html">For AI agents</a><div class="rail-h">Backtest on real data</div><a href="backtest.html">The backtest screen</a><a href="data.html">Bring your data</a><a href="calibration.html">How the model is fitted</a><a href="strategies.html">Strategies</a><a href="outages.html">Public-outage replays</a><a href="ci.html">CLI, pull requests, MCP</a><div class="rail-h">Design simulator</div><a href="live.html">Live</a><a href="lessons.html">Lessons</a><a href="sandbox.html">Sandbox</a><a href="audit.html">Failure audit and analysis</a><a href="compare.html">Compare</a><a href="studio.html">Studio</a><div class="rail-h">Reference</div><a href="use-cases.html">Use cases</a><a href="accuracy.html">Accuracy</a><a href="capabilities.html">Everything it does</a></nav>
 <main>
 <header class="head">
   <div class="kicker">Documentation</div>
@@ -34,7 +34,7 @@
 <tr><td>Model</td><td>fitted from the data, with its accuracy shown and anything it can't explain flagged</td><td>catalogue numbers, or your own</td></tr>
 <tr><td>Question</td><td>what would this change have done to the last two weeks?</td><td>what breaks first, and what does it cost?</td></tr>
 <tr><td>Answer</td><td>$ saved or spent, minutes out of SLO, failed requests, the worst moment and why, with confidence bands</td><td>a risk register with verified, priced fixes; comparisons; breaking points</td></tr>
-<tr><td>Where</td><td><a href="backtest.html">Backtest</a>, the CLI, a pull-request check</td><td><a href="live.html">Live</a>, <a href="lessons.html">Lessons</a>, <a href="sandbox.html">Sandbox</a>, <a href="compare.html">Compare</a>, <a href="studio.html">Studio</a></td></tr>
+<tr><td>Where</td><td><a href="backtest.html">Backtest</a>, the CLI, a pull-request check, <a href="agents.html">your AI agent</a></td><td><a href="live.html">Live</a>, <a href="lessons.html">Lessons</a>, <a href="sandbox.html">Sandbox</a>, <a href="compare.html">Compare</a>, <a href="studio.html">Studio</a></td></tr>
 </table></div>
 <p>Accuracy is measured, not claimed. Three open demo systems were run under load with their telemetry recorded. Calibrated on one run, the model predicted runs it never saw: p99 within 2–10%, breaking points within 0–13%, cost within 0–3%. See <a href="accuracy.html">accuracy</a>.</p>
 
@@ -42,8 +42,9 @@
 <pre><code>npm install
 npm run dev            # the app on http://localhost:5173 — the docs are at /docs/
 npm run sim -- …       # the CLI
-npm run mcp            # the MCP server for AI assistants</code></pre>
+npm run mcp            # the MCP server for AI agents</code></pre>
 <ul>
+<li>Using an AI agent? Give it the <a href="agents.html">agent tools</a>: it connects to your Prometheus and Jaeger, builds the model and verifies changes itself.</li>
 <li>Open the <a href="../#backtest">Backtest</a> tab: the three reference systems are built in. Then <a href="data.html">bring your own data</a>.</li>
 <li>Or start on <a href="../#live">Live</a>, a system already failing, and follow the next move.</li>
 <li>Looking for a specific question? <a href="use-cases.html">Use cases</a>. Want the full list? <a href="capabilities.html">Everything it does</a>.</li>
@@ -51,6 +52,7 @@ npm run mcp            # the MCP server for AI assistants</code></pre>
 
 <h2>Chapters</h2>
 <div class="table-wrap"><table class="ledger">
+<tr><td>0</td><td><a href="agents.html">For AI agents</a></td><td>connect, collect, calibrate, verify: the tools, verdicts and confidence, setup for Claude Code and other agents</td></tr>
 <tr><td>1</td><td><a href="backtest.html">The backtest screen</a></td><td>the chart, the strategies, the verdict, incidents, endpoints, any moment on the board</td></tr>
 <tr><td>2</td><td><a href="data.html">Bring your data</a></td><td>the files, the import manifest, Prometheus export presets</td></tr>
 <tr><td>3</td><td><a href="calibration.html">How the model is fitted</a></td><td>capacity, latency and cost from telemetry; what gets flagged; the rules and the recordings that taught them</td></tr>
@@ -66,7 +68,7 @@ npm run mcp            # the MCP server for AI assistants</code></pre>
 </table></div>
 </section>
 
-<nav class="pager"><span></span><a href="backtest.html">The backtest screen →</a></nav>
+<nav class="pager"><span></span><a href="agents.html">For AI agents →</a></nav>
 </main>
 </div>
 <script src="docs.js"></script>

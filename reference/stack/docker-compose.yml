@@ -1,5 +1,6 @@
-# Shared recording stack for the reference systems: OTel collector (traces → file + RED metrics),
-# container metrics with cAdvisor names (CPU / network / limits) and Prometheus scraping both every 5 s.
+# Shared recording stack for the reference systems: OTel collector (traces → file + Jaeger + RED
+# metrics), container metrics with cAdvisor names (CPU / network / limits), Prometheus scraping both
+# every 5 s, and Jaeger and Tempo holding the sampled traces (what agents query in docs/agents.md).
 name: bnref
 services:
   otel-collector:
@@ -18,6 +19,21 @@ services:
     volumes:
       - ./docker_exporter.py:/exporter.py:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [ref]
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+      MEMORY_MAX_TRACES: "200000"
+    ports: ["16686:16686"]
+    networks: [ref]
+  tempo:
+    image: grafana/tempo:2.6.1
+    command: ["-config.file=/etc/tempo.yaml"]
+    user: "0"
+    volumes:
+      - ./tempo.yaml:/etc/tempo.yaml:ro
+    ports: ["3200:3200"]
     networks: [ref]
   prometheus:
     image: prom/prometheus:v2.54.1

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "bottleneck": {
+      "command": "node",
+      "args": ["/path/to/bottleneck/dist-cli/bottleneck-mcp.mjs"],
+      "env": {
+        "BOTTLENECK_WORKSPACE": "/path/to/your/project/.bottleneck",
+        "BOTTLENECK_APP_URL": "http://localhost:5173"
+      }
+    }
+  }
+}

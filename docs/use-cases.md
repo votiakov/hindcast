@@ -135,6 +135,18 @@ or Backtest tab → *Replay an outage…*
   traffic through the model. Explore it like a Sandbox design — kill a component, add a cache — and
   press *Backtest these edits* to replay that change over the whole history.
 
+### 13a. Let your agent verify a change itself
+
+- **Needs**: an AI agent with the MCP server (or a shell), and the URLs of your Prometheus and Jaeger
+  or Tempo.
+- **Ask it**: "can we move checkout to Graviton?", "is this Terraform plan safe?", "check these
+  HPA changes before I merge". The agent runs `connect_telemetry` → `collect_telemetry` →
+  `calibrate_model` → `verify_change` and answers with a verdict (pass / fail / inconclusive), a
+  confidence (high / medium / low, saying which services the change pushes past anything the
+  history showed), $ per month with its basis (bill or list price), minutes out of SLO and the
+  worst moment.
+- Read-only towards your systems; the workspace stays on your machine. See [agents.md](agents.md).
+
 ### 13. Turn a result into a post
 
 - Backtest tab → **Card ↗**, or `bottleneck backtest … --card card.json` then
@@ -187,6 +199,9 @@ or Backtest tab → *Replay an outage…*
   `audit_resilience`, `compare_architectures`, `optimize_cost`, `backtest_strategy`, `replay_outage`
   and more; `show_architecture` renders the live canvas inline in hosts that support MCP Apps.
   See [tools.md](tools.md#mcp-server--npm-run-mcp).
+- **Let the agent check a design it wrote**: `verify_design` returns failures, headroom and cost
+  against a budget, with fixes as exact spec changes; the agent applies them and verifies again
+  until it passes. See [agents.md](agents.md#designs-on-paper-verify_design).
 
 ### 21. Make comparison videos
 

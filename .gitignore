@@ -15,3 +15,4 @@ reference/petclinic/otel/*.jar
 reference/.dbg/
 reference/*/runs/*/warm-mix.json
 public/docs/shots/_debug-*
+.bottleneck/

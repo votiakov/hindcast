@@ -15,6 +15,7 @@
 | `import-k8s <manifests.yaml …> [--name …] [--out arch.yaml]` | Kubernetes manifests → spec (HPAs become autoscaling) + assumptions to review |
 | `link <arch> [variants]` | URL that opens the architecture (or a comparison) in the app |
 | `catalog` | component catalogue as JSON |
+| `agent <tool> '<json>' \| @file \| -` | any agent tool from a shell, JSON in and out (`agent list`); see [agents.md](agents.md) |
 
 ### Backtesting on real data
 
@@ -65,10 +66,14 @@ Registered for Claude Code in `.mcp.json` (restart Claude Code in this folder an
 | `import_kubernetes` | `manifests_yaml`, `name?` | spec, assumptions, skipped objects, lint |
 | `show_architecture` | `architecture`, `compare_with?`, `scenario?` | **live canvas**: renders the simulation inline in MCP Apps hosts (Claude, ChatGPT…); text + link elsewhere |
 | `open_in_app` | `architecture`, `compare_with?` (variant), `scenario?` | URL for the app (sandbox, or side-by-side comparison playing the scenario) |
-| `backtest_strategy` | `model`, `dataset` (paths), `strategies[]` (objects or YAML), `last?`, `draws?` | the backtest of each strategy over the recorded history: $/month, minutes out of SLO, worst moment, incidents, ranking, the model's accuracy |
-| `replay_outage` | `model`, `outage`, `strategies?`, `rps?` | a public outage replayed against the model, as built and with strategies |
+| `backtest_strategy` | `model?`, `dataset?` (paths; default the workspace's), `strategies[]` (objects or YAML), `last?`, `draws?` | the backtest of each strategy over the recorded history: $/month, minutes out of SLO, worst moment, incidents, ranking, the model's accuracy |
+| `replay_outage` | `model?`, `outage`, `strategies?`, `rps?` | a public outage replayed against the model, as built and with strategies |
+| `connect_telemetry` … `read_cluster` | see [agents.md](agents.md#tool-reference) | eight tools for an agent working on a live system: connect, collect, calibrate, verify (strategies, Kubernetes diffs, Terraform plans), headroom, design checks, cluster snapshots, status |
 
-Suggested assistant workflow: `import_terraform` (or `list_components` → write the spec from the user's description
+Prompts: `verify-infra-change` and `check-my-design` ([agents.md](agents.md#prompts)).
+
+Suggested assistant workflow for a live system: `model_status` → `connect_telemetry` → `collect_telemetry` →
+`calibrate_model` → `verify_change` ([agents.md](agents.md)). For a design on paper: `import_terraform` (or `list_components` → write the spec from the user's description
 from k8s manifests, diagrams, metrics) → confirm assumptions, request rates and SLOs with the user → `validate_architecture` → `simulate`/`analyze` the
 current state → propose variants → `compare_architectures` / `optimize_cost` → `open_in_app` to hand
 over a live demo.

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>For AI agents · Bottleneck docs</title>
+<meta name="description" content="Let your agent check an infrastructure change against last week's production before it proposes it. It connects to your telemetry, builds the model and reads its trust report, then answers with a verdict, the money, the SLO minutes and how far to trust them.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="index.html">Bottleneck<span>docs</span></a>
+  <nav class="bar-links" aria-label="The app">
+    <a href="../#backtest">Backtest</a><a href="../#live">Live</a><a href="../#lessons">Lessons</a><a href="../#sandbox">Sandbox</a><a href="../#compare">Compare</a><a href="../#studio">Studio</a>
+  </nav>
+  <a class="bar-open" href="../">Open the app ↗</a>
+</header>
+<div class="page">
+<nav class="rail" aria-label="Chapters"><a href="index.html">Overview</a><a href="agents.html" aria-current="page">For AI agents</a><div class="rail-h">Backtest on real data</div><a href="backtest.html">The backtest screen</a><a href="data.html">Bring your data</a><a href="calibration.html">How the model is fitted</a><a href="strategies.html">Strategies</a><a href="outages.html">Public-outage replays</a><a href="ci.html">CLI, pull requests, MCP</a><div class="rail-h">Design simulator</div><a href="live.html">Live</a><a href="lessons.html">Lessons</a><a href="sandbox.html">Sandbox</a><a href="audit.html">Failure audit and analysis</a><a href="compare.html">Compare</a><a href="studio.html">Studio</a><div class="rail-h">Reference</div><a href="use-cases.html">Use cases</a><a href="accuracy.html">Accuracy</a><a href="capabilities.html">Everything it does</a></nav>
+<main>
+<header class="head">
+  <div class="kicker">Documentation</div>
+  <h1>For AI agents</h1>
+  <p class="lede">Let your agent check an infrastructure change against last week's production before it proposes it. It connects to your telemetry, builds the model and reads its trust report, then answers with a verdict, the money, the SLO minutes and how far to trust them.</p>
+</header>
+<section class="prose">
+<h2>What the agent does</h2>
+<pre><code>connect_telemetry  →  collect_telemetry  →  calibrate_model  →  verify_change
+probe Prometheus,     history into the       the model, and      verdict, confidence,
+Jaeger or Tempo       workspace              how far to trust it $, SLO minutes, why</code></pre>
+<p>Your agent (Claude Code, Cursor, Claude Desktop, or anything with a shell) gets eight tools over MCP or as <code>bottleneck agent &lt;tool&gt;</code> with JSON in and out. The user asks "can we move checkout to Graviton?". The agent finds the Prometheus and Jaeger, collects a week of history, fits the model, backtests the change and answers with evidence.</p>
+<p>Everything is read-only towards your systems: queries to your Prometheus and Jaeger or Tempo, and one <code>kubectl get</code> against a context you name. Credentials stay in environment variables. Nothing leaves your machine.</p>
+
+<h2>Set up</h2>
+<pre><code>npm run build:mcp-server      # → dist-cli/bottleneck-mcp.mjs, Node 20, no install
+claude mcp add bottleneck -- node /path/to/bottleneck/dist-cli/bottleneck-mcp.mjs</code></pre>
+<p>Other MCP hosts take the same command in their <code>mcpServers</code> config (<code>examples/agents/mcp.json</code>). For agents without MCP: <code>npm run build:cli</code>, then <code>node dist-cli/bottleneck.mjs agent connect_telemetry '{…}'</code>; <code>examples/agents/AGENTS.md</code> is an instruction file to paste into your project. For Claude Code there is also a skill, <code>examples/agents/skills/verify-infra-change</code>.</p>
+
+<h2>The tools</h2>
+<div class="table-wrap"><table>
+<tr><th>tool</th><th>what it does</th></tr>
+<tr><td><code>connect_telemetry</code></td><td>probes Prometheus (which metric presets exist, which services, when traffic flowed) and Jaeger or Tempo (services, which ones requests enter through, load generators to ignore). Maps container names onto service names. Says what is missing.</td></tr>
+<tr><td><code>collect_telemetry</code></td><td>queries a window (<code>last: "7d"</code>), fetches traces spread across it, adds the bill, imports. Reports per service which signals exist.</td></tr>
+<tr><td><code>calibrate_model</code></td><td>fits the model and holds back 30% of the history to measure accuracy. Returns a trust report: services whose limit the history reached, services whose capacity is extrapolated, services it can't explain.</td></tr>
+<tr><td><code>verify_change</code></td><td>backtests changes given as a strategy, a Kubernetes manifest diff, a <b>Terraform plan</b>, or edited manifests against the live cluster. Verdict, confidence, $ with its band, SLO minutes, worst moment, headroom, and an HTML report.</td></tr>
+<tr><td><code>find_headroom</code></td><td>req/s within SLO, as built and with a change, and what binds first.</td></tr>
+<tr><td><code>verify_design</code></td><td>a design on paper: failures, headroom, cost against a budget; fixes as exact spec changes, so the agent can loop until it passes.</td></tr>
+<tr><td><code>read_cluster</code></td><td><code>kubectl get deployments,statefulsets,hpa</code> on a named context, saved as the base for edited manifests.</td></tr>
+<tr><td><code>model_status</code></td><td>what the workspace already holds, and the next step.</td></tr>
+</table></div>
+
+<h2>Verdict and confidence</h2>
+<p>Every result has both. The verdict is about the history; the confidence is about the model.</p>
+<div class="table-wrap"><table>
+<tr><th></th><th>when</th></tr>
+<tr><td><b>fail</b></td><td>the change adds more than half a minute out of SLO over the window (median of 30 capacity draws)</td></tr>
+<tr><td><b>inconclusive</b></td><td>the median passes but the worst 10% of draws don't; or confidence is low; or the change cuts headroom below traffic the system has already seen</td></tr>
+<tr><td><b>pass</b></td><td>otherwise</td></tr>
+<tr><td>confidence <b>low</b></td><td>a service the change depends on fits poorly, or the change runs it at ≥ 80% of a capacity the history never came near</td></tr>
+<tr><td>confidence <b>medium</b></td><td>it runs past the history's peak, a touched service fits only fairly, the model missed an accuracy check, or the history is under a day</td></tr>
+</table></div>
+<p class="verdict">A pass at low confidence is not "safe": the backtest found no problem on capacities the history never tested. Agents are told to say so and recommend a load test.</p>
+<p>Cost comes with its basis: <b>your bill</b>, or <b>list price</b> (AWS Fargate on-demand, from CPU and memory limits) when there is no bill.</p>
+
+<h2>Tested end to end</h2>
+<p>Live, against the reference HotROD (four Go services and a mutex-guarded simulated MySQL) under a 30-minute "production day". Its telemetry went through an OpenTelemetry Collector into Prometheus and Jaeger. Headless Claude Code got only this, and only the Bottleneck tools:</p>
+<p class="verdict">Our Prometheus is at http://localhost:9090 and Jaeger at http://localhost:16686. SLO: p99 under 1 s, under 3% errors; clients time out after 5 s. Use the last hour. Can we move all our services to Graviton without hurting reliability, and would letting clients retry failed requests twice (no retry budget) make things better or worse?</p>
+<p>17 turns, 2.5 minutes:</p>
+<ol>
+<li>It connected and collected. The coverage report flagged services in no trace (a second system sharing the Prometheus) and traced services with no container. The agent checked, then connected again with <code>exclude</code> for the other system and <code>hostedBy</code> for the in-process mysql and redis.</li>
+<li>Calibrated: the mysql lock at 9.1 req/s (band 7.6–10.6). A stress test of the same build measured 9.9.</li>
+<li>Verified both changes, and on its own initiative a third: Graviton with 20% slower cores.</li>
+</ol>
+<div class="table-wrap"><table>
+<tr><th>change</th><th>verdict</th><th>what it said</th></tr>
+<tr><td>Everything on Graviton</td><td>inconclusive, low confidence</td><td>saves $16.29/month (list prices) with no change in SLO minutes, even at 20% slower cores: the bottleneck is a lock, not CPU. One hour of history and a poorly fitted lock: migrate one service or load-test first.</td></tr>
+<tr><td>Clients retry twice, no budget</td><td>fail</td><td>+6 minutes out of SLO (+5.5 … +6.5), +1,241 failed requests. The failures are queue timeouts, so retries join the same full queue. Try two customer replicas or a retry budget instead.</td></tr>
+</table></div>
+<p>The same flow runs as a script through a real MCP client (<code>scripts/agent-e2e.mjs</code>): connect 2.7 s, collect 4.5 s (1,682 traces from Jaeger), calibrate 8 s, verify under a second. Through Tempo instead of Jaeger it found the same services and call edges, fetched 509 traces and calibrated the mysql lock at 10.2 req/s.</p>
+
+<h2>What your telemetry needs</h2>
+<div class="table-wrap"><table>
+<tr><th>signal</th><th>from</th></tr>
+<tr><td>requests, errors, latency</td><td>OpenTelemetry Collector span metrics, or OpenTelemetry HTTP server metrics, in any Prometheus-compatible store (Prometheus, Thanos, Mimir, VictoriaMetrics)</td></tr>
+<tr><td>CPU, limits, replicas</td><td>cAdvisor, or kubelet + kube-state-metrics</td></tr>
+<tr><td>topology and self time</td><td>Jaeger or Tempo, or OTLP / Jaeger JSON files</td></tr>
+<tr><td>cost</td><td>an AWS CUR or GCP billing export; list prices otherwise</td></tr>
+</table></div>
+<p>The full guide, with every input and output: <code>docs/agents.md</code> in the repository.</p>
+</section>
+
+<nav class="pager"><a href="index.html">← Overview</a><a href="backtest.html">The backtest screen →</a></nav>
+</main>
+</div>
+<script src="docs.js"></script>
+</body>
+</html>

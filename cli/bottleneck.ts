@@ -18,6 +18,7 @@ import { validateSpec } from '../src/spec/validate';
 import { applyVariant, encodePayload } from '../src/spec/convert';
 import { ArchitectureSpec, VariantSpec } from '../src/spec/schema';
 import { backtestCommand } from './backtest';
+import { explainError, runTool, TOOLS } from '../agent/tools';
 
 const USAGE = `Bottleneck CLI — the simulation engine without the UI.
 
@@ -42,6 +43,11 @@ Backtesting on real data (files only; see docs/backtest.md):
   npm run sim -- accuracy      <model.json>
   npm run sim -- outage        <model.json> <outage-id | list> [strategy.yaml …] [--role primary-db=orders-db] [--md r.md] [--html r.html]
   npm run sim -- diff-strategy --base <dir> --head <dir> [--model model.json] [--out strategy.yaml]   (k8s manifests before/after → strategy)
+
+For agents (the MCP tools, from a shell; JSON in, JSON out; see docs/agents.md):
+  npm run sim -- agent list
+  npm run sim -- agent <tool> '<json args>' | @args.json | -      e.g. agent connect_telemetry '{"prometheus":{"url":"http://prom:9090"}}'
+  tools: connect_telemetry collect_telemetry calibrate_model model_status verify_change find_headroom verify_design read_cluster
 
 Files may be YAML or JSON. A variants file is either a list of variants or { variants, scenario }.`;
 
@@ -133,6 +139,7 @@ function variantsFile(path: string): { variants: VariantSpec[]; scenario?: unkno
 
 async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
+  if (cmd === 'agent') return agentCommand(rest);
   const { pos, opt } = flags(rest);
   if (cmd && (await backtestCommand(cmd, pos, opt))) return;
   const json = !!opt.json;
@@ -254,6 +261,22 @@ async function main() {
     default:
       console.log(USAGE);
       process.exitCode = cmd ? 1 : 0;
+  }
+}
+
+/** `agent <tool> <json | @file | ->`: the MCP tools for agents that only have a shell */
+async function agentCommand([tool, arg]: string[]) {
+  if (!tool || tool === 'list') {
+    for (const t of TOOLS) console.log(`${t.name.padEnd(20)} ${t.title}`);
+    return;
+  }
+  const text = arg === undefined ? '{}' : arg === '-' ? readFileSync(0, 'utf8') : arg.startsWith('@') ? readFileSync(arg.slice(1), 'utf8') : arg;
+  const args = (text.trim().startsWith('{') ? JSON.parse(text) : parseYaml(text)) as Record<string, unknown>;
+  try {
+    console.log(JSON.stringify(await runTool(tool.replace(/-/g, '_'), args ?? {}), null, 2));
+  } catch (e) {
+    console.log(JSON.stringify({ error: explainError(e) }, null, 2));
+    process.exitCode = 1;
   }
 }
 

@@ -26,6 +26,7 @@ const pins = JSON.parse(readFileSync(join(OUT, 'shots/pins.json'), 'utf8'));
 /** chapters in reading order: file, rail label, group */
 const CHAPTERS = [
   ['index', 'Overview', ''],
+  ['agents', 'For AI agents', ''],
   ['backtest', 'The backtest screen', 'Backtest on real data'],
   ['data', 'Bring your data', 'Backtest on real data'],
   ['calibration', 'How the model is fitted', 'Backtest on real data'],

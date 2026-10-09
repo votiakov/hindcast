@@ -1,11 +1,13 @@
 /**
- * Bottleneck MCP server — exposes the simulation engine to AI assistants over stdio.
+ * Bottleneck MCP server — exposes the simulation and backtesting engines to AI agents over stdio.
  *
  *   npm run mcp            (Claude Code picks it up from .mcp.json)
  *
- * Typical flow for an assistant: list_components → describe the user's system as an
- * architecture spec → validate_architecture → simulate / compare_architectures /
- * find_breaking_point → open_in_app to hand the user a live, visual version.
+ * Two flows:
+ *  - a real system: connect_telemetry → collect_telemetry → calibrate_model → verify_change
+ *    (an infrastructure change backtested on production history, with a verdict and a confidence)
+ *  - a design on paper: list_components → write a spec → verify_design (failures, headroom, cost,
+ *    verified fixes) → open_in_app to hand the user a live, visual version.
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -31,10 +33,20 @@ import { backtest } from '../src/backtest/backtest';
 import { backtestMarkdown } from '../src/backtest/report';
 import { OUTAGES, outageById, replayOutage } from '../src/backtest/outages';
 import { lastWindow } from '../cli/backtest';
+import { explainError, TOOLS } from '../agent/tools';
+import { Workspace } from '../agent/workspace';
 
 const APP_URL = process.env.BOTTLENECK_APP_URL ?? 'http://localhost:5173';
 
-const INSTRUCTIONS = `Bottleneck simulates distributed-system architectures under load and failure.
+const INSTRUCTIONS = `Bottleneck lets an agent check infrastructure decisions before they ship.
+
+REAL SYSTEMS (production telemetry): connect_telemetry (Prometheus URL, plus Jaeger or Tempo for traces, optionally the cloud bill) → collect_telemetry (history into the workspace) → calibrate_model (read its trust report) → verify_change for any change you propose or are asked about: a strategy, a Kubernetes manifest diff, a Terraform plan, or edited manifests against read_cluster's snapshot. Start a session with model_status: the workspace (./.bottleneck) may already hold a fresh model.
+Report verify_change results with their verdict AND confidence. "pass" with confidence "low" means the change pushes a service past anything the history showed: say so and recommend a load test instead of calling it safe. Quote the money as a range when the band is wide, and say when prices are list prices rather than the bill. Never present a backtest as a guarantee.
+Everything is read-only towards the user's systems; nothing is applied. Credentials are passed as env var names, never as values.
+
+DESIGNS ON PAPER: verify_design checks a spec you wrote (failures, headroom, cost vs budget) and returns fixes as exact spec changes; apply them and verify again until it passes.
+
+ENGINE DETAILS: Bottleneck simulates distributed-system architectures under load and failure.
 Two engines: "fluid" (queueing model, milliseconds, used for quick checks and search) and "des" (discrete-event, every request simulated: real p50/p99/p99.9, emergent retry storms/timeouts/breakers, seeded). Use analyze for Monte Carlo confidence intervals and optimize_cost for the cheapest sizing that meets an SLO.
 Describe a system as an architecture spec: components (id, kind, optional knobs) + connections ([caller, callee]) + optional zones (failure domains).
 Kinds: client (traffic source), cdn, lb, gateway, server, worker, function, cache, db, replica, storage, queue, llm (self-hosted GPU), llmapi (hosted model API).
@@ -343,8 +355,8 @@ server.registerTool(
     description:
       'Replay real traffic through a calibrated model (bottleneck calibrate → model.json, bottleneck import → dataset.json) with each strategy applied: $ saved/spent per month, minutes out of SLO, failed requests, worst moment and why, with 10th–90th percentile bands, ranked. Strategies are YAML/JSON objects: { name, changes: [{ service, replicas | autoscale | cpu | memoryGb | arch | perf | capacityRps | cache | readReplicas | zone | region } | { endpoint, retries, timeoutMs }] }. Reference models ship in reference/<system>/model.json and dataset.json.',
     inputSchema: {
-      model: z.string().describe('path to model.json'),
-      dataset: z.string().describe('path to dataset.json'),
+      model: z.string().optional().describe('path to model.json (default: the workspace model)'),
+      dataset: z.string().optional().describe('path to dataset.json (default: the workspace dataset)'),
       strategies: z.array(z.union([z.string(), z.record(z.string(), z.unknown())])).describe('strategy objects, or YAML text'),
       last: z.string().optional().describe('only the last part of the history, e.g. "14d", "6h"'),
       draws: z.number().int().min(1).max(100).optional(),
@@ -353,8 +365,9 @@ server.registerTool(
   },
   async ({ model, dataset, strategies, last, draws }) => {
     try {
-      const m = readModel(model);
-      let d = readDataset(dataset);
+      const ws = new Workspace();
+      const m = readModel(model ?? ws.path('model.json'));
+      let d = readDataset(dataset ?? ws.path('dataset.json'));
       if (last) d = lastWindow(d, last);
       const r = backtest(m, d, strategies.map((s) => (typeof s === 'string' ? parseYaml(s) : s)), { draws: draws ?? 20 });
       return { content: [{ type: 'text' as const, text: backtestMarkdown(r, m) }] };
@@ -370,7 +383,7 @@ server.registerTool(
     title: 'Would this design have survived a famous outage?',
     description: `Replay a public outage's published timeline against a calibrated model, as built and with strategies. Outages: ${OUTAGES.map((o) => `${o.id} (${o.title})`).join('; ')}.`,
     inputSchema: {
-      model: z.string().describe('path to model.json'),
+      model: z.string().optional().describe('path to model.json (default: the workspace model)'),
       outage: z.enum(OUTAGES.map((o) => o.id) as [string, ...string[]]),
       strategies: z.array(z.union([z.string(), z.record(z.string(), z.unknown())])).optional(),
       rps: z.number().positive().optional().describe('your normal load (default: p90 of the model history)'),
@@ -379,7 +392,7 @@ server.registerTool(
   },
   async ({ model, outage, strategies, rps }) => {
     try {
-      const m = readModel(model);
+      const m = readModel(model ?? new Workspace().path('model.json'));
       const o = outageById(outage)!;
       const { replay, result } = replayOutage(m, o, (strategies ?? []).map((s) => (typeof s === 'string' ? parseYaml(s) : s)), { baseRps: rps });
       return json({ outage: o.title, what: o.what, timeline: o.timeline, assumptions: o.assumptions, sources: o.sources, roles: replay.roles, warnings: replay.warnings, report: backtestMarkdown(result, m) });
@@ -387,6 +400,64 @@ server.registerTool(
       return fail(e);
     }
   },
+);
+
+// ---- agent tools: real telemetry in, verdicts out (agent/tools.ts, shared with `bottleneck agent`) ----
+for (const t of TOOLS) {
+  server.registerTool(
+    t.name,
+    { title: t.title, description: t.description, inputSchema: t.input, annotations: { readOnlyHint: t.name === 'model_status' || t.name === 'verify_design' || t.name === 'find_headroom', openWorldHint: t.name === 'connect_telemetry' || t.name === 'collect_telemetry' || t.name === 'read_cluster' } },
+    async (args: Record<string, unknown>) => {
+      try {
+        return json(await t.run(args, new Workspace(args.workspace as string | undefined)));
+      } catch (e) {
+        return fail(explainError(e));
+      }
+    },
+  );
+}
+
+// ---- prompts: the workflows, for hosts that surface MCP prompts as commands ----
+server.registerPrompt(
+  'verify-infra-change',
+  { title: 'Verify an infrastructure change on real history', description: 'Backtest a proposed change (strategy, manifests, Terraform plan) and report a verdict with its confidence', argsSchema: { change: z.string().describe('the change, in words, or a path to manifests / a plan') } },
+  ({ change }) => ({
+    messages: [
+      {
+        role: 'user',
+        content: {
+          type: 'text',
+          text: `Verify this infrastructure change with Bottleneck before it ships: ${change}
+
+1. model_status. If there is no model, or the history is older than a week: connect_telemetry (ask me for the Prometheus and Jaeger/Tempo URLs if you don't know them) → collect_telemetry (7d if the data has it) → calibrate_model.
+2. Read the calibration trust report. Mention any service the change touches that is "extrapolated" or fits poorly.
+3. verify_change with the change as a strategy, a Kubernetes diff, a Terraform plan or edited manifests against read_cluster.
+4. Answer in this order: verdict and confidence; $ per month (range, and whether it is the bill or list prices); minutes out of SLO added; the worst moment and why; what would make it safer. Link the HTML report. Do not call a low-confidence pass safe.`,
+        },
+      },
+    ],
+  }),
+);
+
+server.registerPrompt(
+  'check-my-design',
+  { title: 'Check a system design', description: 'Write the design as a spec, find what breaks first, and fix it until it passes', argsSchema: { design: z.string().describe('the design, in words'), rps: z.string().optional().describe('expected req/s'), budget: z.string().optional().describe('$ per month') } },
+  ({ design, rps, budget }) => ({
+    messages: [
+      {
+        role: 'user',
+        content: {
+          type: 'text',
+          text: `Check this design with Bottleneck: ${design}${rps ? ` at ${rps} req/s` : ''}${budget ? `, budget $${budget}/month` : ''}.
+
+1. list_components, then write the architecture spec (components, connections, zones).
+2. verify_design${rps ? ` with rps ${rps}` : ''}${budget ? ` and budgetMonthly ${budget}` : ''}.
+3. While it fails: apply the cheapest fix that resolves each critical finding (each fix lists its spec changes) and verify again.
+4. Report the final design, what each fix bought and cost, the remaining risks, and the link to open it in the app.`,
+        },
+      },
+    ],
+  }),
 );
 
 await server.connect(new StdioServerTransport());

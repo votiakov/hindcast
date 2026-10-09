@@ -7,6 +7,7 @@ These pages are the reference behind it.
 | document | what's in it |
 |---|---|
 | [capabilities.md](capabilities.md) | Everything Bottleneck does, in one list, with where to find it |
+| [agents.md](agents.md) | For AI agents: connect to Prometheus and Jaeger/Tempo, collect, calibrate, verify changes (strategies, Kubernetes diffs, Terraform plans) with a verdict and a confidence; setup for Claude Code, other MCP hosts and shell agents |
 | [guide.md](guide.md) | The app, view by view: Backtest, Live, Lessons, Sandbox, Compare, Studio, settings, shortcuts |
 | [use-cases.md](use-cases.md) | 21 use cases — with your real data and without — and how to do each |
 | [calibration.md](calibration.md) | How a model is fitted from real telemetry: every rule, and the recording that taught it |
@@ -19,5 +20,5 @@ These pages are the reference behind it.
 | [tools.md](tools.md) | CLI, MCP server, app links, the Analysis panel |
 | [content.md](content.md) | Authoring lessons, comparison scenarios and studio episodes; rendering video; brands and themes |
 
-Start with **guide.md** for the app, **use-cases.md** to find your question, **backtest.md** to test a change against your own production data, **architecture.md** if you want to change code, **spec.md** if you want to model a system,
+Start with **agents.md** if an AI agent will do the work, **guide.md** for the app, **use-cases.md** to find your question, **backtest.md** to test a change against your own production data, **architecture.md** if you want to change code, **spec.md** if you want to model a system,
 and **content.md** if you want to make lessons or videos.

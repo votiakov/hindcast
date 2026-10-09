@@ -21,6 +21,13 @@ connectors:
 exporters:
   file:
     path: /data/traces.jsonl
+  # the same sampled traces, queryable: Jaeger's and Tempo's APIs are what an agent reads (agent/sources.ts)
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls: { insecure: true }
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls: { insecure: true }
   prometheus:
     endpoint: 0.0.0.0:8889
 service:
@@ -32,7 +39,7 @@ service:
     traces/sampled:
       receivers: [otlp]
       processors: [probabilistic_sampler, batch]
-      exporters: [file]
+      exporters: [file, otlp/jaeger, otlp/tempo]
     metrics:
       receivers: [spanmetrics]
       exporters: [prometheus]

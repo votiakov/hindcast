@@ -17,7 +17,16 @@ it, and watch where it gives out. Then run the failure audit: every component dy
 turning slow, caches restarting cold, zones going dark, a traffic surge. Each incident is graded by what
 users would have seen, and each fix is verified by re-running the same incident and priced in $/month.
 
-It runs in three places over the same engine: a visual app, a CLI, and an MCP server for AI assistants.
+**For AI agents** ([docs/agents.md](docs/agents.md)): give Claude Code (or any MCP host, or any
+agent with a shell) the Bottleneck tools and it does the work itself. It connects to your Prometheus
+and Jaeger or Tempo, collects a week of history, calibrates the model, reads its trust report, and
+verifies a change before proposing it: a strategy, a Kubernetes diff or a Terraform plan. The
+answer is a verdict (pass / fail / inconclusive) with a confidence that says which services the
+change pushes past anything the history showed, the money with its basis, and the SLO minutes.
+Read-only towards your systems.
+
+It runs in four places over the same engine: a visual app, a CLI, an MCP server, and agent tools
+on both.
 
 ```
 npm install
@@ -124,6 +133,11 @@ npm run sim -- link             examples/shop.yaml
 changes an architecture spec. Every command takes `--json`.
 
 ## MCP server
+
+Agents working on a live system: `connect_telemetry` → `collect_telemetry` → `calibrate_model` →
+`verify_change` (plus `find_headroom`, `verify_design`, `read_cluster`, `model_status`); see
+[docs/agents.md](docs/agents.md). `npm run build:mcp-server` writes a single-file server
+(`dist-cli/bottleneck-mcp.mjs`) to register anywhere: `claude mcp add bottleneck -- node …/bottleneck-mcp.mjs`.
 
 | tool | |
 |---|---|
