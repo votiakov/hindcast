@@ -44,7 +44,9 @@
 .bt-chip.on { color: var(--bt-hi) !important; border-color: var(--bt-dim) !important; }
 .bt-chip.dim { cursor: default; }
 .bt-chip:hover { color: var(--bt-hi) !important; }
-.bt-select { background: var(--bt-pane); color: var(--bt-text); border: 1px solid var(--bt-line); font: 12.5px var(--bt-mono); padding: 2px 6px; }
+/* .bt .bt-select outranks the themes' global select rules: the backtest keeps its own look under every theme */
+.bt .bt-select { background: var(--bt-pane); color: var(--bt-text); border: 1px solid var(--bt-line); border-radius: 0; font: 12.5px var(--bt-mono); padding: 2px 6px; }
+.bt .bt-select option { background: var(--bt-pane); }
 
 /* main */
 .bt-main { display: grid; grid-template-columns: minmax(0, 1fr) 286px; min-height: 0; overflow: hidden; }
