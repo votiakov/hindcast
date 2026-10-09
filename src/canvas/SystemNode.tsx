@@ -32,7 +32,7 @@ function SystemNodeImpl({ id, data, selected }: NodeProps<SystemNodeT>) {
   const explainOn = useSim((s) => s.settings.explain);
   const v = nodeView(data, st, running, hasOutgoing);
 
-  if (theme === 'reference') {
+  if (theme === 'reference' || theme === 'terminal') {
     return (
       <>
         <NodeControls id={id} data={data} selected={selected} />

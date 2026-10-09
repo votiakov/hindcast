@@ -13,6 +13,7 @@ export const ZONE_KIND = 'zone';
 
 /** muted status colours for the light themes' minimap */
 const MAP_HEALTH = { idle: '#b5b5ad', ok: '#44443f', warm: '#d99a1e', hot: '#c4232b', down: '#d6d6cf' } as const;
+const TERMINAL_MAP_HEALTH = { idle: '#33475a', ok: '#6e8191', warm: '#e3c55a', hot: '#ef5b5b', down: '#22303c' } as const;
 
 const nodeTypes: NodeTypes = { system: SystemNode, zone: ZoneNode };
 const edgeTypes: EdgeTypes = { flow: FlowEdge };
@@ -120,7 +121,7 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
 
   return (
     <BoardContext.Provider value={id}>
- {theme === 'reference' && <RefMarkers />}
+ {(theme === 'reference' || theme === 'terminal') && <RefMarkers />}
       <div ref={wrapper} className="board-canvas" onDragOver={(e) => e.preventDefault()} onDrop={onDrop} onPointerDown={() => setFocus(id)}>
         <ReactFlow<AppNode>
           nodes={nodes}
@@ -162,7 +163,7 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
                 const st = useSim.getState().boards[id].nodeStats[n.id];
                 const d = (n as AppNode & { type: 'system' }).data;
                 const h = healthOf(st?.util ?? 0, st?.dropRps ?? 0, st?.inRps ?? 1, isUp(d));
-                return theme === 'neon' ? HEALTH_COLOR[h] : MAP_HEALTH[h];
+                return theme === 'neon' ? HEALTH_COLOR[h] : theme === 'terminal' ? TERMINAL_MAP_HEALTH[h] : MAP_HEALTH[h];
               }}
             />
           )}

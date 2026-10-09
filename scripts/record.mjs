@@ -2,7 +2,7 @@
 /**
  * Frame-perfect episode renderer.
  *
- *   npm run record -- <episode-id | --ep-file episode.json | --card card.json> [--aspect 4:5] [--brand personal] [--theme neon|transit] [--fps 30] [--gif] [--no-stills]
+ *   npm run record -- <episode-id | --ep-file episode.json | --card card.json> [--aspect 4:5] [--brand personal] [--theme terminal|neon|reference|transit] [--fps 30] [--gif] [--no-stills]
  *                                  [--url http://localhost:5173] [--out exports]
  *
  * Opens the app in render mode inside headless Chromium with a fake clock, steps time one frame
@@ -20,7 +20,7 @@ import { join, resolve } from 'node:path';
 const SIZES = { '4:5': [1080, 1350], '1:1': [1080, 1080], '9:16': [1080, 1920], '16:9': [1920, 1080] };
 
 function parseArgs(argv) {
-  const o = { aspect: '4:5', brand: 'personal', theme: 'neon', fps: 30, url: 'http://localhost:5173', out: 'exports', gif: false, stills: true, ep: undefined };
+  const o = { aspect: '4:5', brand: 'personal', theme: 'terminal', fps: 30, url: 'http://localhost:5173', out: 'exports', gif: false, stills: true, ep: undefined };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--gif') o.gif = true;

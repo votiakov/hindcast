@@ -117,7 +117,7 @@ Graph swaps keep engine state for nodes whose ids survive, so a fix happens live
 
 ```
 npm run dev
-npm run record -- <episode-id> [--aspect 4:5|1:1|9:16|16:9] [--brand personal|reducecost] [--theme neon|reference|transit] [--fps 30] [--gif] [--no-stills]
+npm run record -- <episode-id> [--aspect 4:5|1:1|9:16|16:9] [--brand personal|reducecost] [--theme terminal|neon|reference|transit] [--fps 30] [--gif] [--no-stills]
 ```
 
 Output in `exports/<episode>_<aspect>_<brand>_<theme>/`: MP4 (H.264), a PNG still ~2 s after every
@@ -133,7 +133,8 @@ Name, one-line tagline, link text, initials and accent colour per brand. Edit fr
 
 | theme | look | renderers |
 |---|---|---|
-| Neon (default) | dark control room, glowing particles | `canvas/SystemNode.tsx`, `canvas/FlowEdge.tsx`, `styles.css` + `neon-chrome.css` |
+| Terminal (default) | the backtest screen's look: dark panes, hairlines, IBM Plex Sans Condensed + Mono, amber accent | Reference renderers and rules (scoped to both themes) + `terminal.css` palette and chrome |
+| Neon | dark control room, glowing particles | `canvas/SystemNode.tsx`, `canvas/FlowEdge.tsx`, `styles.css` + `neon-chrome.css` |
 | Reference | engineering-reference figures, IBM Plex, "what is happening" callouts | `theme/reference/*`, `reference.css` |
 | Transit | metro map (stations, lines, trains) | `theme/transit/*`, `transit.css` |
 

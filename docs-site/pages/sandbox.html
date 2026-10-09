@@ -4,7 +4,7 @@
 <h2>The board</h2>
 <ol class="pins">
 <li data-pin="palette"><h3>Components</h3><p>Users, CDN, Load Balancer, API Gateway, API Server, Worker, Serverless Fn, Cache, Database, Read Replica, Object Storage, Queue, GPU Inference, LLM Provider API. Drag onto the board or click; connect right handle to left handle.</p></li>
-<li data-pin="node"><h3>A component, live</h3><p>Load in, dropped, capacity, CPU and instances. It glows red when it saturates.</p></li>
+<li data-pin="node"><h3>A component, live</h3><p>Load in, dropped, capacity, CPU and instances. Its edge and status turn red when it saturates.</p></li>
 <li data-pin="flow"><h3>Requests flowing</h3><p>Each connection shows its rate. Particles turn red where requests fail.</p></li>
 <li data-pin="metrics"><h3>What users see</h3><p>Throughput, error rate, p99, cost. Click for the cost breakdown per component, $ per million requests and the error-budget burn rate.</p></li>
 <li data-pin="design"><h3>Design</h3><p>Save (⌘S), open, save a copy, download YAML, share a link, embed code, templates, a new blank design.</p></li>
@@ -74,6 +74,6 @@
 <tr><td><kbd>Del</kbd></td><td>delete the selected component or connection</td></tr>
 <tr><td><kbd>?</kbd></td><td>the shortcut sheet</td></tr>
 </table></div>
-<p>The gear opens the settings: theme (Neon, Reference, Transit), pricing (illustrative, AWS us-east-1, GCP us-central1), the cost model, automatic database failover and its timing, serverless cold starts, traffic jitter, request particles, explanations, alert toasts, the request timeout and the error-rate SLO.</p>
+<p>The gear opens the settings: theme (Terminal, the default and the look of the backtest screen; Neon; Reference; Transit), pricing (illustrative, AWS us-east-1, GCP us-central1), the cost model, automatic database failover and its timing, serverless cold starts, traffic jitter, request particles, explanations, alert toasts, the request timeout and the error-rate SLO.</p>
 <p><code>?embed=1</code> with a <code>#spec=…</code> link shows just the running board and a traffic slider, for an iframe in a blog post or slides.</p>
 </section>

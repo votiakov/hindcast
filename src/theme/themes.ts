@@ -1,8 +1,9 @@
 import { KINDS, type Kind } from '../sim/catalog';
 
-export type ThemeId = 'neon' | 'reference' | 'transit';
+export type ThemeId = 'terminal' | 'neon' | 'reference' | 'transit';
 
 export const THEMES: { id: ThemeId; label: string; description: string }[] = [
+  { id: 'terminal', label: 'Terminal', description: 'Dark panes and hairlines, the same look as the backtest' },
   { id: 'neon', label: 'Neon', description: 'Dark control room, glowing particles' },
   { id: 'reference', label: 'Reference', description: 'Engineering-reference figures with explanations' },
   { id: 'transit', label: 'Transit', description: 'Systems as a subway map: stations, lines and trains' },

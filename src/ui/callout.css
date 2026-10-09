@@ -27,13 +27,13 @@
 .callout-actions button { background: none; border: 0; padding: 2px 0; font-size: 13px; color: var(--cyan); text-align: left; }
 .callout-actions button:hover { text-decoration: underline; text-underline-offset: 3px; }
 
-[data-theme='reference'] .callout { background: var(--r-surface); border: 1px solid var(--r-line); border-left: 2px solid var(--r-accent); color: var(--r-ink); box-shadow: 0 2px 8px rgba(20, 20, 18, 0.06); }
-[data-theme='reference'] .callout.tone-bad { border-left-color: var(--r-bad); }
-[data-theme='reference'] .callout.tone-good { border-left-color: var(--r-ok); }
-[data-theme='reference'] .callout-leader line { stroke: var(--r-line-strong); }
-[data-theme='reference'] .callout-code { background: var(--r-sunken); border-color: var(--r-line); }
-[data-theme='reference'] .callout-actions button { color: var(--r-accent); }
-[data-theme='transit'] .callout { background: #fff; border: 2.5px solid var(--ink); color: var(--ink); box-shadow: 4px 4px 0 var(--ink); }
+:is([data-theme='reference'], [data-theme='terminal']) .callout { background: var(--r-surface); border: 1px solid var(--r-line); border-left: 2px solid var(--r-accent); color: var(--r-ink); box-shadow: 0 2px 8px rgba(var(--r-shadow-rgb), 0.06); }
+:is([data-theme='reference'], [data-theme='terminal']) .callout.tone-bad { border-left-color: var(--r-bad); }
+:is([data-theme='reference'], [data-theme='terminal']) .callout.tone-good { border-left-color: var(--r-ok); }
+:is([data-theme='reference'], [data-theme='terminal']) .callout-leader line { stroke: var(--r-line-strong); }
+:is([data-theme='reference'], [data-theme='terminal']) .callout-code { background: var(--r-sunken); border-color: var(--r-line); }
+:is([data-theme='reference'], [data-theme='terminal']) .callout-actions button { color: var(--r-accent); }
+[data-theme='transit'] .callout { background: var(--r-knob); border: 2.5px solid var(--ink); color: var(--ink); box-shadow: 4px 4px 0 var(--ink); }
 [data-theme='transit'] .callout-actions button { color: var(--ink); font-weight: 800; }
 .metrics:empty { display: none; }
 

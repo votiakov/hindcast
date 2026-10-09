@@ -275,8 +275,8 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .edge-x { width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--border-strong); background: var(--panel-solid); display: grid; place-items: center; }
 .edge-link { font-family: var(--mono); font-size: 10px; padding: 1px 5px; border-radius: 4px; color: #93c5fd; background: rgba(15, 23, 42, 0.85); border: 1px dashed rgba(147, 197, 253, 0.5); }
 .edge-link-select { font-family: var(--mono); font-size: 11px; padding: 2px 4px; border-radius: 6px; background: var(--panel-solid); color: var(--text); border: 1px solid var(--border-strong); }
-[data-theme='reference'] .edge-link { color: var(--r-ink-2); background: var(--r-surface); border-color: var(--r-line-strong); }
-[data-theme='reference'] .edge-link-select { background: var(--r-surface); color: var(--r-ink); border-color: var(--r-line-strong); border-radius: 4px; }
+:is([data-theme='reference'], [data-theme='terminal']) .edge-link { color: var(--r-ink-2); background: var(--r-surface); border-color: var(--r-line-strong); }
+:is([data-theme='reference'], [data-theme='terminal']) .edge-link-select { background: var(--r-surface); color: var(--r-ink); border-color: var(--r-line-strong); border-radius: 4px; }
 .edge-x:hover { color: var(--red); border-color: var(--red); }
 .react-flow__connection-path { stroke: var(--cyan); stroke-width: 2; stroke-dasharray: 6 4; }
 
@@ -684,7 +684,7 @@ select { background: #0a1122; color: var(--text); border: 1px solid var(--border
 .tl-meta b { color: var(--text); }
 .tl-live { margin-left: auto; border: 1px solid var(--border-strong); background: none; border-radius: 5px; font-family: var(--mono); font-size: 10.5px; padding: 1px 7px; color: var(--text); }
 .tl.scrubbing .tl-track { outline: 1px dashed var(--border-strong); outline-offset: 2px; }
-[data-theme='reference'] .tl-err { fill: var(--r-bad-tint); stroke: var(--r-bad); }
+:is([data-theme='reference'], [data-theme='terminal']) .tl-err { fill: var(--r-bad-tint); stroke: var(--r-bad); }
 
 /* calibrate from production numbers (node toolbar) */
 .cal { display: flex; flex-direction: column; gap: 6px; padding: 2px 4px; }

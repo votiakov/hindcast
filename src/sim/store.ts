@@ -46,7 +46,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  theme: 'neon',
+  theme: 'terminal',
   pricing: 'illustrative',
   explain: true,
   cost: true,

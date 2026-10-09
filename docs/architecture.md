@@ -37,7 +37,7 @@ Bottleneck is one TypeScript codebase with three front-ends over the same simula
 | `src/sim/store.ts` | Zustand store: modes, boards (`main`, `A`, `B`), one fluid engine per board, lesson/compare/studio state, settings, toasts, the 20 Hz tick |
 | `src/spec/` | Spec schema (zod), validation/lint, spec ↔ board conversion with auto-layout, app links, YAML export |
 | `src/canvas/` | React Flow canvas (`BoardCanvas`), node/edge renderers, shared node view-model (`nodeModel.ts`: health, stats, explanations), node control panel |
-| `src/theme/` | Theme registry and per-theme renderers/styles: Neon (default), Reference, Transit |
+| `src/theme/` | Theme registry and per-theme renderers/styles: Terminal (default), Neon, Reference, Transit |
 | `src/ui/` | Top bar, palette, control bar, lesson panel, compare view, analysis panel, settings, toasts; `HomeBoard.tsx` — the **Live** start screen: a running system that fails on arrival, with callouts pinned to the stressed component offering the next move (scale → 3× traffic → cache → your own system) |
 | `src/lessons/` | Lesson format (`types.ts`) and lessons |
 | `src/scenarios/` | Comparison scenario format, the built-in scenarios, templates |
@@ -77,4 +77,4 @@ Bottleneck is one TypeScript codebase with three front-ends over the same simula
   (`nodeModel.ts` is the one shared UI-agnostic helper), so it runs in Node, workers and tests.
 - Numbers live in the catalog; behaviour lives in components/engines; content (lessons, scenarios,
   episodes) is data.
-- Every visual theme must be scoped under `[data-theme='…']`; Neon's base styles live in `src/styles.css`.
+- Every visual theme must be scoped under `[data-theme='…']`; Neon's base styles live in `src/styles.css`; Terminal reuses the Reference rules (scoped to both) with its own palette in `terminal.css`.

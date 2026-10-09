@@ -1,0 +1,217 @@
+/* =====================================================================================
+   TERMINAL THEME — the default. Every view in the look of the backtest screen
+   (src/backtest-ui/terminal.css): dark dense panes, 1px hairlines, square corners,
+   IBM Plex Sans Condensed + IBM Plex Mono, amber as the one accent.
+   The structure comes from the Reference theme (its rules are scoped to both themes and
+   read the --r-* palette); this file sets the dark palette and the terminal chrome.
+   Scoped to [data-theme='terminal'].
+   ===================================================================================== */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap');
+
+:root[data-theme='terminal'] {
+  /* the backtest palette (--bt-*) */
+  --r-bg: #10161d;
+  --r-surface: #121a22;
+  --r-sunken: #0c1117;
+  --r-line: #22303c;
+  --r-line-strong: #33475a;
+  --r-ink: #e6edf3;
+  --r-ink-2: #c9d4de;
+  --r-muted: #6e8191;
+  --r-faint: #4b5d6c;
+  --r-accent: #f2a93b;
+  --r-accent-tint: rgba(242, 169, 59, 0.1);
+  --r-purple: #a78bfa;
+  --r-ok: #58c48a;
+  --r-ok-tint: rgba(88, 196, 138, 0.1);
+  --r-warn: #e3c55a;
+  --r-warn-tint: rgba(227, 197, 90, 0.1);
+  --r-bad: #ef5b5b;
+  --r-bad-tint: rgba(239, 91, 91, 0.12);
+  --r-down: #4b5d6c;
+  --r-on-ink: #10161d;
+  --r-knob: #10161d;
+  --r-bad-line: rgba(239, 91, 91, 0.45);
+  --r-ok-line: rgba(88, 196, 138, 0.45);
+  --r-warn-line: rgba(227, 197, 90, 0.45);
+  --r-accent-line: rgba(242, 169, 59, 0.5);
+  --r-warm: #e3c55a;
+  --r-shadow-rgb: 0, 0, 0;
+  --r-dot: #22303c;
+  --r-bg-rgb: 16, 22, 29;
+  --r-surface-rgb: 18, 26, 34;
+  --r-bad-rgb: 239, 91, 91;
+  --r-stripe-a: #121a22;
+  --r-stripe-b: #0e141a;
+  --r-stage: #121a22;
+  --r-zone-tint: rgba(242, 169, 59, 0.025);
+  --r-backdrop: rgba(5, 8, 11, 0.6);
+  --sans: 'IBM Plex Sans Condensed', 'Arial Narrow', sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  --bg: var(--r-bg);
+  --panel: var(--r-surface);
+  --text: var(--r-ink-2);
+  --muted: var(--r-muted);
+  --dim: var(--r-faint);
+  --border: var(--r-line);
+  --border-strong: var(--r-line-strong);
+  --cyan: var(--r-accent);
+  --green: var(--r-ok);
+  --amber: var(--r-accent);
+  --red: var(--r-bad);
+  --violet: var(--r-purple);
+  --panel-solid: var(--r-surface);
+  color-scheme: dark;
+}
+
+[data-theme='terminal'] body { font-size: 13.5px; }
+[data-theme='terminal'] svg.lucide { stroke-width: 1.5px; }
+[data-theme='terminal'] :focus-visible { outline: 1px solid var(--r-accent); outline-offset: 1px; }
+
+/* square corners, no floating shadows: panes, not cards */
+[data-theme='terminal'] .panel,
+[data-theme='terminal'] .tb-group,
+[data-theme='terminal'] .pane-header,
+[data-theme='terminal'] .toast,
+[data-theme='terminal'] .callout,
+[data-theme='terminal'] .minimap.react-flow__minimap,
+[data-theme='terminal'] .stage-scaler { border-radius: 0; box-shadow: none; }
+[data-theme='terminal'] .panel-title { font: 600 11px var(--mono); letter-spacing: 0.12em; color: var(--r-muted); }
+[data-theme='terminal'] .icon-btn,
+[data-theme='terminal'] select,
+[data-theme='terminal'] .seg,
+[data-theme='terminal'] .seg button,
+[data-theme='terminal'] .btn,
+[data-theme='terminal'] .chip,
+[data-theme='terminal'] .sc-chip,
+[data-theme='terminal'] .speeds,
+[data-theme='terminal'] .speeds button,
+[data-theme='terminal'] .tb-chip,
+[data-theme='terminal'] .tb-btn,
+[data-theme='terminal'] .tb-select,
+[data-theme='terminal'] .palette-item,
+[data-theme='terminal'] .palette-icon,
+[data-theme='terminal'] .pane-tag,
+[data-theme='terminal'] .objective,
+[data-theme='terminal'] .hint,
+[data-theme='terminal'] .cmd,
+[data-theme='terminal'] .ep-item { border-radius: 0; }
+[data-theme='terminal'] .icon-btn { background: transparent; color: var(--r-muted); }
+[data-theme='terminal'] .icon-btn:hover,
+[data-theme='terminal'] .icon-btn.on { background: var(--r-surface); color: var(--r-accent); border-color: var(--r-muted); }
+[data-theme='terminal'] select { background: var(--r-surface); color: var(--r-ink-2); border-color: var(--r-line); font: 12.5px var(--mono); }
+[data-theme='terminal'] select option { background: var(--r-surface); }
+[data-theme='terminal'] .chip,
+[data-theme='terminal'] .sc-chip { background: transparent; border-color: var(--r-line); color: var(--r-muted); font: 12.5px var(--mono); }
+[data-theme='terminal'] .chip:hover,
+[data-theme='terminal'] .sc-chip:hover { background: transparent; color: var(--r-ink); border-color: var(--r-muted); }
+[data-theme='terminal'] .chip.danger { color: var(--r-muted); }
+[data-theme='terminal'] .chip.danger svg { color: var(--r-bad); }
+[data-theme='terminal'] .chip.good svg { color: var(--r-ok); }
+[data-theme='terminal'] .chip.danger:hover { color: var(--r-bad); background: transparent; border-color: var(--r-bad-line); }
+[data-theme='terminal'] .chip.good:hover { color: var(--r-ok); background: transparent; border-color: var(--r-ok-line); }
+[data-theme='terminal'] .sc-chip.on,
+[data-theme='terminal'] .seg button.on,
+[data-theme='terminal'] .speeds button.on { background: var(--r-surface); color: var(--r-accent); border-color: var(--r-muted); }
+[data-theme='terminal'] .btn.primary { color: var(--r-on-ink); }
+
+/* ---------- top bar: the backtest bar ---------- */
+[data-theme='terminal'] .topbar { background: var(--r-bg); padding: 6px 12px; gap: 6px 8px; min-height: 0; flex-wrap: wrap; border-bottom: 1px solid var(--r-line); }
+[data-theme='terminal'] .brand { min-width: 0; gap: 0; }
+[data-theme='terminal'] .brand-mark,
+[data-theme='terminal'] .brand-sub { display: none; }
+[data-theme='terminal'] .brand-name { font: 600 12px var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--r-accent); margin-right: 8px; }
+[data-theme='terminal'] .mode-tabs { align-self: center; gap: 0; border: 1px solid var(--r-line); margin-right: 12px; }
+[data-theme='terminal'] .mode-tabs button { border: 0; border-left: 1px solid var(--r-line); border-radius: 0; padding: 3px 9px; font: 12px var(--mono); color: var(--r-muted); }
+[data-theme='terminal'] .mode-tabs button:first-child { border-left: 0; }
+[data-theme='terminal'] .mode-tabs button:hover { color: var(--r-ink); }
+[data-theme='terminal'] .mode-tabs button.on { color: var(--r-accent); background: var(--r-surface); font-weight: 400; border-bottom: 0; }
+[data-theme='terminal'] .icon-btn { width: 26px; height: 26px; }
+
+/* metrics: one ticker strip, numbers only, like the backtest's stat row */
+[data-theme='terminal'] .brand-name { display: block; }
+[data-theme='terminal'] .mode-tabs { border-radius: 0; padding: 0; background: transparent; }
+[data-theme='terminal'] .metrics { gap: 0; border: 1px solid var(--r-line); background: transparent; margin: 0 0 0 auto; }
+[data-theme='terminal'] .metric,
+[data-theme='terminal'] .metric.vs { width: auto; min-width: 92px; border: 0; border-left: 1px solid var(--r-line); border-radius: 0; background: transparent; padding: 2px 10px 3px; box-shadow: none; }
+[data-theme='terminal'] .metric:first-child { border-left: 0; }
+[data-theme='terminal'] .metric svg,
+[data-theme='terminal'] .metric .duo { display: none; }
+[data-theme='terminal'] .metric-top { gap: 8px; }
+[data-theme='terminal'] .metric-label { font: 11px var(--sans); color: var(--r-muted); text-transform: none; letter-spacing: 0; white-space: nowrap; }
+[data-theme='terminal'] .metric-sub { font: 10.5px var(--mono); color: var(--r-faint); white-space: nowrap; }
+[data-theme='terminal'] .metric-value { font: 500 14px/1.3 var(--mono); color: var(--r-ink); margin: 0; }
+[data-theme='terminal'] .metric.good .metric-value { color: var(--r-ok); }
+[data-theme='terminal'] .metric.warn .metric-value { color: var(--r-warn); }
+[data-theme='terminal'] .metric.bad { border-color: var(--r-line); background: var(--r-bad-tint); box-shadow: inset 0 -2px 0 var(--r-bad); }
+[data-theme='terminal'] .metric.bad .metric-value { color: var(--r-bad); }
+[data-theme='terminal'] .vs-values { font: 500 14px/1.3 var(--mono); }
+[data-theme='terminal'] .vs-a { color: var(--r-accent); }
+[data-theme='terminal'] .vs-b { color: var(--r-purple); }
+
+/* ---------- canvas ---------- */
+[data-theme='terminal'] .board { background: var(--r-bg); }
+[data-theme='terminal'] .react-flow__background { opacity: 1; }
+[data-theme='terminal'] .minimap.react-flow__minimap { background: var(--r-surface); }
+[data-theme='terminal'] .ref-node { border-radius: 0; box-shadow: none; font-family: var(--sans); }
+[data-theme='terminal'] .ref-node.sel { box-shadow: 0 0 0 1px var(--r-accent); }
+[data-theme='terminal'] .ref-node.s-hot { box-shadow: 0 0 0 2px var(--r-bad-tint); }
+[data-theme='terminal'] .ref-kind { font: 10.5px var(--mono); letter-spacing: 0.08em; }
+[data-theme='terminal'] .ref-status { border-radius: 0; font: 10.5px var(--mono); }
+[data-theme='terminal'] .ref-scale-track,
+[data-theme='terminal'] .ref-scale-fill,
+[data-theme='terminal'] .ref-instances span,
+[data-theme='terminal'] .ref-tags span,
+[data-theme='terminal'] .ref-rate { border-radius: 0; }
+[data-theme='terminal'] .ref-note { border-radius: 0; background: var(--r-sunken); }
+[data-theme='terminal'] .zone,
+[data-theme='terminal'] .react-flow__node-zone { border-radius: 0; }
+
+/* ---------- control bar ---------- */
+[data-theme='terminal'] .play { width: 30px; height: 30px; border-radius: 0; background: transparent; color: var(--r-accent); box-shadow: inset 0 0 0 1px var(--r-accent-line); }
+[data-theme='terminal'] .play:hover { background: var(--r-accent-tint); }
+[data-theme='terminal'] .play.on { background: var(--r-accent-tint); color: var(--r-accent); box-shadow: inset 0 0 0 1px var(--r-accent); }
+[data-theme='terminal'] .clock { font-family: var(--mono); }
+
+/* ---------- side panels ---------- */
+[data-theme='terminal'] .step-dot { border-radius: 0; }
+[data-theme='terminal'] .objective { background: var(--r-sunken); }
+[data-theme='terminal'] .hint { background: var(--r-sunken); }
+[data-theme='terminal'] .switch { border-radius: 0; }
+[data-theme='terminal'] .switch::after { border-radius: 0; background: var(--r-muted); }
+[data-theme='terminal'] .switch:checked::after { background: var(--r-on-ink); }
+
+/* ---------- popovers and dialogs ---------- */
+[data-theme='terminal'] .lens,
+[data-theme='terminal'] .lens-clouds,
+[data-theme='terminal'] .lens-h select,
+[data-theme='terminal'] .pa-pop,
+[data-theme='terminal'] .pa-run,
+[data-theme='terminal'] .pa-score,
+[data-theme='terminal'] .cp,
+[data-theme='terminal'] .sc,
+[data-theme='terminal'] .sc-keys kbd,
+[data-theme='terminal'] .dm-title,
+[data-theme='terminal'] .dm-menu,
+[data-theme='terminal'] .dm-rename input,
+[data-theme='terminal'] .dm-unsaved,
+[data-theme='terminal'] .drop-hint,
+[data-theme='terminal'] .au-inputs input,
+[data-theme='terminal'] .au-blast code,
+[data-theme='terminal'] .au-bar,
+[data-theme='terminal'] .lens-bar i { border-radius: 0; }
+[data-theme='terminal'] .lens,
+[data-theme='terminal'] .pa-pop,
+[data-theme='terminal'] .cp,
+[data-theme='terminal'] .sc,
+[data-theme='terminal'] .dm-menu { box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); }
+[data-theme='terminal'] .drop-hint { border: 1px dashed var(--r-accent); }
+
+/* buttons: hairline chips, as on the backtest screen ("+ strategy") */
+[data-theme='terminal'] .btn { border-radius: 0; font: 500 13px var(--sans); }
+[data-theme='terminal'] .btn.primary { background: var(--r-accent-tint); color: var(--r-accent); box-shadow: inset 0 0 0 1px var(--r-accent-line); }
+[data-theme='terminal'] .btn.primary:hover { background: rgba(242, 169, 59, 0.18); filter: none; }
+
+/* the bar stays one row at 1280 px: long design names truncate */
+[data-theme='terminal'] .dm-title { max-width: 190px; padding: 3px 6px; font-size: 13px; }
+@media (max-width: 1440px) { [data-theme='terminal'] .dm-title { max-width: 150px; } }

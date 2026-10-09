@@ -34,6 +34,7 @@ import type { ThemeId } from './theme/themes';
 import './theme/transit.css';
 import './theme/reference.css';
 import './theme/neon-chrome.css';
+import './theme/terminal.css';
 
 /**
  * Render mode (used by scripts/record.mjs): `?render=1&ep=<id>&aspect=4:5&brand=personal`
