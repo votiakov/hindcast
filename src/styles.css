@@ -735,3 +735,6 @@ select { background: #0a1122; color: var(--text); border: 1px solid var(--border
 .tk-score thead th.side-B { color: var(--violet); }
 .tk-score td { font-family: var(--mono); color: var(--muted); }
 .tk-score td.win { color: var(--green); font-weight: 600; }
+
+/* a right-hand panel covers the minimap's corner: hide it rather than leave a sliver showing */
+.app:has(.spec.panel, .audit.panel, .analysis.panel) .react-flow__minimap { display: none; }
