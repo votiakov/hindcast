@@ -169,7 +169,12 @@ function fromScenario(s: Scenario): Episode {
     // the outro is read in five seconds and is the carousel's last slide: a headline, then one line each
     outro: (() => {
       const [title, ...rest] = sentences(s.takeaway.lesson);
-      return { title, lines: [rest.join(' '), `A — ${s.a.title}: ${sentences(s.takeaway.a)[0]}`, `B — ${s.b.title}: ${sentences(s.takeaway.b)[0]}`].filter(Boolean) };
+      // "A — Monolith: Monolith …" reads twice: drop the side's name when its takeaway starts with it
+      const side = (name: string, text: string) => {
+        const first = sentences(text)[0];
+        return first.toLowerCase().startsWith(name.toLowerCase()) ? first : `${name}: ${first}`;
+      };
+      return { title, lines: [rest.join(' '), `A — ${side(s.a.title, s.takeaway.a)}`, `B — ${side(s.b.title, s.takeaway.b)}`].filter(Boolean) };
     })(),
   };
 }

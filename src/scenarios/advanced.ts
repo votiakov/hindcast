@@ -231,11 +231,14 @@ const tail: Scenario = {
   },
   timeline: [
     { at: 0, rps: 300, caption: 'Identical shards: 8 ms typical, but 1 call in 125 stalls for 200 ms (a GC pause). B queries 50 shards per request.' },
+    { at: 8, rps: 300, caption: 'A: one shard per request. A stall is rare, so p99 stays near the typical 8 ms.' },
+    { at: 16, rps: 300, caption: 'B waits for the slowest of 50. 1 − (1 − 1/125)^50 ≈ a third of requests hit a stall.' },
+    { at: 23, rps: 300, caption: 'Same shards, same load, same averages. Only the fan-out differs.' },
     { at: 30, rps: 300 },
   ],
   events: [],
   takeaway: {
-    a: 'One shard per request: the user sees the shard’s typical latency, and its slow tail only rarely.',
+    a: 'The user sees the shard’s typical latency, and its slow tail only rarely.',
     b: 'With 50 shards per request, a 1-in-125 stall hits 1 − (1 − 0.008)^50 ≈ 33% of requests. The shard’s rare tail became the user’s common case.',
     lesson: 'In scatter-gather systems, tail latency of the parts is the latency of the whole. Fight it with hedged requests, fewer/larger partitions, and tail-aware timeouts — not with averages.',
   },

@@ -63,7 +63,8 @@ async function mp4Encoder(w: number, h: number, fps: number) {
 }
 
 function gifEncoder(w: number, h: number, every: number, delayMs: number) {
-  const gw = Math.min(540, w);
+  // small enough to stay well under the 15 MB GIF limit of most networks for a ~45 s clip
+  const gw = Math.min(480, w);
   const gh = Math.round((h * gw) / w);
   const small = document.createElement('canvas');
   small.width = gw;
@@ -76,7 +77,7 @@ function gifEncoder(w: number, h: number, every: number, delayMs: number) {
       if (n++ % every) return;
       ctx.drawImage(canvas, 0, 0, gw, gh);
       const { data } = ctx.getImageData(0, 0, gw, gh);
-      const palette = quantize(data, 128);
+      const palette = quantize(data, 96);
       gif.writeFrame(applyPalette(data, palette), gw, gh, { palette, delay: delayMs });
     },
     done() {
@@ -209,6 +210,8 @@ export async function renderClip(stage: HTMLElement, w: number, h: number, o: Cl
     let lastFired = 0;
     let stillAt = -1;
     let outroShot = false;
+    let endShot = false;
+    let lastStillF = 0;
     const maxFrames = fps * 180;
     for (let f = 0; f < maxFrames; f++) {
       if (o.signal.aborted) throw new DOMException('Export cancelled', 'AbortError');
@@ -237,7 +240,15 @@ export async function renderClip(stage: HTMLElement, w: number, h: number, o: Cl
           outroShot = true;
           stillAt = f + Math.round(fps * 1.5);
         }
+        // long stretches without a new caption still deserve a slide, and so does where the run ended
+        const sinceStill = (f - lastStillF) / fps;
+        if (stillAt < f && !st.finished && sinceStill >= 12 && st.t < total - OUTRO_SECONDS - 3) stillAt = f;
+        if (!endShot && !st.finished && st.t >= total - OUTRO_SECONDS - 0.5) {
+          endShot = true;
+          if (sinceStill > 3) stillAt = f;
+        }
         if (f === stillAt) {
+          lastStillF = f;
           clip.stills.push(await toBlob(canvas, 'image/png'));
           jpegs.push(await toBlob(canvas, 'image/jpeg', 0.92));
         }
