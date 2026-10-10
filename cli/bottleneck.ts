@@ -19,6 +19,7 @@ import { applyVariant, encodePayload } from '../src/spec/convert';
 import { ArchitectureSpec, VariantSpec } from '../src/spec/schema';
 import { backtestCommand } from './backtest';
 import { explainError, runTool, TOOLS } from '../agent/tools';
+import { HOSTS, setup, type Host } from '../agent/setup';
 
 const USAGE = `Bottleneck CLI — the simulation engine without the UI.
 
@@ -265,7 +266,14 @@ async function main() {
 }
 
 /** `agent <tool> <json | @file | ->`: the MCP tools for agents that only have a shell */
-async function agentCommand([tool, arg]: string[]) {
+async function agentCommand([tool, arg, ...more]: string[]) {
+  if (tool === 'setup') {
+    const { pos, opt } = flags([arg, ...more].filter((x): x is string => x !== undefined));
+    const host = pos[0] as Host | undefined;
+    if (host && !HOSTS.includes(host)) throw new Error(`unknown host "${host}": one of ${HOSTS.join(', ')}`);
+    if (opt.write && !host) throw new Error('--write needs a host: bottleneck agent setup cursor --write');
+    return setup({ host, write: !!opt.write, project: opt.project as string | undefined, workspace: opt.workspace as string | undefined });
+  }
   if (!tool || tool === 'list') {
     for (const t of TOOLS) console.log(`${t.name.padEnd(20)} ${t.title}`);
     return;

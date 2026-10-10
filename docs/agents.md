@@ -19,6 +19,20 @@ its workspace directory, and nothing leaves your machine.
 
 ## Set up
 
+One command does it for any host:
+
+```bash
+npm run sim -- agent setup                  # in the repository; or: node dist-cli/bottleneck.mjs agent setup
+npm run sim -- agent setup cursor --write   # claude | cursor | vscode | desktop | windsurf
+```
+
+It builds the single-file server if needed, starts it and completes an MCP handshake (so a broken
+install shows up here, not in your agent), then prints the config for each host with absolute paths
+filled in. With a host and `--write` it merges the entry into that host's file (`.mcp.json`,
+`.cursor/mcp.json`, `.vscode/mcp.json`, Claude Desktop's or Windsurf's user config) and keeps every
+other server there. `--project <dir>` sets where project files and the `.bottleneck/` workspace go.
+The manual steps below do the same by hand.
+
 ### Claude Code
 
 In this repository it is already registered (`.mcp.json`). Elsewhere, build the single-file
