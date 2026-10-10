@@ -66,11 +66,23 @@ then the verdict), with the model's accuracy line.
 
 ## Live
 
-A running system that fails on arrival: traffic is already past what it can take, the overloaded
-component glows, and a callout explains what is happening in plain English ("Overloaded: 473 req/s
-offered vs 250 req/s capacity. The excess queues, then gets dropped."). Next moves are pinned to the
-component under stress: **scale it out**, **compare the fix side by side**, **learn it step by step**
-(opens the matching lesson), **take over the board** (opens it in Sandbox).
+The app opens on a system failing in front of you, and the story plays by itself (a **cold
+open**), each move made after a countdown shown in the callout:
+
+1. **overload**: traffic climbs to 700 req/s against one API server that serves 250. The callout
+   says what users get (errors, p99) and why ("Overloaded: 473 req/s offered vs 250 req/s
+   capacity. The excess queues, then gets dropped.").
+2. **scale out**: a load balancer and four instances; healthy.
+3. **3× traffic**: autoscaling grows the API to ten instances, and the database becomes the
+   bottleneck.
+4. **a cache**: healthy again; the exits: learn it (Lessons), design your own (Sandbox), check a
+   change on your real system's history (Backtest), let your AI agent do it, render it as a video.
+
+The chapter strip at the top shows the beat and jumps to any of them. The first click, key or
+scroll on the board hands control to you ("you're driving"); **replay** starts the story over.
+Every callout also offers the other moves: compare the fix side by side, learn it step by step,
+the cheapest config for the load, kill an instance, audit it, take over the board (opens it in
+Sandbox). On a phone the system reads top to bottom and the callout docks at the bottom.
 
 ---
 

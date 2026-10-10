@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Live · Bottleneck docs</title>
-<meta name="description" content="The app opens on a system that is already failing. Traffic is past what it can take, and the next move is pinned to the component under stress.">
+<meta name="description" content="The app opens on a system failing in front of you, and the story plays by itself: overload, scale out, three times the traffic, the database gives out, a cache. Click anything and you are driving.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="docs.css">
@@ -23,21 +23,34 @@
 <header class="head">
   <div class="kicker">Design simulator</div>
   <h1>Live</h1>
-  <p class="lede">The app opens on a system that is already failing. Traffic is past what it can take, and the next move is pinned to the component under stress.</p>
+  <p class="lede">The app opens on a system failing in front of you, and the story plays by itself: overload, scale out, three times the traffic, the database gives out, a cache. Click anything and you are driving.</p>
 </header>
 <section class="screen" data-shot="live">
-<figure class="shot"><div class="shot-frame"><a class="shot-full" href="shots/live.png" target="_blank" rel="noopener" title="Open full size"><img src="shots/live.png" width="1280" height="800" alt="A failing system, explained — screenshot" loading="lazy"></a><a class="pin" href="#live-metrics" data-for="live-metrics" style="left:79.3%;top:6.15%" aria-label="Note 1">1</a><a class="pin" href="#live-node" data-for="live-node" style="left:59.52%;top:40.85%" aria-label="Note 2">2</a><a class="pin" href="#live-callout" data-for="live-callout" style="left:47.07%;top:85.5%" aria-label="Note 3">3</a><a class="pin" href="#live-actions" data-for="live-actions" style="left:47.07%;top:98.5%" aria-label="Note 4">4</a></div></figure>
+<figure class="shot"><div class="shot-frame"><a class="shot-full" href="shots/live.png" target="_blank" rel="noopener" title="Open full size"><img src="shots/live.png" width="1280" height="800" alt="The cold open — screenshot" loading="lazy"></a><a class="pin" href="#live-chapters" data-for="live-chapters" style="left:38.54%;top:9.46%" aria-label="Note 1">1</a><a class="pin" href="#live-metrics" data-for="live-metrics" style="left:79.3%;top:6.15%" aria-label="Note 2">2</a><a class="pin" href="#live-node" data-for="live-node" style="left:59.52%;top:32.85%" aria-label="Note 3">3</a><a class="pin" href="#live-callout" data-for="live-callout" style="left:47.07%;top:65.95%" aria-label="Note 4">4</a><a class="pin" href="#live-actions" data-for="live-actions" style="left:47.07%;top:82.73%" aria-label="Note 5">5</a></div></figure>
 <div class="notes">
 <div>
-<h2>A failing system, explained</h2>
+<h2>The cold open</h2>
 <ol class="pins">
-<li id="live-metrics" data-n="1"><h3>What users see</h3><p>Throughput, error rate, p99 and cost, live. Red when the SLO is broken.</p></li>
-<li id="live-node" data-n="2"><h3>The component under stress</h3><p>718 req/s offered to a server that serves 250. CPU at 290% of what it has, 463 req/s dropped. The note under it says what is happening.</p></li>
-<li id="live-callout" data-n="3"><h3>In plain English</h3><p>"Overloaded: 718 req/s offered vs 250 req/s capacity. The excess queues, then gets dropped." What is happening, with the numbers that prove it.</p></li>
-<li id="live-actions" data-n="4"><h3>The next move</h3><p><b>scale it out</b> fixes it here, <b>compare the fix side by side</b> opens it in Compare, <b>learn it step by step</b> opens the matching lesson, <b>take over the board</b> opens it in the Sandbox.</p></li>
+<li id="live-chapters" data-n="1"><h3>Where the story is</h3><p>Four beats: overload, scale out, 3× traffic, a cache. Click one to jump there. While it plays, the strip says so; once you click anything on the board it says <b>you're driving</b>, and <b>replay</b> starts it over.</p></li>
+<li id="live-metrics" data-n="2"><h3>What users see</h3><p>Throughput, error rate, p99 and cost, live. Red when the SLO is broken.</p></li>
+<li id="live-node" data-n="3"><h3>The component under stress</h3><p>More traffic offered than the server can serve: CPU past its limit, requests dropped.</p></li>
+<li id="live-callout" data-n="4"><h3>In plain English</h3><p>What users get (the share of errors, the p99), then why: "Overloaded: 718 req/s offered vs 250 req/s capacity. The excess queues, then gets dropped."</p></li>
+<li id="live-actions" data-n="5"><h3>The next move</h3><p>The story makes the first move itself after a countdown (<b>next: scale it out in 5 s</b>). Or pick another: <b>compare the fix side by side</b> opens it in Compare, <b>learn it step by step</b> opens the matching lesson, <b>take over the board</b> opens it in the Sandbox.</p></li>
 </ol>
 </div>
 </div>
+</section>
+
+<section class="prose">
+<h2>The four beats</h2>
+<div class="table-wrap"><table>
+<tr><th>beat</th><th>what happens</th><th>moves on offer</th></tr>
+<tr><td>1 overload</td><td>Traffic climbs to 700 req/s against one API server that serves 250.</td><td>scale it out, compare the fix, learn it, take over</td></tr>
+<tr><td>2 scale out</td><td>A load balancer and four instances: healthy, each below 70% busy.</td><td>triple the traffic, the cheapest config for this load, kill an instance, audit it, take over</td></tr>
+<tr><td>3 3× traffic</td><td>2,100 req/s. Autoscaling grows the API to ten instances and moves the problem to the database.</td><td>a cache in front of it, compare cache vs a bigger database, audit it, take over</td></tr>
+<tr><td>4 a cache</td><td>Healthy again. "That's the loop: pressure → bottleneck → fix → cost."</td><td>learn it (5 lessons, 16 levels), design your own, check a change on your real system's history, let your AI agent do it, render it as a video</td></tr>
+</table></div>
+<p>On a phone the system reads top to bottom and the callout sits at the bottom of the screen.</p>
 </section>
 
 <nav class="pager"><a href="ci.html">← CLI, pull requests, MCP</a><a href="lessons.html">Lessons →</a></nav>

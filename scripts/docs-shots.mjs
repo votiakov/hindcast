@@ -208,6 +208,7 @@ const SHOTS = {
   live: {
     setup: (p) => view(p, '#live', 5000),
     pins: {
+      chapters: ['.live-chapters', 'r', 0, 10],
       metrics: ['.metrics', 'b', 0, 0, 4],
       node: ['.react-flow__node', 'tr', 1, -8, 8],
       callout: ['.callout-title', 'l', 0, -14],

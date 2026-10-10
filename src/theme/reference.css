@@ -159,7 +159,7 @@
 .ref-head { display: flex; align-items: center; gap: 9px; padding: 9px 11px 8px; border-bottom: 1px solid var(--r-line); }
 .ref-icon { color: var(--r-muted); flex: none; }
 .ref-titles { min-width: 0; flex: 1; }
-.ref-kind { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.7px; color: var(--r-muted); }
+.ref-kind { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.7px; color: var(--r-muted); }
 .ref-kind span { color: var(--r-faint); }
 .ref-name { font-family: var(--mono); font-size: 13px; font-weight: 600; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ref-mult { margin-left: 6px; font-weight: 500; color: var(--r-muted); }
