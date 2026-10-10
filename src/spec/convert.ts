@@ -51,10 +51,16 @@ function layout(spec: ArchitectureSpec): Map<string, { x: number; y: number }> {
     cols.get(d)!.push(id);
   }
   const tallest = Math.max(...[...cols.values()].map((c) => c.length));
+  // a long chain wraps like text, five columns to a band, so an imported system stays readable
+  // instead of shrinking to fit one endless row
+  const MAX_COLS = 5;
+  const bandH = tallest * ROW + ROW;
   const pos = new Map<string, { x: number; y: number }>();
   for (const [d, col] of cols) {
     const offset = ((tallest - col.length) * ROW) / 2;
-    col.forEach((id, i) => pos.set(id, { x: d * COL, y: offset + i * ROW }));
+    const band = cols.size > MAX_COLS + 1 ? Math.floor(d / MAX_COLS) : 0;
+    const x = (cols.size > MAX_COLS + 1 ? d % MAX_COLS : d) * COL;
+    col.forEach((id, i) => pos.set(id, { x, y: band * bandH + offset + i * ROW }));
   }
   return pos;
 }

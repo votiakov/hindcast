@@ -209,7 +209,8 @@
 .ref-note.bad { background: var(--r-bad-tint); }
 .ref-note.bad::before { color: var(--r-bad); }
 
-.ref-handle.react-flow__handle { width: 9px; height: 9px; border-radius: 50%; background: var(--r-surface); border: 1.5px solid var(--r-ink-2); opacity: 0; transition: opacity 0.15s; top: 26px; }
+/* faintly visible, so it is clear where a connection starts; full on hover */
+.ref-handle.react-flow__handle { width: 9px; height: 9px; border-radius: 50%; background: var(--r-surface); border: 1.5px solid var(--r-ink-2); opacity: 0.3; transition: opacity 0.15s; top: 26px; }
 .ref-node:hover .ref-handle.react-flow__handle, .ref-node.sel .ref-handle.react-flow__handle { opacity: 1; }
 .react-flow__handle-left.ref-handle { left: -6px; }
 .react-flow__handle-right.ref-handle { right: -5px; }
