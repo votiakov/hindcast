@@ -20,8 +20,7 @@ components:                     # required, ≥ 1
 connections:                    # caller → callee
   - users -> lb                 # the arrow form; the app writes this one
   - [lb, api]                   # a pair works too
-  - { from: lb, to: api }       # and the object form
-  - { from: api, to: db, latencyMs: 70 }   # a link with network round-trip latency (cross-region)
+  - { from: api, to: db, latencyMs: 70 }   # the object form: a link with network round-trip latency (cross-region)
 zones:                          # optional failure domains
   - { id: az-a, label: us-east-1a, members: [api, db] }
 ```
