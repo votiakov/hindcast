@@ -146,6 +146,14 @@ export function LessonPanel() {
           <div className="hold-bar">
             <div className={`hold-fill ${ls.passed ? 'passed' : ''}`} style={{ width: `${holdPct * 100}%` }} />
           </div>
+          {step.goal.maxAvgCost !== undefined && showCost && ls.costN > 0 && (
+            <div className={`hold-label avg ${ls.costSum / ls.costN > step.goal.maxAvgCost ? 'over' : ''}`}>
+              <span>average bill so far</span>
+              <span>
+                ${(ls.costSum / ls.costN).toFixed(2)}/h of ≤ ${step.goal.maxAvgCost.toFixed(2)}
+              </span>
+            </div>
+          )}
         </div>
       )}
 

@@ -58,7 +58,7 @@ and where it is documented.
 | capability | where | docs |
 |---|---|---|
 | Live failing system with next moves | A | [guide.md](guide.md#live) |
-| Five lessons, 16 levels with engine-checked objectives | A | [guide.md](guide.md#lessons) |
+| Seven lessons, 22 levels with engine-checked objectives; every level proven winnable by a test; show me, debriefs, saved progress | A | [guide.md](guide.md#lessons) |
 | Sandbox: 14 component kinds, zones, link latency, templates, per-component runtimes, autoscaling, retries, timeouts, breakers, bounded queues, routing, fan-out, batching, calibration from production numbers | A | [guide.md](guide.md#sandbox), [catalog.md](catalog.md) |
 | Chaos: kill, faults (errors, latency, capacity), cache flush, zone failure; traffic patterns and spikes; real traffic from a CSV | A C | [guide.md](guide.md#sandbox) |
 | Flight recorder: rewind the whole board; incident timeline as Markdown | A | [tools.md](tools.md#app) |

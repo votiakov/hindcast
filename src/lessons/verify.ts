@@ -2,6 +2,7 @@ import { isSystem, type AppNode, type SystemEdge, type SystemNode } from '../sim
 import { DEFAULT_ENGINE_CONFIG, Engine, type NodeStats } from '../sim/engine';
 import { applyAction } from '../sim/actions';
 import { applyChangesToGraph } from '../spec/convert';
+import { nodesInZone } from '../sim/zones';
 import { goalStart, trafficAt, type Lesson, type LessonStep } from './types';
 
 /**
@@ -15,17 +16,20 @@ export interface LevelResult {
   /** step time the goal was met for long enough, s */
   at: number | null;
   /** worst moment while the goal was checked */
-  worst: { errorRate: number; p99: number; cost: number };
+  worst: { errorRate: number; p99: number; cost: number; lagS?: number; avgCost?: number };
 }
+
+/** the longest backlog any queue holds, in seconds of draining */
+export const maxLag = (sys: SystemNode[], stats: Record<string, NodeStats>) => Math.max(0, ...sys.filter((n) => n.data.kind === 'queue').map((n) => stats[n.id]?.lagS ?? 0));
 
 export interface Board {
   nodes: AppNode[];
   edges: SystemEdge[];
 }
 
-const zoneMembersOf = (nodes: AppNode[]) => (zoneId: string) => nodes.filter((n) => n.parentId === zoneId).map((n) => n.id);
+const zoneMembersOf = (nodes: AppNode[]) => (zoneId: string) => nodesInZone(nodes, zoneId);
 
-export function playLevel(board: Board, step: LessonStep, readRatio = 0.8, opts: { slack?: number } = {}): LevelResult {
+export function playLevel(board: Board, step: LessonStep, readRatio = 0.8, opts: { slack?: number; trafficScale?: number } = {}): LevelResult {
   const dt = 0.05;
   const engine = new Engine();
   let nodes = board.nodes;
@@ -36,8 +40,10 @@ export function playLevel(board: Board, step: LessonStep, readRatio = 0.8, opts:
   const fired = new Set<number>();
   let hold = 0;
   let last: Record<string, NodeStats> = {};
-  const worst = { errorRate: 0, p99: 0, cost: 0 };
+  const worst: LevelResult['worst'] = { errorRate: 0, p99: 0, cost: 0 };
   const cfg = { ...DEFAULT_ENGINE_CONFIG };
+  let costSum = 0;
+  let costN = 0;
   for (let t = 0; t < until; t += dt) {
     for (const [ci, c] of (step.chaos ?? []).entries()) {
       if (fired.has(ci) || t < c.at) continue;
@@ -45,17 +51,22 @@ export function playLevel(board: Board, step: LessonStep, readRatio = 0.8, opts:
       nodes = applyAction(nodes, c.action, { inRps: (id) => last[id]?.inRps ?? 0, zoneMembers: zoneMembersOf(nodes) }).nodes;
     }
     const sys = nodes.filter(isSystem) as SystemNode[];
-    engine.step(sys, edges, trafficAt(step, t), readRatio, dt, cfg);
+    engine.step(sys, edges, trafficAt(step, t) * (opts.trafficScale ?? 1), readRatio, dt, cfg);
     const snap = engine.snapshot(sys, edges);
     last = snap.nodeStats;
+    costSum += snap.global.cost;
+    costN += 1;
     if (!goal || t + dt < start) continue;
     const g = snap.global;
     worst.errorRate = Math.max(worst.errorRate, g.errorRate);
     worst.p99 = Math.max(worst.p99, g.p99);
     worst.cost = Math.max(worst.cost, g.cost);
-    const ok = g.errorRate <= goal.maxErrorRate && g.p99 <= goal.maxP99 && (goal.maxCost === undefined || g.cost <= goal.maxCost) && g.rps > 0;
+    const lag = goal.maxLagS === undefined ? 0 : maxLag(sys, snap.nodeStats);
+    worst.lagS = Math.max(worst.lagS ?? 0, lag);
+    const ok = g.errorRate <= goal.maxErrorRate && g.p99 <= goal.maxP99 && (goal.maxCost === undefined || g.cost <= goal.maxCost) && (goal.maxLagS === undefined || lag <= goal.maxLagS) && g.rps > 0;
     hold = ok ? hold + dt : 0;
-    if (hold >= goal.holdSeconds - 1e-9) return { passed: true, at: Math.round((t + dt) * 10) / 10, worst };
+    worst.avgCost = costSum / costN;
+    if (hold >= goal.holdSeconds - 1e-9 && (goal.maxAvgCost === undefined || costSum / costN <= goal.maxAvgCost)) return { passed: true, at: Math.round((t + dt) * 10) / 10, worst };
     if (goal.deadline !== undefined && t + dt > goal.deadline + 1e-9) return { passed: false, at: null, worst };
   }
   return { passed: !goal, at: null, worst };
@@ -68,13 +79,19 @@ export function solve(board: Board, step: LessonStep): Board {
   return { nodes: r.nodes, edges: r.edges };
 }
 
-/** every level of a lesson: as the previous level left it, then with its solution */
+/**
+ * Every level of a lesson: as the previous level left it, then with its solution. The app adds up
+ * to ±7% traffic jitter, so a pass is checked at 7% more traffic and a failure at 5% less: a level
+ * that only passes in a quiet simulation would fail in front of a player.
+ */
+export const MARGIN = { pass: 1.07, fail: 0.95 };
+
 export function playLesson(lesson: Lesson) {
   let board: Board = { nodes: lesson.initial.nodes as AppNode[], edges: lesson.initial.edges };
   return lesson.steps.map((step) => {
-    const before = playLevel(board, step, lesson.readRatio);
+    const before = playLevel(board, step, lesson.readRatio, { trafficScale: step.solution ? MARGIN.fail : MARGIN.pass });
     board = solve(board, step);
-    const after = playLevel(board, step, lesson.readRatio);
+    const after = playLevel(board, step, lesson.readRatio, { trafficScale: MARGIN.pass });
     return { step: step.id, title: step.title, before, after };
   });
 }

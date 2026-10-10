@@ -98,7 +98,7 @@ export const ScenarioSpec = z.object({
 
 export const ChangeSpec = z.discriminatedUnion('op', [
   z.object({ op: z.literal('set'), id: z.string(), fields: ComponentSpec.omit({ id: true, kind: true }).partial() }),
-  z.object({ op: z.literal('add'), component: ComponentSpec }),
+  z.object({ op: z.literal('add'), component: ComponentSpec, zone: z.string().optional().describe('place it in this zone (failure domain)') }),
   z.object({ op: z.literal('remove'), id: z.string() }),
   z.object({ op: z.literal('connect'), from: z.string(), to: z.string() }),
   z.object({ op: z.literal('disconnect'), from: z.string(), to: z.string() }),

@@ -13,7 +13,7 @@ export const runtimes: Lesson = {
     [
       ['users', 'client', X[0], 200],
       ['lb', 'lb', X[1], 200],
-      ['api', 'server', X[2], 140, { instances: 10, runtime: 'node' }],
+      ['api', 'server', X[2], 140, { instances: 12, runtime: 'node' }],
       ['db', 'db', X[3], 200, { tier: 'L' }],
     ],
     [['users', 'lb'], ['lb', 'api'], ['api', 'db']],
@@ -21,14 +21,14 @@ export const runtimes: Lesson = {
   steps: [
     {
       id: 'baseline',
-      title: 'Ten Node.js instances',
+      title: 'Twelve Node.js instances',
       story:
-        'Your API runs on Node.js: 10 instances behind a load balancer handle 2,000 req/s. ' +
+        'Your API runs on Node.js: 12 instances behind a load balancer handle 2,000 req/s. ' +
         'Select api to see its runtime — and the bill in the top bar.',
       objective: 'Serve 2,000 req/s with <1% errors and p99 < 300ms for 5s.',
       traffic: { from: 800, to: 2000, rampSeconds: 4 },
       goal: { maxErrorRate: 0.01, maxP99: 300, holdSeconds: 5 },
-      takeaway: 'Ten Node.js instances hold 2,000 req/s. The question is what they cost, not whether they work.',
+      takeaway: 'Twelve Node.js instances hold 2,000 req/s with room to spare. The question is what they cost, not whether they work.',
     },
     {
       id: 'cut',

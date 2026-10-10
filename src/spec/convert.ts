@@ -138,6 +138,11 @@ function applyChange(spec: ArchitectureSpec, ch: ChangeSpec) {
     case 'add':
       if (spec.components.some((x) => x.id === ch.component.id)) throw new Error(`component "${ch.component.id}" already exists`);
       spec.components.push(ch.component);
+      if (ch.zone) {
+        const z = (spec.zones ?? []).find((x) => x.id === ch.zone);
+        if (!z) throw new Error(`change places "${ch.component.id}" in unknown zone "${ch.zone}"`);
+        z.members.push(ch.component.id);
+      }
       break;
     case 'remove':
       find(ch.id);
@@ -178,12 +183,14 @@ export function applyChangesToGraph(nodes: AppNode[], edges: SystemEdge[], chang
   let es = [...edges];
   const added: string[] = [];
   const pendingPos = new Map<string, true>();
+  const zoned = new Map<string, string>();
   for (const ch of changes) {
     switch (ch.op) {
       case 'set':
         ns = ns.map((n) => (n.id === ch.id && isSystem(n) ? { ...n, data: { ...n.data, ...ch.fields, ...(ch.fields.instances !== undefined ? { down: Math.min(n.data.down ?? 0, ch.fields.instances - 1) } : {}) } } : n));
         break;
       case 'add': {
+        if (ch.zone) zoned.set(ch.component.id, ch.zone);
         const data = componentData(ch.component);
         ns = [...ns.map((n) => ({ ...n, selected: false })), { id: ch.component.id, type: 'system', position: { x: 0, y: 0 }, data, selected: true } as AppNode];
         pendingPos.set(ch.component.id, true);
@@ -202,7 +209,20 @@ export function applyChangesToGraph(nodes: AppNode[], edges: SystemEdge[], chang
         break;
     }
   }
-  ns = placeNew(ns, es, [...pendingPos.keys()]);
+  ns = placeNew(ns, es, [...pendingPos.keys()].filter((id) => !zoned.has(id)));
+  // components added into a zone go inside its frame, below what is already there
+  for (const [id, zid] of zoned) {
+    const z = ns.find((n) => n.id === zid && n.type === 'zone');
+    if (!z) continue;
+    const inside = ns.filter((n) => n.id !== id && isSystem(n) && n.position.x >= z.position.x && n.position.x < z.position.x + (z.width ?? 0) && n.position.y >= z.position.y && n.position.y < z.position.y + (z.height ?? 0));
+    const y = inside.length ? Math.max(...inside.map((n) => n.position.y)) + ROW : z.position.y + 50;
+    const x = z.position.x + 30 + (inside.length % 2) * (NODE_W + 30);
+    ns = ns.map((n) => (n.id === id ? { ...n, position: { x, y } } : n));
+    // the frame grows to hold it
+    const bottom = y + NODE_H + 30;
+    const right = x + NODE_W + 30;
+    ns = ns.map((n) => (n.id === zid ? { ...n, height: Math.max(n.height ?? 0, bottom - n.position.y), width: Math.max(n.width ?? 0, right - n.position.x) } : n));
+  }
   return { nodes: ns, edges: es, added };
 }
 

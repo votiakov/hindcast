@@ -6,7 +6,8 @@ import { DEFAULT_ENGINE_CONFIG, Engine, type EdgeStats, type GlobalStats, type N
 import { lesson1 } from '../lessons/lesson1';
 import { goalStart, trafficAt, type Lesson } from '../lessons/types';
 import { lessonById } from '../lessons';
-import { referenceBoard } from '../lessons/verify';
+import { maxLag, referenceBoard } from '../lessons/verify';
+import { nodesInZone } from './zones';
 import { SCENARIOS, findScenario, scenarioDuration, scenarioTraffic, type Scenario, type ScenarioAction } from '../scenarios/scenarios';
 import type { Graph } from '../scenarios/build';
 import { homeGraph } from '../ui/homeGraphs';
@@ -81,6 +82,9 @@ export interface LessonState {
   finished: boolean;
   /** "show me" was used on this level */
   shown: boolean;
+  /** running $/h sum and count over the level, for average-bill goals */
+  costSum: number;
+  costN: number;
 }
 
 export interface CompareState {
@@ -256,7 +260,7 @@ export const systemNodes = (nodes: AppNode[]) => nodes.filter(isSystem);
 export const scenarioById = (id: string | null): Scenario | undefined => findScenario(id);
 
 function freshLesson(lesson: Lesson): LessonState {
-  return { lesson, stepIndex: 0, stepT: 0, holdT: 0, failT: 0, passed: false, missed: false, firedChaos: [], finished: false, shown: false };
+  return { lesson, stepIndex: 0, stepT: 0, holdT: 0, failT: 0, passed: false, missed: false, firedChaos: [], finished: false, shown: false, costSum: 0, costN: 0 };
 }
 
 function freshStudio(episodeId: string, aspect: Aspect, brandId: string): StudioState {
@@ -297,21 +301,6 @@ function patternMultiplier(p: Pattern, t: number): number {
 }
 
 /** a node counts as inside a zone when its centre is */
-function nodesInZone(nodes: AppNode[], zoneId: string): string[] {
-  const z = nodes.find((n) => n.id === zoneId);
-  if (!z) return [];
-  const w = z.width ?? z.measured?.width ?? 0;
-  const h = z.height ?? z.measured?.height ?? 0;
-  return nodes
-    .filter((n) => {
-      if (!isSystem(n)) return false;
-      const cx = n.position.x + (n.measured?.width ?? 230) / 2;
-      const cy = n.position.y + (n.measured?.height ?? 150) / 2;
-      return cx >= z.position.x && cx <= z.position.x + w && cy >= z.position.y && cy <= z.position.y + h;
-    })
-    .map((n) => n.id);
-}
-
 function initialCompare(scenarioId: string | null): Pick<State, 'compare'> & { A: Board; B: Board } {
   const sc = scenarioById(scenarioId) ?? SCENARIOS[0];
   return {
@@ -630,7 +619,7 @@ export const useSim = create<State>()((set, get) => {
       if (s.mode === 'lesson' && !s.lesson.finished) {
         engines.main.reset();
         get().apply('main', { type: 'revive-all' });
-        set({ simT: 0, running: false, lesson: { ...s.lesson, stepT: 0, holdT: 0, failT: 0, passed: false, missed: false, firedChaos: [] } });
+        set({ simT: 0, running: false, lesson: { ...s.lesson, stepT: 0, holdT: 0, failT: 0, passed: false, missed: false, firedChaos: [], costSum: 0, costN: 0 } });
         return;
       }
       if (s.mode === 'studio') get().loadEpisode(s.studio.episodeId);
@@ -654,7 +643,7 @@ export const useSim = create<State>()((set, get) => {
         set({ lesson: { ...ls, finished: true }, running: false });
         return;
       }
-      set({ lesson: { ...ls, stepIndex: ls.stepIndex + 1, stepT: 0, holdT: 0, failT: 0, passed: false, missed: false, firedChaos: [], shown: false } });
+      set({ lesson: { ...ls, stepIndex: ls.stepIndex + 1, stepT: 0, holdT: 0, failT: 0, passed: false, missed: false, firedChaos: [], shown: false, costSum: 0, costN: 0 } });
     },
     pickScenario: (id) => {
       if (id === null) {
@@ -761,14 +750,22 @@ export const useSim = create<State>()((set, get) => {
         if (s.mode === 'lesson' && !ls.finished && !ls.passed && !ls.missed) {
           const step = ls.lesson.steps[ls.stepIndex];
           const g = engines.main.snapshot([], []).global;
+          ls = { ...ls, costSum: ls.costSum + g.cost, costN: ls.costN + 1 };
           if (step.goal && ls.stepT >= goalStart(step)) {
+            const lagOk = step.goal.maxLagS === undefined || (() => {
+              const { nodes, edges } = get().boards.main;
+              const sys = systemNodes(nodes);
+              return maxLag(sys, engines.main.snapshot(sys, edges).nodeStats) <= step.goal.maxLagS!;
+            })();
             const ok =
               g.errorRate <= step.goal.maxErrorRate &&
               g.p99 <= step.goal.maxP99 &&
               (step.goal.maxCost === undefined || !s.settings.cost || g.cost <= step.goal.maxCost) &&
+              lagOk &&
               g.rps > 0;
             ls = ok ? { ...ls, holdT: ls.holdT + dt } : { ...ls, holdT: 0, failT: ls.failT + dt };
-            if (ls.holdT >= step.goal.holdSeconds - 1e-9) {
+            const avgOk = step.goal.maxAvgCost === undefined || !s.settings.cost || ls.costSum / Math.max(1, ls.costN) <= step.goal.maxAvgCost;
+            if (ls.holdT >= step.goal.holdSeconds - 1e-9 && avgOk) {
               ls = { ...ls, passed: true };
               get().toast('good', `🏆 Objective complete: ${step.title}`);
             } else if (step.goal.deadline !== undefined && ls.stepT > step.goal.deadline) {

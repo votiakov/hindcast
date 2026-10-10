@@ -3,10 +3,10 @@
 <div>
 <h2>A level</h2>
 <ol class="pins">
-<li data-pin="picker"><h3>Pick a lesson</h3><p>Five lessons, sixteen levels, in order.</p></li>
+<li data-pin="picker"><h3>Pick a lesson</h3><p>Seven lessons, twenty-two levels, in order. The picker shows your progress: the level you reached, or the stars you earned.</p></li>
 <li data-pin="level"><h3>The situation</h3><p>Each level tells a short story: launch day, the front page of Hacker News, a database brownout, the bill arriving.</p></li>
 <li data-pin="objective"><h3>The objective</h3><p>"Serve 120 req/s with &lt;1% errors and p99 &lt; 300ms for 5s." The engine checks it while you play.</p></li>
-<li data-pin="progress"><h3>Hold it</h3><p>The bar fills while the objective holds; break it and it resets.</p></li>
+<li data-pin="progress"><h3>Hold it</h3><p>The bar fills while the objective holds; break it and it resets. Some levels have a window: the system must ride out what happens in it, not recover afterwards.</p></li>
 <li data-pin="palette"><h3>Change the design</h3><p>Add components from the palette, scale what you have, connect things differently.</p></li>
 <li data-pin="play"><h3>Play</h3><p>Space plays and pauses. 1×, 2×, 4× speed.</p></li>
 </ol>
@@ -14,13 +14,25 @@
 </section>
 
 <section class="prose">
+<h2>When you're stuck, and when you win</h2>
+<ul>
+<li><b>Hint</b>: after a few seconds out of SLO the level explains what is going on and what to try.</li>
+<li><b>Show me</b>: next to the hint, it puts the level's reference design on the board (undo takes it back). Press ▶ or <b>Replay level</b> and watch it hold.</li>
+<li><b>Replay level</b>: replays the level with the design on the board; your work is never thrown away.</li>
+<li><b>Why it worked</b>: every passed level ends with what it taught and the numbers the system held.</li>
+<li>The finish card recaps every level, gives up to three stars for the bill, and leads to the next lesson.</li>
+</ul>
+<p>Every level is played by a test (<code>test/lessons.test.ts</code>): the design the previous level left must fail it, the reference design must pass it, both with the traffic jitter the app adds.</p>
+
 <h2>The lessons</h2>
 <div class="table-wrap"><table>
 <tr><th>lesson</th><th>levels</th></tr>
 <tr><td>Scale 101: From One Box to Web Scale</td><td>Launch day · Front page of Hacker News · Going viral · Chaos Monday</td></tr>
+<tr><td>Queues: Turn a Spike into a Backlog</td><td>Thumbnails, while you wait · The launch email · The backlog that never drains</td></tr>
 <tr><td>Retry Storms: When the Fix Becomes the Outage</td><td>A normal Tuesday · The six-second blip · Database brownout</td></tr>
 <tr><td>Elastic: Paying for Peak vs Surviving It</td><td>Paying for peak, all day · The lunch rush · The cache restarts</td></tr>
+<tr><td>Zones: When a Whole Data Center Goes Dark</td><td>Six instances, one zone · us-east-1a goes dark · Paying for two of everything</td></tr>
 <tr><td>Shipping an AI Feature to Real Traffic</td><td>Launch the assistant · It went viral · Finance saw the bill</td></tr>
-<tr><td>Does the Language Matter? Runtime Economics</td><td>Ten Node.js instances · Cut the compute bill · Black Friday: 3× traffic</td></tr>
+<tr><td>Does the Language Matter? Runtime Economics</td><td>Twelve Node.js instances · Cut the compute bill · Black Friday: 3× traffic</td></tr>
 </table></div>
 </section>

@@ -8,6 +8,10 @@ export interface StepGoal {
   maxErrorRate: number;
   maxP99: number;
   maxCost?: number;
+  /** $/h averaged over the whole level so far (a bill, not a moment); checked when the hold completes */
+  maxAvgCost?: number;
+  /** queues: seconds of backlog (at the current drain rate) any queue may hold */
+  maxLagS?: number;
   /** how long the system must stay within SLO to pass */
   holdSeconds: number;
   /** step time when the goal starts being checked (default: end of the traffic ramp) */

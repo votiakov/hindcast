@@ -34,29 +34,46 @@ export const myLesson: Lesson = {
   steps: [{
     id, title, story, objective,
     traffic: { from: 400, to: 700, rampSeconds: 3 },           // or { keyframes: [{ at, rps }, …] }
-    goal: { maxErrorRate: 0.01, maxP99: 500, maxCost?: 2.5, holdSeconds: 10, startAfter?: 12 },
+    goal: {
+      maxErrorRate: 0.01, maxP99: 500, holdSeconds: 10,
+      startAfter?: 12,     // checked from here (default: end of the ramp)
+      deadline?: 30.5,     // the hold must be complete by then: ride it out, don't recover later
+      maxCost?: 2.5,       // $/h at every moment of the hold
+      maxAvgCost?: 1.85,   // $/h averaged over the level (a bill), checked when the hold completes
+      maxLagS?: 5,         // seconds of backlog any queue may hold
+    },
     chaos: [{ at: 3, action: { type: 'degrade', id: 'db', factor: 0.05 }, message: '…' }],
     hint: '…', hintAfter: 6,            // hint appears after 6 s of failing the goal
+    solution: { note: 'Cache in front of the database', changes: [ /* ChangeSpec edits, e.g. { op: 'add', component, zone? } */ ] },
+    takeaway: 'Shown after the level is passed: what it taught.',
   }],
 };
 ```
 
-The goal is checked from `startAfter` (default: end of the ramp) and must hold continuously for
-`holdSeconds`. Lessons run on the fluid engine.
+The goal must hold continuously for `holdSeconds`. Lessons run on the fluid engine.
 
-**Design rule — prove every step:** each step must *fail* without the intended fix and *pass* with
-it (ideally with more than one valid fix). Verify headless: convert the lesson graph with
-`graphToSpec`, apply the fix as a variant with `applyVariant`, run `simulate` with the step's
-traffic/chaos, and check a `holdSeconds` window after `startAfter`.
+**Design rule: prove every level.** `solution` is a set of edits to the board the previous level
+leaves (the reference design; **Show me** loads it). `test/lessons.test.ts` plays every level
+headlessly (`src/lessons/verify.ts`: the same ramp, chaos and goal as the app) and requires that
+- a level with a solution **fails** with the previous level's design, at 5% less traffic;
+- its solution **passes**, at 7% more traffic (the app's jitter);
+- only a lesson's first level may be a warm-up without a solution;
+- every level has a `takeaway`.
+
+`npx tsx -e "import('./src/lessons/verify.ts').then(m => …)"` or the test itself shows the worst
+moment of a failing level.
 
 Built-in lessons:
 
-| lesson | teaches | verified fixes |
+| lesson | teaches | reference fixes |
 |---|---|---|
-| Scale 101 | single server limits, load balancers, caches, N+1 | LB + instances; cache; spare instance |
-| Retry Storms | metastable failures, retry budgets, bounded queues, breakers, brownouts | retry budget / short queue / client breaker; cache under brownout (breaker alone flaps) |
-| Shipping an AI Feature | provider rate limits, failover, semantic cache, GPU vs API cost | raise limit or GPU pool with failover; ≥7 batched GPUs + API overflow under budget |
-| Runtime Economics | runtime throughput vs cost, DB as the real wall | Go ×4 / Rust ×3 under budget; Go + cache at 3× traffic |
+| Scale 101 | single server limits, load balancers, caches, N+1 | LB + 4 instances; cache + 11 instances; 14 instances at 2,400 req/s |
+| Queues | synchronous vs async work, backlogs | a queue between the API and the worker; 3 workers for the sustained rate |
+| Retry Storms | metastable failures, retry budgets, bounded queues, breakers, brownouts | retry budget + short queue; cache under brownout (breaker alone flaps) |
+| Elastic | right-sizing, autoscaling warm-up, cold-cache stampede | 2 instances; autoscale 2–12 with a 10 s warm-up; database M |
+| Zones | failure domains, zone failure, replica failover, standby cost | API pool + replica in the second zone; smaller autoscaling pools in both zones |
+| Shipping an AI Feature | provider rate limits, failover, GPU vs API cost | a higher rate limit; 8 batched GPUs with the provider as failover |
+| Runtime Economics | runtime throughput vs cost, DB as the real wall | Go on 5 instances; cache + 14 instances at 3× traffic |
 
 ## Comparison scenarios (`src/scenarios/scenarios.ts`)
 

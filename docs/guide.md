@@ -75,7 +75,7 @@ open**), each move made after a countdown shown in the callout:
 2. **scale out**: a load balancer and four instances; healthy.
 3. **3× traffic**: autoscaling grows the API to ten instances, and the database becomes the
    bottleneck.
-4. **a cache**: healthy again; the exits: learn it (Lessons), design your own (Sandbox), check a
+4. **a cache**: healthy again; the exits: learn it (Lessons: 7 lessons, 22 levels), design your own (Sandbox), check a
    change on your real system's history (Backtest), let your AI agent do it, render it as a video.
 
 The chapter strip at the top shows the beat and jumps to any of them. The first click, key or
@@ -88,16 +88,29 @@ Sandbox). On a phone the system reads top to bottom and the callout docks at the
 
 ## Lessons
 
-Guided levels with objectives ("Serve 120 req/s with < 1% errors and p99 < 300 ms for 5 s"). Each
-level sets up a board and traffic; you change the design until the objective holds.
+Seven lessons, 22 guided levels with objectives the engine checks ("Serve 120 req/s with < 1%
+errors and p99 < 300 ms for 5 s"). Each level sets up traffic (and sometimes a failure); you
+change the design until the objective holds. Some levels have a window: the system must ride out
+what happens in it, not recover afterwards.
 
 | lesson | levels |
 |---|---|
 | **Scale 101: From One Box to Web Scale** | Launch day · Front page of Hacker News · Going viral · Chaos Monday |
+| **Queues: Turn a Spike into a Backlog** | Thumbnails, while you wait · The launch email · The backlog that never drains |
 | **Retry Storms: When the Fix Becomes the Outage** | A normal Tuesday · The six-second blip · Database brownout |
 | **Elastic: Paying for Peak vs Surviving It** | Paying for peak, all day · The lunch rush · The cache restarts |
+| **Zones: When a Whole Data Center Goes Dark** | Six instances, one zone · us-east-1a goes dark · Paying for two of everything |
 | **Shipping an AI Feature to Real Traffic** | Launch the assistant · It went viral · Finance saw the bill |
-| **Does the Language Matter? Runtime Economics** | Ten Node.js instances · Cut the compute bill · Black Friday: 3× traffic |
+| **Does the Language Matter? Runtime Economics** | Twelve Node.js instances · Cut the compute bill · Black Friday: 3× traffic |
+
+- **Hint** after a few seconds out of SLO; **Show me** next to it puts the level's reference design
+  on the board (undoable). **Replay level** replays it with the design on the board.
+- **Why it worked** after every pass: what the level taught, and what the system held.
+- The finish card recaps every level, gives up to three stars for the bill and leads to the next
+  lesson. Progress (the level reached, the best stars) is kept in the browser and shown in the
+  picker.
+- Every level is proven by `test/lessons.test.ts`: the design the previous level left fails it,
+  its reference design passes it, both with the app's traffic jitter.
 
 Authoring your own: [content.md](content.md#lessons-srclessons).
 

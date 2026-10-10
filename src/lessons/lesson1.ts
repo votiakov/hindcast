@@ -68,13 +68,13 @@ export const lesson1: Lesson = {
         'Check the database CPU — it is the new bottleneck. Put a Cache in front of it (api-1 → Cache → DB) to absorb most reads. ' +
         'Scaling the DB to size L also works… but look at what it does to the bill.',
       solution: {
-        note: 'A cache in front of the database, ten API instances',
+        note: 'A cache in front of the database, eleven API instances',
         changes: [
           { op: 'add', component: { id: 'redis', kind: 'cache' } },
           { op: 'disconnect', from: 'api-1', to: 'postgres-1' },
           { op: 'connect', from: 'api-1', to: 'redis' },
           { op: 'connect', from: 'redis', to: 'postgres-1' },
-          { op: 'set', id: 'api-1', fields: { instances: 10 } },
+          { op: 'set', id: 'api-1', fields: { instances: 11 } },
         ],
       },
       takeaway: 'Every API instance talks to the same database, so scaling the API moves the bottleneck there. A cache absorbs most reads for $0.15/h; a database four times the size would cost $1.20/h more.',
@@ -83,18 +83,18 @@ export const lesson1: Lesson = {
       id: 'chaos',
       title: 'Chaos Monday',
       story:
-        'Servers die. It is not a question of if. In a few seconds one of your API instances is going down. ' +
-        'Will the system stay within SLO without it?',
-      objective: 'Survive an instance failure at 2,000 req/s: <1% errors, p99 < 300ms for 15s.',
-      traffic: { from: 2000, to: 2000, rampSeconds: 0 },
+        'Monday morning: 2,400 req/s, a little more than last week. And servers die — it is not a question of if. ' +
+        'In a few seconds one of your API instances is going down. Will the system stay within SLO without it?',
+      objective: 'Survive an instance failure at 2,400 req/s: <1% errors, p99 < 300ms for 15s.',
+      traffic: { from: 2000, to: 2400, rampSeconds: 2 },
       goal: { maxErrorRate: 0.01, maxP99: 300, holdSeconds: 15 },
       chaos: [{ at: 4, action: { type: 'kill', kind: 'server', pick: 'busiest' }, message: 'Instance failure!' }],
       hintAfter: 8,
       hint:
         'Run N+1: keep enough spare instances that losing one keeps the rest below ~80% CPU. ' +
         'Health checks already route around the dead instance — you just need room for its traffic.',
-      solution: { note: 'Spare instances: N+1', changes: [{ op: 'set', id: 'api-1', fields: { instances: 12 } }] },
-      takeaway: 'Instances die. Size for the load you have plus a spare: losing one of twelve leaves the rest below 80% busy, and the health checks route around the dead one.',
+      solution: { note: 'Spare instances: N+1', changes: [{ op: 'set', id: 'api-1', fields: { instances: 14 } }] },
+      takeaway: 'Instances die. Size for the load you have plus a spare: losing one of fourteen leaves the rest below 80% busy, and the health checks route around the dead one.',
     },
   ],
 };

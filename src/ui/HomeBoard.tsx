@@ -376,7 +376,7 @@ function Coach() {
           lines={[`Pressure → bottleneck → fix → cost. ${pct(global.errorRate)} errors at ${money(global.cost)}.`, 'Now your turn:']}
           next={auto && left !== null ? `the story starts over in ${left} s` : null}
           actions={[
-            { label: 'learn it step by step: 5 lessons, 16 levels', run: () => lesson('scale-101') },
+            { label: 'learn it step by step: 7 lessons, 22 levels', run: () => lesson('scale-101') },
             { label: 'design your own system and break it', run: toSandbox },
             { label: 'check a change on your real system’s history', run: () => S().setMode('backtest') },
             { label: 'let your AI agent do it (MCP)', run: () => window.open('docs/agents.html', '_blank', 'noopener') },
