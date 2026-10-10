@@ -4,6 +4,7 @@ import { connectTelemetry, readCluster } from './connect';
 import { collect } from './collect';
 import { calibrateModel, modelStatus, verifyChange, verifyDesign, type ChangeInput } from './verify';
 import { Workspace } from './workspace';
+import { suggestChanges } from './suggest';
 import { reviveModel, type Model } from '../src/backtest/model';
 import { basePlan } from '../src/backtest/engine';
 import { applyStrategy } from '../src/backtest/strategy';
@@ -21,8 +22,11 @@ export interface AgentTool {
   title: string;
   description: string;
   input: z.ZodRawShape;
-  run: (args: Record<string, unknown>, ws: Workspace) => Promise<unknown> | unknown;
+  run: (args: Record<string, unknown>, ws: Workspace, progress?: Progress) => Promise<unknown> | unknown;
 }
+
+/** long tools report their phases (MCP progress notifications; ignored from the shell) */
+export type Progress = (message: string, done: number, total: number) => Promise<void>;
 
 const auth = {
   tokenEnv: z.string().optional().describe('env var holding a bearer token (the token itself never goes in the workspace)'),
@@ -80,7 +84,7 @@ export const TOOLS: AgentTool[] = [
       stepS: z.number().int().positive().optional().describe('bucket size in seconds (default: window / ~1000, at least 30)'),
       maxTraces: z.number().int().positive().optional().describe('traces to fetch, spread over the window (default 3000)'),
     },
-    run: (a, ws) => collect(ws, a as Parameters<typeof collect>[1]),
+    run: (a, ws, progress) => collect(ws, a as Parameters<typeof collect>[1], progress),
   },
   {
     name: 'calibrate_model',
@@ -94,7 +98,7 @@ export const TOOLS: AgentTool[] = [
       timeoutMs: z.number().positive().optional(),
       listPrices: z.boolean().optional().describe('price services without a bill line at AWS Fargate list prices (default true)'),
     },
-    run: (a, ws) => calibrateModel(ws, a as Parameters<typeof calibrateModel>[1]),
+    run: (a, ws, progress) => calibrateModel(ws, a as Parameters<typeof calibrateModel>[1], progress),
   },
   {
     name: 'model_status',
@@ -116,6 +120,21 @@ export const TOOLS: AgentTool[] = [
       draws: z.number().int().min(1).max(100).optional().describe('capacity draws for the bands (default 30)'),
     },
     run: (a, ws) => verifyChange(ws, a.changes as ChangeInput[], a as Parameters<typeof verifyChange>[2]),
+  },
+  {
+    name: 'suggest_changes',
+    title: 'What should we change? Fixes and savings, backtested',
+    description:
+      'Generates candidate changes from the history itself and backtests them all: services that ran out of capacity get fixes (more replicas — of the host for an in-process dependency —, more CPU or CPU autoscaling when CPU-bound); services that idled get savings (fewer replicas, smaller CPU, Graviton). Returns the fixes that cut minutes out of SLO and the savings that pass, cheapest first, each with its verdict and confidence, the passing savings tried together, and what was rejected. Use it for "what should we change?", "where can we save?" or after a fail, then verify_change the one to ship.',
+    input: {
+      workspace,
+      goal: z.enum(['reliability', 'cost', 'both']).optional().describe('fixes, savings, or both (default)'),
+      last: z.string().optional(),
+      draws: z.number().int().min(1).max(50).optional().describe('capacity draws per candidate (default 12)'),
+      gateMinutes: z.number().min(0).optional(),
+      idleBelow: z.number().min(0.05).max(0.8).optional().describe('a service is idle below this share of capacity at its busiest (default 0.35)'),
+    },
+    run: (a, ws, progress) => suggestChanges(ws, a as Parameters<typeof suggestChanges>[1], progress),
   },
   {
     name: 'find_headroom',

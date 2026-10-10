@@ -6,7 +6,8 @@ import { join } from 'node:path';
 import { DatasetBuilder } from '../src/backtest/dataset';
 import { importPrometheus } from '../src/backtest/import/metrics';
 import { parseOtlp, templatePath, type Span } from '../src/backtest/import/traces';
-import { exportPlan } from '../src/backtest/import/promExport';
+import { exportPlan, runExport } from '../src/backtest/import/promExport';
+import { holdoutCut } from '../src/backtest/accuracy';
 import { instanceType, strategyFromTerraformPlan } from '../src/backtest/terraformDiff';
 import { probeJaeger, probePrometheus, shapeOf, suggestRenames } from '../agent/sources';
 import { Workspace } from '../agent/workspace';
@@ -14,6 +15,7 @@ import { calibrateModel, modelStatus, verifyChange, verifyDesign } from '../agen
 import { connectTelemetry, readCluster } from '../agent/connect';
 import { explainError, runTool, TOOLS } from '../agent/tools';
 import { appLink } from '../agent/serve';
+import { suggestChanges } from '../agent/suggest';
 import { StrategySpec } from '../src/backtest/strategy';
 
 const T0 = 1_790_000_000;
@@ -106,12 +108,16 @@ describe('Terraform plan → strategy', () => {
 // live sources, mocked
 
 let server: Server;
+let rangeCalls = 0;
 let base = '';
 const NOW = 1_791_500_000;
 beforeAll(async () => {
   server = createServer((req, res) => {
     const u = new URL(req.url!, 'http://x');
     const send = (v: unknown) => res.end(JSON.stringify(v));
+    // /gappy: two busy stretches with an idle day between them
+    if (u.pathname.startsWith('/gappy/')) u.pathname = u.pathname.replace('/gappy/', '/prom/');
+    const gappy = req.url!.startsWith('/gappy/');
     if (u.pathname === '/prom/api/v1/status/buildinfo') return send({ status: 'success', data: { version: '2.54.1' } });
     if (u.pathname === '/prom/api/v1/label/__name__/values') return send({ status: 'success', data: ['traces_span_metrics_calls_total', 'container_spec_cpu_quota', 'calls_total'] });
     if (u.pathname === '/prom/api/v1/label/service_name/values') return send({ status: 'success', data: ['api', 'worker'] });
@@ -119,8 +125,15 @@ beforeAll(async () => {
     if (u.pathname === '/prom/api/v1/query') {
       // traffic between 30 h and 2 h ago
       const t = Number(u.searchParams.get('time'));
-      const on = t <= NOW - 2 * 3600 && t >= NOW - 30 * 3600;
+      const on = gappy ? (t <= NOW - 10 * 3600 && t >= NOW - 12 * 3600) || (t <= NOW - 23 * 3600 && t >= NOW - 26 * 3600) : t <= NOW - 2 * 3600 && t >= NOW - 30 * 3600;
       return send({ status: 'success', data: { resultType: 'vector', result: on ? [{ metric: {}, value: [t, '1200'] }] : [] } });
+    }
+    if (u.pathname === '/prom/api/v1/query_range') {
+      rangeCalls++;
+      const [a, b, st] = ['start', 'end', 'step'].map((k) => parseFloat(u.searchParams.get(k)!));
+      const values: [number, string][] = [];
+      for (let t = a; t <= b; t += st) values.push([t, '1']);
+      return send({ status: 'success', data: { resultType: 'matrix', result: [{ metric: { service_name: 'api' }, values }] } });
     }
     if (u.pathname === '/jaeger/api/services') return send({ data: ['api', 'loadgen', 'jaeger-all-in-one'] });
     if (u.pathname === '/jaeger/api/traces')
@@ -144,6 +157,26 @@ beforeAll(async () => {
 });
 afterAll(() => server.close());
 
+describe('long histories', () => {
+  it('splits a range past 11,000 points per series into chunks and stitches them', async () => {
+    rangeCalls = 0;
+    const files: Record<string, string> = {};
+    const [r] = await runExport(`${base}/prom`, exportPlan(['otel-spanmetrics']).slice(0, 1), { start: T0, end: T0 + 25_000 * 60, stepS: 60 }, (f, b) => (files[f] = b));
+    expect(rangeCalls).toBe(3);
+    const values = JSON.parse(files[r.file]).data.result[0].values as [number, string][];
+    expect(values).toHaveLength(25_001);
+    expect(new Set(values.map((v) => v[0])).size).toBe(25_001);
+  });
+
+  it('holds back the last 30% of the requests, not of the time', () => {
+    const rps = [...new Array(70).fill(0), ...new Array(30).fill(10)];
+    const d = { n: 100, endpoints: { e: { service: 'api', rps } } } as unknown as Parameters<typeof holdoutCut>[0];
+    expect(holdoutCut(d, 0.3)).toBe(91);
+    const busy = { n: 100, endpoints: { e: { service: 'api', rps: new Array(100).fill(5) } } } as unknown as Parameters<typeof holdoutCut>[0];
+    expect(holdoutCut(busy, 0.3)).toBe(70);
+  });
+});
+
 describe('probing live telemetry', () => {
   it('finds the presets, the services and when traffic flowed', async () => {
     const p = await probePrometheus({ url: `${base}/prom` }, NOW);
@@ -155,6 +188,13 @@ describe('probing live telemetry', () => {
     expect(Math.abs(Date.parse(p.data!.oldestFound) / 1000 - (NOW - 30 * 3600))).toBeLessThan(3600);
     expect(p.warnings.join(' ')).toMatch(/no requests in the last hour/);
     expect(suggestRenames(p)).toEqual({ 'shop-worker': 'worker' });
+  });
+
+  it('finds the newest traffic when it came and went', async () => {
+    const p = await probePrometheus({ url: `${base}/gappy` }, NOW);
+    expect(Math.abs(Date.parse(p.data!.newest) / 1000 - (NOW - 10 * 3600))).toBeLessThan(600);
+    expect(Math.abs(Date.parse(p.data!.oldestFound) / 1000 - (NOW - 26 * 3600))).toBeLessThan(1800);
+    expect(p.warnings.join(' ')).toMatch(/comes and goes/);
   });
 
   it('asks Jaeger which services requests enter through', async () => {
@@ -192,8 +232,10 @@ describe('verify_change on real history (HotROD)', () => {
   });
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-  it('calibrates with a trust report', () => {
-    const c = calibrateModel(ws, {});
+  it('calibrates with a trust report, reporting its phases', async () => {
+    const phases: string[] = [];
+    const c = await calibrateModel(ws, {}, async (m) => void phases.push(m));
+    expect(phases).toHaveLength(3);
     const mysql = c.services.find((s) => s.service === 'mysql')!;
     expect(mysql.basis).toBe('limit seen in history');
     expect(mysql.cost).toMatch(/runs inside customer/);
@@ -258,6 +300,18 @@ describe('verify_change on real history (HotROD)', () => {
     delete process.env.BOTTLENECK_KUBECTL;
   }, 120_000);
 
+  it('suggest_changes fixes what saturated and finds savings that pass together', async () => {
+    const r = await suggestChanges(ws, { draws: 4 });
+    expect(r.saturated.map((x) => x.service)).toContain('mysql');
+    // mysql runs inside customer: the fix is more customer replicas, and it cuts failed requests
+    const fix = r.fixes.find((f) => f.name.startsWith('customer: 1 → 2 replicas'))!;
+    expect(fix).toBeTruthy();
+    expect(fix.failedRequestsDelta).toBeLessThan(0);
+    expect(r.savings.length).toBeGreaterThan(0);
+    for (const s of r.savings) expect(s.verdict).toBe('pass');
+    if (r.combinedSavings) expect(r.combinedSavings.monthlyDelta).toBeLessThanOrEqual(Math.min(...r.savings.map((s) => s.monthlyDelta)));
+  }, 120_000);
+
   it('model_status says what the workspace holds and what to do next', () => {
     const s = modelStatus(ws) as { next: string; warnings: string[]; model: { trust: Record<'trusted' | 'caution' | 'untrusted', string[]> }; dataset: { window: { hours: number } } };
     expect(s.next).toBe('verify_change');
@@ -268,7 +322,7 @@ describe('verify_change on real history (HotROD)', () => {
   });
 
   it('runs every tool through the shared registry (MCP and `bottleneck agent`)', async () => {
-    expect(TOOLS.map((t) => t.name)).toEqual(['connect_telemetry', 'collect_telemetry', 'calibrate_model', 'model_status', 'verify_change', 'find_headroom', 'verify_design', 'read_cluster']);
+    expect(TOOLS.map((t) => t.name)).toEqual(['connect_telemetry', 'collect_telemetry', 'calibrate_model', 'model_status', 'verify_change', 'suggest_changes', 'find_headroom', 'verify_design', 'read_cluster']);
     const h = (await runTool('find_headroom', { workspace: dir, strategy: { name: 'x', changes: [{ service: 'customer', replicas: 2 }] } })) as { asBuilt: { rps: number; limitedBy: string } };
     expect(h.asBuilt.rps).toBeGreaterThan(3);
     await expect(runTool('nope', {})).rejects.toThrow(/no tool/);

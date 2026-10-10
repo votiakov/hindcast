@@ -94,9 +94,22 @@ export async function probePrometheus(cfg: NonNullable<Sources['prometheus']>, n
       if (n > 0) active.push(t);
     }
     if (active.length) {
-      // edge between an active and an idle time: 8 halvings
+      // the edge between an active and an idle time. Traffic comes and goes (busy, idle, busy
+      // again), so scan the gap first and bisect only between the outermost active sample and its
+      // idle neighbour; plain bisection would stop at the first idle stretch
       const edge = async (on: number, off: number) => {
-        for (let k = 0; k < 8; k++) {
+        const k = 48;
+        let last = on;
+        let next = off;
+        for (let j = 1; j < k; j++) {
+          const t = on + ((off - on) * j) / k;
+          if ((await traffic(t)) > 0) last = t;
+        }
+        next = last + (off - on) / k;
+        if (Math.sign(next - off) === Math.sign(off - on)) next = off;
+        on = last;
+        off = next;
+        for (let j = 0; j < 8; j++) {
           const mid = (on + off) / 2;
           if ((await traffic(mid)) > 0) on = mid;
           else off = mid;
@@ -129,6 +142,29 @@ export function suggestRenames(probe: PrometheusProbe, traceServices: string[] =
       const hits = [...canonical].filter((c) => !containers.has(c) && (raw.endsWith(`-${c}`) || raw.startsWith(`${c}-`) || raw.endsWith(`_${c}`)));
       if (hits.length === 1) out[raw] = hits[0];
     }
+  }
+  return out;
+}
+
+/** entry-service requests per slice of [start, end]: where the traffic was, so traces are fetched
+ *  where there is something to see (a quiet week with one busy hour gets its traces in that hour) */
+export async function trafficBySlice(cfg: NonNullable<Sources['prometheus']>, presets: string[], entry: string[], start: number, end: number, slices: number): Promise<number[] | null> {
+  const width = Math.max(60, Math.floor((end - start) / slices));
+  const m = entry.map((e) => e.replace(/[.*+?^${}()|[\]\\"]/g, '\\\\$&')).join('|');
+  const sel = [cfg.selector, `service_name=~"${m}"`].filter(Boolean).join(',');
+  const query = presets.includes('otel-spanmetrics') ? `sum(increase(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER",${sel}}[${width}s]))` : presets.includes('http-server') ? `sum(increase(http_server_request_duration_seconds_count{${sel}}[${width}s]))` : null;
+  if (!query) return null;
+  const u = new URL('api/v1/query_range', cfg.url.endsWith('/') ? cfg.url : cfg.url + '/');
+  // each point counts the slice that ends at it
+  u.searchParams.set('query', query);
+  u.searchParams.set('start', String(start + width));
+  u.searchParams.set('end', String(start + width * slices));
+  u.searchParams.set('step', `${width}s`);
+  const r = await getJson<PromResp<{ result: { values: [number, string][] }[] }>>(u.toString(), authHeaders(cfg));
+  const out = new Array(slices).fill(0);
+  for (const [t, v] of r.data?.result?.[0]?.values ?? []) {
+    const k = Math.round((Number(t) - start) / width) - 1;
+    if (k >= 0 && k < slices && isFinite(Number(v))) out[k] = Number(v);
   }
   return out;
 }
@@ -233,10 +269,13 @@ async function tempoSearch(url: string, h: Record<string, string>, start: number
  * its share, so every part of the history (quiet nights and the overload) is represented.
  * Returns the traces as one Jaeger or OTLP document per line.
  */
-export async function fetchTraces(src: { jaeger?: Sources['jaeger']; tempo?: Sources['tempo'] }, entry: string[], start: number, end: number, opts: { maxTraces?: number; slices?: number } = {}): Promise<{ lines: string[]; traces: number; requests: number; kind: 'jaeger' | 'tempo' }> {
+export async function fetchTraces(src: { jaeger?: Sources['jaeger']; tempo?: Sources['tempo'] }, entry: string[], start: number, end: number, opts: { maxTraces?: number; slices?: number; weights?: number[] | null } = {}): Promise<{ lines: string[]; traces: number; requests: number; kind: 'jaeger' | 'tempo' }> {
   const max = opts.maxTraces ?? 3000;
-  const slices = Math.max(1, Math.min(opts.slices ?? 48, Math.floor((end - start) / 60)));
-  const per = Math.max(2, Math.ceil(max / slices / Math.max(1, entry.length)));
+  const slices = opts.weights?.length ?? Math.max(1, Math.min(opts.slices ?? 48, Math.floor((end - start) / 60)));
+  // traces per slice: by traffic when known (idle slices get none), evenly otherwise
+  const w = opts.weights && opts.weights.some((x) => x > 0) ? opts.weights : new Array(slices).fill(1);
+  const total = w.reduce((a, x) => a + x, 0);
+  const quota = w.map((x) => (x > 0 ? Math.max(2, Math.ceil((max * x) / total / Math.max(1, entry.length))) : 0));
   const seen = new Set<string>();
   const lines: string[] = [];
   let requests = 0;
@@ -245,9 +284,10 @@ export async function fetchTraces(src: { jaeger?: Sources['jaeger']; tempo?: Sou
     for (let k = 0; k < slices; k++) {
       const s = start + ((end - start) * k) / slices;
       const e = start + ((end - start) * (k + 1)) / slices;
+      if (!quota[k]) continue;
       for (const svc of entry) {
         requests++;
-        const r = await jaegerTraces(src.jaeger.url, h, { service: svc, limit: String(per), start: String(Math.floor(s * 1e6)), end: String(Math.floor(e * 1e6)) });
+        const r = await jaegerTraces(src.jaeger.url, h, { service: svc, limit: String(quota[k]), start: String(Math.floor(s * 1e6)), end: String(Math.floor(e * 1e6)) });
         const fresh = (r.data ?? []).filter((t) => !seen.has(t.traceID));
         for (const t of fresh) seen.add(t.traceID);
         if (fresh.length) lines.push(JSON.stringify({ data: fresh }));
@@ -261,9 +301,10 @@ export async function fetchTraces(src: { jaeger?: Sources['jaeger']; tempo?: Sou
     for (let k = 0; k < slices; k++) {
       const s = start + ((end - start) * k) / slices;
       const e = start + ((end - start) * (k + 1)) / slices;
+      if (!quota[k]) continue;
       for (const svc of entry) {
         requests++;
-        for (const id of await tempoSearch(src.tempo.url, h, s, e, per, svc)) if (!seen.has(id)) seen.add(id), ids.push(id);
+        for (const id of await tempoSearch(src.tempo.url, h, s, e, quota[k], svc)) if (!seen.has(id)) seen.add(id), ids.push(id);
       }
     }
     // fetch whole traces, a few at a time

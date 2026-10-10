@@ -90,16 +90,24 @@ export function replayQueue(perRep: number[], stepS: number, c: number, K: numbe
   let backlog = 0;
   const mean: number[] = [];
   const p99: number[] = [];
+  const idleP99 = S + Math.abs(S99 - S);
   for (const lam of perRep) {
+    // nothing arriving and nothing queued: the bucket is just the service time (most of a quiet history)
+    if (lam <= 0 && backlog <= 0) {
+      mean.push(S);
+      p99.push(idleP99);
+      continue;
+    }
     let m = 0;
     let p = 0;
+    // the arrival rate is constant within a bucket, so its M/M/c wait is too
+    const w = isFinite(K) ? mmcWait(Math.min(lam, K * 0.97), c, K) : null;
     for (let k = 0; k < sub; k++) {
       let wm = 0;
       let wp = 0;
-      if (isFinite(K)) {
+      if (w) {
         const served = Math.min(K, lam + backlog / dt);
         backlog = Math.max(0, backlog + (lam - served) * dt);
-        const w = mmcWait(Math.min(lam, K * 0.97), c, K);
         wm = v * w.meanMs + (backlog / K) * 1000;
         wp = v * w.p99Ms + (backlog / K) * 1000;
       }
@@ -110,6 +118,47 @@ export function replayQueue(perRep: number[], stepS: number, c: number, K: numbe
     p99.push(p);
   }
   return { mean, p99 };
+}
+
+/** above this many buckets the capacity fits run on a compact copy of the history */
+const COMPACT_ABOVE = 1000;
+
+/**
+ * A long history, compacted for fitting: the busy episodes (≥ 70% of the service's peak load, or
+ * its own time ≥ 2× the quiet one, with the 3 buckets before and 15 after, where a backlog drains),
+ * busiest first up to ~750 buckets, and an even sample of 250 of everything else. The limit shows near
+ * the peaks; the rest pins the everyday service time. Replaying two weeks of 1-minute buckets
+ * 18,000 times is what made long histories slow. Short histories are used whole.
+ */
+export function compactFit(lam: number[], obs: (number | null)[], p99: (number | null)[], maxLam: number, S: number) {
+  const n = lam.length;
+  if (n <= COMPACT_ABOVE) return { lam, obs, p99 };
+  const near = new Uint8Array(n);
+  for (let i = 0; i < n; i++)
+    if (lam[i] >= maxLam * 0.7 || (obs[i] ?? 0) >= 2 * S) for (let j = Math.max(0, i - 3); j <= Math.min(n - 1, i + 15); j++) near[j] = 1;
+  // busy episodes, the busiest first, until ~750 buckets: a fortnight of similar afternoons
+  // repeats what one of them says
+  const episodes: { a: number; b: number; peak: number }[] = [];
+  for (let i = 0; i < n; i++) {
+    if (!near[i]) continue;
+    const a = i;
+    let peak = 0;
+    while (i < n && near[i]) peak = Math.max(peak, lam[i], (obs[i] ?? 0) / Math.max(1e-9, S)), i++;
+    episodes.push({ a, b: i, peak });
+  }
+  const keep = new Uint8Array(n);
+  let kept = 0;
+  for (const e of [...episodes].sort((x, y) => y.peak - x.peak)) {
+    if (kept >= 750) break;
+    for (let j = e.a; j < e.b; j++) keep[j] = 1;
+    kept += e.b - e.a;
+  }
+  const every = Math.max(1, Math.ceil((n - kept) / 250));
+  let q = 0;
+  for (let i = 0; i < n; i++) if (!keep[i] && q++ % every === 0) keep[i] = 1;
+  const idx: number[] = [];
+  for (let i = 0; i < n; i++) if (keep[i]) idx.push(i);
+  return { lam: idx.map((i) => lam[i]), obs: idx.map((i) => obs[i]), p99: idx.map((i) => p99[i]) };
 }
 
 function logErr(pred: number[], obs: (number | null)[], w?: number[]) {
@@ -325,17 +374,20 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
     let p99Mape: number | undefined;
     const ov = opts.services?.[id];
     if (withData.length >= 5) {
-      const none = logErr(replayQueue(perRep, d.stepS, 1, Infinity, S, S99, 1).mean, selfObs);
+      // the fits replay the history many times over; on a long one they run on a compact copy —
+      // every busy bucket with what follows it, and a thin sample of the quiet ones (see compactFit)
+      const F = compactFit(perRep, selfObs, selfP99Obs, maxLam, S);
+      const none = logErr(replayQueue(F.lam, d.stepS, 1, Infinity, S, S99, 1).mean, F.obs);
       const cpuK = cpu && cpuLimit && cpu.perReq > 0 ? (cpuLimit - cpu.base) / cpu.perReq : Infinity;
       const cpuC = cpuLimit ? Math.max(1, Math.round(cpuLimit)) : 1;
       let cpuFit: Fitted = { c: cpuC, K: cpuK, S, v: 1, err: Infinity };
       if (isFinite(cpuK)) for (const v of VARIABILITY) {
-        const err = logErr(replayQueue(perRep, d.stepS, cpuC, cpuK, S, S99, 1, v).mean, selfObs);
+        const err = logErr(replayQueue(F.lam, d.stepS, cpuC, cpuK, S, S99, 1, v).mean, F.obs);
         if (err < cpuFit.err) cpuFit = { c: cpuC, K: cpuK, S, v, err };
       }
       const servers = ov?.servers ? [ov.servers] : undefined;
-      const free = fitFree(perRep, selfObs, d.stepS, S, S99, maxLam, servers);
-      const tied = fitTied(perRep, selfObs, d.stepS, S, S99, servers);
+      const free = fitFree(F.lam, F.obs, d.stepS, S, S99, maxLam, servers);
+      const tied = fitTied(F.lam, F.obs, d.stepS, S, S99, servers);
       // the tied model is physically grounded; the free one has to be clearly better to win
       let queue = tied.err <= free.err / 0.85 ? { ...tied, tied: true } : { ...free, tied: false };
       // while a service was overloaded, what finished per second *is* its capacity: when the history
@@ -346,7 +398,7 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
         const ks = saturated.map((i) => (vals(doneSeries, i) ?? NaN) / Math.max(1, vals(reps, i) ?? replicas)).filter((k) => isFinite(k) && k > 0);
         if (ks.length >= 2) {
           const seen = median(ks);
-          const atSeen = fitAtK(perRep, selfObs, d.stepS, S, S99, seen);
+          const atSeen = fitAtK(F.lam, F.obs, d.stepS, S, S99, seen);
           if (atSeen.err <= queue.err * 1.15) {
             queue = atSeen;
             notes.push(`capacity seen directly: ${seen.toFixed(1)} req/s per replica finished while it was overloaded (${saturated.length} buckets)`);
@@ -520,12 +572,13 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
       } else if (isFinite(capacity.perReplicaRps) && B > 0 && !ov?.perReplicaRps) {
         // bootstrap the capacity (blocks of 6 buckets), server count and variability fixed
         const draws: number[] = [];
-        const blocks = Math.ceil(d.n / 6);
+        const fn = F.lam.length;
+        const blocks = Math.ceil(fn / 6);
         for (let b = 0; b < B; b++) {
-          const w = new Array(d.n).fill(0);
+          const w = new Array(fn).fill(0);
           for (let k = 0; k < blocks; k++) {
             const start = Math.floor(rand() * blocks) * 6;
-            for (let j = start; j < Math.min(d.n, start + 6); j++) w[j] += 1;
+            for (let j = start; j < Math.min(fn, start + 6); j++) w[j] += 1;
           }
           let bestK = capacity.perReplicaRps;
           let bestE = Infinity;
@@ -539,7 +592,7 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
                 // for a lock, more capacity means a shorter hold time
                 const sv = tiedK ? (c * 1000) / K : selfMean;
                 if (tiedK && (sv < S * 0.4 || sv > S * 1.05)) continue;
-                const e = logErr(replayQueue(perRep, d.stepS, c, K, sv, selfP99 + (sv - selfMean), 1, v).mean, selfObs, w);
+                const e = logErr(replayQueue(F.lam, d.stepS, c, K, sv, selfP99 + (sv - selfMean), 1, v).mean, F.obs, w);
                 if (e < bestE) [bestE, bestK] = [e, K];
               }
           draws.push(bestK);
@@ -564,7 +617,7 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
       // tail multiplier on queueing excess
       let bestTail = { t: 1, e: Infinity };
       for (const t of [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.15, 1.3, 1.5, 1.75, 2, 2.5, 3, 3.5, 4, 5, 6]) {
-        const e = logErr(replayQueue(perRep, d.stepS, capacity.servers, capacity.perReplicaRps, selfMean, selfP99, t, variability).p99, selfP99Obs);
+        const e = logErr(replayQueue(F.lam, d.stepS, capacity.servers, capacity.perReplicaRps, selfMean, selfP99, t, variability).p99, F.p99);
         if (e < bestTail.e) bestTail = { t, e };
       }
       tail = bestTail.t;

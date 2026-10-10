@@ -41,7 +41,7 @@ const APP_URL = process.env.BOTTLENECK_APP_URL ?? 'http://localhost:5173';
 
 const INSTRUCTIONS = `Bottleneck lets an agent check infrastructure decisions before they ship.
 
-REAL SYSTEMS (production telemetry): connect_telemetry (Prometheus URL, plus Jaeger or Tempo for traces, optionally the cloud bill) → collect_telemetry (history into the workspace) → calibrate_model (read its trust report) → verify_change for any change you propose or are asked about: a strategy, a Kubernetes manifest diff, a Terraform plan, or edited manifests against read_cluster's snapshot. Start a session with model_status: the workspace (./.bottleneck) may already hold a fresh model.
+REAL SYSTEMS (production telemetry): connect_telemetry (Prometheus URL, plus Jaeger or Tempo for traces, optionally the cloud bill) → collect_telemetry (history into the workspace) → calibrate_model (read its trust report) → suggest_changes for "what should we change / where can we save", and verify_change for any change you propose or are asked about: a strategy, a Kubernetes manifest diff, a Terraform plan, or edited manifests against read_cluster's snapshot. Start a session with model_status: the workspace (./.bottleneck) may already hold a fresh model.
 Report verify_change results with their verdict AND confidence. "pass" with confidence "low" means the change pushes a service past anything the history showed: say so and recommend a load test instead of calling it safe. Quote the money as a range when the band is wide, and say when prices are list prices rather than the bill. Never present a backtest as a guarantee.
 Everything is read-only towards the user's systems; nothing is applied. Credentials are passed as env var names, never as values.
 
@@ -408,10 +408,15 @@ for (const t of TOOLS) {
   server.registerTool(
     t.name,
     { title: t.title, description: t.description, inputSchema: t.input, annotations: { readOnlyHint: t.name === 'model_status' || t.name === 'verify_design' || t.name === 'find_headroom', openWorldHint: t.name === 'connect_telemetry' || t.name === 'collect_telemetry' || t.name === 'read_cluster' } },
-    async (args: Record<string, unknown>) => {
+    async (args: Record<string, unknown>, extra) => {
       try {
         const ws = new Workspace(args.workspace as string | undefined);
-        const out = (await t.run(args, ws)) as Record<string, unknown>;
+        // phases as progress notifications, when the client asked for them (keeps long calls alive)
+        const token = extra._meta?.progressToken;
+        const progress = token === undefined ? undefined : async (message: string, done: number, total: number) => {
+          await extra.sendNotification({ method: 'notifications/progress', params: { progressToken: token, progress: done, total, message } });
+        };
+        const out = (await t.run(args, ws, progress)) as Record<string, unknown>;
         // a verified change opens on the app's backtest screen while this server runs
         const bundle = (out?.reports as { bundle?: string } | undefined)?.bundle;
         if (bundle) out.app = { open: await appLink(ws, bundle), note: 'opens the backtest screen with these strategies over the same history, served from this MCP server while it runs' };

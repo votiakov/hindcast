@@ -378,7 +378,7 @@ function Watch() {
       {checks.length ? (
         r.accuracy.map((a, k) => (
           <div key={k} className="bt-acc" title={a.label}>
-            <div className="bt-dim small">{a.method === 'reference' ? 'vs recorded runs it never saw' : 'holdout: last 30% of the history'}</div>
+            <div className="bt-dim small">{a.method === 'reference' ? 'vs recorded runs it never saw' : 'holdout: the last 30% of the requests'}</div>
             {a.checks
               .filter((c) => c.metric !== 'errors')
               .map((c, i) => (

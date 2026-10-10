@@ -8,7 +8,7 @@ Jaeger/Tempo, collects the history, calibrates the model and reads the trust rep
 a question and gets a verdict with evidence.
 
 ```
-agent ──MCP / CLI──▶ connect_telemetry ─▶ collect_telemetry ─▶ calibrate_model ─▶ verify_change
+agent ──MCP / CLI──▶ connect_telemetry ─▶ collect_telemetry ─▶ calibrate_model ─▶ verify_change / suggest_changes
                      (probe, read-only)   (history → dataset)  (model + trust)    (verdict + confidence)
                                                                                    verify_design (no history)
 ```
@@ -102,12 +102,15 @@ into `sources.json` in the workspace, with credentials as env var names only.
 { "last": "7d" }
 ```
 
-- Runs the preset queries over the window. Bucket size: the window / ~1000, at least 30 s.
+- Runs the preset queries over the window in fine buckets: 30 s up to a day, 60 s up to two weeks.
+  A three-minute overload is the most valuable part of a history, and wide buckets average it
+  away. Ranges past Prometheus' 11,000 points per series are fetched in chunks.
 - Endpoint-level series are queried only on the entry services; counting every service's spans
   would count each request several times.
-- Fetches traces spread over the window. Jaeger and Tempo return the newest first, so it slices
-  the window and asks each slice for its share. The quiet night and the overload are both
-  represented.
+- Fetches traces spread over the window. Jaeger and Tempo return the newest first, so it cuts the
+  window into 96 slices and gives each slice a share of the traces (3,000 by default) weighted by
+  the requests Prometheus saw in it. Idle slices get none, and a quiet day with one busy hour gets
+  its traces from that hour.
 - Imports everything into `dataset.json`. Collecting again replaces the dataset and drops the old
   model.
 
@@ -123,7 +126,9 @@ history never approached is an extrapolation, and the trust report says so.
 
 It fits capacity per replica (with a 10–90% band) and what limits it: CPU, or a lock or pool
 (*n at a time*). It also fits latency, the errors that grow with load, and cost per service. The
-last 30% of the history is held back to measure accuracy on data the model never saw.
+last 30% of the *requests* is held back to measure accuracy on data the model never saw. That is
+30% of the requests, not of the time, so a quiet week with one busy hour isn't judged on its
+empty nights.
 
 The **trust report** sorts every service:
 
@@ -220,6 +225,33 @@ from CPU and memory limits, used when there is no bill) or `unpriced`.
 
 **A pass at low confidence is not "safe".** It means the backtest found no problem on capacities
 the history never tested. The MCP instructions tell agents to say so and recommend a load test.
+
+### `suggest_changes`: what should we change?
+
+```json
+{ "goal": "both" }          // "reliability" | "cost" | "both"
+```
+
+Candidates come from the history itself:
+
+- **Fixes** for every service that ran at ≥ 85% of its capacity: one more replica (or double, from
+  two), of the *host* when the service runs in-process (HotROD's mysql → more `customer`
+  replicas). When CPU is the limit, it also tries twice the CPU and CPU autoscaling.
+- **Savings** for every priced service that stayed under 35% (`idleBelow`) at its busiest, along
+  with everything running inside it: one replica fewer, half the CPU, Graviton.
+
+Every candidate is backtested and judged like `verify_change`. The result lists:
+
+- `fixes`: the candidates that cut minutes out of SLO, *or failed requests by at least a tenth*.
+  Minutes can stay put when something else breaks the SLO in the same minutes.
+- `savings`: the candidates that pass, biggest saving first.
+- `combinedSavings`: all passing savings applied together. Two safe cuts can be unsafe at once.
+- `rejected`, with each verdict.
+
+On the live HotROD: mysql (inside `customer`) saturated. Two customer replicas cut failed
+requests by 79% (−1,170) at +$15/month, at low confidence because the lock fits poorly. Six
+savings passed (half the CPU on frontend, route and driver, Graviton for each), and together they
+saved $35/month with no change in SLO minutes. It ran in about 3 seconds.
 
 ### `find_headroom`
 
@@ -319,7 +351,8 @@ or dropped on the app's Backtest screen.
 | `collect_telemetry` | `last` \| `start`/`end`, `stepS?`, `maxTraces?` | window, coverage per service, endpoints, warnings |
 | `calibrate_model` | `holdout?` (0.3), `slo?`, `timeoutMs?`, `listPrices?` | services with capacity, band, limit, basis, cost; accuracy; trust lists |
 | `model_status` | — | what the workspace holds, warnings, next step |
-| `verify_change` | `changes[]`, `last?`, `gateMinutes?`, `draws?` | per change: verdict, confidence, cost, reliability, headroom, reasons; reports |
+| `verify_change` | `changes[]`, `last?`, `gateMinutes?`, `draws?` (30, fewer on long histories to fit ~40 s) | per change: verdict, confidence, cost, reliability, headroom, reasons; reports and `app.open` |
+| `suggest_changes` | `goal?` (reliability \| cost \| both), `last?`, `draws?`, `gateMinutes?`, `idleBelow?` | saturated services; fixes and savings that pass, each judged; the savings combined; rejected candidates |
 | `find_headroom` | `strategy?` | req/s within SLO, what binds, history peak |
 | `verify_design` | `spec`, `rps?`, `slo?`, `budgetMonthly?`, `incidentCostPerMinute?` | verdict, problems, findings with fixes as spec changes, app link |
 | `read_cluster` | `context`, `namespace?`, `selector?` | workloads, snapshot path, the exact command run |
@@ -388,6 +421,26 @@ into its backend; uninstrumented databases mistaken for load generators; service
 errors missing an error rate; the overload knee reading inflated completion rates (cancelled
 queries finish fast); IP addresses becoming services where a span was missing; architecture
 spellings (`arm64`); and validation errors an agent couldn't act on.
+
+A second round, on 24 hours of history (a day that was idle but for the two runs), fixed:
+- Wide buckets (120 s) averaged the 3-minute overload away, so nothing looked saturated.
+- An even trace budget spent 46 of its 48 slices on idle hours: 126 traces, and a nonsense mysql
+  fit.
+- A time-based holdout judged the model on empty hours (571% off). It is now 30% of the
+  *requests*, and passes at 3%.
+- A traffic probe that bisected past a busy–idle–busy pattern ended the window at the wrong edge.
+- Calibration replayed every idle bucket thousands of times, which took longer than an MCP
+  client's 60 s timeout.
+
+Now the 24-hour run passes every check. Collect takes 10 s, calibrate 8 s and verify 17 s. Suggest
+takes 40 s: three backtests, with progress notifications between them.
+
+**Long histories.** On two weeks of 1-minute buckets (20,250, the HotROD run tiled), calibration
+takes about 46 s and the holdout 34 s, from about 7 minutes before compaction. The capacity fits
+run on a compact copy: the busiest episodes, with their drain-out, and a sample of the rest. The
+fitted numbers are identical. Each phase stays under a minute and reports progress. A replay of
+that history takes about 2 s, so `verify_change` picks its capacity draws to fit ~40 s (and says
+so in `notes`) rather than running 30 draws for 4 minutes.
 
 ## Limits
 

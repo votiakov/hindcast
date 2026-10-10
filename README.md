@@ -135,7 +135,7 @@ changes an architecture spec. Every command takes `--json`.
 ## MCP server
 
 Agents working on a live system: `connect_telemetry` → `collect_telemetry` → `calibrate_model` →
-`verify_change` (plus `find_headroom`, `verify_design`, `read_cluster`, `model_status`); see
+`verify_change` (plus `suggest_changes`, `find_headroom`, `verify_design`, `read_cluster`, `model_status`); see
 [docs/agents.md](docs/agents.md). `npm run build:mcp-server` writes a single-file server
 (`dist-cli/bottleneck-mcp.mjs`) to register anywhere: `claude mcp add bottleneck -- node …/bottleneck-mcp.mjs`.
 

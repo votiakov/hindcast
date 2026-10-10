@@ -147,6 +147,20 @@ Then, in order of precedence:
 6. **Load never came close**: the CPU limit is the only limit known — CPU-bound, noted as
    *extrapolated*.
 
+### Long histories
+
+Over 1,000 buckets, the capacity fits (and the bootstrap behind the band) run on a compact copy of
+the history (`compactFit`):
+- the busiest episodes, busiest first, up to ~750 buckets. An episode is the stretches at ≥ 70%
+  of the service's peak load, or with its own time ≥ 2× the quiet one, with the 3 buckets before
+  and the 15 after, where a backlog drains;
+- an even sample of 250 of everything else.
+
+The limit shows near the peaks, and a fortnight of similar afternoons repeats what one of them
+says. Fit quality (the replay error that sets good / fair / poor) is still measured on the whole
+history. On HotROD tiled to 20,250 buckets the fitted numbers are identical, and calibration takes
+46 s instead of about 7 minutes.
+
 ### Capacity bands
 
 Every capacity carries a 10th–90th percentile band and 40 samples that the backtest draws from:
@@ -230,7 +244,9 @@ how its capacity was read, what limited it, whether it was extrapolated. They sh
 Two kinds of check travel with the model (`model.accuracy`) into the app, the CLI
 (`bottleneck accuracy model.json`) and every report:
 
-- **Holdout** (`--holdout 0.3`): calibrated on the first 70%, the last 30% predicted — p99 over every
+- **Holdout** (`--holdout 0.3`): calibrated on the first 70% of the requests, the last 30% predicted
+  (split by requests, not by time, so a quiet week with one busy hour isn't judged on its empty
+  nights) — p99 over every
   request, cost against the bill sliced to that window, and how often the measurement fell inside the
   model's 10–90% band.
 - **Against recorded runs** (the reference systems): the run with a change really applied, and

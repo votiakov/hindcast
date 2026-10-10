@@ -194,52 +194,52 @@
    "capacity": {
     "limit": "concurrency",
     "servers": 1,
-    "perReplicaRps": 9.913019063733707,
+    "perReplicaRps": 8.9335,
     "band": [
-     8.704114299863743,
-     11.12192382760367
+     7.7,
+     10.167
     ],
     "samples": [
-     8.826399773013208,
-     9.208534735428028,
-     10.231497884531356,
-     10.265925941703113,
-     8.776436722112697,
-     9.492995175932345,
-     9.74176356329112,
-     10.81154157680806,
-     10.272823373191764,
-     9.571523549456668,
-     9.561460053064941,
-     10.157891505576828,
-     8.736998812302154,
-     10.937404948362735,
-     10.009925361489294,
-     10.077515949787701,
-     10.25766169378548,
-     9.004856902601352,
-     8.87384529702351,
-     10.672796785286426,
-     9.046170264405081,
-     10.422137778638042,
-     9.372450145966114,
-     10.255079538551515,
-     9.414081605544897,
-     10.023256108461103,
-     10.941918749964337,
-     8.878537407665414,
-     8.970436339288852,
-     9.123203415415471,
-     10.350461840796296,
-     8.813973043744836,
-     9.98119396532931,
-     9.6223695674767,
-     10.58464830842312,
-     9.34003210881536,
-     8.906116397788445,
-     11.118265348819712,
-     11.068010841849617,
-     8.739622104387477
+     7.824773378050886,
+     8.214682897994994,
+     9.258458290507784,
+     9.293586788459448,
+     7.773793826040113,
+     8.504930702328915,
+     8.758760296667461,
+     9.85030300467112,
+     9.300624548583757,
+     8.585056740075816,
+     8.574788501278032,
+     9.183354385589947,
+     7.7335535497129895,
+     9.978727073673625,
+     9.032377861891174,
+     9.10134358455008,
+     9.285154403948225,
+     8.00686122808326,
+     7.873184183943784,
+     9.708735442480306,
+     8.049015112580964,
+     9.452976764095249,
+     8.381933176876744,
+     9.282519714619266,
+     8.424411630866816,
+     9.045979823667789,
+     9.983332708825357,
+     7.877971755843377,
+     7.971740376453846,
+     8.127615507426905,
+     9.37984257522435,
+     7.812093826269265,
+     9.003061923843342,
+     8.63693722322234,
+     9.618793579845224,
+     8.348855592917651,
+     7.9061118420879355,
+     10.16326708925725,
+     10.111990151486593,
+     7.736230212824885
     ]
    },
    "self": {
@@ -256,13 +256,13 @@
     "source": "none"
    },
    "fit": {
-    "status": "poor",
-    "latencyMape": 0.40947375607928843,
-    "p99Mape": 0.39243234426720136,
+    "status": "unexplained",
+    "latencyMape": 2.421071457140384,
+    "p99Mape": 1.3869157008174355,
     "samples": 81,
     "notes": [
-     "broke between 9 and 11 req/s per replica in the history",
-     "replaying the history reproduces its self time within 41% (mean abs. error)"
+     "broke between 8 and 10 req/s per replica in the history",
+     "replaying the history reproduces its self time within 242% (mean abs. error)"
     ]
    }
   },
@@ -589,7 +589,7 @@
    "overheadMs": 106.28199242807699,
    "baseExcessMs": 145.9805,
    "baseP50Ms": 421.61350000000004,
-   "tail": 2,
+   "tail": 1.15,
    "errorRate": 0,
    "errorSlope": 0.0049604124020115265,
    "bytes": {
@@ -606,10 +606,10 @@
     "samples": 81,
     "notes": [
      "errors grow with traffic: -0.69% + 0.496% per req/s",
-     "replaying the history reproduces its p99 within 12% (mean abs. error)"
+     "replaying the history reproduces its p99 within 14% (mean abs. error)"
     ],
-    "p99Mape": 0.1160982529740245,
-    "latencyMape": 0.062122439027582764
+    "p99Mape": 0.14331011485605122,
+    "latencyMape": 0.14602697667685025
    }
   }
  },
@@ -627,12 +627,12 @@
    "checks": [
     {
      "metric": "p99",
-     "predicted": 644.6935134626958,
+     "predicted": 641.3334998248488,
      "measured": 658.7220000000002,
-     "error": 0.021296520440040538,
+     "error": 0.026397327211101825,
      "tolerance": 0.2,
      "pass": true,
-     "note": "replicas-2: p99 of all 11,590 requests of the run; per 5-minute window the typical error is 3%, worst 5%"
+     "note": "replicas-2: p99 of all 11,590 requests of the run; per 5-minute window the typical error is 3%, worst 6%"
     },
     {
      "metric": "errors",
@@ -654,9 +654,9 @@
     },
     {
      "metric": "breaking-point",
-     "predicted": 6.641192881849753,
+     "predicted": 6.579852860566607,
      "measured": 7.60711266373816,
-     "error": 0.12697587436725968,
+     "error": 0.13503938334820906,
      "tolerance": 0.15,
      "pass": true,
      "note": "stress: step load test, p99 and errors over every request of each plateau (SLO p99 ≤ 1000 ms, errors ≤ 3%)"
@@ -671,11 +671,11 @@
      "note": "stress-replicas-2: step load test, p99 and errors over every request of each plateau (SLO p99 ≤ 1000 ms, errors ≤ 3%)"
     }
    ],
-   "measuredAt": "2026-10-08T03:56:47.111Z"
+   "measuredAt": "2026-10-10T08:26:21.643Z"
   },
   {
    "method": "holdout",
-   "label": "last 30% of the history",
+   "label": "the last 30% of the requests",
    "checks": [
     {
      "metric": "p99",
@@ -696,7 +696,7 @@
      "note": "model cost vs the bill over the held-out window"
     }
    ],
-   "measuredAt": "2026-10-08T03:56:50.056Z"
+   "measuredAt": "2026-10-10T08:26:26.856Z"
   }
  ],
  "fittedOn": {

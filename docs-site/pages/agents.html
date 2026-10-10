@@ -4,7 +4,7 @@
 <pre><code>connect_telemetry  →  collect_telemetry  →  calibrate_model  →  verify_change
 probe Prometheus,     history into the       the model, and      verdict, confidence,
 Jaeger or Tempo       workspace              how far to trust it $, SLO minutes, why</code></pre>
-<p>Your agent (Claude Code, Cursor, Claude Desktop, or anything with a shell) gets eight tools over MCP or as <code>bottleneck agent &lt;tool&gt;</code> with JSON in and out. The user asks "can we move checkout to Graviton?". The agent finds the Prometheus and Jaeger, collects a week of history, fits the model, backtests the change and answers with evidence.</p>
+<p>Your agent (Claude Code, Cursor, Claude Desktop, or anything with a shell) gets nine tools over MCP or as <code>bottleneck agent &lt;tool&gt;</code> with JSON in and out. The user asks "can we move checkout to Graviton?". The agent finds the Prometheus and Jaeger, collects a week of history, fits the model, backtests the change and answers with evidence.</p>
 <p>Everything is read-only towards your systems: queries to your Prometheus and Jaeger or Tempo, and one <code>kubectl get</code> against a context you name. Credentials stay in environment variables. Nothing leaves your machine.</p>
 
 <h2>Set up</h2>
@@ -19,6 +19,7 @@ claude mcp add bottleneck -- node /path/to/bottleneck/dist-cli/bottleneck-mcp.mj
 <tr><td><code>collect_telemetry</code></td><td>queries a window (<code>last: "7d"</code>), fetches traces spread across it, adds the bill, imports. Reports per service which signals exist.</td></tr>
 <tr><td><code>calibrate_model</code></td><td>fits the model and holds back 30% of the history to measure accuracy. Returns a trust report: services whose limit the history reached, services whose capacity is extrapolated, services it can't explain.</td></tr>
 <tr><td><code>verify_change</code></td><td>backtests changes given as a strategy, a Kubernetes manifest diff, a <b>Terraform plan</b>, or edited manifests against the live cluster. Verdict, confidence, $ with its band, SLO minutes, worst moment, headroom, an HTML report, and a link that opens the result on the <a href="backtest.html">backtest screen</a>.</td></tr>
+<tr><td><code>suggest_changes</code></td><td>"what should we change?": fixes for the services that ran out of capacity (more replicas, of the host for an in-process dependency; more CPU or autoscaling when CPU-bound) and savings for the ones that idled (fewer replicas, smaller CPU, Graviton). All backtested and judged; the passing savings are also tried together. On the live HotROD: six savings, together −$35/month with no SLO change, and two customer replicas cutting failed requests by 79%.</td></tr>
 <tr><td><code>find_headroom</code></td><td>req/s within SLO, as built and with a change, and what binds first.</td></tr>
 <tr><td><code>verify_design</code></td><td>a design on paper: failures, headroom, cost against a budget; fixes as exact spec changes, so the agent can loop until it passes.</td></tr>
 <tr><td><code>read_cluster</code></td><td><code>kubectl get deployments,statefulsets,hpa</code> on a named context, saved as the base for edited manifests.</td></tr>

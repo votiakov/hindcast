@@ -5,7 +5,8 @@ import type { Dataset } from '../src/backtest/dataset';
 import { calibrate, type CalibrateOptions } from '../src/backtest/calibrate';
 import { holdoutAccuracy, modelBreakingPoint } from '../src/backtest/accuracy';
 import { backtest, type BacktestResult, type Ranged, type StrategyResult } from '../src/backtest/backtest';
-import { basePlan } from '../src/backtest/engine';
+import { basePlan, runPlan } from '../src/backtest/engine';
+import { observedReplicas, trafficOf } from '../src/backtest/calibrate';
 import { applyStrategy, StrategySpec } from '../src/backtest/strategy';
 import { reviveModel, type Model } from '../src/backtest/model';
 import { backtestMarkdown, headline } from '../src/backtest/report';
@@ -58,8 +59,16 @@ export interface Calibration {
 
 const LIMIT_SEEN = 0.85;
 
-export function calibrateModel(ws: Workspace, o: { holdout?: number; slo?: { p99Ms: number; errorRate: number }; timeoutMs?: number; listPrices?: boolean } = {}) {
+/** a phase boundary: report it, and let the event loop flush the notification before more CPU work */
+const step = async (progress: ((m: string, d: number, t: number) => Promise<void>) | undefined, message: string, done: number, total: number) => {
+  if (!progress) return;
+  await progress(message, done, total);
+  await new Promise((r) => setImmediate(r));
+};
+
+export async function calibrateModel(ws: Workspace, o: { holdout?: number; slo?: { p99Ms: number; errorRate: number }; timeoutMs?: number; listPrices?: boolean } = {}, progress?: (m: string, d: number, t: number) => Promise<void>) {
   const d = ws.readJson<Dataset>('dataset.json');
+  await step(progress, `fitting ${Object.keys(d.services).length} services on ${d.n} buckets`, 0, 3);
   const src = ws.sources();
   const opts: CalibrateOptions = {
     ...(o.slo ?? src.system.slo ? { slo: o.slo ?? src.system.slo } : {}),
@@ -69,6 +78,7 @@ export function calibrateModel(ws: Workspace, o: { holdout?: number; slo?: { p99
   const m = calibrate(d, opts);
   const warnings: string[] = [];
   const holdout = o.holdout ?? 0.3;
+  await step(progress, 'measuring accuracy on the held-back requests', 1, 3);
   if (holdout > 0 && d.n >= 30) {
     try {
       m.accuracy.push(holdoutAccuracy(d, { ...opts, holdout }));
@@ -78,6 +88,7 @@ export function calibrateModel(ws: Workspace, o: { holdout?: number; slo?: { p99
   } else if (holdout > 0) warnings.push(`only ${d.n} buckets of history: too short to hold any back and measure accuracy`);
   ws.writeJson('model.json', m);
 
+  await step(progress, 'replaying the history for the trust report', 2, 3);
   // replay the history once: how close each service came to its fitted capacity
   const replay = backtest(m, d, [], { draws: 1 });
   const peak = replay.baseline.peakUtil;
@@ -232,6 +243,21 @@ export interface VerifyOptions {
   report?: boolean;
 }
 
+/**
+ * Capacity draws that fit a time budget: one replay of this history is timed, and the backtest of
+ * `plans` plans gets as many draws as fit in ~40 s (at least 3, at most what was asked). A
+ * fortnight of 1-minute buckets replays in seconds, so 30 draws of five plans would take minutes;
+ * fewer draws make the 10–90% bands coarser, not the medians wrong.
+ */
+export function drawsFor(m: Model, d: Dataset, plans: number, requested = 30, budgetMs = 40_000): { draws: number; note?: string } {
+  const t0 = performance.now();
+  runPlan(basePlan(m, observedReplicas(d, m)), trafficOf(d, m));
+  const one = Math.max(1, performance.now() - t0);
+  const fit = Math.floor(budgetMs / (plans * one));
+  const draws = Math.max(3, Math.min(requested, fit));
+  return draws < requested ? { draws, note: `${draws} capacity draws instead of ${requested}: one replay of this ${d.n}-bucket history takes ${Math.round(one)} ms, so the bands are coarser (the medians are not affected). Pass draws to override, or last to shorten the history` } : { draws };
+}
+
 export function verifyChange(ws: Workspace, inputs: ChangeInput[], o: VerifyOptions = {}) {
   const m = reviveModel(ws.readJson<Model>('model.json'));
   let d = ws.readJson<Dataset>('dataset.json');
@@ -243,7 +269,9 @@ export function verifyChange(ws: Workspace, inputs: ChangeInput[], o: VerifyOpti
   const { strategies, notes } = strategiesFrom(ws, inputs, m);
   if (!strategies.length) return { verdict: 'nothing to verify', notes, results: [] };
   const gate = o.gateMinutes ?? 0.5;
-  const r = backtest(m, d, strategies, { draws: o.draws ?? 30 });
+  const budget = o.draws ? { draws: o.draws } : drawsFor(m, d, strategies.length + 1);
+  if (budget.note) notes.push(budget.note);
+  const r = backtest(m, d, strategies, { draws: budget.draws });
   const base = basePlan(m);
   const before = modelBreakingPoint(m, base);
   const results = r.strategies.map((s, i) => judge(m, r, s, strategies[i], cal, gate, before, modelBreakingPoint(m, applyStrategy(m, base, strategies[i]).plan)));
@@ -274,7 +302,7 @@ export function verifyChange(ws: Workspace, inputs: ChangeInput[], o: VerifyOpti
   };
 }
 
-function sliceLast(d: Dataset, buckets: number): Partial<Dataset> {
+export function sliceLast(d: Dataset, buckets: number): Partial<Dataset> {
   const k = d.n - buckets;
   const cut = <T>(a: T[] | undefined) => (a ? a.slice(k) : a);
   const services = Object.fromEntries(Object.entries(d.services).map(([id, s]) => [id, Object.fromEntries(Object.entries(s).map(([mm, v]) => [mm, Array.isArray(v) ? cut(v) : v]))]));
@@ -282,7 +310,7 @@ function sliceLast(d: Dataset, buckets: number): Partial<Dataset> {
   return { start: d.start + k * d.stepS, n: buckets, services: services as Dataset['services'], endpoints: endpoints as Dataset['endpoints'] };
 }
 
-function judge(m: Model, r: BacktestResult, s: StrategyResult, spec: StrategySpec, cal: Calibration | null, gate: number, before: { rps: number; limitedBy: string | null }, after: { rps: number; limitedBy: string | null }) {
+export function judge(m: Model, r: BacktestResult, s: StrategyResult, spec: StrategySpec, cal: Calibration | null, gate: number, before: { rps: number; limitedBy: string | null }, after: { rps: number; limitedBy: string | null }) {
   const dm = s.delta.minutesOutOfSlo;
   const touched = new Set(spec.changes.flatMap((c) => ('service' in c ? [c.service] : [])));
   const histPeak = cal?.historyPeakUtil ?? r.baseline.peakUtil;
@@ -331,7 +359,12 @@ function judge(m: Model, r: BacktestResult, s: StrategyResult, spec: StrategySpe
   const reasons: string[] = [headline(s, r.baseline)];
   if (dm.p50 > gate) reasons.push(`adds ${r1(dm.p50)} min out of SLO (10–90%: ${r1(dm.lo)} … ${r1(dm.hi)})`);
   else if (dm.hi > gate) reasons.push(`no added time out of SLO at the median, but ${r1(dm.hi)} min in the worst 10% of capacity draws`);
-  if (verdict === 'inconclusive' && level === 'low' && dm.hi <= gate) reasons.push('the backtest passes, but on capacities the history never tested — load-test before trusting it');
+  if (verdict === 'inconclusive' && level === 'low' && dm.hi <= gate) reasons.push(`the backtest passes, but confidence is low (${warnings[0]}) — load-test before trusting it`);
+  // the SLO minutes can stay put while failures move a lot (the same minutes are out of SLO for
+  // another reason): say what happened to the failed requests
+  const fb = r.baseline.summary.failedRequests.p50;
+  const fd = s.delta.failedRequests.p50;
+  if (fb > 0 && Math.abs(fd) > 0.1 * fb) reasons.push(`${fd < 0 ? 'cuts' : 'adds'} ${Math.round(Math.abs(fd)).toLocaleString('en-US')} failed requests (${fd < 0 ? '−' : '+'}${Math.round((Math.abs(fd) / fb) * 100)}% of ${Math.round(fb).toLocaleString('en-US')})${Math.abs(dm.p50) <= 0.5 ? ', though the minutes out of SLO stay the same: something else breaks the SLO in those minutes' : ''}`);
   if (s.worst.service && s.summary.peakP99Ms.p50 > r.slo.p99Ms) reasons.push(`worst at ${iso(s.worst.t)}: ${s.worst.why}`);
   const worse = Object.entries(s.endpoints)
     .filter(([id, e]) => e.minutesOutOfSlo > (r.baseline.endpoints[id]?.minutesOutOfSlo ?? 0) + gate)

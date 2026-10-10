@@ -21,7 +21,7 @@ for (const sys of systems) {
   for (const a of m.accuracy)
     for (const c of a.checks) {
       if (c.metric === 'errors') continue;
-      const run = a.method === 'holdout' ? 'holdout (last 30% of history)' : c.note.split(':')[0];
+      const run = a.method === 'holdout' ? 'holdout (last 30% of requests)' : c.note.split(':')[0];
       L.push(`| ${m.name} | ${c.metric} | ${run} | ${fmt(c.metric, c.predicted)} | ${fmt(c.metric, c.measured)} | ${(c.error * 100).toFixed(1)}% | ≤ ${c.tolerance * 100}% | ${c.pass ? '✅' : '❌'} |`);
     }
 }

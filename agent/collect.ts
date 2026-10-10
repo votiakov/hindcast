@@ -6,7 +6,7 @@ import { exportPlan, manifestMetrics, runExport } from '../src/backtest/import/p
 import { parseTraceFile, parseTraceLines, type Span } from '../src/backtest/import/traces';
 import type { Dataset } from '../src/backtest/dataset';
 import { fileAccess, glob, readLines } from '../cli/files';
-import { fetchTraces, probeJaeger, probePrometheus, probeTempo, shapeOf } from './sources';
+import { fetchTraces, probeJaeger, probePrometheus, probeTempo, shapeOf, trafficBySlice } from './sources';
 import { authHeaders, iso, seconds, Workspace } from './workspace';
 
 /**
@@ -26,6 +26,7 @@ export interface CollectOptions {
 }
 
 const STEPS = [30, 60, 120, 300, 600, 900, 1800, 3600];
+// (2880 buckets a day at 30 s; 20,160 at 60 s is two weeks)
 
 const toEpoch = (v: string | number) => (typeof v === 'number' ? (v > 1e12 ? v / 1000 : v) : Date.parse(v) / 1000);
 
@@ -37,7 +38,8 @@ export interface Coverage {
   filled: number;
 }
 
-export async function collect(ws: Workspace, o: CollectOptions = {}) {
+export async function collect(ws: Workspace, o: CollectOptions = {}, progress?: (m: string, d: number, t: number) => Promise<void>) {
+  const say = (m: string, k: number) => progress?.(m, k, 4) ?? Promise.resolve();
   const src = ws.sources();
   if (!src.prometheus) throw new Error('no Prometheus connected — call connect_telemetry with prometheus.url first');
   const warnings: string[] = [];
@@ -55,9 +57,12 @@ export async function collect(ws: Workspace, o: CollectOptions = {}) {
   let start = o.start !== undefined ? toEpoch(o.start) : end - seconds(o.last ?? '24h');
   if (o.start === undefined && !o.last && probe.data) start = Math.max(start, Date.parse(probe.data.oldestFound) / 1000);
   if (!(end > start)) throw new Error(`empty window ${iso(start)} … ${iso(end)}`);
-  const stepS = o.stepS ?? STEPS.find((s) => (end - start) / s <= 1200) ?? 3600;
+  // fine buckets: a three-minute overload is the most valuable part of a history, and wide buckets
+  // average it away. 30 s up to a day, 60 s up to two weeks, then whatever keeps ~20k buckets
+  const stepS = o.stepS ?? STEPS.find((s) => (end - start) / s <= 20_160) ?? 3600;
   const rateWindow = `${Math.max(60, stepS)}s`;
 
+  await say(`window ${iso(start)} … ${iso(end)} in ${stepS} s buckets`, 0);
   // ---- traces first: they say which services requests enter through
   const tel = ws.path('telemetry');
   rmSync(tel, { recursive: true, force: true });
@@ -76,7 +81,10 @@ export async function collect(ws: Workspace, o: CollectOptions = {}) {
       ignore ??= shape.clientsOnly;
     }
     if (!entry?.length) throw new Error(`could not tell which services requests enter through from ${kind}: give system.entry in connect_telemetry`);
-    const got = await fetchTraces(src, entry, start, end, { maxTraces: o.maxTraces });
+    await say('fetching traces', 1);
+    // spread the traces by where the traffic was: 96 slices, weighted by entry requests
+    const weights = await trafficBySlice(src.prometheus, presets, entry, start, end, 96).catch(() => null);
+    const got = await fetchTraces(src, entry, start, end, { maxTraces: o.maxTraces, weights, slices: 96 });
     const f = join(tel, 'traces', `${kind}.jsonl`);
     writeFileSync(f, got.lines.join('\n') + '\n');
     traceFiles = [f];
@@ -104,6 +112,7 @@ export async function collect(ws: Workspace, o: CollectOptions = {}) {
   } else warnings.push('no traces: without them the model has no topology (which service calls which). Connect Jaeger or Tempo, or give trace files');
 
   // ---- metrics
+  await say('querying Prometheus', 2);
   const plan = exportPlan(presets, { window: rateWindow, selector: src.prometheus.selector, entry });
   const exported = await runExport(src.prometheus.url, plan, { start, end, stepS }, (file, body) => writeFileSync(join(tel, 'metrics', file), body), authHeaders(src.prometheus));
   const empty = exported.filter((e) => !e.series).map((e) => e.file);
@@ -132,6 +141,7 @@ export async function collect(ws: Workspace, o: CollectOptions = {}) {
   writeFileSync(manifestPath, `# Written by Bottleneck collect_telemetry, ${iso(now)}: ${iso(start)} … ${iso(end)}\n` + toYaml(manifest));
 
   // ---- import
+  await say('importing', 3);
   const { dataset, log } = importBundle(manifest, fileAccess(manifestPath));
   for (const id of src.system.exclude ?? []) {
     delete dataset.services[id];

@@ -271,9 +271,28 @@ export function billTotal(d: Dataset): number | null {
   return total + d.bill.unattributed;
 }
 
+/**
+ * Where to split: the last `share` of the *requests*, not of the buckets. A day that was idle but
+ * for one busy hour would otherwise hold back hours of nothing; on a steadily busy history the two
+ * are the same.
+ */
+export function holdoutCut(d: Dataset, share: number): number {
+  const byBuckets = Math.floor(d.n * (1 - share));
+  const per = new Array(d.n).fill(0);
+  for (const e of Object.values(d.endpoints)) e.rps?.forEach((v, i) => (per[i] += v ?? 0));
+  const total = per.reduce((a, x) => a + x, 0);
+  if (!(total > 0)) return byBuckets;
+  let cum = 0;
+  for (let i = 0; i < d.n; i++) {
+    cum += per[i];
+    if (cum >= total * (1 - share)) return Math.max(1, Math.min(d.n - 1, i + 1));
+  }
+  return byBuckets;
+}
+
 /** calibrate on the first part, predict the rest */
 export function holdoutAccuracy(d: Dataset, opts: CalibrateOptions & { holdout?: number; requests?: RequestLog } = {}): AccuracyRecord {
-  const cut = Math.floor(d.n * (1 - (opts.holdout ?? 0.3)));
+  const cut = holdoutCut(d, opts.holdout ?? 0.3);
   const train = sliceDataset(d, 0, cut);
   const test = sliceDataset(d, cut, d.n);
   const model = calibrate(train, opts);
@@ -312,7 +331,7 @@ export function holdoutAccuracy(d: Dataset, opts: CalibrateOptions & { holdout?:
     const pred = r.cost.compute.reduce((a, x, i) => a + x + r.cost.requests[i] + r.cost.transfer[i] + r.cost.other[i], 0);
     checks.push(check('cost', pred, bill, TOLERANCE.cost, 'model cost vs the bill over the held-out window'));
   }
-  return { method: 'holdout', label: `last ${Math.round((opts.holdout ?? 0.3) * 100)}% of the history`, checks, measuredAt: new Date().toISOString() };
+  return { method: 'holdout', label: `the last ${Math.round((opts.holdout ?? 0.3) * 100)}% of the requests`, checks, measuredAt: new Date().toISOString() };
 }
 
 export interface ReferenceRun {

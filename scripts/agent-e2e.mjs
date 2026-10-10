@@ -27,7 +27,8 @@ await client.connect(new StdioClientTransport({ ...server, env: { ...process.env
 const transcript = [];
 const call = async (name, args = {}) => {
   const t0 = Date.now();
-  const r = await client.callTool({ name, arguments: args });
+  // long calls report progress; the timeout restarts with each report
+  const r = await client.callTool({ name, arguments: args }, undefined, { timeout: 120_000, resetTimeoutOnProgress: true, onprogress: (p) => console.log(`   … ${p.message ?? ''}`) });
   const text = r.content?.[0]?.text ?? '';
   let out;
   try {
@@ -88,6 +89,14 @@ try {
   expect(by['Clients retry twice, no budget'].verdict === 'fail', 'retries without a budget fail');
   expect(by['Everything on Graviton'].verdict !== 'fail', 'Graviton does not fail');
   expect(by['Everything on Graviton'].cost.monthlyDelta.p50 < 0, 'Graviton saves money');
+
+  const sg = await call('suggest_changes');
+  console.log(`   saturated: ${sg.saturated.map((x) => `${x.service} ${Math.round(x.historyPeakUtil * 100)}%`).join(', ') || 'none'}`);
+  for (const f of sg.fixes) console.log(`   fix  ${f.name}: ${f.verdict} (${f.confidence}) — ${f.summary}; failed ${f.failedRequestsDelta}`);
+  for (const f of sg.savings) console.log(`   save ${f.name}: ${f.monthlyDelta}/month`);
+  if (sg.combinedSavings) console.log(`   together: ${sg.combinedSavings.verdict}, ${sg.combinedSavings.summary}`);
+  expect(sg.savings.length > 0 && sg.savings.every((x) => x.verdict === 'pass'), 'suggest_changes finds savings that pass');
+  expect(['mysql', 'customer'].some((id) => sg.saturated.some((x) => x.service === id)), 'suggest_changes sees the saturated lock');
 
   const h = await call('find_headroom', { strategy: { name: 'Two customer replicas', changes: [{ service: 'customer', replicas: 2 }] } });
   console.log(`   as built ${h.asBuilt.rps} req/s (${h.asBuilt.limitedBy}); with two customer replicas ${h.withStrategy.rps} req/s; history peak ${h.historyPeakRps?.toFixed?.(1)}`);

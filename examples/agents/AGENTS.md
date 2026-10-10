@@ -22,6 +22,7 @@ $B model_status                                     # what's already there; foll
 $B connect_telemetry '{"prometheus":{"url":"<prometheus-url>","tokenEnv":"PROM_TOKEN"},"jaeger":{"url":"<jaeger-url>"},"system":{"name":"<system>","slo":{"p99Ms":<p99>,"errorRate":<rate>}}}'
 $B collect_telemetry '{"last":"7d"}'
 $B calibrate_model
+$B suggest_changes                                   # what saturated, what idled: fixes and savings, already backtested
 
 # the change: a strategy, a Kubernetes diff, or a Terraform plan
 terraform show -json plan.out > /tmp/plan.json

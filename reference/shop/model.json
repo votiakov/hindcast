@@ -1539,11 +1539,11 @@
      "note": "stress-cpu1: step load test, p99 and errors over every request of each plateau (SLO p99 ≤ 800 ms, errors ≤ 1%)"
     }
    ],
-   "measuredAt": "2026-10-08T03:57:24.222Z"
+   "measuredAt": "2026-10-10T08:27:32.309Z"
   },
   {
    "method": "holdout",
-   "label": "last 30% of the history",
+   "label": "the last 30% of the requests",
    "checks": [
     {
      "metric": "p99",
@@ -1564,7 +1564,7 @@
      "note": "model cost vs the bill over the held-out window"
     }
    ],
-   "measuredAt": "2026-10-08T03:57:32.447Z"
+   "measuredAt": "2026-10-10T08:27:47.824Z"
   }
  ],
  "fittedOn": {
