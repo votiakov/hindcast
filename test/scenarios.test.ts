@@ -10,3 +10,14 @@ describe('built-in comparisons', () => {
     });
   }
 });
+
+describe('studio episodes', () => {
+  it('every comparison has a written hook for its episode', async () => {
+    const { EPISODES } = await import('../src/studio/episodes');
+    for (const sc of SCENARIOS) {
+      const ep = EPISODES.find((e) => e.id.endsWith(sc.id))!;
+      expect(ep, sc.id).toBeDefined();
+      expect(ep.hook, sc.id).not.toBe(sc.title);
+    }
+  });
+});

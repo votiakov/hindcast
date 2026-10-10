@@ -37,6 +37,7 @@ import './theme/reference.css';
 import './theme/neon-chrome.css';
 import './theme/terminal.css';
 import './ui/phone.css';
+import { manualClock } from './sim/clock';
 
 /**
  * Render mode (used by scripts/record.mjs): `?render=1&ep=<id>&aspect=4:5&brand=personal`
@@ -72,6 +73,7 @@ function useSimLoop() {
     let last = performance.now();
     const id = setInterval(() => {
       const now = performance.now();
+      if (manualClock.on) return void (last = now);
       useSim.getState().tick(Math.min(0.25, (now - last) / 1000));
       last = now;
     }, 50);
@@ -114,7 +116,7 @@ function useSimLoop() {
           return;
         }
       }
-      if (e.code !== 'Space') return;
+      if (e.code !== 'Space' || manualClock.on) return;
       e.preventDefault();
       s.setRunning(!s.running);
     };

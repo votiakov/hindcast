@@ -133,6 +133,14 @@ Graph swaps keep engine state for nodes whose ids survive, so a fix happens live
 
 ## Rendering video and carousels
 
+**In the browser:** Studio → *Render video, GIF and carousel*. The episode plays frame by frame on a
+virtual clock (simulation, camera moves and animations all follow it) and is encoded on the page:
+MP4 (H.264 through WebCodecs; Chrome, Edge, Safari 16.4+, Firefox 130+), a GIF (540 px wide, 10 fps),
+a PNG still ~2 s after every caption beat plus the outro, and those stills as a PDF carousel. Nothing
+is uploaded. It takes about three times the clip's length (`src/studio/exportClip.ts`).
+
+**From the command line** (frame-perfect, needs this repository and the dev server):
+
 ```
 npm run dev
 npm run record -- <episode-id> [--aspect 4:5|1:1|9:16|16:9] [--brand personal|reducecost] [--theme terminal|neon|reference|transit] [--fps 30] [--gif] [--no-stills]

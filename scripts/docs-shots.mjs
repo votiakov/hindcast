@@ -346,6 +346,7 @@ const SHOTS = {
     pins: {
       episodes: ['.ep-list', 'tr', 0, -14, 14],
       stage: ['.studio-canvas', 'tl', 0, 14, 14],
+      render: ['.studio-panel .btn.primary', 'r', 0, 0, 8],
     },
   },
 };

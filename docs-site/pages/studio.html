@@ -4,13 +4,15 @@
 <h2>Episodes</h2>
 <ol class="pins">
 <li data-pin="episodes"><h3>Scripted episodes</h3><p>A single board or two side by side, captions on a timeline, camera moves onto components, live swaps to the fixed design. Episodes are also generated from any comparison and from any audit incident.</p></li>
-<li data-pin="stage"><h3>The stage</h3><p>What gets rendered, at the chosen format (Feed 4:5, Square 1:1, Story 9:16, Slide 16:9), brand and theme. Below the list: the exact <code>npm run record</code> command for this selection.</p></li>
+<li data-pin="stage"><h3>The stage</h3><p>What gets rendered, at the chosen format (Feed 4:5, Square 1:1, Story 9:16, Slide 16:9), brand and theme. </p></li>
+<li data-pin="render"><h3>Render in the browser</h3><p>Plays the episode frame by frame on a virtual clock and encodes it on the page: an MP4, a GIF, a PNG still after every caption and those stills as a PDF carousel (LinkedIn shows a PDF as a swipeable post). Nothing is uploaded; it takes about three times the clip's length.</p></li>
 </ol>
 </div>
 </section>
 
 <section class="prose">
-<h2>Rendering</h2>
+<h2>Rendering from the command line</h2>
+<p>The same output, frame-perfect with ffmpeg, from a checkout with the dev server running. The Studio shows the exact command for the current selection under <i>Or from the command line</i>.</p>
 <pre><code>npm run dev
 npm run record -- &lt;episode-id&gt; --aspect 4:5 --brand personal --theme terminal [--gif]
 npm run record -- --card card.json        # a backtest card or clip</code></pre>

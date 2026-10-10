@@ -26,20 +26,22 @@
   <p class="lede">Comparisons and backtest results rendered as video and carousels for posts and talks.</p>
 </header>
 <section class="screen" data-shot="studio">
-<figure class="shot"><div class="shot-frame"><a class="shot-full" href="shots/studio.png" target="_blank" rel="noopener" title="Open full size"><img src="shots/studio.png" width="1280" height="800" alt="Episodes — screenshot" loading="lazy"></a><a class="pin" href="#studio-episodes" data-for="studio-episodes" style="left:22.42%;top:13.5%" aria-label="Note 1">1</a><a class="pin" href="#studio-stage" data-for="studio-stage" style="left:25.78%;top:6.63%" aria-label="Note 2">2</a></div></figure>
+<figure class="shot"><div class="shot-frame"><a class="shot-full" href="shots/studio.png" target="_blank" rel="noopener" title="Open full size"><img src="shots/studio.png" width="1280" height="800" alt="Episodes — screenshot" loading="lazy"></a><a class="pin" href="#studio-episodes" data-for="studio-episodes" style="left:22.42%;top:13.5%" aria-label="Note 1">1</a><a class="pin" href="#studio-stage" data-for="studio-stage" style="left:25.78%;top:6.63%" aria-label="Note 2">2</a><a class="pin" href="#studio-render" data-for="studio-render" style="left:23.52%;top:87.44%" aria-label="Note 3">3</a></div></figure>
 <div class="notes">
 <div>
 <h2>Episodes</h2>
 <ol class="pins">
 <li id="studio-episodes" data-n="1"><h3>Scripted episodes</h3><p>A single board or two side by side, captions on a timeline, camera moves onto components, live swaps to the fixed design. Episodes are also generated from any comparison and from any audit incident.</p></li>
-<li id="studio-stage" data-n="2"><h3>The stage</h3><p>What gets rendered, at the chosen format (Feed 4:5, Square 1:1, Story 9:16, Slide 16:9), brand and theme. Below the list: the exact <code>npm run record</code> command for this selection.</p></li>
+<li id="studio-stage" data-n="2"><h3>The stage</h3><p>What gets rendered, at the chosen format (Feed 4:5, Square 1:1, Story 9:16, Slide 16:9), brand and theme. </p></li>
+<li id="studio-render" data-n="3"><h3>Render in the browser</h3><p>Plays the episode frame by frame on a virtual clock and encodes it on the page: an MP4, a GIF, a PNG still after every caption and those stills as a PDF carousel (LinkedIn shows a PDF as a swipeable post). Nothing is uploaded; it takes about three times the clip's length.</p></li>
 </ol>
 </div>
 </div>
 </section>
 
 <section class="prose">
-<h2>Rendering</h2>
+<h2>Rendering from the command line</h2>
+<p>The same output, frame-perfect with ffmpeg, from a checkout with the dev server running. The Studio shows the exact command for the current selection under <i>Or from the command line</i>.</p>
 <pre><code>npm run dev
 npm run record -- &lt;episode-id&gt; --aspect 4:5 --brand personal --theme terminal [--gif]
 npm run record -- --card card.json        # a backtest card or clip</code></pre>

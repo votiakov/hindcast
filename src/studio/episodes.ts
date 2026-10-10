@@ -136,8 +136,12 @@ const COMPARE_HOOKS: Record<string, { hook: string; series?: string; metrics?: E
   'llm-provider-outage': { hook: 'Your AI feature has a single point\nof failure you don\'t even run.', series: 'Failure modes at scale', metrics: ['errors', 'p99', 'cost'] },
   'fleet-vs-autoscale': { hook: 'Ten servers all day,\nor two that grow at lunch?', series: 'Cloud cost, made visible', metrics: ['errors', 'p99', 'cost'] },
   'region-failover': { hook: 'A whole AWS region goes dark.\nWhat does staying up cost?', series: 'Failure modes at scale', metrics: ['errors', 'p99', 'cost'] },
+  'replicas-vs-bigger-db': { hook: 'Scale up or scale out?\nThen the primary dies.', series: 'Cloud cost, made visible', metrics: ['errors', 'p99', 'cost'] },
+  'pod-vs-vm-warmup': { hook: 'Same autoscaler.\nOne boots in 10 seconds, one in 2 minutes.', series: 'Failure modes at scale', metrics: ['errors', 'p99'] },
   'node-vs-go': { hook: 'We rewrote it in Go.\nHow much did we save?', series: 'Cloud cost, made visible', metrics: ['errors', 'p99', 'cost'] },
 };
+
+const sentences = (text: string) => text.split(/(?<=[.!?])\s+(?=[A-Z“"])/);
 
 function fromScenario(s: Scenario): Episode {
   const meta = COMPARE_HOOKS[s.id] ?? { hook: s.title };
@@ -162,7 +166,11 @@ function fromScenario(s: Scenario): Episode {
     timeline: s.timeline,
     beats,
     metrics: meta.metrics ?? ['errors', 'p99', 'cost'],
-    outro: { title: s.takeaway.lesson, lines: [`A — ${s.a.title}: ${s.takeaway.a}`, `B — ${s.b.title}: ${s.takeaway.b}`] },
+    // the outro is read in five seconds and is the carousel's last slide: a headline, then one line each
+    outro: (() => {
+      const [title, ...rest] = sentences(s.takeaway.lesson);
+      return { title, lines: [rest.join(' '), `A — ${s.a.title}: ${sentences(s.takeaway.a)[0]}`, `B — ${s.b.title}: ${sentences(s.takeaway.b)[0]}`].filter(Boolean) };
+    })(),
   };
 }
 

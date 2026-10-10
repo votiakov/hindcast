@@ -197,8 +197,9 @@ chaos on whatever is on the boards. Edits on either board are undoable.
 Scripted episodes rendered to video and carousels for posts: a single board or A/B, captions,
 camera moves and live graph swaps, then an outro. Pick the episode (including ones generated from
 a comparison or an audit), the format (Feed 4:5, Square 1:1, Story 9:16, Slide 16:9), the brand and
-the theme; the Studio shows the exact `npm run record` command. Output: MP4, a PNG still after every
-caption, a PDF carousel, optional GIF. Backtest results become cards and clips too (Backtest → Card ↗,
+the theme, then **Render video, GIF and carousel**: it renders in the browser, frame by frame, and
+offers the MP4, the GIF, a PNG still after every caption and the PDF carousel for download. The same
+output from the command line: the `npm run record` command under *Or from the command line*. Backtest results become cards and clips too (Backtest → Card ↗,
 or `bottleneck backtest … --card card.json`). Details: [content.md](content.md).
 
 ---
