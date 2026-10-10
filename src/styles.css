@@ -710,3 +710,14 @@ select { background: #0a1122; color: var(--text); border: 1px solid var(--border
 .cal-f em { font-style: normal; font-family: var(--mono); font-size: 10px; }
 .cal-foot { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
 .cal-foot span { margin-right: auto; }
+
+/* compare takeaway: the measured run */
+.tk-verdict { margin: 4px 0 10px; line-height: 1.5; font-size: 14px; }
+.tk-score { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 12.5px; }
+.tk-score th, .tk-score td { padding: 4px 8px; border-bottom: 1px solid var(--border); text-align: right; }
+.tk-score th:first-child { text-align: left; color: var(--muted); font-weight: 400; }
+.tk-score thead th { font-family: var(--mono); font-size: 11px; color: var(--muted); font-weight: 600; }
+.tk-score thead th.side-A { color: var(--cyan); }
+.tk-score thead th.side-B { color: var(--violet); }
+.tk-score td { font-family: var(--mono); color: var(--muted); }
+.tk-score td.win { color: var(--green); font-weight: 600; }

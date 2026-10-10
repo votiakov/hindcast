@@ -6,7 +6,7 @@ import { graphToSpec } from '../spec/convert';
 import type { AuditResult } from '../sim/audit';
 import './audit.css';
 import { BoardCanvas } from '../canvas/BoardCanvas';
-import { useSim, scenarioById, type BoardId } from '../sim/store';
+import { useSim, scenarioById, type BoardId, type SideScore } from '../sim/store';
 import { SCENARIOS, scenarioCaption, scenarioDuration } from '../scenarios/scenarios';
 import { TEMPLATES, templateGroups } from '../scenarios/templates';
 
@@ -182,6 +182,63 @@ function ScenarioBanner() {
   );
 }
 
+const num = (n: number) => Math.round(n).toLocaleString('en-US');
+const msx = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)} s` : `${Math.round(n)} ms`);
+
+/** one sentence from the measured run: who failed fewer requests, and at what price */
+function verdict(a: SideScore, b: SideScore, ta: string, tb: string): string {
+  const costA = a.costSum / Math.max(1, a.n);
+  const costB = b.costSum / Math.max(1, b.n);
+  const dCost = costB - costA;
+  const price = Math.abs(dCost) < 0.01 ? 'at the same cost' : dCost > 0 ? `for $${dCost.toFixed(2)}/h more` : `and $${(-dCost).toFixed(2)}/h cheaper`;
+  if (Math.abs(a.failed - b.failed) < Math.max(5, 0.05 * Math.max(a.failed, b.failed))) {
+    if (Math.abs(a.outS - b.outS) < 1) return `${ta} and ${tb} served this run alike; the difference is the bill: ${tb} ${Math.abs(dCost) < 0.01 ? 'costs the same' : dCost > 0 ? `costs $${dCost.toFixed(2)}/h more` : `costs $${(-dCost).toFixed(2)}/h less`}.`;
+  }
+  // nobody failed requests: the difference is time out of SLO (latency)
+  if (a.failed < 5 && b.failed < 5) {
+    const [w, l, wn, ln] = b.outS <= a.outS ? [b, a, tb, ta] : [a, b, ta, tb];
+    const p = w === b ? price : Math.abs(dCost) < 0.01 ? 'at the same cost' : dCost > 0 ? `and $${dCost.toFixed(2)}/h cheaper` : `for $${(-dCost).toFixed(2)}/h more`;
+    return `Neither dropped requests, but ${wn} spent ${Math.round(w.outS)} s out of SLO against ${ln}'s ${Math.round(l.outS)} s (worst p99 ${msx(w.peakP99)} vs ${msx(l.peakP99)}), ${p}.`;
+  }
+  const [win, lose, wName, lName] = b.failed <= a.failed ? [b, a, tb, ta] : [a, b, ta, tb];
+  const fewer = lose.failed > 0 ? Math.round((1 - win.failed / lose.failed) * 100) : 0;
+  const pricePhrase = win === b ? price : Math.abs(dCost) < 0.01 ? 'at the same cost' : dCost > 0 ? `and $${dCost.toFixed(2)}/h cheaper` : `for $${(-dCost).toFixed(2)}/h more`;
+  return `${wName} failed ${fewer}% fewer requests than ${lName} (${num(win.failed)} vs ${num(lose.failed)}) and spent ${Math.round(win.outS)} s out of SLO instead of ${Math.round(lose.outS)} s, ${pricePhrase}.`;
+}
+
+/** the measured run, side by side; the better side of each row is marked */
+function Scoreboard({ a, b }: { a: SideScore; b: SideScore }) {
+  const rows: { label: string; va: number; vb: number; fmt: (n: number) => string }[] = [
+    { label: 'failed requests', va: a.failed, vb: b.failed, fmt: num },
+    { label: 'time out of SLO', va: a.outS, vb: b.outS, fmt: (n) => `${Math.round(n)} s` },
+    { label: 'worst p99', va: a.peakP99, vb: b.peakP99, fmt: msx },
+    { label: 'average cost', va: a.costSum / Math.max(1, a.n), vb: b.costSum / Math.max(1, b.n), fmt: (n) => `$${n.toFixed(2)}/h` },
+  ];
+  return (
+    <table className="tk-score">
+      <thead>
+        <tr>
+          <th>this run</th>
+          <th className="side-A">A</th>
+          <th className="side-B">B</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => {
+          const close = Math.abs(r.va - r.vb) <= Math.max(Math.abs(r.va), Math.abs(r.vb)) * 0.03;
+          return (
+            <tr key={r.label}>
+              <th>{r.label}</th>
+              <td className={!close && r.va < r.vb ? 'win' : ''}>{r.fmt(r.va)}</td>
+              <td className={!close && r.vb < r.va ? 'win' : ''}>{r.fmt(r.vb)}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
 function Takeaway() {
   const cmp = useSim((s) => s.compare);
   const titleA = useSim((s) => s.boards.A.title);
@@ -198,6 +255,8 @@ function Takeaway() {
         </button>
         <div className="step-label">Takeaway</div>
         <h2>{sc.title}</h2>
+        <p className="tk-verdict">{verdict(cmp.score.A, cmp.score.B, titleA, titleB)}</p>
+        <Scoreboard a={cmp.score.A} b={cmp.score.B} />
         <div className="tk-cols">
           <div className="tk side-A">
             <span className="pane-tag">A</span>

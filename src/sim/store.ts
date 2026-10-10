@@ -93,7 +93,22 @@ export interface CompareState {
   t: number;
   fired: number[];
   finished: boolean;
+  /** what each side did over the scripted run: the takeaway's scoreboard */
+  score: { A: SideScore; B: SideScore };
 }
+
+export interface SideScore {
+  requests: number;
+  failed: number;
+  /** seconds outside the SLO */
+  outS: number;
+  peakP99: number;
+  /** $/h summed per tick, and ticks, for the average */
+  costSum: number;
+  n: number;
+}
+
+export const emptyScore = (): SideScore => ({ requests: 0, failed: 0, outS: 0, peakP99: 0, costSum: 0, n: 0 });
 
 export interface StudioState {
   episodeId: string;
@@ -304,7 +319,7 @@ function patternMultiplier(p: Pattern, t: number): number {
 function initialCompare(scenarioId: string | null): Pick<State, 'compare'> & { A: Board; B: Board } {
   const sc = scenarioById(scenarioId) ?? SCENARIOS[0];
   return {
-    compare: { scenarioId: sc.id, t: 0, fired: [], finished: false },
+    compare: { scenarioId: sc.id, t: 0, fired: [], finished: false, score: { A: emptyScore(), B: emptyScore() } },
     A: makeBoard('A', sc.a.title, sc.a.graph),
     B: makeBoard('B', sc.b.title, sc.b.graph),
   };
@@ -647,7 +662,7 @@ export const useSim = create<State>()((set, get) => {
     },
     pickScenario: (id) => {
       if (id === null) {
-        set({ compare: { scenarioId: null, t: 0, fired: [], finished: false }, running: false });
+        set({ compare: { scenarioId: null, t: 0, fired: [], finished: false, score: { A: emptyScore(), B: emptyScore() } }, running: false });
         return;
       }
       const sc = scenarioById(id)!;
@@ -655,7 +670,7 @@ export const useSim = create<State>()((set, get) => {
         running: false,
         simT: 0,
         readRatio: sc.readRatio,
-        compare: { scenarioId: id, t: 0, fired: [], finished: false },
+        compare: { scenarioId: id, t: 0, fired: [], finished: false, score: { A: emptyScore(), B: emptyScore() } },
         boards: { ...s.boards, A: makeBoard('A', sc.a.title, sc.a.graph, s.boards.A.version + 1), B: makeBoard('B', sc.b.title, sc.b.graph, s.boards.B.version + 1) },
       }));
     },
@@ -745,6 +760,22 @@ export const useSim = create<State>()((set, get) => {
         for (const b of boards) {
           const { nodes, edges } = get().boards[b];
           for (const e of engines[b].step(systemNodes(nodes), edges, rps, s.readRatio, dt, cfg)) events.push({ b, e });
+        }
+        // the scripted comparison keeps score on both sides, for the takeaway
+        if (sc && !cmp.finished) {
+          const score = { ...cmp.score };
+          for (const b of ['A', 'B'] as const) {
+            const g = engines[b].snapshot([], []).global;
+            const x = { ...score[b] };
+            x.requests += g.rps * dt;
+            x.failed += g.rps * g.errorRate * dt;
+            if (g.rps > 0.5 && (g.errorRate > s.settings.sloErrorRate || g.p99 > s.settings.sloP99Ms)) x.outS += dt;
+            x.peakP99 = Math.max(x.peakP99, g.p99);
+            x.costSum += g.cost;
+            x.n += 1;
+            score[b] = x;
+          }
+          cmp = { ...cmp, score };
         }
 
         if (s.mode === 'lesson' && !ls.finished && !ls.passed && !ls.missed) {
