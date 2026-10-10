@@ -35,6 +35,7 @@ import { OUTAGES, outageById, replayOutage } from '../src/backtest/outages';
 import { lastWindow } from '../cli/backtest';
 import { explainError, TOOLS } from '../agent/tools';
 import { Workspace } from '../agent/workspace';
+import { appLink } from '../agent/serve';
 
 const APP_URL = process.env.BOTTLENECK_APP_URL ?? 'http://localhost:5173';
 
@@ -409,7 +410,12 @@ for (const t of TOOLS) {
     { title: t.title, description: t.description, inputSchema: t.input, annotations: { readOnlyHint: t.name === 'model_status' || t.name === 'verify_design' || t.name === 'find_headroom', openWorldHint: t.name === 'connect_telemetry' || t.name === 'collect_telemetry' || t.name === 'read_cluster' } },
     async (args: Record<string, unknown>) => {
       try {
-        return json(await t.run(args, new Workspace(args.workspace as string | undefined)));
+        const ws = new Workspace(args.workspace as string | undefined);
+        const out = (await t.run(args, ws)) as Record<string, unknown>;
+        // a verified change opens on the app's backtest screen while this server runs
+        const bundle = (out?.reports as { bundle?: string } | undefined)?.bundle;
+        if (bundle) out.app = { open: await appLink(ws, bundle), note: 'opens the backtest screen with these strategies over the same history, served from this MCP server while it runs' };
+        return json(out);
       } catch (e) {
         return fail(explainError(e));
       }
@@ -432,7 +438,7 @@ server.registerPrompt(
 1. model_status. If there is no model, or the history is older than a week: connect_telemetry (ask me for the Prometheus and Jaeger/Tempo URLs if you don't know them) → collect_telemetry (7d if the data has it) → calibrate_model.
 2. Read the calibration trust report. Mention any service the change touches that is "extrapolated" or fits poorly.
 3. verify_change with the change as a strategy, a Kubernetes diff, a Terraform plan or edited manifests against read_cluster.
-4. Answer in this order: verdict and confidence; $ per month (range, and whether it is the bill or list prices); minutes out of SLO added; the worst moment and why; what would make it safer. Link the HTML report. Do not call a low-confidence pass safe.`,
+4. Answer in this order: verdict and confidence; $ per month (range, and whether it is the bill or list prices); minutes out of SLO added; the worst moment and why; what would make it safer. Give the app.open link (the backtest screen) and the HTML report path. Do not call a low-confidence pass safe.`,
         },
       },
     ],

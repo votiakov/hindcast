@@ -23,6 +23,7 @@ import './ui/callout.css';
 import { StudioView } from './studio/StudioView';
 import { Stage } from './studio/Stage';
 import { openFromHash } from './spec/links';
+import { loadWorkspaceUrl } from './backtest-ui/workspace';
 import { decodePayload } from './spec/convert';
 import { registerEpisode, type Episode } from './studio/episodes';
 import { writeAutosave } from './sim/designs';
@@ -123,7 +124,15 @@ function useSimLoop() {
 
 // the app opens on Live; #backtest, #live, #lessons, #sandbox, #compare and #studio link to a view
 const VIEW_HASH: Record<string, Mode> = { '#backtest': 'backtest', '#live': 'home', '#lessons': 'lesson', '#sandbox': 'sandbox', '#compare': 'compare', '#studio': 'studio' };
-const openHash = (hash: string) => (VIEW_HASH[hash] ? (useSim.getState().setMode(VIEW_HASH[hash]), true) : openFromHash(hash));
+const openHash = (hash: string) => {
+  // #backtest=<url>: an agent's verify_change result, opened on the backtest screen
+  if (hash.startsWith('#backtest=')) {
+    void loadWorkspaceUrl(decodeURIComponent(hash.slice('#backtest='.length)));
+    useSim.getState().setMode('backtest');
+    return true;
+  }
+  return VIEW_HASH[hash] ? (useSim.getState().setMode(VIEW_HASH[hash]), true) : openFromHash(hash);
+};
 if (!RENDER && location.hash) openHash(location.hash);
 if (EMBED) {
   const s = useSim.getState();

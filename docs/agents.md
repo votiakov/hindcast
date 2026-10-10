@@ -186,8 +186,15 @@ Each result:
 }
 ```
 
-And for a human: `reports.html` (the self-contained report: charts, verdicts, accuracy) and
-`reports.markdown`, plus the strategies as YAML, in `.bottleneck/reports/`.
+And for a human:
+
+- **`app.open`** (MCP): a link that opens the Backtest screen with these strategies over the same
+  history. It shows the chart, the ranked strategies, the worst moment, incidents, endpoints, and
+  any moment on the board. The MCP server serves the bundle on `127.0.0.1` while it runs, only to
+  the app's origin (`BOTTLENECK_APP_URL`).
+- `reports.html`: the self-contained report (charts, verdicts, accuracy), plus `reports.markdown`,
+  the strategies as YAML, and `reports.bundle` (the same as the app link, as a file: drop it on
+  the Backtest screen when the server isn't running).
 
 #### How the verdict is decided
 
@@ -297,7 +304,7 @@ Authentication: `tokenEnv` (bearer), `basicAuthEnv` (`user:password`) and `heade
   model.json          the calibrated model (same format as `bottleneck calibrate`)
   calibration.json    per service: history peak vs capacity, trust
   cluster/            read_cluster snapshots
-  reports/            verify_change reports: .html, .md, .strategies.yaml
+  reports/            verify_change reports: .html, .md, .strategies.yaml, .bottleneck.json (opens in the app)
 ```
 
 The files are the CLI's formats, so everything an agent produced can be reopened by hand:

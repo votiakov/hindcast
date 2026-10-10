@@ -42,7 +42,8 @@ Answer in this order:
 3. **Reliability**: minutes out of SLO added, the worst moment and its `why`, endpoints that get
    worse.
 4. **What would make it safer**, if it failed.
-5. The HTML report path (`reports.html`) for a human.
+5. The HTML report path (`reports.html`) for a human, or `reports.bundle`, which opens on the app's
+   Backtest screen when dropped on it.
 
 Never present a backtest as a guarantee. Never apply anything because a verdict passed; applying
 is a separate, human-approved step.

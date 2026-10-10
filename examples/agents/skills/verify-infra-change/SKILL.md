@@ -30,7 +30,7 @@ how far to trust it.
    - money as a range, saying whether it is the bill or list prices;
    - minutes out of SLO added, the worst moment and why, endpoints that get worse;
    - what would make it safer, when it fails (verify that alternative too);
-   - the HTML report path.
+   - the `app.open` link (the Backtest screen with these strategies) and the HTML report path.
 
 Never apply a change because it passed. Never run `kubectl` or `terraform apply` yourself as
 part of this skill.

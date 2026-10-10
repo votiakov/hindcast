@@ -156,6 +156,7 @@ menu produces the snippet.
 | hash | opens |
 |---|---|
 | `#backtest` | the Backtest tab |
+| `#backtest=<url>` | the Backtest tab with a workspace bundle fetched from `<url>`: what an agent's `verify_change` returns as `app.open` |
 | `#spec=<base64url(JSON spec)>` | Sandbox with the spec auto-laid-out |
 | `#compare=<base64url({ a: {title, spec}, b: {title, spec}, scenario? })>` | Compare mode; with a scenario it plays like a built-in comparison and ends with a takeaway computed by the engine |
 

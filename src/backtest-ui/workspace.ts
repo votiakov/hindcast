@@ -49,6 +49,26 @@ export async function loadReference(id: string) {
   }
 }
 
+/**
+ * A workspace bundle at a URL (`#backtest=<url>`): what an agent's verify_change wrote, served by
+ * the MCP server on localhost, so a human sees the agent's evidence on this screen.
+ */
+export async function loadWorkspaceUrl(url: string) {
+  const s = useBacktest.getState();
+  s.setLoading('Loading the agent\'s backtest…');
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`${url} answered ${res.status}`);
+    const w = (await res.json()) as WorkspaceFile;
+    if (!w.dataset || !w.model) throw new Error('not a Bottleneck workspace bundle');
+    s.setWorkspace({ id: url, name: w.name, source: w.source, dataset: w.dataset, model: reviveModel(w.model), strategies: w.strategies.map((yaml) => ({ yaml, visible: true })) });
+  } catch (e) {
+    useSim.getState().toast('bad', `Could not open the agent's backtest: ${e instanceof Error ? e.message : String(e)} — is the MCP server that wrote it still running?`);
+  } finally {
+    s.setLoading(null);
+  }
+}
+
 const isStrategy = (doc: unknown) => !!doc && typeof doc === 'object' && 'changes' in (doc as object) && 'name' in (doc as object);
 const isManifest = (doc: unknown) => !!doc && typeof doc === 'object' && ('metrics' in (doc as object) || 'traces' in (doc as object) || 'billing' in (doc as object));
 

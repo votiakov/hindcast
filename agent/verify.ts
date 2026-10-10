@@ -248,14 +248,16 @@ export function verifyChange(ws: Workspace, inputs: ChangeInput[], o: VerifyOpti
   const before = modelBreakingPoint(m, base);
   const results = r.strategies.map((s, i) => judge(m, r, s, strategies[i], cal, gate, before, modelBreakingPoint(m, applyStrategy(m, base, strategies[i]).plan)));
 
-  let reports: { html: string; markdown: string } | undefined;
+  let reports: { html: string; markdown: string; bundle: string } | undefined;
   if (o.report !== false) {
     ws.ensure('reports');
     const slug = `${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}-${strategies[0].name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}`;
-    reports = { html: join(ws.path('reports'), `${slug}.html`), markdown: join(ws.path('reports'), `${slug}.md`) };
+    reports = { html: join(ws.path('reports'), `${slug}.html`), markdown: join(ws.path('reports'), `${slug}.md`), bundle: join(ws.path('reports'), `${slug}.bottleneck.json`) };
     writeFileSync(reports.html, backtestHtml(r, m));
     writeFileSync(reports.markdown, backtestMarkdown(r, m));
     writeFileSync(join(ws.path('reports'), `${slug}.strategies.yaml`), strategies.map((s) => toYaml(s)).join('---\n'));
+    // the app's workspace bundle: the same history, model and strategies, to open on the backtest screen
+    writeFileSync(reports.bundle, JSON.stringify({ name: m.name, source: `verified by an agent, ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`, dataset: d, model: m, strategies: strategies.map((s) => toYaml(s)) }));
   }
   const worst = results.some((x) => x.verdict === 'fail') ? 'fail' : results.some((x) => x.verdict === 'inconclusive') ? 'inconclusive' : 'pass';
   return {

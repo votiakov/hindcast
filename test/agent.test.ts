@@ -13,6 +13,7 @@ import { Workspace } from '../agent/workspace';
 import { calibrateModel, modelStatus, verifyChange, verifyDesign } from '../agent/verify';
 import { connectTelemetry, readCluster } from '../agent/connect';
 import { explainError, runTool, TOOLS } from '../agent/tools';
+import { appLink } from '../agent/serve';
 import { StrategySpec } from '../src/backtest/strategy';
 
 const T0 = 1_790_000_000;
@@ -201,7 +202,7 @@ describe('verify_change on real history (HotROD)', () => {
     expect(c.next).toBe('verify_change');
   }, 120_000);
 
-  it('fails retries without a budget and passes Graviton, with evidence', () => {
+  it('fails retries without a budget and passes Graviton, with evidence', async () => {
     const y = (f: string) => readFileSync(`reference/hotrod/strategies/${f}`, 'utf8');
     const r = verifyChange(ws, [{ strategy: y('2-graviton.yaml') }, { strategy: y('4-client-retries.yaml') }], { draws: 10 });
     const [grav, retry] = r.results;
@@ -214,6 +215,18 @@ describe('verify_change on real history (HotROD)', () => {
     expect(['high', 'medium', 'low']).toContain(grav.confidence.level);
     expect(r.reports!.html).toMatch(/\.html$/);
     expect(readFileSync(r.reports!.html, 'utf8')).toContain('<html');
+    // the app's workspace bundle, served on loopback to the app's origin only
+    const bundle = JSON.parse(readFileSync(r.reports!.bundle, 'utf8'));
+    expect(bundle.strategies).toHaveLength(2);
+    expect(bundle.dataset.n).toBeGreaterThan(10);
+    const link = await appLink(ws, r.reports!.bundle);
+    expect(link).toMatch(/^http:\/\/localhost:5173\/#backtest=http%3A%2F%2F127\.0\.0\.1%3A\d+%2F.*\.bottleneck\.json$/);
+    const url = decodeURIComponent(link.split('#backtest=')[1]);
+    const res = await fetch(url);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('access-control-allow-origin')).toBe('http://localhost:5173');
+    expect((await res.json()).model.name).toBe(bundle.model.name);
+    expect((await fetch(url.replace(/[^/]+$/, 'sources.json'))).status).toBe(404);
   }, 120_000);
 
   it('flags a change that runs a service past anything the history showed', () => {
