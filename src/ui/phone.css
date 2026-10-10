@@ -1,0 +1,60 @@
+/* =====================================================================================
+   PHONES (≤ 700 px): every view usable without sideways scrolling, in every theme.
+   Rows wrap or scroll inside themselves; side panels become bottom sheets; Compare stacks its
+   two boards; Studio puts the stage first. `:root[data-theme]` outranks the themes' own rules.
+   ===================================================================================== */
+@media (max-width: 700px) {
+  /* top bar: brand and icons, then the views (scrolling), then the numbers */
+  :root[data-theme] .topbar { flex-wrap: wrap; gap: 6px 8px; padding: 6px 8px; min-height: 0; }
+  :root[data-theme] .brand { order: 0; }
+  :root[data-theme] .mode-tabs { order: 2; flex: 1 1 100%; max-width: 100%; overflow-x: auto; scrollbar-width: none; margin: 0; }
+  :root[data-theme] .mode-tabs::-webkit-scrollbar { display: none; }
+  :root[data-theme] .mode-tabs button { flex: none; }
+  :root[data-theme] .metrics { order: 3; flex: 1 1 100%; margin: 0; min-width: 0; }
+  :root[data-theme] .metric,
+  :root[data-theme] .metric.vs { flex: 1 1 0; width: auto; min-width: 0; padding: 2px 6px; }
+  :root[data-theme] .metric-sub { display: none; }
+  :root[data-theme] .metric-label { font-size: 10px; }
+  :root[data-theme] .metric-value { font-size: 13px; white-space: nowrap; }
+  :root[data-theme] .metric svg { display: none; }
+  :root[data-theme] .dm-title { max-width: 120px; }
+
+  /* building happens on a bigger screen: the palette steps aside, the board stays */
+  :root[data-theme] .palette { display: none; }
+
+  /* side panels → bottom sheets */
+  :root[data-theme] .lesson,
+  :root[data-theme] .analysis,
+  :root[data-theme] .audit,
+  :root[data-theme] .spec {
+    position: absolute; top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 48%;
+    overflow: auto; z-index: 12;
+  }
+  :root[data-theme] .settings-pop { position: fixed; top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 70vh; overflow: auto; }
+
+  /* the play bar: full width, scrolling sideways if it has to */
+  :root[data-theme] .controlbar { left: 8px; right: 8px; bottom: 8px; transform: none; max-width: calc(100% - 16px); overflow-x: auto; scrollbar-width: none; }
+  :root[data-theme] .controlbar::-webkit-scrollbar { display: none; }
+  :root[data-theme] .traffic input { width: 96px; }
+  :root[data-theme] .toasts { left: 8px; right: 8px; bottom: 92px; }
+
+  /* Live's callout docks at the bottom as a sheet */
+  :root[data-theme] .callout.docked { position: fixed; left: 8px; right: 8px; bottom: 8px; top: auto; transform: none; max-width: none; width: auto; max-height: 40vh; overflow: auto; z-index: 30; }
+  :root[data-theme] .toasts { display: none; }
+
+  /* Compare: one board above the other */
+  :root[data-theme] .compare { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+  :root[data-theme] .pane { border-right: 0; border-bottom: 1px solid var(--border); }
+  :root[data-theme] .compare .pane:first-child .pane-header { left: 12px; }
+  :root[data-theme] .scenario-strip { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
+
+  /* Studio: the stage first, the episodes below */
+  :root[data-theme] .studio { flex-direction: column; }
+  :root[data-theme] .studio-canvas { order: 0; flex: 1 1 55%; min-height: 0; }
+  :root[data-theme] .studio-panel { order: 1; width: auto; margin: 0 8px 8px; flex: 0 1 45%; min-height: 0; }
+
+  /* Backtest: the view switcher scrolls instead of widening the page */
+  .bt .bt-modes { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .bt .bt-modes::-webkit-scrollbar { display: none; }
+  .bt .bt-modes button { flex: none; }
+}

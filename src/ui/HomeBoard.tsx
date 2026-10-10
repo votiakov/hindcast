@@ -7,7 +7,8 @@ import { openPayload } from '../spec/links';
 import { explain, nodeView } from '../canvas/nodeModel';
 import { isSystem } from '../sim/catalog';
 import { optimizeInBrowser } from '../sim/des/browserPool';
-import { HOME_GRAPHS } from './homeGraphs';
+import { HOME_GRAPHS, homeGraph, narrowScreen } from './homeGraphs';
+import { createPortal } from 'react-dom';
 import { runAudit } from './AuditPanel';
 
 /**
@@ -30,6 +31,27 @@ const pct = (n: number) => `${(n * 100).toFixed(n > 0 && n < 0.1 ? 1 : 0)}%`;
 function Callout({ nodeId, title, lines, actions, code, tone = 'info', above = false }: { nodeId: string; title: string; lines: string[]; actions: Action[]; code?: string; tone?: 'bad' | 'good' | 'info'; above?: boolean }) {
   const node = useInternalNode(nodeId);
   if (!node) return null;
+  // phones: the callout docks at the bottom of the screen instead of hanging off the component
+  if (narrowScreen())
+    return createPortal(
+      <div className={`callout docked tone-${tone}`}>
+        <div className="callout-title">{title}</div>
+        {lines.map((l) => (
+          <p key={l}>{l}</p>
+        ))}
+        {code && <pre className="callout-code">{code}</pre>}
+        {actions.length > 0 && (
+          <div className="callout-actions">
+            {actions.map((a) => (
+              <button key={a.label} onClick={a.run}>
+                ▸ {a.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>,
+      document.body,
+    );
   const w = node.measured.width ?? 230;
   const h = node.measured.height ?? 150;
   const x = node.internals.positionAbsolute.x + w * 0.35;
@@ -98,7 +120,7 @@ function Coach() {
   }, [stage, api, db, global]);
 
   const spec = () => graphToSpec(S().boards.main.nodes, S().boards.main.edges, 'This system');
-  const swap = (i: number) => S().replaceGraph('main', HOME_GRAPHS[i]);
+  const swap = (i: number) => S().replaceGraph('main', homeGraph(i));
 
   const compareWith = (i: number, title: string, rps: number) =>
     openPayload({
@@ -260,7 +282,7 @@ function Coach() {
 export function HomeBoard() {
   return (
     <ReactFlowProvider>
-      <BoardCanvas id="main" minimap={false} padding={{ top: '60px', left: '60px', right: '60px', bottom: '260px' }}>
+      <BoardCanvas id="main" minimap={false} padding={narrowScreen() ? { top: '24px', left: '16px', right: '16px', bottom: `${Math.round(window.innerHeight * 0.42)}px` } : { top: '60px', left: '60px', right: '60px', bottom: '260px' }}>
         <Coach />
       </BoardCanvas>
     </ReactFlowProvider>

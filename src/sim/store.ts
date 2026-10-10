@@ -8,7 +8,7 @@ import { goalStart, trafficAt, type Lesson } from '../lessons/types';
 import { lessonById } from '../lessons';
 import { SCENARIOS, findScenario, scenarioDuration, scenarioTraffic, type Scenario, type ScenarioAction } from '../scenarios/scenarios';
 import type { Graph } from '../scenarios/build';
-import { HOME_GRAPHS } from '../ui/homeGraphs';
+import { homeGraph } from '../ui/homeGraphs';
 import type { ThemeId } from '../theme/themes';
 import { setPricing, type PricingId } from './pricing';
 import type { AuditResult } from './audit';
@@ -349,7 +349,7 @@ export const useSim = create<State>()((set, get) => {
   return {
     mode: 'home',
     boards: {
-      main: makeBoard('main', 'Main', HOME_GRAPHS[0]),
+      main: makeBoard('main', 'Main', homeGraph(0)),
       A: init.A,
       B: init.B,
     },
@@ -588,7 +588,7 @@ export const useSim = create<State>()((set, get) => {
         set({ mode, focus, running: false });
       } else if (mode === 'home') {
         engines.main.reset();
-        set((s) => ({ mode, focus, running: true, analysisOpen: false, simT: 0, traffic: 60, pattern: 'steady', readRatio: 0.8, spikeUntil: 0, boards: { ...s.boards, main: makeBoard('main', 'Main', HOME_GRAPHS[0], s.boards.main.version + 1) } }));
+        set((s) => ({ mode, focus, running: true, analysisOpen: false, simT: 0, traffic: 60, pattern: 'steady', readRatio: 0.8, spikeUntil: 0, boards: { ...s.boards, main: makeBoard('main', 'Main', homeGraph(0), s.boards.main.version + 1) } }));
       } else if (mode === 'studio') {
         set({ mode, focus });
         get().loadEpisode(get().studio.episodeId);

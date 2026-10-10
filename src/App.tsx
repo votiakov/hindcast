@@ -36,6 +36,7 @@ import './theme/transit.css';
 import './theme/reference.css';
 import './theme/neon-chrome.css';
 import './theme/terminal.css';
+import './ui/phone.css';
 
 /**
  * Render mode (used by scripts/record.mjs): `?render=1&ep=<id>&aspect=4:5&brand=personal`

@@ -29,7 +29,9 @@ function SystemNodeImpl({ id, data, selected }: NodeProps<SystemNodeT>) {
   const showCost = useSim((s) => s.settings.cost);
   const theme = useSim((s) => s.settings.theme);
   const hasOutgoing = useSim((s) => s.boards[b].edges.some((e) => e.source === id));
-  const explainOn = useSim((s) => s.settings.explain);
+  // on Live the callout pinned to the troubled component is the explanation: a second copy inside
+  // the card would only push the next moves off screen
+  const explainOn = useSim((s) => s.settings.explain && s.mode !== 'home');
   const v = nodeView(data, st, running, hasOutgoing);
 
   if (theme === 'reference' || theme === 'terminal') {

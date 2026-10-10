@@ -14,6 +14,7 @@
     "build:mcp": "vite build --config vite.mcp.config.ts",
     "build:mcp-server": "esbuild mcp/server.ts --bundle --platform=node --format=esm --target=node20 --outfile=dist-cli/bottleneck-mcp.mjs --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
     "agent:e2e": "node scripts/agent-e2e.mjs",
+    "audit:ui": "node scripts/ui-audit.mjs",
     "build:cli": "esbuild cli/bottleneck.ts --bundle --platform=node --format=esm --target=node20 --outfile=dist-cli/bottleneck.mjs --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
     "test": "vitest run",
     "check": "tsc --noEmit && vitest run",
