@@ -16,3 +16,4 @@ reference/.dbg/
 reference/*/runs/*/warm-mix.json
 public/docs/shots/_debug-*
 .bottleneck/
+ui-audit/
