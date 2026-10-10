@@ -128,3 +128,8 @@
 .pa-row em { grid-column: 2; font-style: normal; font-size: 11px; color: var(--muted); }
 .pa-pop .pa-run { align-self: flex-start; margin-top: 4px; }
 .pane-header:has(.pa-pop) { z-index: 40; }
+
+.au-fix-delta { margin-top: 3px; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.au-fix-delta s { text-decoration: none; color: var(--red); }
+.au-fix-delta b { color: var(--green); font-weight: 600; }
+.au-auto { color: var(--dim); font-size: 11px; }

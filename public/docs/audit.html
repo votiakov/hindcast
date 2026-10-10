@@ -32,14 +32,14 @@
 <h2>The failure audit</h2>
 <p>The default design: one API server, one Postgres.</p>
 <ol class="pins">
-<li id="audit-inputs" data-n="1"><h3>Load and the price of an outage</h3><p>The expected load, and what a minute of outage costs you. With a price, every risk gets a dollar figure.</p></li>
+<li id="audit-inputs" data-n="1"><h3>Load and the price of an outage</h3><p>The expected load: the board's traffic, or, when the board idles below 100 req/s, half of what the design can take (marked <b>half its limit</b>). And what a minute of outage costs you: with a price, every risk gets a dollar figure.</p></li>
 <li id="audit-summary" data-n="2"><h3>The score</h3><p>The share of incidents survived, weighted by severity. 24/100 here.</p></li>
 <li id="audit-lines" data-n="3"><h3>The headline numbers</h3><p>Incidents survived, headroom (breaking point ÷ expected load) and what first breaks, and what the design costs per month.</p></li>
 <li id="audit-curve" data-n="4"><h3>The load curve</h3><p>Latency as load rises past today's: where it crosses the SLO is the breaking point, with the cost per million requests now and at the limit.</p></li>
 <li id="audit-risk" data-n="5"><h3>The risk register</h3><p>One row per incident, worst first: every component dying, every dependency turning slow or failing 20% of requests, caches restarting cold, zones going dark, a 3× surge, a ramp past the breaking point. Each is graded critical, major, minor or ok, with its blast radius and recovery time.</p></li>
 <li id="audit-replay" data-n="6"><h3>Replay on the board</h3><p>Plays the incident live from a clean start.</p></li>
 <li id="audit-clip" data-n="7"><h3>Studio clip</h3><p>The incident as a clip: this design against the fixed one, same incident.</p></li>
-<li id="audit-fixes" data-n="8"><h3>Verified fixes</h3><p>Candidate fixes (another instance, a load balancer, a replica, a standby, timeouts and breakers, retry budgets, autoscaling) are each tested by re-running the same incident on the changed design, and priced per month. Fixes that don't help are dropped. <b>Apply</b> applies one (undoable). <b>Backtest</b> replays it over real history when the board came from a backtest.</p></li>
+<li id="audit-fixes" data-n="8"><h3>Verified fixes</h3><p>Candidate fixes (another instance, a load balancer, a replica, a standby, timeouts and breakers, retry budgets, autoscaling) are each tested by re-running the same incident on the changed design, and priced per month. Each shows what it changes for that incident, before → after: <b>errors 73% → 7.6% · p99 3.2s → 1.0s</b>. Fixes that don't help are dropped. <b>Apply</b> applies one (undoable). <b>Backtest</b> replays it over real history when the board came from a backtest.</p></li>
 <li id="audit-report" data-n="9"><h3>The report</h3><p>Markdown to paste, or a self-contained HTML page for a design review.</p></li>
 <li id="audit-mark" data-n="10"><h3>Risks on the board</h3><p>Components that take the system down alone are marked "single point of failure".</p></li>
 </ol>

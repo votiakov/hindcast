@@ -35,7 +35,9 @@ export async function runAudit() {
   try {
     const result = await auditInBrowser(
       spec,
-      { rps: s.traffic, readRatio: s.readRatio, incidentCostPerMinute: s.audit.costPerMinute || undefined, slo: { maxErrorRate: s.settings.sloErrorRate, maxP99Ms: s.settings.sloP99Ms } },
+      // the board's idle trickle says nothing about failures: below 100 req/s the audit picks its own
+      // load (half of what the design can take) and the panel says so
+      { rps: s.traffic >= 100 ? s.traffic : undefined, readRatio: s.readRatio, incidentCostPerMinute: s.audit.costPerMinute || undefined, slo: { maxErrorRate: s.settings.sloErrorRate, maxP99Ms: s.settings.sloP99Ms } },
       (progress) => useSim.getState().setAudit({ progress }),
     );
     useSim.getState().setAudit({ status: 'done', result, specKey: JSON.stringify(spec), progress: null });
@@ -143,6 +145,11 @@ function FindingRow({ f, open, names }: { f: Finding; open: boolean; names: Map<
                   <div className="au-fix-main">
                     <div className="au-fix-title">{x.title}</div>
                     <div className="au-fix-why">{x.why}</div>
+                    {f.kind !== 'headroom' && (
+                      <div className="au-fix-delta">
+                        errors <s>{pct(f.impact.errorRate)}</s> → <b>{pct(x.after.errorRate)}</b> · p99 <s>{ms(f.impact.peakP99Ms)}</s> → <b>{ms(x.after.peakP99Ms)}</b>
+                      </div>
+                    )}
                   </div>
                   <div className="au-fix-side">
                     <span className={`au-after sev-${x.after.severity}`}>→ {SEV_LABEL[x.after.severity]}</span>
@@ -192,8 +199,8 @@ export function AuditPanel() {
       </div>
 
       <div className="au-inputs">
-        <label>
-          load <b>{traffic.toLocaleString('en-US')}</b> req/s
+        <label title={r && r.load.rps !== traffic ? `The board runs at ${traffic} req/s, too light to tell; the audit used half of what the design can take. Set the board's traffic to 100 req/s or more to audit at it.` : 'The audit runs at the board\'s traffic'}>
+          load <b>{(r ? r.load.rps : traffic).toLocaleString('en-US')}</b> req/s{r && r.load.rps !== traffic && <span className="au-auto"> · half its limit</span>}
         </label>
         <label title="What a minute of full outage costs the business — prices every incident">
           outage $
