@@ -492,7 +492,9 @@ select { background: #0a1122; color: var(--text); border: 1px solid var(--border
 .tk p { color: #b6c2d6; line-height: 1.55; margin: 8px 0 0; }
 .takeaway .btn { margin-top: 14px; }
 
-.board:has(.compare-wrap) .toasts { left: 88px; }
+.board:has(.compare-wrap) .toasts { left: 88px; top: 108px; bottom: auto; }
+/* the scenario's caption sits at the bottom; keep only the latest few events above the boards */
+.board:has(.compare-wrap) .toast:nth-last-child(n + 4) { display: none; }
 .node-down.failed-over { color: #a7f3d0; font-size: 14px; letter-spacing: 2px; background: repeating-linear-gradient(45deg, rgba(52, 211, 153, 0.1) 0 10px, rgba(2, 6, 23, 0.5) 10px 20px); }
 .node.promoted { border-color: var(--green); box-shadow: 0 0 0 1px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.5), 0 0 34px rgba(52, 211, 153, 0.45); }
 

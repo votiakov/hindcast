@@ -99,7 +99,8 @@ LLM API vs Self-hosted GPUs · Node.js vs Go vs the Database.
 
 Advanced (`src/scenarios/advanced.ts`, series "Failure modes at scale"): The Outage After the Fix ·
 Retries at Every Layer · Cells vs One Big Fleet · Queue vs Shed · The Tail at Scale · When Your LLM
-Provider Goes Down. Each has a story pack in `content/advanced/` (verified numbers, LinkedIn post,
+Provider Goes Down · Peak-sized Fleet vs Autoscaling · One Region vs Two · Read Replicas vs One Bigger
+Database · a 10 s Pod vs a 2-minute VM. The first six have a story pack in `content/advanced/` (verified numbers, LinkedIn post,
 carousel plan, article outline, anti-AI audit).
 
 Ad-hoc comparisons can be opened from a link (`#compare=…`, see tools.md) — that is how the MCP

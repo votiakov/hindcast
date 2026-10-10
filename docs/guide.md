@@ -181,7 +181,11 @@ Monolith vs Microservices · Single DB vs HA Cluster · Sync vs Event-driven · 
 Brute Force vs CDN + Cache · Single-AZ vs Multi-AZ · Naive Retries vs Resilient Clients · LLM API vs
 Self-hosted GPUs · Node.js vs Go vs the Database · The Outage After the Fix · Retries at Every Layer ·
 Cells vs One Big Fleet · Never Drop a Request? Queue vs Shed · The Tail at Scale · When Your LLM
-Provider Goes Down · Peak-sized Fleet vs Autoscaling · One Region vs Two.
+Provider Goes Down · Peak-sized Fleet vs Autoscaling · One Region vs Two · Read Replicas vs One Bigger
+Database · Autoscaling: a 10 s Pod vs a 2-minute VM.
+
+Every built-in comparison is played headlessly in the tests (`test/scenarios.test.ts`) and must
+show a visible difference in failed requests, time out of SLO, worst p99 or cost.
 
 Each side has its own failure audit; swap the architectures; take manual control of traffic and
 chaos on whatever is on the boards. Edits on either board are undoable.

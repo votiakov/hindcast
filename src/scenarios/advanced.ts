@@ -391,4 +391,99 @@ const regions: Scenario = {
   },
 };
 
-export const ADVANCED: Scenario[] = [recovery, retryLayers, cells, shed, tail, llmFailover, elasticity, regions];
+// 9 ─ read scaling: one big primary vs a small primary with read replicas
+const readScale: Scenario = {
+  id: 'replicas-vs-bigger-db',
+  title: 'Read Replicas vs One Bigger Database',
+  tagline: 'Reads triple, then the primary dies. Scale up, or scale out?',
+  watch: 'Both survive the growth. When the primary dies, A is down until it is restored; B promotes a replica in seconds — for less money every hour.',
+  readRatio: 0.9,
+  a: {
+    title: 'One large database',
+    graph: graph(
+      [
+        ['users', 'client', X[0], 200],
+        ['lb', 'lb', X[1], 200],
+        ['api', 'server', X[2], 160, { instances: 14 }],
+        ['db', 'db', X[3], 200, { tier: 'L' }],
+      ],
+      [['users', 'lb'], ['lb', 'api'], ['api', 'db']],
+    ),
+  },
+  b: {
+    title: 'Small primary + 2 read replicas',
+    graph: graph(
+      [
+        ['users', 'client', X[0], 200],
+        ['lb', 'lb', X[1], 200],
+        ['api', 'server', X[2], 160, { instances: 14 }],
+        ['db', 'db', X[3], 120],
+        ['replica-1', 'replica', X[4], 60],
+        ['replica-2', 'replica', X[4], 300],
+      ],
+      [['users', 'lb'], ['lb', 'api'], ['api', 'db'], ['db', 'replica-1'], ['db', 'replica-2']],
+    ),
+  },
+  timeline: [
+    { at: 0, rps: 900, caption: '900 req/s, 90% of them reads.' },
+    { at: 5, rps: 900 },
+    { at: 12, rps: 2700, caption: '📈 A new feature triples the reads: 2,700 req/s' },
+    { at: 34, rps: 2700 },
+  ],
+  events: [
+    { at: 18, message: '💥 The primary database fails', a: { type: 'kill-id', id: 'db' }, b: { type: 'kill-id', id: 'db' } },
+    { at: 28, message: '🛠 The old primary is restored', a: { type: 'revive-id', id: 'db' } },
+  ],
+  takeaway: {
+    a: 'A database four times the size carried the reads — and was the only copy. When it died, everything stopped until it was restored.',
+    b: 'Reads spread over three small machines for less money, and when the primary died a replica was promoted within seconds.',
+    lesson: 'Scaling up buys capacity; scaling out buys capacity and a spare. For read-heavy load, replicas are usually both cheaper and more available — at the price of replication lag and failover logic.',
+  },
+};
+
+// 10 ─ autoscaling is only as fast as the new instance boots
+const warmup: Scenario = {
+  id: 'pod-vs-vm-warmup',
+  title: 'Autoscaling: a 10 s Pod vs a 2-minute VM',
+  tagline: 'Same autoscaler, same limits. One new instance serves in ten seconds, the other in two minutes.',
+  watch: 'Both start adding instances the moment the rush hits. B’s serve within seconds; A’s are still booting while users time out.',
+  readRatio: 0.8,
+  a: {
+    title: 'VMs (EC2 ASG), 120 s warm-up',
+    graph: graph(
+      [
+        ['users', 'client', X[0], 200],
+        ['lb', 'lb', X[1], 200],
+        ['api', 'server', X[2], 150, { instances: 2, autoscale: { min: 2, max: 12, warmupS: 120 } }],
+        ['db', 'db', X[3], 200, { tier: 'M' }],
+      ],
+      [['users', 'lb'], ['lb', 'api'], ['api', 'db']],
+    ),
+  },
+  b: {
+    title: 'Pods on running nodes, 10 s warm-up',
+    graph: graph(
+      [
+        ['users', 'client', X[0], 200],
+        ['lb', 'lb', X[1], 200],
+        ['api', 'server', X[2], 150, { instances: 2, autoscale: { min: 2, max: 12, warmupS: 10 } }],
+        ['db', 'db', X[3], 200, { tier: 'M' }],
+      ],
+      [['users', 'lb'], ['lb', 'api'], ['api', 'db']],
+    ),
+  },
+  timeline: [
+    { at: 0, rps: 300, caption: '300 req/s on two instances.' },
+    { at: 6, rps: 300 },
+    { at: 9, rps: 1500, caption: '📈 The lunch rush: 1,500 req/s in three seconds' },
+    { at: 50, rps: 1500 },
+  ],
+  events: [],
+  takeaway: {
+    a: 'The autoscaler reacted just as fast, but each new VM took two minutes to serve. For the whole rush the old two instances took everything.',
+    b: 'New pods served ten seconds after they were asked for; the fleet caught up with the rush in under half a minute.',
+    lesson: 'An autoscaler is only as fast as an instance boots. Where boot time is long, keep a higher minimum or scale ahead of the peak; measure warm-up, don’t assume it.',
+  },
+};
+
+export const ADVANCED: Scenario[] = [recovery, retryLayers, cells, shed, tail, llmFailover, elasticity, regions, readScale, warmup];
