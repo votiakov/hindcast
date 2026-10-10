@@ -235,6 +235,29 @@ export interface BacktestOptions {
   faults?: Fault[];
 }
 
+/** strategies ordered by time out of SLO (when it differs by more than half a minute), then by cost */
+export function rankStrategies(results: StrategyResult[]): BacktestResult['ranking'] {
+  return results
+    .map((r) => {
+      const dm = r.delta.monthly.p50;
+      const ds = r.delta.minutesOutOfSlo.p50;
+      const verdict =
+        ds <= 0.5 && dm < 0 ? `saves $${Math.round(-dm).toLocaleString()}/month with no more time out of SLO` : ds < -0.5 && dm <= 0 ? 'cheaper and more reliable' : ds < -0.5 ? `$${Math.round(dm).toLocaleString()}/month buys ${Math.round(-ds)} fewer minutes out of SLO` : ds > 0.5 && dm < 0 ? `saves $${Math.round(-dm).toLocaleString()}/month but adds ${Math.round(ds)} minutes out of SLO` : ds > 0.5 ? 'worse on both' : `costs $${Math.round(dm).toLocaleString()}/month more for the same reliability`;
+      return { name: r.name, monthlyDelta: dm, minutesOutOfSloDelta: ds, verdict };
+    })
+    .sort((a, b) => a.minutesOutOfSloDelta - b.minutesOutOfSloDelta > 0.5 || b.minutesOutOfSloDelta - a.minutesOutOfSloDelta > 0.5 ? a.minutesOutOfSloDelta - b.minutesOutOfSloDelta : a.monthlyDelta - b.monthlyDelta);
+}
+
+/**
+ * Backtests of the same model, dataset and options over different strategies, as one. Each plan
+ * draws from its own seeded generator, so a strategy's result does not depend on which others ran
+ * with it: the merge equals one backtest over all of them.
+ */
+export function mergeBacktests(parts: BacktestResult[]): BacktestResult {
+  const strategies = parts.flatMap((p) => p.strategies);
+  return { ...parts[0], strategies, ranking: rankStrategies(strategies) };
+}
+
 export function backtest(model: Model, d: Dataset, strategies: unknown[], opts: BacktestOptions = {}): BacktestResult {
   const draws = Math.max(1, opts.draws ?? 30);
   const traffic = opts.traffic ?? trafficOf(d, model);
@@ -311,15 +334,7 @@ export function backtest(model: Model, d: Dataset, strategies: unknown[], opts: 
 
   const baseline = pack('As built', 'the calibrated model with nothing changed', [], base, baseRuns);
   const results = applied.map((a) => pack(a.spec.name, a.spec.description, a.notes, a.plan, runAll(a.plan)));
-  const ranking = results
-    .map((r) => {
-      const dm = r.delta.monthly.p50;
-      const ds = r.delta.minutesOutOfSlo.p50;
-      const verdict =
-        ds <= 0.5 && dm < 0 ? `saves $${Math.round(-dm).toLocaleString()}/month with no more time out of SLO` : ds < -0.5 && dm <= 0 ? 'cheaper and more reliable' : ds < -0.5 ? `$${Math.round(dm).toLocaleString()}/month buys ${Math.round(-ds)} fewer minutes out of SLO` : ds > 0.5 && dm < 0 ? `saves $${Math.round(-dm).toLocaleString()}/month but adds ${Math.round(ds)} minutes out of SLO` : ds > 0.5 ? 'worse on both' : `costs $${Math.round(dm).toLocaleString()}/month more for the same reliability`;
-      return { name: r.name, monthlyDelta: dm, minutesOutOfSloDelta: ds, verdict };
-    })
-    .sort((a, b) => a.minutesOutOfSloDelta - b.minutesOutOfSloDelta > 0.5 || b.minutesOutOfSloDelta - a.minutesOutOfSloDelta > 0.5 ? a.minutesOutOfSloDelta - b.minutesOutOfSloDelta : a.monthlyDelta - b.monthlyDelta);
+  const ranking = rankStrategies(results);
 
   return {
     model: model.name,

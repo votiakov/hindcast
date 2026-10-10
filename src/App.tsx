@@ -24,6 +24,7 @@ import { StudioView } from './studio/StudioView';
 import { Stage } from './studio/Stage';
 import { openFromHash } from './spec/links';
 import { loadWorkspaceUrl } from './backtest-ui/workspace';
+import { useBacktest } from './backtest-ui/store';
 import { decodePayload } from './spec/convert';
 import { registerEpisode, type Episode } from './studio/episodes';
 import { writeAutosave } from './sim/designs';
@@ -67,6 +68,7 @@ if (RENDER && !CARD) {
 
 // handy for scripting demos from the devtools console
 (window as unknown as { sim: typeof useSim }).sim = useSim;
+(window as unknown as { backtest: typeof useBacktest }).backtest = useBacktest;
 
 function useSimLoop() {
   useEffect(() => {

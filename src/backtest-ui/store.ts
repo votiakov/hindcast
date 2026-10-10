@@ -4,6 +4,7 @@ import type { Dataset } from '../backtest/dataset';
 import type { Model } from '../backtest/model';
 import { backtest, type BacktestResult } from '../backtest/backtest';
 import { StrategySpec } from '../backtest/strategy';
+import { backtestInWorkers, Superseded } from './pool';
 import type { ArchitectureSpec } from '../spec/schema';
 import type { Fault } from '../backtest/engine';
 import type { Outage } from '../backtest/outages';
@@ -122,30 +123,38 @@ export const useBacktest = create<State>((set, get) => ({
     const w = get().workspace;
     if (!w) return;
     set({ computing: true });
-    // let the UI paint "computing" first
-    setTimeout(() => {
-      const ok: unknown[] = [];
-      const strategies = w.strategies.map((s) => {
-        try {
-          const spec = StrategySpec.parse(parseYaml(s.yaml));
-          ok.push(spec);
-          return { ...s, error: undefined };
-        } catch (e) {
-          return { ...s, error: e instanceof Error ? e.message.split('\n').slice(0, 3).join(' ') : String(e) };
-        }
-      });
-      let result: BacktestResult | null = null;
+    const ok: unknown[] = [];
+    const okIndex: number[] = [];
+    const strategies = w.strategies.map((s, i) => {
       try {
-        result = backtest(w.model, w.dataset, ok, { draws: get().draws, ...(w.outage ? { faults: w.outage.faults, observed: false } : {}) });
+        const spec = StrategySpec.parse(parseYaml(s.yaml));
+        ok.push(spec);
+        okIndex.push(i);
+        return { ...s, error: undefined };
       } catch (e) {
-        // a strategy that names an unknown service: report on that strategy, keep the rest
-        const msg = e instanceof Error ? e.message : String(e);
-        const bad = strategies.findIndex((s) => msg.includes(`"${strategyName(s.yaml)}"`));
-        if (bad >= 0) strategies[bad] = { ...strategies[bad], error: msg };
-        const good = strategies.filter((s) => !s.error).map((s) => parseYaml(s.yaml));
-        result = backtest(w.model, w.dataset, good, { draws: get().draws, ...(w.outage ? { faults: w.outage.faults, observed: false } : {}) });
+        return { ...s, error: e instanceof Error ? e.message.split('\n').slice(0, 3).join(' ') : String(e) };
       }
+    });
+    const opts = { draws: get().draws, ...(w.outage ? { faults: w.outage.faults, observed: false } : {}) };
+    const done = (result: BacktestResult, errors: Map<number, string>) => {
+      // a strategy the model could not apply (an unknown service, say): report it on that strategy
+      for (const [k, msg] of errors) strategies[okIndex[k]] = { ...strategies[okIndex[k]], error: msg };
+      if (get().workspace?.id !== w.id) return;
       set({ result, computing: false, workspace: { ...get().workspace!, strategies } });
-    }, 16);
+    };
+    if (typeof Worker === 'undefined') {
+      // no workers (tests, very old browsers): on this thread, after the UI painted "computing"
+      setTimeout(() => done(backtest(w.model, w.dataset, ok, opts), new Map()), 16);
+      return;
+    }
+    backtestInWorkers(w.model, w.dataset, ok, opts).then(
+      ({ result, errors }) => done(result, errors),
+      (e) => {
+        if (e instanceof Superseded) return;
+        set({ computing: false });
+        const msg = `The backtest failed: ${e instanceof Error ? e.message : String(e)}`;
+        void import('../sim/store').then(({ useSim }) => useSim.getState().toast('bad', msg));
+      },
+    );
   },
 }));
