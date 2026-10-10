@@ -2,7 +2,10 @@ import { parse as parseYaml, parseAllDocuments } from 'yaml';
 import { importKubernetes, looksLikeKubernetes } from './kubernetes';
 import { useSim } from '../sim/store';
 import { importTerraform } from './terraform';
-import { ArchitectureSpec } from './schema';
+import type { ArchitectureSpec } from './schema';
+import { validateSpec } from './validate';
+
+const OPENS = 'Bottleneck opens an architecture spec (YAML or JSON), Kubernetes manifests, `terraform show -json` output, or a traffic CSV of time and requests per second.';
 import { specToGraph } from './convert';
 import { parseTrafficCsv } from './trafficCsv';
 
@@ -16,7 +19,12 @@ export async function openFile(file: File): Promise<void> {
     const text = await file.text();
     if (/\.(csv|tsv|txt)$/i.test(file.name)) {
       // a traffic recording: replay it against whatever is on the board
-      const t = parseTrafficCsv(text);
+      let t: ReturnType<typeof parseTrafficCsv>;
+      try {
+        t = parseTrafficCsv(text);
+      } catch (e) {
+        throw new Error(`it is not a traffic recording (${e instanceof Error ? e.message : String(e)}). ${OPENS}`);
+      }
       if (s.mode !== 'sandbox') s.setMode('sandbox');
       const dur = t.traffic[t.traffic.length - 1].at;
       useSim.getState().play({ title: `${file.name}${t.compression > 1.01 ? ` (${Math.round(t.spanS / 60)} min compressed ${t.compression.toFixed(0)}×)` : ''}`, duration: dur, rps: 0, traffic: t.traffic, events: [] });
@@ -37,7 +45,16 @@ export async function openFile(file: File): Promise<void> {
       const r = importTerraform(doc, base);
       spec = r.spec;
       if (r.assumptions.length) s.toast('info', `Imported from Terraform — ${r.assumptions.length} assumption${r.assumptions.length > 1 ? 's' : ''} to review (see the spec)`);
-    } else spec = ArchitectureSpec.parse(doc);
+    } else {
+      const v = validateSpec(doc);
+      if (!v.ok || !v.spec) {
+        const errors = v.issues.filter((i) => i.level === 'error');
+        // not a spec at all: say what can be opened; a broken spec: say what is wrong with it
+        if (!doc || typeof doc !== 'object' || !('components' in doc)) throw new Error(`it is not an architecture spec. ${OPENS}`);
+        throw new Error(`${errors.slice(0, 2).map((i) => i.message).join('; ')}${errors.length > 2 ? ` (and ${errors.length - 2} more)` : ''}`);
+      }
+      spec = v.spec;
+    }
     if (s.mode !== 'sandbox') s.setMode('sandbox');
     if (spec.pricing) useSim.getState().setSetting('pricing', spec.pricing);
     const name = spec.name ?? base;

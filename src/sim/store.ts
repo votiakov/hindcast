@@ -679,7 +679,8 @@ export const useSim = create<State>()((set, get) => {
       if (st.mode !== 'studio' && st.mode !== 'home') for (const b of activeBoards(st.mode)) recorders[b].mark({ t: st.simT, tone, text: text.replace(/^\[[^\]]*\] /, '') });
       const id = toastSeq++;
       set({ toasts: [...get().toasts, { id, tone, text }].slice(-5) });
-      setTimeout(() => set({ toasts: get().toasts.filter((t) => t.id !== id) }), 4200);
+      // long enough to read: a longer message (an error that explains itself) stays up longer
+      setTimeout(() => set({ toasts: get().toasts.filter((t) => t.id !== id) }), Math.min(10_000, 4200 + Math.max(0, text.length - 60) * 35));
     },
 
     tick: (realDt) => {
