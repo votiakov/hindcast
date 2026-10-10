@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useBacktest, strategyName, type Tab } from './store';
-import { AXIS_W, Pane, TimeAxis, bandPath, candles, makeScale, path, useWidth, yScale } from './chart';
+import { AXIS_W, Pane, TimeAxis, bandPath, candles, makeScale, path, useSize, yScale } from './chart';
 import { headline } from '../backtest/report';
 import type { StrategyResult } from '../backtest/backtest';
 import { closeOutage, loadReference, loadReferenceIndex, openOutage, REFERENCES, openWorkspaceFiles } from './workspace';
@@ -14,7 +14,10 @@ export const STRAT_COLORS = ['#f2a93b', '#3fc1d9', '#b48cf2', '#ef7fb1', '#9bd35
 const ASBUILT = '#8193a3';
 const MEASURED = '#e6edf3';
 
+/** a latency for an axis or a table cell: "725" or "1.4s" */
 const ms = (v: number) => (v >= 10_000 ? `${(v / 1000).toFixed(0)}s` : v >= 1000 ? `${(v / 1000).toFixed(1)}s` : `${Math.round(v)}`);
+/** the same with its unit in prose: "725 ms" or "1.4 s" */
+const msU = (v: number) => (v >= 1000 ? `${ms(v).replace('s', '')} s` : `${Math.round(v)} ms`);
 const pct = (v: number) => `${(v * 100).toFixed(v < 0.01 ? 2 : v < 0.1 ? 1 : 0)}%`;
 const usd = (v: number) => `$${Math.abs(v) >= 100 ? Math.round(v).toLocaleString('en-US') : v.toFixed(Math.abs(v) < 1 ? 3 : 2)}`;
 const signedUsd = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}$${Math.abs(v) >= 100 ? Math.round(Math.abs(v)).toLocaleString('en-US') : Math.abs(v).toFixed(2)}`;
@@ -154,7 +157,10 @@ function Panes() {
   const setHover = useBacktest((s) => s.setHover);
   const setView = useBacktest((s) => s.setView);
   const focus = useBacktest((s) => s.focus);
-  const [ref, width] = useWidth<HTMLDivElement>();
+  const [ref, width, boxH] = useSize<HTMLDivElement>();
+  // the p99 pane takes what the three smaller panes, the time axis and the hint leave, so the
+  // whole stack fits without scrolling on a laptop screen
+  const p99H = Math.max(170, Math.min(300, boxH - (110 + 110 + 120) - 52));
   const n = r.t.length;
   const [i0, i1] = view ?? [0, n];
   const s = makeScale(i0, i1, width);
@@ -185,12 +191,14 @@ function Panes() {
   }
   const lo = Math.max(1, Math.min(...p99Vals.filter((v) => v > 0)) * 0.7);
   const hi = Math.max(r.slo.p99Ms * 1.4, ...p99Vals) * 1.3;
-  const yp = yScale(lo, hi, 300, { log: true, fmt: ms });
+  const yp = yScale(lo, hi, p99H, { log: true, fmt: ms });
   const cs = candles(r.actual.p99Ms, i0, i1, Math.max(40, Math.floor(s.plotW / 7)));
   const cw = Math.max(1.2, Math.min(9, ((s.plotW - 8) / Math.max(1, i1 - i0)) * cs.size * 0.62));
   const gridLines = Array.from({ length: 6 }, (_, k) => Math.round(i0 + ((i1 - 1 - i0) * k) / 5));
+  // a replayed outage never happened to this system: there is nothing measured to show
+  const real = !w.outage;
   const legendP99 = [
-    { label: `measured p99 · ${cs.size > 1 ? `${cs.size}-bucket` : 'bucket'} candles`, color: MEASURED, value: r.actual.p99Ms[at] !== null ? ms(r.actual.p99Ms[at]!) : '—' },
+    ...(real ? [{ label: `measured p99 · ${cs.size > 1 ? `${cs.size}-bucket` : 'bucket'} candles`, color: MEASURED, value: r.actual.p99Ms[at] !== null ? ms(r.actual.p99Ms[at]!) : '—' }] : []),
     { label: 'as built (model)', color: ASBUILT, value: ms(r.baseline.series.p99Ms.p50[at]) },
     ...visible.map(({ st, color }) => ({ label: st.name, color, value: ms(st.series.p99Ms.p50[at]) })),
   ];
@@ -226,7 +234,7 @@ function Panes() {
 
   return (
     <div className="bt-panes" ref={ref} onWheel={onWheel}>
-      <Pane s={s} h={300} ys={yp} legend={legendP99} hover={hover} onHover={setHover} onPick={pick} gridLines={gridLines}>
+      <Pane s={s} h={p99H} ys={yp} legend={legendP99} hover={hover} onHover={setHover} onPick={pick} gridLines={gridLines}>
         {breach.map((b) => {
           const a = Math.max(i0, idxOf(b.start));
           const z = Math.min(i1 - 1, idxOf(b.end));
@@ -249,7 +257,7 @@ function Panes() {
           })}
         <path d={bandPath(s, yp.y, r.baseline.series.p99Ms)} fill={ASBUILT} opacity={0.1} />
         <path d={path(s, yp.y, r.baseline.series.p99Ms.p50)} fill="none" stroke={ASBUILT} strokeDasharray="3 3" strokeWidth={1} />
-        {cs.list.map((c) => {
+        {real && cs.list.map((c) => {
           const up = c.c > c.o;
           const col = up ? 'var(--bt-red)' : 'var(--bt-green)';
           const x = s.x(c.i);
@@ -266,20 +274,27 @@ function Panes() {
             <path d={path(s, yp.y, st.series.p99Ms.p50)} fill="none" stroke={color} strokeWidth={k === focus ? 1.6 : 1} />
           </g>
         ))}
-        {focused && idxOf(focused.worst.t) >= i0 && idxOf(focused.worst.t) < i1 && focused.worst.p99Ms > r.slo.p99Ms && (
-          <g className="bt-worst" onClick={() => pick(idxOf(focused.worst.t))}>
-            <rect x={Math.min(s.plotW - 120, s.x(idxOf(focused.worst.t)) + 6)} y={Math.max(24, yp.y(focused.worst.p99Ms) - 10)} width={112} height={18} />
-            <text x={Math.min(s.plotW - 114, s.x(idxOf(focused.worst.t)) + 12)} y={Math.max(24, yp.y(focused.worst.p99Ms) - 10) + 13}>
-              worst {when(focused.worst.t).slice(6)} · {ms(focused.worst.p99Ms)}
-            </text>
-          </g>
-        )}
+        {focused && idxOf(focused.worst.t) >= i0 && idxOf(focused.worst.t) < i1 && focused.worst.p99Ms > r.slo.p99Ms && (() => {
+          const label = `worst ${when(focused.worst.t).slice(6)} · ${ms(focused.worst.p99Ms)}`;
+          // sized to the label (12px mono, ~7.3px a character) so the value is never cut off
+          const wl = Math.ceil(label.length * 7.3) + 12;
+          const x = Math.min(s.plotW - wl - 8, s.x(idxOf(focused.worst.t)) + 6);
+          const y = Math.max(24, yp.y(focused.worst.p99Ms) - 10);
+          return (
+            <g className="bt-worst" onClick={() => pick(idxOf(focused.worst.t))}>
+              <rect x={x} y={y} width={wl} height={18} />
+              <text x={x + 6} y={y + 13}>
+                {label}
+              </text>
+            </g>
+          );
+        })()}
       </Pane>
-      <Pane s={s} h={110} ys={ye} legend={[{ label: 'errors', color: MEASURED, value: r.actual.errorRate[at] !== null ? pct(r.actual.errorRate[at]!) : '—' }, ...visible.map(({ st, color }) => ({ label: st.name, color, value: pct(st.series.errorRate.p50[at]) }))]} hover={hover} onHover={setHover} onPick={pick} gridLines={gridLines}>
+      <Pane s={s} h={110} ys={ye} legend={[...(real ? [{ label: 'errors', color: MEASURED, value: r.actual.errorRate[at] !== null ? pct(r.actual.errorRate[at]!) : '—' }] : []), { label: 'as built', color: ASBUILT, value: pct(r.baseline.series.errorRate.p50[at]) }, ...visible.map(({ st, color }) => ({ label: st.name, color, value: pct(st.series.errorRate.p50[at]) }))]} hover={hover} onHover={setHover} onPick={pick} gridLines={gridLines}>
         <line x1={0} x2={s.plotW} y1={ye.y(r.slo.errorRate)} y2={ye.y(r.slo.errorRate)} className="bt-slo" />
         {Array.from({ length: i1 - i0 }, (_, k) => i0 + k).map((i) => {
           const v = r.actual.errorRate[i];
-          if (v === null || v <= 0) return null;
+          if (!real || v === null || v <= 0) return null;
           return <rect key={i} x={s.x(i) - bw / 2} y={ye.y(Math.min(v, ye.ticks.at(-1)! * 1.2))} width={bw} height={ye.y(0) - ye.y(Math.min(v, ye.ticks.at(-1)! * 1.2))} fill={v > r.slo.errorRate ? 'var(--bt-red)' : 'var(--bt-mute)'} />;
         })}
         <path d={path(s, ye.y, r.baseline.series.errorRate.p50)} fill="none" stroke={ASBUILT} strokeDasharray="3 3" />
@@ -287,8 +302,8 @@ function Panes() {
           <path key={st.name} d={path(s, ye.y, st.series.errorRate.p50)} fill="none" stroke={color} strokeWidth={k === focus ? 1.5 : 1} opacity={k === focus ? 1 : 0.55} />
         ))}
       </Pane>
-      <Pane s={s} h={110} ys={yc} legend={[{ label: 'cost $/h (bill)', color: MEASURED, value: r.actual.costPerHour[at] !== null ? usd(r.actual.costPerHour[at]!) : '—' }, { label: 'as built', color: ASBUILT, value: usd(r.baseline.series.costPerHour.p50[at]) }, ...visible.map(({ st, color }) => ({ label: st.name, color, value: usd(st.series.costPerHour.p50[at]) }))]} hover={hover} onHover={setHover} onPick={pick} gridLines={gridLines}>
-        <path d={path(s, yc.y, r.actual.costPerHour)} fill="none" stroke={MEASURED} strokeWidth={1} opacity={0.8} />
+      <Pane s={s} h={110} ys={yc} legend={[...(real ? [{ label: 'cost $/h (bill)', color: MEASURED, value: r.actual.costPerHour[at] !== null ? usd(r.actual.costPerHour[at]!) : '—' }] : []), { label: 'as built', color: ASBUILT, value: usd(r.baseline.series.costPerHour.p50[at]) }, ...visible.map(({ st, color }) => ({ label: st.name, color, value: usd(st.series.costPerHour.p50[at]) }))]} hover={hover} onHover={setHover} onPick={pick} gridLines={gridLines}>
+        {real && <path d={path(s, yc.y, r.actual.costPerHour)} fill="none" stroke={MEASURED} strokeWidth={1} opacity={0.8} />}
         <path d={path(s, yc.y, r.baseline.series.costPerHour.p50)} fill="none" stroke={ASBUILT} strokeDasharray="3 3" />
         {visible.map(({ st, color, k }) => (
           <path key={st.name} d={path(s, yc.y, st.series.costPerHour.p50)} fill="none" stroke={color} strokeWidth={k === focus ? 1.5 : 1} opacity={k === focus ? 1 : 0.55} />
@@ -304,7 +319,7 @@ function Panes() {
         ))}
       </Pane>
       <TimeAxis s={s} t={r.t} hover={hover} />
-      <div className="bt-hint" style={{ right: AXIS_W + 8 }}>
+      <div className="bt-hint" style={{ paddingRight: AXIS_W + 8 }}>
         ⌘/ctrl + wheel to zoom · click any moment to open it on the board
       </div>
     </div>
@@ -345,7 +360,7 @@ function Watch() {
             <button className="bt-eye" aria-label={`${ok[idx]?.visible === false ? 'Show' : 'Hide'} ${k.name}`} style={{ borderColor: color, background: ok[idx]?.visible === false ? 'transparent' : color }} onClick={(e) => (e.stopPropagation(), toggle(w.strategies.indexOf(ok[idx])))} />
             <span title={st.description ? `${k.name}: ${st.description}` : k.name}>{k.name}</span>
             <span className={k.monthlyDelta < -0.5 ? 'pos' : k.monthlyDelta > 0.5 ? 'neg' : ''}>{signedUsd(k.monthlyDelta)}</span>
-            <span className={k.minutesOutOfSloDelta > 0.5 ? 'neg' : k.minutesOutOfSloDelta < -0.5 ? 'pos' : ''}>{k.minutesOutOfSloDelta > 0 ? '+' : ''}{Math.round(k.minutesOutOfSloDelta)}</span>
+            <span className={k.minutesOutOfSloDelta > 0.5 ? 'neg' : k.minutesOutOfSloDelta < -0.5 ? 'pos' : ''}>{Math.round(k.minutesOutOfSloDelta) === 0 ? '±0' : `${k.minutesOutOfSloDelta > 0 ? '+' : '−'}${Math.abs(Math.round(k.minutesOutOfSloDelta))}`}</span>
           </div>
         );
       })}
@@ -367,7 +382,7 @@ function Watch() {
           <div className="bt-worstbox" onClick={() => openMomentOnBoard(Math.round((focused.worst.t - r.t[0]) / r.window.stepS), focus)}>
             <div>{when(focused.worst.t)}</div>
             <div className={focused.worst.p99Ms > r.slo.p99Ms || focused.worst.errorRate > r.slo.errorRate ? 'neg' : ''}>
-              p99 {ms(focused.worst.p99Ms)} ms · {pct(focused.worst.errorRate)} err
+              p99 {msU(focused.worst.p99Ms)} · {pct(focused.worst.errorRate)} err
             </div>
             <div className="bt-dim">{focused.worst.why}</div>
             <div className="bt-link">open on board ↗</div>
@@ -468,7 +483,7 @@ function Incidents({ st }: { st: StrategyResult | undefined }) {
           <tr key={i.start}>
             <td>{when(i.start)}</td>
             <td>{i.minutes.toFixed(1)}</td>
-            <td>{ms(i.peakP99Ms)} ms</td>
+            <td>{msU(i.peakP99Ms)}</td>
             <td>{pct(i.peakErrorRate)}</td>
             <td>{i.why}</td>
             <td>

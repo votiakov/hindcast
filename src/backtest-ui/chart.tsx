@@ -31,6 +31,19 @@ export function useWidth<T extends HTMLElement>(): [React.RefObject<T>, number] 
   return [ref, w];
 }
 
+/** width and height of a box that its layout sizes (not its content) */
+export function useSize<T extends HTMLElement>(): [React.RefObject<T>, number, number] {
+  const ref = useRef<T>(null);
+  const [size, setSize] = useState({ w: 900, h: 700 });
+  useEffect(() => {
+    if (!ref.current) return;
+    const ro = new ResizeObserver((e) => setSize({ w: Math.max(320, Math.floor(e[0].contentRect.width)), h: Math.floor(e[0].contentRect.height) }));
+    ro.observe(ref.current);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, size.w, size.h];
+}
+
 export function makeScale(i0: number, i1: number, width: number): Scale {
   const plotW = width - AXIS_W;
   const span = Math.max(1, i1 - 1 - i0);
@@ -156,15 +169,16 @@ export function TimeAxis({ s, t, hover }: { s: Scale; t: number[]; hover: number
   const marks = Array.from({ length: n }, (_, k) => Math.round(s.i0 + ((s.i1 - 1 - s.i0) * k) / (n - 1)));
   return (
     <svg width={s.width} height={22} className="bt-time">
-      {marks.map((i) => (
-        <text key={i} x={s.x(i)} y={15} textAnchor="middle">
+      {marks.map((i, k) => (
+        // the first and last labels hang inwards so they are never cut at the edges
+        <text key={i} x={s.x(i)} y={15} textAnchor={k === 0 ? 'start' : k === marks.length - 1 ? 'end' : 'middle'}>
           {fmt(t[i])}
         </text>
       ))}
       {hover !== null && hover >= s.i0 && hover < s.i1 && (
         <g>
-          <rect x={s.x(hover) - 52} y={1} width={104} height={19} className="bt-timetag" />
-          <text x={s.x(hover)} y={15} textAnchor="middle" className="bt-timetag-text">
+          <rect x={Math.max(0, Math.min(s.plotW - 104, s.x(hover) - 52))} y={1} width={104} height={19} className="bt-timetag" />
+          <text x={Math.max(52, Math.min(s.plotW - 52, s.x(hover)))} y={15} textAnchor="middle" className="bt-timetag-text">
             {new Date(t[hover] * 1000).toISOString().slice(5, 16).replace('T', ' ')}
           </text>
         </g>

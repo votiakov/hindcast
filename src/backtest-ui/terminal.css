@@ -70,7 +70,7 @@
 .bt-time text { fill: var(--bt-dim); font: 11px var(--bt-mono); }
 .bt-timetag { fill: var(--bt-hi); }
 .bt-timetag-text { fill: var(--bt-bg) !important; font-weight: 600; }
-.bt-hint { position: absolute; bottom: 26px; font: 11px var(--bt-mono); color: var(--bt-mute); pointer-events: none; }
+.bt-hint { text-align: right; padding: 3px 0 6px; font: 11px var(--bt-mono); color: var(--bt-mute); pointer-events: none; }
 
 /* watchlist */
 .bt-watch { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; min-width: 0; }
