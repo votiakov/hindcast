@@ -49,16 +49,21 @@ app), [use cases](docs/use-cases.md), the [capability list](docs/capabilities.md
 - **Backtest** – real history as a chart, strategies drawn over it, ranked; open any
   moment on the board; Studio card of the result.
 - **Live** – a running system that fails on arrival, with the next move pinned to the component under stress.
-- **Lessons** – guided steps with objectives: scaling basics, retry storms, elasticity (autoscaling lag,
-  cold-cache stampedes), AI serving, language runtimes.
+- **Lessons** – seven lessons, 22 levels: scaling basics, retry storms, elasticity (autoscaling lag,
+  cold-cache stampedes), AI serving, language runtimes, queues, zone failures. Every level has a
+  reference solution ("show me"), a debrief and saved progress; each is proven solvable in the tests.
 - **Sandbox** – build anything. Autoscaling, retries, timeouts, breakers, failover, fan-out, gray
   failures, cross-region links. Every run is recorded; drag the timeline to rewind the whole board.
 - **Failure audit** – risk register with blast radius, recovery time and $ at risk; replay any incident
   on the board; apply a verified fix with one click (undoable); copy the report as Markdown.
 - **Architecture as code** – a YAML editor that stays in sync with the board in both directions.
-- **Compare** – two designs, same traffic and failures, side by side, with a takeaway computed by the engine.
+- **Compare** – two designs, same traffic and failures, side by side, with a measured scoreboard and a
+  takeaway computed by the engine. Nineteen built-in comparisons, each proven to show a difference.
 - **Present** – press P: no chrome, large numbers, captions; ←/→ walks through the audit's incidents live.
-- **Studio** – render scripted comparisons to MP4 / carousel for posts (`npm run record`).
+- **Studio** – scripted episodes rendered in the browser to MP4, GIF and a PDF carousel for posts
+  (or frame-perfect from the command line with `npm run record`).
+- **Agents** – an MCP server and CLI so an agent can connect to Prometheus and Jaeger/Tempo, calibrate,
+  and verify an infrastructure change against real history (`npm run sim -- agent setup`).
 
 ⌘K opens the command palette. ⌘Z undoes. ⌘S saves the design locally. Drop a spec, Kubernetes
 manifests or a `terraform show -json` file on the board to open it. `?` lists the shortcuts.
