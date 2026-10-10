@@ -1,11 +1,13 @@
 import { Document, isMap, isSeq } from 'yaml';
 
 /**
- * Spec → YAML the way a person would write it: block style for structure, flow style for
- * connection pairs and small objects (`[lb, api]`, `{ min: 2, max: 8 }`).
+ * Spec → YAML the way a person would write it: block style for structure, arrows for plain
+ * connections (`lb -> api`), flow style for small objects (`{ min: 2, max: 8 }`).
  */
 export function specToYaml(spec: unknown): string {
-  const doc = new Document(spec);
+  const s = spec as { connections?: unknown[] };
+  const arrow = (c: unknown) => (Array.isArray(c) && c.length === 2 && c.every((x) => typeof x === 'string' && /^[^\s>-][^\s>]*$/.test(x)) ? `${c[0]} -> ${c[1]}` : c);
+  const doc = new Document(s && Array.isArray(s.connections) ? { ...s, connections: s.connections.map(arrow) } : spec);
   const root = doc.contents;
   if (isMap(root)) {
     const conns = root.get('connections', true);

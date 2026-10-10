@@ -18,8 +18,9 @@ components:                     # required, ≥ 1
   - { id: api, kind: server, instances: 6, runtime: go, tier: M }
   - { id: db, kind: db, tier: L }
 connections:                    # caller → callee
-  - [users, lb]
-  - { from: lb, to: api }       # object form also accepted
+  - users -> lb                 # the arrow form; the app writes this one
+  - [lb, api]                   # a pair works too
+  - { from: lb, to: api }       # and the object form
   - { from: api, to: db, latencyMs: 70 }   # a link with network round-trip latency (cross-region)
 zones:                          # optional failure domains
   - { id: az-a, label: us-east-1a, members: [api, db] }
@@ -55,6 +56,8 @@ zones:                          # optional failure domains
 
 ### Connections and semantics
 
+- Three ways to write one: `users -> lb`, `[users, lb]`, `{ from: users, to: lb }`. Only the object
+  form carries link properties (`latencyMs`).
 - Order matters for `routing: failover` (first child first).
 - `db → replica` connections define replicas (reads are shared, failover target).
 - `queue → worker` connections define consumers (pull model).

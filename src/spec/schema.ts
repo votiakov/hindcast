@@ -61,6 +61,11 @@ export const ArchitectureSpec = z.object({
     .array(
       z.union([
         z.tuple([z.string(), z.string()]),
+        // "lb -> api": how people (and agents) write it without thinking
+        z
+          .string()
+          .regex(/^\s*[^\s>]+\s*->\s*[^\s>]+\s*$/, 'write a connection as "from -> to"')
+          .transform((s) => s.split('->').map((x) => x.trim()) as [string, string]),
         z.object({
           from: z.string(),
           to: z.string(),
@@ -68,7 +73,7 @@ export const ArchitectureSpec = z.object({
         }),
       ]),
     )
-    .describe('caller → callee pairs, e.g. ["lb","api"] or { from, to, latencyMs }; order matters for failover routing'),
+    .describe('caller → callee pairs, e.g. "lb -> api", ["lb","api"] or { from, to, latencyMs }; order matters for failover routing'),
   zones: z.array(ZoneSpec).optional(),
 });
 
