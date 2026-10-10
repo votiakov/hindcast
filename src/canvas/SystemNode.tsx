@@ -11,6 +11,7 @@ import { RiskMark } from './RiskMark';
 import { healthOf, nodeView, type Health } from './nodeModel';
 import { Station } from '../theme/transit/Station';
 import { RefNode } from '../theme/reference/RefNode';
+import { CardControls } from './CardControls';
 
 export { healthOf, type Health };
 
@@ -37,9 +38,8 @@ function SystemNodeImpl({ id, data, selected }: NodeProps<SystemNodeT>) {
   if (theme === 'reference' || theme === 'terminal') {
     return (
       <>
-        <NodeControls id={id} data={data} selected={selected} />
         <RiskMark id={id} />
-        <RefNode data={data} st={st} v={v} selected={selected} showCost={showCost} running={running} explainOn={explainOn} />
+        <RefNode data={data} st={st} v={v} selected={selected} showCost={showCost} running={running} explainOn={explainOn} controls={selected ? <CardControls id={id} data={data} /> : null} />
       </>
     );
   }

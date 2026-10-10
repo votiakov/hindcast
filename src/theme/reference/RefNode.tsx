@@ -16,7 +16,7 @@ const STATUS: Record<NodeView['health'], string> = {
  * A component as a figure in an engineering reference: a spec card with a status strip,
  * key/value readings, a utilisation scale, and a plain-English callout when something is happening.
  */
-export function RefNode({ data, st, v, selected, showCost, running, explainOn }: { data: SystemNodeData; st: NodeStats | undefined; v: NodeView; selected: boolean; showCost: boolean; running: boolean; explainOn: boolean }) {
+export function RefNode({ data, st, v, selected, showCost, running, explainOn, controls }: { data: SystemNodeData; st: NodeStats | undefined; v: NodeView; selected: boolean; showCost: boolean; running: boolean; explainOn: boolean; controls?: React.ReactNode }) {
   const spec = KINDS[data.kind];
   const Icon = KIND_ICONS[data.kind];
   const note = explainOn ? explain(data, st, v) : null;
@@ -25,7 +25,7 @@ export function RefNode({ data, st, v, selected, showCost, running, explainOn }:
   const status = v.failedOver ? 'Failed over' : v.electing ? 'Electing' : v.promotedReplica ? 'Primary' : STATUS[v.health];
 
   return (
-    <div className={`ref-node s-${v.health} ${selected ? 'sel' : ''} ${v.promotedReplica ? 'promoted' : ''}`}>
+    <div className={`ref-node s-${v.health} ${selected ? 'sel' : ''} ${controls ? 'open' : ''} ${v.promotedReplica ? 'promoted' : ''}`}>
       {data.kind !== 'client' && <Handle type="target" position={Position.Left} className="ref-handle" />}
       <div className="ref-head">
         <Icon size={15} strokeWidth={1.75} className="ref-icon" />
@@ -96,6 +96,7 @@ export function RefNode({ data, st, v, selected, showCost, running, explainOn }:
       )}
 
       {note && <div className={`ref-note ${note.tone}`}>{note.text}</div>}
+      {controls}
       <Handle type="source" position={Position.Right} className="ref-handle" />
     </div>
   );

@@ -22,21 +22,22 @@
 <section class="screen" data-shot="sandbox-node">
 <div>
 <h2>Everything a component can do</h2>
-<p>Select a component to get its controls.</p>
+<p>Select a component and its card opens up: the controls are inside it, not floating over the board. The board pans to show all of it.</p>
 <ol class="pins">
-<li data-pin="tier"><h3>Size</h3><p>S, M or L: capacity, latency and price per instance. Exact numbers per kind in the component catalogue.</p></li>
 <li data-pin="instances"><h3>Instances</h3><p>Add or remove; the load balances across them.</p></li>
-<li data-pin="autoscale"><h3>Autoscale</h3><p>Target tracking with min, max and warm-up: "k8s pod 5–20 s · Fargate 30–60 s · EC2 ASG 90–180 s".</p></li>
+<li data-pin="tier"><h3>Size</h3><p>S, M or L: capacity, latency and price per instance. Exact numbers per kind in the component catalogue.</p></li>
+<li data-pin="autoscale"><h3>Autoscale</h3><p>Target tracking with a maximum and a warm-up: "k8s pod 5–20 s · Fargate 30–60 s · EC2 ASG 90–180 s".</p></li>
 <li data-pin="runtime"><h3>Runtime</h3><p>Node.js, Python, Java, Go or Rust. Changes throughput per instance, latency, cold starts and the serverless bill.</p></li>
-<li data-pin="fault"><h3>Faults</h3><p>10% or 50% errors, +100, +500 or +2000 ms, half capacity, flush the cache, restore. The skull kills it.</p></li>
-<li data-pin="calibrate"><h3>Calibrate</h3><p>From your production numbers: one instance served R req/s at C% CPU with a p50 of L ms and costs $/h. Capacity, latency and price follow.</p></li>
+<li data-pin="resilience"><h3>Resilience</h3><p>Opens the settings below; it opens by itself when any of them is set.</p></li>
 <li data-pin="retries"><h3>Retries</h3><p>Per failed call: immediate, with backoff, or with a budget.</p></li>
 <li data-pin="breaker"><h3>Circuit breaker</h3><p>Stop calling a failing dependency for a while, with an optional degraded fallback.</p></li>
 <li data-pin="routing"><h3>Routing</h3><p>How calls spread over what it connects to: split, fan-out to all, or failover.</p></li>
 <li data-pin="fanout"><h3>Fan-out</h3><p>Scatter-gather: each call goes to N partitions and waits for the slowest. The tail at scale, made visible.</p></li>
 <li data-pin="queue"><h3>Queue</h3><p>A bounded queue: how many seconds of work it holds before it sheds load.</p></li>
-<li data-pin="node"><h3>The rest is on the component</h3><p>Client timeouts on Users, hit rates on caches, rate limits on gateways, continuous batching on GPUs.</p></li>
+<li data-pin="fault"><h3>Break it</h3><p><b>kill</b>, or a gray failure: 10% or 50% errors, +100, +500 or +2000 ms, half capacity, flush the cache, restore.</p></li>
+<li data-pin="calibrate"><h3>Calibrate</h3><p>From your production numbers: one instance served R req/s at C% CPU with a p50 of L ms and costs $/h. Capacity, latency and price follow.</p></li>
 </ol>
+<p>Kind-specific settings appear on the kinds that have them: client timeouts on Users, hit rates on caches, rate limits on gateways and model APIs, continuous batching on GPUs. In the Neon and Transit themes the same controls float above the selected component.</p>
 </div>
 </section>
 

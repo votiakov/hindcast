@@ -1,0 +1,297 @@
+import { useEffect, useRef, useState } from 'react';
+import { useReactFlow } from '@xyflow/react';
+import { HeartPulse, Minus, Plus, Skull, Trash2 } from 'lucide-react';
+import { KINDS, RUNTIME_KINDS, RUNTIMES, TIERS, isUp, type RetryPolicy, type RouteMode, type Runtime, type SystemNodeData, type Tier } from '../sim/catalog';
+import { useSim } from '../sim/store';
+import { useBoardId } from './BoardContext';
+import { fmt } from './nodeModel';
+import { Calibrate } from './Calibrate';
+
+/** nodes that make outgoing calls and can therefore retry / break */
+const CALLERS = new Set(['client', 'server', 'worker', 'function', 'gateway', 'lb']);
+
+/**
+ * The controls of a selected component, inside its card (the Terminal and Reference themes): the
+ * card opens up instead of a toolbar floating over the board. The rows people change most are
+ * always there — size, scaling, what is specific to the kind, chaos; resilience (retries,
+ * timeouts, breakers, routing, fan-out, queue) opens under its own heading, and opens by itself
+ * when any of it is set.
+ */
+export function CardControls({ id, data }: { id: string; data: SystemNodeData }) {
+  const b = useBoardId();
+  const { updateNode, killNode, reviveNode, removeNode, apply } = useSim.getState();
+  const spec = KINDS[data.kind];
+  const instances = data.instances ?? 1;
+  const set = (patch: Partial<SystemNodeData>) => updateNode(b, id, patch);
+  const caller = CALLERS.has(data.kind);
+  const bounded = data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'function' && data.kind !== 'queue';
+  const calibratable = data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'function' && data.kind !== 'queue';
+  const tuned = (data.retries ?? 0) > 0 || !!data.breaker || !!data.timeoutMs || (data.routing && data.routing !== 'split') || (data.fanout ?? 1) > 1 || data.queueS !== undefined;
+  const [more, setMore] = useState(tuned);
+  const [cal, setCal] = useState(false);
+  const hasResilience = caller || data.kind !== 'client';
+
+  // an opened card can grow under the play bar: pan the board up just enough to show all of it
+  const box = useRef<HTMLDivElement>(null);
+  const { getViewport, setViewport } = useReactFlow();
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const t = setTimeout(() => {
+      const r = el.getBoundingClientRect();
+      const bar = document.querySelector('.controlbar')?.getBoundingClientRect();
+      const limit = (bar?.top ?? window.innerHeight) - 12;
+      if (r.bottom > limit) {
+        const vp = getViewport();
+        setViewport({ ...vp, y: vp.y - Math.min(r.bottom - limit, Math.max(0, r.top - 70)) }, { duration: 250 });
+      }
+    }, 30);
+    return () => clearTimeout(t);
+  }, [more, cal, getViewport, setViewport]);
+
+  return (
+    // nodrag / nopan / nowheel: inputs inside a card must not move the board
+    <div ref={box} className="nc nodrag nopan nowheel" onClick={(e) => e.stopPropagation()}>
+      {(spec.tiered || spec.scalable) && (
+        <div className="nc-row">
+          {spec.scalable && (
+            <>
+              <span className="nc-l">instances</span>
+              <span className="nc-step">
+                <button onClick={() => set({ instances: Math.max(1, instances - 1), down: Math.min(data.down ?? 0, Math.max(0, instances - 2)) })} title="Remove an instance">
+                  <Minus size={12} />
+                </button>
+                <b>{instances}</b>
+                <button onClick={() => set({ instances: Math.min(24, instances + 1) })} title="Add an instance">
+                  <Plus size={12} />
+                </button>
+              </span>
+            </>
+          )}
+          {spec.tiered && (
+            <>
+              <span className="nc-l">size</span>
+              <span className="nc-seg">
+                {(Object.keys(TIERS) as Tier[]).map((t) => (
+                  <button key={t} className={data.tier === t ? 'on' : ''} onClick={() => set({ tier: t })} title={`${TIERS[t].label}: ×${TIERS[t].capacity} capacity, ×${TIERS[t].cost} cost`}>
+                    {t}
+                  </button>
+                ))}
+              </span>
+            </>
+          )}
+        </div>
+      )}
+
+      {spec.scalable && (
+        <div className="nc-row" title="Target-tracking autoscaling: adds instances when utilisation passes the target, after a warm-up">
+          <span className="nc-l">autoscale</span>
+          <button className={`nc-toggle ${data.autoscale ? 'on' : ''}`} onClick={() => set({ autoscale: data.autoscale ? undefined : { min: instances, max: Math.min(24, Math.max(instances * 4, 4)), targetUtil: 0.6, warmupS: 30, cooldownS: 60 } })}>
+            {data.autoscale ? 'on' : 'off'}
+          </button>
+          {data.autoscale && (
+            <>
+              <span className="nc-l">max</span>
+              <select value={data.autoscale.max} onChange={(e) => set({ autoscale: { ...data.autoscale!, max: Math.max(+e.target.value, data.autoscale!.min) } })}>
+                {[2, 4, 6, 8, 12, 16, 24].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+              <span className="nc-l">warm-up</span>
+              <select value={data.autoscale.warmupS ?? 30} onChange={(e) => set({ autoscale: { ...data.autoscale!, warmupS: +e.target.value } })} title="Launch → serving. k8s pod 5–20 s · Fargate 30–60 s · EC2 ASG 90–180 s">
+                {[5, 15, 30, 60, 120, 180].map((n) => (
+                  <option key={n} value={n}>
+                    {n}s
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
+        </div>
+      )}
+
+      {RUNTIME_KINDS.includes(data.kind) && (
+        <div className="nc-row" title="Language runtime — changes throughput per instance, latency, cold starts and serverless cost">
+          <span className="nc-l">runtime</span>
+          <select value={data.runtime ?? ''} onChange={(e) => set({ runtime: (e.target.value || undefined) as Runtime | undefined })}>
+            <option value="">generic</option>
+            {(Object.keys(RUNTIMES) as Runtime[]).map((r) => (
+              <option key={r} value={r}>
+                {RUNTIMES[r].label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      {data.kind === 'llm' && (
+        <div className="nc-row" title="Continuous batching: ~4× throughput per GPU, +400ms latency">
+          <span className="nc-l">batching</span>
+          <button className={`nc-toggle ${data.batching ? 'on' : ''}`} onClick={() => set({ batching: !data.batching })}>
+            {data.batching ? 'on' : 'off'}
+          </button>
+        </div>
+      )}
+      {(data.kind === 'cache' || data.kind === 'cdn') && (
+        <div className="nc-row">
+          <span className="nc-l">hit rate</span>
+          <input type="range" min={0} max={0.99} step={0.01} value={data.hitRate ?? 0.85} onChange={(e) => set({ hitRate: +e.target.value })} />
+          <b className="nc-v">{Math.round((data.hitRate ?? 0.85) * 100)}%</b>
+        </div>
+      )}
+      {(data.kind === 'gateway' || data.kind === 'function' || data.kind === 'llmapi') && (
+        <div className="nc-row">
+          <span className="nc-l">{data.kind === 'function' ? 'max conc.' : 'rate limit'}</span>
+          <input type="range" min={data.kind === 'llmapi' ? 10 : 100} max={data.kind === 'llmapi' ? 1000 : 10000} step={data.kind === 'llmapi' ? 10 : 100} value={data.limit ?? 1000} onChange={(e) => set({ limit: +e.target.value })} />
+          <b className="nc-v">{fmt(data.limit ?? 1000)}/s</b>
+        </div>
+      )}
+
+      {hasResilience && (
+        <button className={`nc-more ${more ? 'open' : ''}`} onClick={() => setMore(!more)}>
+          resilience {more ? '▴' : '▾'}
+        </button>
+      )}
+      {more && (
+        <>
+          {caller && (
+            <div className="nc-row" title="Retries per failed call and how they are scheduled">
+              <span className="nc-l">retries</span>
+              <select value={data.retries ?? 0} onChange={(e) => set({ retries: +e.target.value })}>
+                {[0, 1, 2, 3, 5].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+              {(data.retries ?? 0) > 0 && (
+                <select value={data.retryPolicy ?? 'immediate'} onChange={(e) => set({ retryPolicy: e.target.value as RetryPolicy })}>
+                  <option value="immediate">immediate</option>
+                  <option value="backoff">backoff + jitter</option>
+                  <option value="budget">budget 10%</option>
+                </select>
+              )}
+            </div>
+          )}
+          {data.kind === 'client' && (
+            <div className="nc-row" title="Clients give up on responses slower than this">
+              <span className="nc-l">timeout</span>
+              <select value={data.timeoutMs ?? 0} onChange={(e) => set({ timeoutMs: +e.target.value || undefined })}>
+                <option value={0}>none</option>
+                {[300, 500, 1000, 2000, 5000].map((ms) => (
+                  <option key={ms} value={ms}>
+                    {ms >= 1000 ? `${ms / 1000}s` : `${ms}ms`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {caller && (
+            <div className="nc-row" title="Circuit breaker: stop calling a failing dependency for a while">
+              <span className="nc-l">breaker</span>
+              <button className={`nc-toggle ${data.breaker ? 'on' : ''}`} onClick={() => set({ breaker: !data.breaker })}>
+                {data.breaker ? 'on' : 'off'}
+              </button>
+              {data.breaker && (
+                <>
+                  <span className="nc-l">fallback</span>
+                  <button className={`nc-toggle ${data.fallback ? 'on' : ''}`} onClick={() => set({ fallback: !data.fallback })} title="Serve a degraded response while the breaker is open">
+                    {data.fallback ? 'on' : 'off'}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+          {data.kind !== 'client' && (
+            <div className="nc-row" title="How calls spread over the components this one calls">
+              <span className="nc-l">routing</span>
+              <select value={data.routing ?? 'split'} onChange={(e) => set({ routing: e.target.value as RouteMode })}>
+                {(['split', 'failover', 'fanout'] as RouteMode[]).map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+              {(data.kind === 'server' || data.kind === 'worker' || data.kind === 'function') && (
+                <>
+                  <span className="nc-l" title="Scatter-gather: each call goes to N partitions in parallel and waits for the slowest">
+                    fan-out
+                  </span>
+                  <select value={data.fanout ?? 1} onChange={(e) => set({ fanout: +e.target.value > 1 ? +e.target.value : undefined })}>
+                    {[1, 5, 10, 20, 50, 100].map((n) => (
+                      <option key={n} value={n}>
+                        ×{n}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              )}
+            </div>
+          )}
+          {bounded && (
+            <div className="nc-row" title="Bounded queue: seconds of work this component holds before it sheds load">
+              <span className="nc-l">queue</span>
+              <select value={data.queueS ?? ''} onChange={(e) => set({ queueS: e.target.value === '' ? undefined : +e.target.value })}>
+                <option value="">default</option>
+                {[0.1, 0.25, 0.5, 1, 3, 10].map((q) => (
+                  <option key={q} value={q}>
+                    {q}s
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </>
+      )}
+
+      <div className="nc-row nc-chaos">
+        {isUp(data) && data.kind !== 'client' ? (
+          <button className="nc-act danger" onClick={() => killNode(b, id)} title="Kill it (chaos)">
+            <Skull size={12} /> kill
+          </button>
+        ) : !isUp(data) ? (
+          <button className="nc-act good" onClick={() => reviveNode(b, id)} title="Bring it back">
+            <HeartPulse size={12} /> revive
+          </button>
+        ) : null}
+        {data.kind !== 'client' && isUp(data) && (
+          <select
+            value=""
+            title="A gray failure: it stays up but misbehaves"
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === 'restore') apply(b, { type: 'restore', id });
+              else if (v === 'flush') apply(b, { type: 'flush-cache', id });
+              else if (v.startsWith('err')) apply(b, { type: 'inject-errors', id, rate: +v.slice(3) });
+              else if (v.startsWith('lat')) apply(b, { type: 'inject-latency', id, ms: +v.slice(3) });
+              else if (v.startsWith('deg')) apply(b, { type: 'degrade', id, factor: +v.slice(3) });
+            }}
+          >
+            <option value="" disabled>
+              break it…
+            </option>
+            <option value="err0.1">10% errors</option>
+            <option value="err0.5">50% errors</option>
+            <option value="lat100">+100 ms</option>
+            <option value="lat500">+500 ms</option>
+            <option value="lat2000">+2 s</option>
+            <option value="deg0.5">50% capacity</option>
+            {(data.kind === 'cache' || data.kind === 'cdn') && <option value="flush">flush cache</option>}
+            {(data.faultRate || data.faultLatencyMs || data.degraded !== undefined) && <option value="restore">restore</option>}
+          </select>
+        )}
+        {calibratable && (
+          <button className={`nc-act ${cal || data.capacity !== undefined || data.latencyMs !== undefined ? 'on' : ''}`} onClick={() => setCal(!cal)} title="Calibrate from production numbers: req/s at CPU %, p50, $/h">
+            calibrate
+          </button>
+        )}
+        <span className="nc-gap" />
+        <button className="nc-act" onClick={() => removeNode(b, id)} title="Delete (Backspace)">
+          <Trash2 size={12} />
+        </button>
+      </div>
+      {cal && calibratable && <Calibrate d={data} apply={(p) => (set(p), setCal(false))} />}
+    </div>
+  );
+}

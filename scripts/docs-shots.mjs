@@ -246,22 +246,24 @@ const SHOTS = {
   'sandbox-node': {
     setup: async (p) => {
       await runSandbox(p);
-      await p.locator('.react-flow__node').nth(1).click();
+      await p.locator('.react-flow__node .ref-head').nth(1).click();
+      await wait(p, 400);
+      await p.click('.nc-more');
       await wait(p, 900);
     },
     pins: {
-      tier: ['.node-toolbar .tb-group', 't', 0, 0, -10],
-      instances: ['.node-toolbar .tb-count', 't', 0, 0, -12],
-      autoscale: ['.node-toolbar button:has-text("autoscale")', 't', 0, 0, -10],
-      runtime: ['.node-toolbar :text("runtime")', 't', 0, 0, -10],
-      fault: ['.node-toolbar select:has(option:has-text("fault"))', 't', 0, 0, -10],
-      calibrate: ['.node-toolbar button:has-text("calibrate")', 't', 0, 0, -10],
-      retries: ['.node-toolbar :text("retries")', 'b', 0, 0, 12],
-      breaker: ['.node-toolbar button:has-text("breaker")', 'b', 0, 0, 10],
-      routing: ['.node-toolbar :text("routing")', 'b', 0, 0, 12],
-      fanout: ['.node-toolbar :text("fan-out")', 'b', 0, 0, 12],
-      queue: ['.node-toolbar :text("queue")', 'b', 0, 0, 12],
-      node: ['.react-flow__node.selected', 'r', 0, 8],
+      instances: ['.nc .nc-step', 'l', 0, -10],
+      tier: ['.nc .nc-seg', 'r', 0, 10],
+      autoscale: ['.nc .nc-toggle', 'l', 0, -10],
+      runtime: ['.nc .nc-l:text("runtime")', 'l', 0, -10],
+      resilience: ['.nc .nc-more', 'l', 0, -10],
+      retries: ['.nc .nc-l:text("retries")', 'l', 0, -10],
+      breaker: ['.nc .nc-l:text("breaker")', 'l', 0, -10],
+      routing: ['.nc .nc-l:text("routing")', 'l', 0, -10],
+      fanout: ['.nc .nc-l:text("fan-out")', 'r', 0, 60],
+      queue: ['.nc .nc-l:text("queue")', 'l', 0, -10],
+      fault: ['.nc select:has(option:has-text("break it"))', 'r', 0, 10],
+      calibrate: ['.nc .nc-act:has-text("calibrate")', 'r', 0, 10],
     },
   },
   audit: {

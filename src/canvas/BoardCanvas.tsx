@@ -70,7 +70,18 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
   useEffect(() => {
     adders[id] = (kind) => {
       const r = wrapper.current!.getBoundingClientRect();
-      const p = screenToFlowPosition({ x: r.left + r.width / 2 + (Math.random() - 0.5) * 80, y: r.top + r.height / 2 + (Math.random() - 0.5) * 80 });
+      const nodes = useSim.getState().boards[id].nodes.filter((n) => n.type === 'system');
+      // next to the selected component (where a chain grows), else the middle of the view; then the
+      // nearest spot nothing occupies, so a new card never lands on top of an existing one
+      const sel = nodes.find((n) => n.selected);
+      const start = sel ? { x: sel.position.x + 330 + 115, y: sel.position.y + 60 } : screenToFlowPosition({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+      const taken = (q: XYPosition) => nodes.some((n) => Math.abs(n.position.x - (q.x - 115)) < 260 && Math.abs(n.position.y - (q.y - 60)) < 200);
+      let p = start;
+      for (let k = 0; k < 40 && taken(p); k++) {
+        const ring = Math.floor(k / 8) + 1;
+        const a = (k % 8) * (Math.PI / 4);
+        p = { x: start.x + Math.round(Math.cos(a)) * 300 * ring, y: start.y + Math.round(Math.sin(a)) * 220 * ring };
+      }
       add(kind, p);
     };
     return () => {

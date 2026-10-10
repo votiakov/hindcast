@@ -384,3 +384,39 @@
 :is([data-theme='reference'], [data-theme='terminal']) .stage .ref-scale { padding-top: 8px; }
 
 .ref-sku { font-family: var(--mono); font-size: 10px; color: var(--r-faint); text-transform: none; }
+
+/* ---------- a selected card's own controls (CardControls) ---------- */
+.nc { border-top: 1px solid var(--r-line); padding: 7px 11px 9px; display: flex; flex-direction: column; gap: 5px; font-size: 11.5px; color: var(--r-ink-2); cursor: default; }
+.nc-row { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; }
+.nc-l { color: var(--r-muted); font-size: 11px; }
+.nc-row .nc-l:not(:first-child) { margin-left: 4px; }
+.ref-node .nc select { max-width: 118px; background: var(--r-surface); color: var(--r-ink); border: 1px solid var(--r-line-strong); border-radius: 3px; font: 11.5px var(--mono); padding: 1px 3px; }
+.nc input[type='range'] { width: 90px; accent-color: var(--r-accent); }
+.nc-v { font: 600 11.5px var(--mono); color: var(--r-ink); }
+.nc-step { display: inline-flex; align-items: center; border: 1px solid var(--r-line-strong); border-radius: 3px; }
+.nc-step button { background: none; border: 0; color: var(--r-ink-2); padding: 1px 5px; display: grid; place-items: center; cursor: pointer; }
+.nc-step button:hover { color: var(--r-accent); }
+.nc-step b { font: 600 11.5px var(--mono); min-width: 18px; text-align: center; color: var(--r-ink); }
+.nc-seg { display: inline-flex; border: 1px solid var(--r-line-strong); border-radius: 3px; }
+.nc-seg button { background: none; border: 0; border-left: 1px solid var(--r-line); color: var(--r-muted); font: 11px var(--mono); padding: 1px 6px; cursor: pointer; }
+.nc-seg button:first-child { border-left: 0; }
+.nc-seg button.on { color: var(--r-accent); background: var(--r-accent-tint); }
+.nc-toggle { background: none; border: 1px solid var(--r-line-strong); border-radius: 3px; color: var(--r-muted); font: 11px var(--mono); padding: 1px 7px; cursor: pointer; }
+.nc-toggle.on { color: var(--r-accent); border-color: var(--r-accent-line); background: var(--r-accent-tint); }
+.nc-more { align-self: flex-start; background: none; border: 0; padding: 1px 0; color: var(--r-muted); font: 10.5px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; }
+.nc-more:hover, .nc-more.open { color: var(--r-ink); }
+.nc-chaos { padding-top: 5px; border-top: 1px dotted var(--r-line); flex-wrap: nowrap; }
+.ref-node .nc-chaos select { max-width: 92px; min-width: 0; }
+.nc-act { display: inline-flex; align-items: center; gap: 3px; background: none; border: 1px solid var(--r-line-strong); border-radius: 3px; color: var(--r-ink-2); font: 11px var(--mono); padding: 1px 6px; cursor: pointer; }
+.nc-act:hover { color: var(--r-ink); border-color: var(--r-muted); }
+.nc-act.danger { color: var(--r-bad); }
+.nc-act.good { color: var(--r-ok); }
+.nc-act.on { color: var(--r-accent); border-color: var(--r-accent-line); }
+.nc-gap { flex: 1; }
+.nc .cal { margin-top: 4px; max-width: 100%; }
+.nc .cal-row { flex-wrap: wrap; gap: 4px 8px; }
+.nc .cal-f input { width: 56px; }
+[data-theme='terminal'] .nc-step, [data-theme='terminal'] .nc-seg, [data-theme='terminal'] .nc-toggle, [data-theme='terminal'] .nc-act, [data-theme='terminal'] .nc select { border-radius: 0; }
+/* an open card is wider, and sits above its neighbours */
+.ref-node.open { width: 300px; }
+.react-flow__node.selected { z-index: 10 !important; }
