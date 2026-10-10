@@ -32,6 +32,7 @@ export const retryStorm: Lesson = {
       objective: 'Serve 700 req/s with <1% errors and p99 < 500ms for 5s.',
       traffic: { from: 400, to: 700, rampSeconds: 3 },
       goal: { maxErrorRate: 0.01, maxP99: 500, holdSeconds: 5 },
+      takeaway: 'Defaults look harmless when nothing fails: three immediate retries and a long queue cost nothing on a calm day.',
     },
     {
       id: 'blip',
@@ -47,6 +48,14 @@ export const retryStorm: Lesson = {
         'This is a metastable failure. The 3-second queue fills with requests whose clients already gave up after 1s, so every response is "late"; ' +
         'clients retry 3×, quadrupling the load, which keeps the queue full forever. Break the loop: select Users and switch retries to "retry budget 10%" ' +
         '(or turn on the breaker), and/or select api and shorten its queue to 0.25–0.5s so it sheds load instead of hoarding stale work.',
+      solution: {
+        note: 'A retry budget on the clients and a short queue on the API',
+        changes: [
+          { op: 'set', id: 'users', fields: { retryPolicy: 'budget' } },
+          { op: 'set', id: 'api', fields: { queueS: 0.5 } },
+        ],
+      },
+      takeaway: 'A metastable failure outlives its trigger: stale queued work plus immediate retries keep the load above capacity after the burst is gone. A retry budget caps the extra load; a short queue sheds work nobody is waiting for.',
     },
     {
       id: 'brownout',
@@ -62,6 +71,16 @@ export const retryStorm: Lesson = {
       hint:
         'Try api → breaker + fallback first and watch it flap: open (fallback served) → probe → close → database overloaded again → open. ' +
         'Breakers buy time and protect, but they add no capacity. The fix that holds: put a Cache between api and db (api → cache → db) so most reads never touch the struggling database.',
+      solution: {
+        note: 'A cache between the API and the struggling database',
+        changes: [
+          { op: 'add', component: { id: 'cache', kind: 'cache' } },
+          { op: 'disconnect', from: 'api', to: 'db' },
+          { op: 'connect', from: 'api', to: 'cache' },
+          { op: 'connect', from: 'cache', to: 'db' },
+        ],
+      },
+      takeaway: 'A breaker protects and buys time but adds no capacity. Keeping reads away from a degraded dependency is what holds.',
     },
   ],
 };

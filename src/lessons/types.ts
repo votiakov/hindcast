@@ -1,5 +1,6 @@
 import type { SystemEdge, SystemNode } from '../sim/catalog';
 import type { SimAction } from '../sim/actions';
+import type { ChangeSpec } from '../spec/schema';
 
 export type ChaosAction = SimAction;
 
@@ -11,6 +12,9 @@ export interface StepGoal {
   holdSeconds: number;
   /** step time when the goal starts being checked (default: end of the traffic ramp) */
   startAfter?: number;
+  /** the hold must be complete by this step time: the system has to ride out what happens in the
+   *  window, not recover afterwards (default: no deadline) */
+  deadline?: number;
 }
 
 export interface LessonStep {
@@ -25,6 +29,10 @@ export interface LessonStep {
   /** seconds of failing the goal before the hint appears */
   hintAfter?: number;
   chaos?: { at: number; action: ChaosAction; message: string }[];
+  /** a design that passes, as edits to the board the previous level leaves (tested; "show me" applies it) */
+  solution?: { note: string; changes: ChangeSpec[] };
+  /** what the level taught, shown when it is passed */
+  takeaway?: string;
 }
 
 export interface Lesson {

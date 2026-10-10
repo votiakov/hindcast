@@ -6,6 +6,7 @@ import { DEFAULT_ENGINE_CONFIG, Engine, type EdgeStats, type GlobalStats, type N
 import { lesson1 } from '../lessons/lesson1';
 import { goalStart, trafficAt, type Lesson } from '../lessons/types';
 import { lessonById } from '../lessons';
+import { referenceBoard } from '../lessons/verify';
 import { SCENARIOS, findScenario, scenarioDuration, scenarioTraffic, type Scenario, type ScenarioAction } from '../scenarios/scenarios';
 import type { Graph } from '../scenarios/build';
 import { homeGraph } from '../ui/homeGraphs';
@@ -74,8 +75,12 @@ export interface LessonState {
   holdT: number;
   failT: number;
   passed: boolean;
+  /** the level's deadline passed without the goal held: replay it */
+  missed: boolean;
   firedChaos: number[];
   finished: boolean;
+  /** "show me" was used on this level */
+  shown: boolean;
 }
 
 export interface CompareState {
@@ -169,6 +174,8 @@ interface State {
   setAudit: (p: Partial<AuditState>) => void;
   /** apply a verified fix from the audit to the main board */
   applyFix: (findingId: string, fixIndex: number) => void;
+  /** lessons: put the current level's reference design on the board ("show me") */
+  showSolution: () => void;
   /** library id of the design open in the sandbox (null = unsaved) */
   designId: string | null;
   setDesign: (id: string | null, name: string) => void;
@@ -249,7 +256,7 @@ export const systemNodes = (nodes: AppNode[]) => nodes.filter(isSystem);
 export const scenarioById = (id: string | null): Scenario | undefined => findScenario(id);
 
 function freshLesson(lesson: Lesson): LessonState {
-  return { lesson, stepIndex: 0, stepT: 0, holdT: 0, failT: 0, passed: false, firedChaos: [], finished: false };
+  return { lesson, stepIndex: 0, stepT: 0, holdT: 0, failT: 0, passed: false, missed: false, firedChaos: [], finished: false, shown: false };
 }
 
 function freshStudio(episodeId: string, aspect: Aspect, brandId: string): StudioState {
@@ -386,6 +393,16 @@ export const useSim = create<State>()((set, get) => {
       const r = applyChangesToGraph(nodes, edges, fix.changes);
       patch('main', { nodes: r.nodes, edges: r.edges, version: board('main').version + 1 });
       get().toast('good', `Applied: ${fix.title}`);
+    },
+    showSolution: () => {
+      const ls = get().lesson;
+      const step = ls.lesson.steps[ls.stepIndex];
+      if (!step?.solution) return;
+      remember('main');
+      const ref = referenceBoard(ls.lesson, ls.stepIndex);
+      patch('main', { nodes: ref.nodes, edges: ref.edges, version: board('main').version + 1 });
+      set({ lesson: { ...get().lesson, shown: true } });
+      get().toast('info', `Shown: ${step.solution.note}. Press ▶ (or Reset to replay the level) and watch it hold.`);
     },
     designId: null,
     setDesign: (designId, name) => set((s) => ({ designId, boards: { ...s.boards, main: { ...s.boards.main, title: name } } })),
@@ -609,6 +626,13 @@ export const useSim = create<State>()((set, get) => {
         const { t: _t, fired: _f, ...p } = s.playback;
         return get().play(p);
       }
+      // a lesson level replays with the design on the board: Reset never throws the player's work away
+      if (s.mode === 'lesson' && !s.lesson.finished) {
+        engines.main.reset();
+        get().apply('main', { type: 'revive-all' });
+        set({ simT: 0, running: false, lesson: { ...s.lesson, stepT: 0, holdT: 0, failT: 0, passed: false, missed: false, firedChaos: [] } });
+        return;
+      }
       if (s.mode === 'studio') get().loadEpisode(s.studio.episodeId);
       else if (s.mode === 'compare' && s.compare.scenarioId) get().pickScenario(s.compare.scenarioId);
       else if (s.mode === 'compare') {
@@ -630,7 +654,7 @@ export const useSim = create<State>()((set, get) => {
         set({ lesson: { ...ls, finished: true }, running: false });
         return;
       }
-      set({ lesson: { ...ls, stepIndex: ls.stepIndex + 1, stepT: 0, holdT: 0, failT: 0, passed: false, firedChaos: [] } });
+      set({ lesson: { ...ls, stepIndex: ls.stepIndex + 1, stepT: 0, holdT: 0, failT: 0, passed: false, missed: false, firedChaos: [], shown: false } });
     },
     pickScenario: (id) => {
       if (id === null) {
@@ -734,7 +758,7 @@ export const useSim = create<State>()((set, get) => {
           for (const e of engines[b].step(systemNodes(nodes), edges, rps, s.readRatio, dt, cfg)) events.push({ b, e });
         }
 
-        if (s.mode === 'lesson' && !ls.finished && !ls.passed) {
+        if (s.mode === 'lesson' && !ls.finished && !ls.passed && !ls.missed) {
           const step = ls.lesson.steps[ls.stepIndex];
           const g = engines.main.snapshot([], []).global;
           if (step.goal && ls.stepT >= goalStart(step)) {
@@ -744,9 +768,12 @@ export const useSim = create<State>()((set, get) => {
               (step.goal.maxCost === undefined || !s.settings.cost || g.cost <= step.goal.maxCost) &&
               g.rps > 0;
             ls = ok ? { ...ls, holdT: ls.holdT + dt } : { ...ls, holdT: 0, failT: ls.failT + dt };
-            if (ls.holdT >= step.goal.holdSeconds) {
+            if (ls.holdT >= step.goal.holdSeconds - 1e-9) {
               ls = { ...ls, passed: true };
               get().toast('good', `🏆 Objective complete: ${step.title}`);
+            } else if (step.goal.deadline !== undefined && ls.stepT > step.goal.deadline) {
+              ls = { ...ls, missed: true };
+              get().toast('bad', `The window closed: ${step.title} had to hold through it`);
             }
           } else if (step.goal && (g.errorRate > step.goal.maxErrorRate || g.p99 > step.goal.maxP99)) {
             ls = { ...ls, failT: ls.failT + dt };

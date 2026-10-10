@@ -26,6 +26,7 @@ export const lesson1: Lesson = {
       objective: 'Serve 120 req/s with <1% errors and p99 < 300ms for 5s.',
       traffic: { from: 60, to: 120, rampSeconds: 3 },
       goal: { maxErrorRate: 0.01, maxP99: 300, holdSeconds: 5 },
+      takeaway: 'One server and one database are a fine start: 120 req/s is half of what api-1 can take, so the queue never forms.',
     },
     {
       id: 'hn',
@@ -41,6 +42,17 @@ export const lesson1: Lesson = {
         'Scale out: select api-1 and add instances with the + button. Notice nothing changes? Clients only know one address — ' +
         'drag a Load Balancer onto the board, wire Users → LB → api-1 and delete the old Users → api-1 edge (click it, press Backspace). ' +
         'Servers near 100% CPU get slow long before they drop requests, so leave headroom.',
+      solution: {
+        note: 'Load balancer in front, four API instances behind it',
+        changes: [
+          { op: 'add', component: { id: 'lb', kind: 'lb' } },
+          { op: 'disconnect', from: 'users-1', to: 'api-1' },
+          { op: 'connect', from: 'users-1', to: 'lb' },
+          { op: 'connect', from: 'lb', to: 'api-1' },
+          { op: 'set', id: 'api-1', fields: { instances: 4 } },
+        ],
+      },
+      takeaway: 'Scaling out needs something to spread the load: instances only help behind a load balancer. Four instances at ~70% busy hold 700 req/s; at 100% they would already be slow.',
     },
     {
       id: 'viral',
@@ -55,6 +67,17 @@ export const lesson1: Lesson = {
       hint:
         'Check the database CPU — it is the new bottleneck. Put a Cache in front of it (api-1 → Cache → DB) to absorb most reads. ' +
         'Scaling the DB to size L also works… but look at what it does to the bill.',
+      solution: {
+        note: 'A cache in front of the database, ten API instances',
+        changes: [
+          { op: 'add', component: { id: 'redis', kind: 'cache' } },
+          { op: 'disconnect', from: 'api-1', to: 'postgres-1' },
+          { op: 'connect', from: 'api-1', to: 'redis' },
+          { op: 'connect', from: 'redis', to: 'postgres-1' },
+          { op: 'set', id: 'api-1', fields: { instances: 10 } },
+        ],
+      },
+      takeaway: 'Every API instance talks to the same database, so scaling the API moves the bottleneck there. A cache absorbs most reads for $0.15/h; a database four times the size would cost $1.20/h more.',
     },
     {
       id: 'chaos',
@@ -70,6 +93,8 @@ export const lesson1: Lesson = {
       hint:
         'Run N+1: keep enough spare instances that losing one keeps the rest below ~80% CPU. ' +
         'Health checks already route around the dead instance — you just need room for its traffic.',
+      solution: { note: 'Spare instances: N+1', changes: [{ op: 'set', id: 'api-1', fields: { instances: 12 } }] },
+      takeaway: 'Instances die. Size for the load you have plus a spare: losing one of twelve leaves the rest below 80% busy, and the health checks route around the dead one.',
     },
   ],
 };

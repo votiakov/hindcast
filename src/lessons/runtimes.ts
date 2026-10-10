@@ -28,6 +28,7 @@ export const runtimes: Lesson = {
       objective: 'Serve 2,000 req/s with <1% errors and p99 < 300ms for 5s.',
       traffic: { from: 800, to: 2000, rampSeconds: 4 },
       goal: { maxErrorRate: 0.01, maxP99: 300, holdSeconds: 5 },
+      takeaway: 'Ten Node.js instances hold 2,000 req/s. The question is what they cost, not whether they work.',
     },
     {
       id: 'cut',
@@ -41,6 +42,8 @@ export const runtimes: Lesson = {
       hint:
         'Select api, change runtime to Go (≈2.5× throughput per instance for typical JSON APIs) or Rust (≈3.5×), then remove instances with − ' +
         'while the CPU bar stays below ~80%. Fewer instances = smaller bill. (Python goes the other way.)',
+      solution: { note: 'The API in Go on five instances', changes: [{ op: 'set', id: 'api', fields: { runtime: 'go', instances: 5 } }] },
+      takeaway: 'A faster runtime serves more per instance, so the same traffic needs fewer of them: half the API bill here. The database did not change.',
     },
     {
       id: 'triple',
@@ -54,6 +57,17 @@ export const runtimes: Lesson = {
       hint:
         'The database is the wall now, and no language rewrite fixes it. Add a Cache between api and db (api → cache → db) to absorb most reads, ' +
         'then you may even downsize the database. Scale api instances to keep CPU < 80%.',
+      solution: {
+        note: 'A cache in front of the database, the API scaled to the traffic',
+        changes: [
+          { op: 'add', component: { id: 'cache', kind: 'cache' } },
+          { op: 'disconnect', from: 'api', to: 'db' },
+          { op: 'connect', from: 'api', to: 'cache' },
+          { op: 'connect', from: 'cache', to: 'db' },
+          { op: 'set', id: 'api', fields: { instances: 14 } },
+        ],
+      },
+      takeaway: 'Past a point the database sets the bill, not the language: no rewrite makes reads cheaper, a cache does.',
     },
   ],
 };

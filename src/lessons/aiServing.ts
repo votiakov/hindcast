@@ -31,6 +31,7 @@ export const aiServing: Lesson = {
       objective: 'Serve 20 req/s with <1% errors and p99 < 8s for 5s.',
       traffic: { from: 5, to: 20, rampSeconds: 3 },
       goal: { maxErrorRate: 0.01, maxP99: 8000, holdSeconds: 5 },
+      takeaway: 'At 20 req/s a hosted model is the obvious choice: no servers, no GPUs, $0.002 a request.',
     },
     {
       id: 'viral',
@@ -44,6 +45,8 @@ export const aiServing: Lesson = {
         'Rate limits are a hard wall — 429s are 60% of LLM API errors in production. Options: put a Cache (as a semantic cache, ~30–40% hits for repeated questions) ' +
         'in front of the provider; add a self-hosted GPU Inference pool and set api routing to "failover" so overflow spills to the provider; ' +
         'or add a second provider. (Raising the rate limit works too — try it, then look at the bill.)',
+      solution: { note: 'A higher rate limit from the provider', changes: [{ op: 'set', id: 'openai', fields: { limit: 150 } }] },
+      takeaway: 'A rate limit is a wall, not a slope: past it, every extra request is a 429. Buying a higher limit is the fastest fix — now look at the bill.',
     },
     {
       id: 'bill',
@@ -57,6 +60,17 @@ export const aiServing: Lesson = {
       hint:
         'Per-request pricing punishes sustained volume. Self-host an open model: GPU Inference instances cost ~$4/h each and serve ~6 req/s — ×4 with batching ' +
         '(select the node, enable batching). Keep the provider as a failover target for spikes (api → routing: failover, GPUs first) and keep the cache in front.',
+      solution: {
+        note: 'Self-hosted GPUs with batching first, the provider as failover',
+        changes: [
+          { op: 'add', component: { id: 'gpu', kind: 'llm', instances: 8, batching: true } },
+          { op: 'disconnect', from: 'api', to: 'openai' },
+          { op: 'connect', from: 'api', to: 'gpu' },
+          { op: 'connect', from: 'api', to: 'openai' },
+          { op: 'set', id: 'api', fields: { routing: 'failover' } },
+        ],
+      },
+      takeaway: 'Per-request pricing punishes sustained volume: eight batched GPUs carry 120 req/s for about $32/h instead of $860/h. The provider stays wired as the failover if the GPUs go down.',
     },
   ],
 };

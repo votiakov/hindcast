@@ -34,6 +34,8 @@ export const elastic: Lesson = {
       goal: { maxErrorRate: 0.01, maxP99: 300, maxCost: 1.05, holdSeconds: 6, startAfter: 2 },
       hintAfter: 8,
       hint: 'Select api and remove instances with − until the cost fits. Two instances already serve 300 req/s at 60% — the rest is idle money.',
+      solution: { note: 'Two instances for 300 req/s', changes: [{ op: 'set', id: 'api', fields: { instances: 2 } }] },
+      takeaway: 'Idle instances are money with nothing to do: two serve 300 req/s at about 60% busy. Sizing for peak all day is the most common cloud bill there is.',
     },
     {
       id: 'rush',
@@ -48,6 +50,8 @@ export const elastic: Lesson = {
       hint:
         'Select api → autoscale, max 12. Watch the booting instances (dashed): with a 30 s warm-up you eat 30 s of errors at the start of every rush. ' +
         'Pick a shorter warm-up (a Kubernetes pod on an existing node: 5–15 s) or keep a higher minimum to absorb the first seconds.',
+      solution: { note: 'Autoscale 2–12 with a 10 s warm-up', changes: [{ op: 'set', id: 'api', fields: { autoscale: { min: 2, max: 12, warmupS: 10 } } }] },
+      takeaway: 'Autoscaling follows demand, but every new instance needs its warm-up first: the seconds between the rush and the first new instance serving are the outage you design for.',
     },
     {
       id: 'stampede',
@@ -55,14 +59,16 @@ export const elastic: Lesson = {
       story:
         'Redis gets restarted for a security patch at peak. It comes back empty — every request is a miss until it refills. ' +
         'The database normally sees 10% of the traffic. For the next few seconds it sees all of it.',
-      objective: 'Ride out the restart: <1% errors and p99 < 500ms for 25s.',
+      objective: 'Ride out the restart: <1% errors and p99 < 500ms for 25s straight, through the restart.',
       traffic: { from: 1500, to: 1500, rampSeconds: 0 },
-      goal: { maxErrorRate: 0.01, maxP99: 500, holdSeconds: 25, startAfter: 2 },
-      chaos: [{ at: 4, action: { type: 'flush-cache', id: 'redis' }, message: 'redis restarted — the cache is empty' }],
+      goal: { maxErrorRate: 0.01, maxP99: 500, holdSeconds: 25, startAfter: 15, deadline: 40.5 },
+      chaos: [{ at: 20, action: { type: 'flush-cache', id: 'redis' }, message: 'redis restarted — the cache is empty' }],
       hintAfter: 8,
       hint:
         'The database must survive the misses of a cold cache, not just the hits of a warm one. Size db up to M (2k req/s) — or add a read replica — ' +
         'then use Reset to replay the restart. Run the failure audit (shield icon in Sandbox) to find this class of problem before production does.',
+      solution: { note: 'A database that survives the cold cache', changes: [{ op: 'set', id: 'db', fields: { tier: 'M' } }] },
+      takeaway: 'Size the database for the day the cache is empty, not for the 10% of traffic it sees on a warm day.',
     },
   ],
 };
