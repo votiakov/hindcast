@@ -6,6 +6,7 @@ import { scenarioDuration } from '../scenarios/scenarios';
 import type { Analysis } from '../sim/des/analyze';
 import type { OptimizeResult } from '../sim/optimize';
 import { analyzeInBrowser, breakingPointInBrowser, optimizeInBrowser } from '../sim/des/browserPool';
+import { breakingPoint } from '../sim/headless';
 
 const pct = (n: number) => `${(n * 100).toFixed(n > 0 && n < 0.01 ? 2 : 1)}%`;
 const ms = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(2)}s` : `${Math.round(n)}ms`);
@@ -26,14 +27,24 @@ function scenarioFor(b: BoardId, killMidRun: boolean) {
       slo,
     };
   }
+  // the board's idle trickle (below 100 req/s) would make every design look fine and every
+  // cost cut look safe: analyse at half of what the design can take instead, and say so
+  const rps = s.traffic >= 100 ? s.traffic : designLoad(b);
   return {
-    name: `${s.traffic.toLocaleString()} req/s steady${killMidRun ? ' + instance failure' : ''}`,
+    name: `${rps.toLocaleString()} req/s steady${rps !== s.traffic ? ` (half its limit; the board idles at ${s.traffic})` : ''}${killMidRun ? ' + instance failure' : ''}`,
     duration: 60,
-    rps: s.traffic,
+    rps,
     readRatio: s.readRatio,
     events: killMidRun ? [{ at: 30, action: { type: 'kill' as const, kind: 'server' as const, pick: 'busiest' as const }, note: 'busiest server instance dies' }] : [],
     slo,
   };
+}
+
+/** half the design's breaking point (fluid engine, fast), rounded to 10 req/s */
+function designLoad(b: BoardId): number {
+  const s = useSim.getState();
+  const bp = breakingPoint(specOf(b), { readRatio: s.readRatio, slo: { maxErrorRate: s.settings.sloErrorRate, maxP99Ms: s.settings.sloP99Ms } });
+  return Math.max(10, Math.round(bp.maxRps / 2 / 10) * 10);
 }
 
 const specOf = (b: BoardId) => {

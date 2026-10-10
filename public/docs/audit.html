@@ -49,13 +49,13 @@
 </section>
 
 <section class="screen" data-shot="analysis">
-<figure class="shot"><div class="shot-frame"><a class="shot-full" href="shots/analysis.png" target="_blank" rel="noopener" title="Open full size"><img src="shots/analysis.png" width="1280" height="800" alt="Analysis — screenshot" loading="lazy"></a><a class="pin" href="#analysis-montecarlo" data-for="analysis-montecarlo" style="left:71.02%;top:25.96%" aria-label="Note 1">1</a><a class="pin" href="#analysis-breaking" data-for="analysis-breaking" style="left:71.02%;top:35.21%" aria-label="Note 2">2</a><a class="pin" href="#analysis-cheapest" data-for="analysis-cheapest" style="left:71.02%;top:47.96%" aria-label="Note 3">3</a></div></figure>
+<figure class="shot"><div class="shot-frame"><a class="shot-full" href="shots/analysis.png" target="_blank" rel="noopener" title="Open full size"><img src="shots/analysis.png" width="1280" height="800" alt="Analysis — screenshot" loading="lazy"></a><a class="pin" href="#analysis-montecarlo" data-for="analysis-montecarlo" style="left:71.02%;top:27.84%" aria-label="Note 1">1</a><a class="pin" href="#analysis-breaking" data-for="analysis-breaking" style="left:71.02%;top:37.09%" aria-label="Note 2">2</a><a class="pin" href="#analysis-cheapest" data-for="analysis-cheapest" style="left:71.02%;top:49.84%" aria-label="Note 3">3</a></div></figure>
 <div class="notes">
 <div>
 <h2>Analysis</h2>
 <p>The discrete-event engine: every request simulated, so tails, retry storms and breaker oscillation emerge rather than being approximated.</p>
 <ol class="pins">
-<li id="analysis-montecarlo" data-n="1"><h3>Monte Carlo</h3><p>Many seeded runs of the current traffic (optionally killing the busiest server halfway): p50, p99, p99.9, errors and cost with 95% confidence intervals, and the share of runs that meet the SLO.</p></li>
+<li id="analysis-montecarlo" data-n="1"><h3>Monte Carlo</h3><p>Many seeded runs of the board's traffic, or, when the board idles below 100 req/s, of half what the design can take (the scenario line says which), optionally killing the busiest server halfway: p50, p99, p99.9, errors and cost with 95% confidence intervals, and the share of runs that meet the SLO.</p></li>
 <li id="analysis-breaking" data-n="2"><h3>Breaking point</h3><p>The most req/s it serves within the SLO, and the component that limits it.</p></li>
 <li id="analysis-cheapest" data-n="3"><h3>Cheapest config meeting the SLO</h3><p>The optimizer resizes everything to the cheapest design that still meets the SLO, optionally changing language runtimes; <b>Apply to board</b> takes it.</p></li>
 </ol>

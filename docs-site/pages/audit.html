@@ -24,7 +24,7 @@
 <h2>Analysis</h2>
 <p>The discrete-event engine: every request simulated, so tails, retry storms and breaker oscillation emerge rather than being approximated.</p>
 <ol class="pins">
-<li data-pin="montecarlo"><h3>Monte Carlo</h3><p>Many seeded runs of the current traffic (optionally killing the busiest server halfway): p50, p99, p99.9, errors and cost with 95% confidence intervals, and the share of runs that meet the SLO.</p></li>
+<li data-pin="montecarlo"><h3>Monte Carlo</h3><p>Many seeded runs of the board's traffic, or, when the board idles below 100 req/s, of half what the design can take (the scenario line says which), optionally killing the busiest server halfway: p50, p99, p99.9, errors and cost with 95% confidence intervals, and the share of runs that meet the SLO.</p></li>
 <li data-pin="breaking"><h3>Breaking point</h3><p>The most req/s it serves within the SLO, and the component that limits it.</p></li>
 <li data-pin="cheapest"><h3>Cheapest config meeting the SLO</h3><p>The optimizer resizes everything to the cheapest design that still meets the SLO, optionally changing language runtimes; <b>Apply to board</b> takes it.</p></li>
 </ol>
