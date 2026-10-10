@@ -128,7 +128,8 @@ export async function openWorkspaceFiles(files: File[]) {
     } else if (strategies.length && st.workspace) {
       for (const y of strategies) st.addStrategy(y, false);
       toast('good', `Added ${strategies.length} strateg${strategies.length === 1 ? 'y' : 'ies'}`);
-    } else toast('bad', 'Nothing to open: drop an import manifest with its files, a dataset.json, or strategy YAML files');
+    } else if (strategies.length) toast('bad', 'Open a system first (a reference, an import or a dataset), then add strategies to it');
+    else toast('bad', `Nothing to open in ${[...texts.keys()].slice(0, 3).join(', ')}${texts.size > 3 ? '…' : ''}: Backtest opens an import manifest with the files it names, a dataset.json, a workspace bundle, or strategy YAML (see Docs ↗)`);
   } catch (e) {
     toast('bad', `Could not import: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`);
   } finally {

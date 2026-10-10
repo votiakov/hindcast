@@ -77,7 +77,8 @@
 .bt-watch h4 { margin: 10px 0 2px; font: 600 11.5px var(--bt-mono); letter-spacing: .1em; color: var(--bt-dim); text-transform: uppercase; }
 .bt-watch h4:first-child { margin-top: 0; }
 .bt-row { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto 44px; gap: 8px; align-items: center; padding: 5px 4px; border-bottom: 1px solid var(--bt-line); font: 12.5px var(--bt-mono); cursor: pointer; }
-.bt-row > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--bt-sans); font-size: 13.5px; }
+.bt-row > span:nth-child(2) { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.25; overflow-wrap: anywhere; font-family: var(--bt-sans); font-size: 13.5px; }
+.bt-acc .run { color: var(--bt-mute); font-size: 11px; margin-left: 6px; }
 .bt-row > span:nth-child(n + 3) { text-align: right; }
 .bt-row.head { color: var(--bt-mute); cursor: default; font-size: 11px; }
 .bt-row.base { color: var(--bt-dim); cursor: default; }
@@ -158,3 +159,6 @@
 .bt-modes button:first-child { border-left: 0; }
 .bt-modes button:hover { color: var(--bt-hi); }
 .bt-modes button.on { color: var(--bt-amber); background: var(--bt-pane); }
+
+/* the app’s toasts (import errors, loads) sit above the fixed Backtest screen */
+.bt ~ .toasts { position: fixed; z-index: 40; left: 16px; bottom: 16px; }

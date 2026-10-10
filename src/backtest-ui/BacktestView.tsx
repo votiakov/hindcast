@@ -343,7 +343,7 @@ function Watch() {
         return (
           <div key={k.name} className={`bt-row ${idx === focus ? 'focus' : ''}`} onClick={() => setFocus(idx)}>
             <button className="bt-eye" aria-label={`${ok[idx]?.visible === false ? 'Show' : 'Hide'} ${k.name}`} style={{ borderColor: color, background: ok[idx]?.visible === false ? 'transparent' : color }} onClick={(e) => (e.stopPropagation(), toggle(w.strategies.indexOf(ok[idx])))} />
-            <span title={st.description}>{k.name}</span>
+            <span title={st.description ? `${k.name}: ${st.description}` : k.name}>{k.name}</span>
             <span className={k.monthlyDelta < -0.5 ? 'pos' : k.monthlyDelta > 0.5 ? 'neg' : ''}>{signedUsd(k.monthlyDelta)}</span>
             <span className={k.minutesOutOfSloDelta > 0.5 ? 'neg' : k.minutesOutOfSloDelta < -0.5 ? 'pos' : ''}>{k.minutesOutOfSloDelta > 0 ? '+' : ''}{Math.round(k.minutesOutOfSloDelta)}</span>
           </div>
@@ -381,9 +381,13 @@ function Watch() {
             <div className="bt-dim small">{a.method === 'reference' ? 'vs recorded runs it never saw' : 'holdout: the last 30% of the requests'}</div>
             {a.checks
               .filter((c) => c.metric !== 'errors')
-              .map((c, i) => (
+              .map((c, i, all) => (
                 <div key={i} title={c.note}>
-                  <span>{c.metric}</span>
+                  <span>
+                    {c.metric.replace('-', ' ')}
+                    {/* the same check on several recorded runs: say which run */}
+                    {all.filter((x) => x.metric === c.metric).length > 1 && <span className="run">{c.note.split(':')[0]}</span>}
+                  </span>
                   <span className={c.pass ? 'pos' : 'neg'}>{(c.error * 100).toFixed(0)}%</span>
                   <span className="bt-dim">≤{c.tolerance * 100}%</span>
                 </div>
