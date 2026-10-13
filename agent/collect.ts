@@ -1,4 +1,4 @@
-import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { stringify as toYaml } from 'yaml';
 import { importBundle } from '../src/backtest/import/manifest';
@@ -23,6 +23,9 @@ export interface CollectOptions {
   /** bucket size, seconds (default: the window / ~1000, at least 30 s) */
   stepS?: number;
   maxTraces?: number;
+  /** several windows instead of one — an ordinary week plus last month's load test, say: the
+   *  model learns from all of them, and the gaps between them stay empty */
+  windows?: { start: string | number; end: string | number }[];
 }
 
 const STEPS = [30, 60, 120, 300, 600, 900, 1800, 3600];
@@ -49,20 +52,24 @@ export async function collect(ws: Workspace, o: CollectOptions = {}, progress?: 
   const presets = src.prometheus.presets?.length ? src.prometheus.presets : probe.presets;
 
   // ---- window and step
-  let end = o.end !== undefined ? toEpoch(o.end) : now;
-  if (o.end === undefined && probe.data && Date.parse(probe.data.newest) / 1000 < now - 3600) {
+  const windows = o.windows?.length ? o.windows.map((w) => ({ start: toEpoch(w.start), end: toEpoch(w.end) })).sort((a, b) => a.start - b.start) : null;
+  if (windows) for (const w of windows) if (!(w.end > w.start)) throw new Error(`empty window ${iso(w.start)} … ${iso(w.end)}`);
+  let end = windows ? windows[windows.length - 1].end : o.end !== undefined ? toEpoch(o.end) : now;
+  if (!windows && o.end === undefined && probe.data && Date.parse(probe.data.newest) / 1000 < now - 3600) {
     end = Date.parse(probe.data.newest) / 1000;
     warnings.push(`no request metrics in the last hour: the window ends at the newest data, ${iso(end)}`);
   }
-  let start = o.start !== undefined ? toEpoch(o.start) : end - seconds(o.last ?? '24h');
-  if (o.start === undefined && !o.last && probe.data) start = Math.max(start, Date.parse(probe.data.oldestFound) / 1000);
+  let start = windows ? windows[0].start : o.start !== undefined ? toEpoch(o.start) : end - seconds(o.last ?? '24h');
+  if (!windows && o.start === undefined && !o.last && probe.data) start = Math.max(start, Date.parse(probe.data.oldestFound) / 1000);
   if (!(end > start)) throw new Error(`empty window ${iso(start)} … ${iso(end)}`);
+  const parts = windows ?? [{ start, end }];
+  const covered = parts.reduce((a, w) => a + w.end - w.start, 0);
   // fine buckets: a three-minute overload is the most valuable part of a history, and wide buckets
   // average it away. 30 s up to a day, 60 s up to two weeks, then whatever keeps ~20k buckets
   const stepS = o.stepS ?? STEPS.find((s) => (end - start) / s <= 20_160) ?? 3600;
   const rateWindow = `${Math.max(60, stepS)}s`;
 
-  await say(`window ${iso(start)} … ${iso(end)} in ${stepS} s buckets`, 0);
+  await say(windows ? `${windows.length} windows, ${iso(start)} … ${iso(end)}, in ${stepS} s buckets` : `window ${iso(start)} … ${iso(end)} in ${stepS} s buckets`, 0);
   // ---- traces first: they say which services requests enter through
   const tel = ws.path('telemetry');
   rmSync(tel, { recursive: true, force: true });
@@ -84,14 +91,21 @@ export async function collect(ws: Workspace, o: CollectOptions = {}, progress?: 
     await say('fetching traces', 1);
     // spread the traces by where the traffic was: 96 slices, weighted by entry requests
     // at least a minute per slice: the weights and the fetches must cut the window the same way
-    const slices = Math.max(1, Math.min(96, Math.floor((end - start) / 60)));
-    const weights = await trafficBySlice(src.prometheus, presets, entry, start, end, slices).catch(() => null);
-    const got = await fetchTraces(src, entry, start, end, { maxTraces: o.maxTraces, weights, slices });
-    const f = join(tel, 'traces', `${kind}.jsonl`);
-    writeFileSync(f, got.lines.join('\n') + '\n');
-    traceFiles = [f];
-    traceNote = `${got.traces.toLocaleString()} traces from ${kind} through ${entry.join(', ')} (${got.requests} requests)`;
-    if (got.traces < 50) warnings.push(`only ${got.traces} traces in the window — topology and self times rest on few requests`);
+    let traces = 0;
+    let requests = 0;
+    for (const [k, w] of parts.entries()) {
+      const slices = Math.max(1, Math.min(96, Math.floor((w.end - w.start) / 60)));
+      const weights = await trafficBySlice(src.prometheus, presets, entry, w.start, w.end, slices).catch(() => null);
+      // each window gets traces in proportion to its length
+      const got = await fetchTraces(src, entry, w.start, w.end, { maxTraces: Math.max(50, Math.round(((o.maxTraces ?? 3000) * (w.end - w.start)) / covered)), weights, slices });
+      const f = join(tel, 'traces', parts.length > 1 ? `${kind}-w${k}.jsonl` : `${kind}.jsonl`);
+      writeFileSync(f, got.lines.join('\n') + '\n');
+      traceFiles.push(f);
+      traces += got.traces;
+      requests += got.requests;
+    }
+    traceNote = `${traces.toLocaleString()} traces from ${kind} through ${entry.join(', ')} (${requests} requests)`;
+    if (traces < 50) warnings.push(`only ${traces} traces in the window — topology and self times rest on few requests`);
   } else if (src.traceFiles?.length) {
     traceFiles = src.traceFiles.flatMap((p) => glob(p)).map((p) => resolve(p));
     if (!traceFiles.length) throw new Error(`no trace files match ${src.traceFiles.join(', ')}`);
@@ -116,7 +130,18 @@ export async function collect(ws: Workspace, o: CollectOptions = {}, progress?: 
   // ---- metrics
   await say('querying Prometheus', 2);
   const plan = exportPlan(presets, { window: rateWindow, selector: src.prometheus.selector, entry, namespaces: src.prometheus.namespaces });
-  const exported = await runExport(src.prometheus.url, plan, { start, end, stepS }, (file, body) => writeFileSync(join(tel, 'metrics', file), body), authHeaders(src.prometheus));
+  // one directory per window when there are several; the manifest globs across them
+  const dirOf = (k: number) => (parts.length > 1 ? join(tel, 'metrics', `w${k}`) : join(tel, 'metrics'));
+  const exported: { file: string; series: number }[] = [];
+  for (const [k, w] of parts.entries()) {
+    mkdirSync(dirOf(k), { recursive: true });
+    const got = await runExport(src.prometheus.url, plan, { start: w.start, end: w.end, stepS }, (file, body) => writeFileSync(join(dirOf(k), file), body), authHeaders(src.prometheus));
+    for (const g of got) {
+      const e = exported.find((x) => x.file === g.file);
+      if (e) e.series = Math.max(e.series, g.series);
+      else exported.push({ ...g });
+    }
+  }
   const empty = exported.filter((e) => !e.series).map((e) => e.file);
   const endpointSeries = exported.some((e) => /endpoint-rps/.test(e.file) && e.series > 0);
   if (!endpointSeries && entry?.length) warnings.push(`no endpoint-level request metrics for ${entry.join(', ')}: endpoint rates come from the traces, scaled by the measured sampling share`);
@@ -129,7 +154,7 @@ export async function collect(ws: Workspace, o: CollectOptions = {}, progress?: 
   const epRps = plan.find((p) => /endpoint-rps\.json$/.test(p.query.file));
   if (epRps) {
     try {
-      const doc = JSON.parse(readFileSync(join(tel, 'metrics', epRps.query.file), 'utf8')) as { data?: { result?: { metric: Record<string, string> }[] } };
+      const doc = JSON.parse(readFileSync(join(dirOf(0), epRps.query.file), 'utf8')) as { data?: { result?: { metric: Record<string, string> }[] } };
       // templatePath reads "<METHOD> <path>"; the service goes in front of the result
       const names = (doc.data?.result ?? []).map((r) => ({ svc: r.metric.service_name ?? '', name: r.metric.span_name ?? r.metric.http_route ?? '' }));
       const templates = new Set(names.map((n) => `${n.svc} ${templatePath(n.name)}`));
@@ -147,7 +172,7 @@ export async function collect(ws: Workspace, o: CollectOptions = {}, progress?: 
     name: src.system.name,
     step: `${stepS}s`,
     ...(src.system.rename && Object.keys(src.system.rename).length ? { rename: src.system.rename } : {}),
-    metrics: manifestMetrics(metricsPlan, 'metrics'),
+    metrics: manifestMetrics(metricsPlan, parts.length > 1 ? 'metrics/*' : 'metrics'),
     traces: traceFiles.length
       ? [{ file: traceFiles.length === 1 ? rel(traceFiles[0]) : rel(traceFiles[0]).replace(/[^/]+$/, '*'), ...(ignore?.length ? { ignore } : {}), series: { rps: false, latency: false, endpoints: !endpointSeries } }]
       : [],
@@ -160,7 +185,7 @@ export async function collect(ws: Workspace, o: CollectOptions = {}, progress?: 
     },
   };
   const manifestPath = join(tel, 'bottleneck.import.yaml');
-  writeFileSync(manifestPath, `# Written by Bottleneck collect_telemetry, ${iso(now)}: ${iso(start)} … ${iso(end)}\n` + toYaml(manifest));
+  writeFileSync(manifestPath, `# Written by Bottleneck collect_telemetry, ${iso(now)}: ${parts.map((w) => `${iso(w.start)} … ${iso(w.end)}`).join(', ')}\n` + toYaml(manifest));
 
   // ---- import
   await say('importing', 3);

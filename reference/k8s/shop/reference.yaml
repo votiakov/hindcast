@@ -1,0 +1,35 @@
+# Kubernetes reference — the OpenTelemetry Astronomy Shop on a local kind cluster (reference/k8s),
+# observed the way production clusters are: kube-prometheus-stack (kubelet/cAdvisor,
+# kube-state-metrics), span metrics from an OpenTelemetry Collector, traces in Jaeger, ingress-nginx
+# at the edge. Traffic is real: two days of NASA's web server log (July 1995), replayed at 83× their
+# real rate with each day compressed into 40 minutes. 12 July is an ordinary day; 13 July is the
+# launch of Space Shuttle STS-70, a real flash crowd 2.2× the ordinary day's peak.
+name: Astronomy Shop on Kubernetes
+namespace: shop
+base: http://bnk8s-control-plane
+prometheus: http://localhost:8088/prometheus
+jaeger: http://localhost:8088/jaeger
+mix: ../../shop/mix.json
+thin: 5
+timeout: 5s
+slo: { p99Ms: 1000, errorRate: 0.01 }
+# 3 minutes stepping 40 → 200 req/s: the JIT and caches warm before recording
+warmup: [steps, 40, 200, 40, 36]
+log: ../nasa/NASA_access_log_Jul95.gz
+runs:
+  # the history the model is calibrated on: an ordinary day, as built (3 frontend replicas)
+  history: { day: 12/Jul/1995, minutes: 40, scale: x83, manifests: shop.yaml }
+  # the system as built on launch day: the forecast with no change at all
+  launch: { day: 13/Jul/1995, minutes: 40, scale: x83, manifests: shop.yaml }
+  # change 1, actually applied — 2 frontend replicas — on an ordinary day, and on launch day
+  normal-2: { day: 12/Jul/1995, minutes: 40, scale: x83, manifests: variants/frontend-2.yaml }
+  launch-2: { day: 13/Jul/1995, minutes: 40, scale: x83, manifests: variants/frontend-2.yaml }
+  # change 2, actually applied — 1 frontend replica — on an ordinary day
+  normal-1: { day: 12/Jul/1995, minutes: 40, scale: x83, manifests: variants/frontend-1.yaml }
+  # change 3, actually applied — a HorizontalPodAutoscaler (1–3 replicas at 60% CPU) — on launch day
+  launch-hpa: { day: 13/Jul/1995, minutes: 40, scale: x83, manifests: variants/frontend-hpa.yaml }
+  # a 4-minute check that the recorder works end to end (not used for accuracy)
+  smoke: { day: 13/Jul/1995, minutes: 4, scale: x83, manifests: shop.yaml }
+  # a 12-minute step load test as built (+50 req/s a minute from 50 to 600): the kind of load test a
+  # team runs before a launch. Calibrating on history + this run is the second model the evaluation scores
+  stress: { steps: [50, 600, 50, 60], manifests: shop.yaml }

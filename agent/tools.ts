@@ -83,6 +83,10 @@ export const TOOLS: AgentTool[] = [
       end: z.union([z.string(), z.number()]).optional().describe('window end (default now, or the newest data)'),
       stepS: z.number().int().positive().optional().describe('bucket size in seconds (default: window / ~1000, at least 30)'),
       maxTraces: z.number().int().positive().optional().describe('traces to fetch, spread over the window (default 3000)'),
+      windows: z
+        .array(z.object({ start: z.union([z.string(), z.number()]), end: z.union([z.string(), z.number()]) }))
+        .optional()
+        .describe('several windows instead of one — an ordinary week plus a load test, say. A calm history never shows where latency turns; one load test in it teaches the model'),
     },
     run: (a, ws, progress) => collect(ws, a as Parameters<typeof collect>[1], progress),
   },

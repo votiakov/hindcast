@@ -148,7 +148,10 @@ that means: no CPU limit means no CPU capacity, no bill means list prices, and s
 trace may belong to another system (`system.exclude`).
 
 **One overload in the history is worth more than a month of quiet days.** Capacity that the
-history never approached is an extrapolation, and the trust report says so.
+history never approached is an extrapolation, and the trust report says so. When the real history
+is calm, add a load test to it: `windows: [{ "start": …, "end": … }, { "start": …, "end": … }]`
+collects several windows into one history (an ordinary week plus last month's load test, say). The
+gaps between them stay empty.
 
 ### 3. `calibrate_model`: the model, and how far to trust it
 
@@ -383,7 +386,7 @@ or dropped on the app's Backtest screen.
 | tool | inputs | returns |
 |---|---|---|
 | `connect_telemetry` | `prometheus{url, selector?, namespaces?, presets?, tokenEnv?…}`, `jaeger{url}` \| `tempo{url}` \| `traceFiles[]`, `bill{cur\|gcp, tag?}`, `system{name, slo, timeoutMs, rename, hostedBy, entry, ignore, exclude}` | probes, renames applied, `problems`, `ready` |
-| `collect_telemetry` | `last` \| `start`/`end`, `stepS?`, `maxTraces?` | window, coverage per service, endpoints, warnings |
+| `collect_telemetry` | `last` \| `start`/`end` \| `windows[]`, `stepS?`, `maxTraces?` | window, coverage per service, endpoints, warnings |
 | `calibrate_model` | `holdout?` (0.3), `slo?`, `timeoutMs?`, `listPrices?` | services with capacity, band, limit, basis, cost; accuracy; trust lists |
 | `model_status` | — | what the workspace holds, warnings, next step |
 | `verify_change` | `changes[]`, `last?`, `traffic?{scale \| peakRps}`, `gateMinutes?`, `draws?` (30, fewer on long histories to fit ~40 s) | per change: verdict, confidence, cost, reliability, headroom, reasons; reports and `app.open` |
