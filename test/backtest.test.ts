@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DatasetBuilder, regrid, sliceDataset, type Dataset } from '../src/backtest/dataset';
 import { importCloudWatch, importLongCsv, importPrometheus, importWideCsv } from '../src/backtest/import/metrics';
-import { buildTopology, parseTraceFile } from '../src/backtest/import/traces';
+import { buildTopology, parseTraceFile, type Span } from '../src/backtest/import/traces';
 import { parseCur, parseGcpBilling, summariseBill } from '../src/backtest/import/billing';
 import { parseCsv } from '../src/backtest/import/csv';
 import { importBundle } from '../src/backtest/import/manifest';
@@ -115,6 +115,14 @@ describe('importers', () => {
     expect(dataset.services['orders-db'].doneRps![0]).toBeCloseTo(20 / 60, 5);
   });
 
+  it('hangs a span whose parent was dropped under its caller instead of counting a request of its own', () => {
+    const sp = (id: string, parent: string | null, service: string, kind: Span['kind'], start: number, end: number, name = 'op'): Span => ({ traceId: 't1', spanId: id, parentId: parent, service, name, kind, start, end, error: false, attrs: {} });
+    const spans = [sp('1', null, 'frontend', 'server', 0, 100, 'GET /checkout'), sp('2', '1', 'frontend', 'client', 5, 90), sp('3', '2', 'checkout', 'server', 6, 89), sp('4', 'dropped', 'cart', 'server', 20, 30, 'GetCart')];
+    const topo = buildTopology(spans, null, { stepS: 60 });
+    expect(Object.keys(topo.endpoints)).toHaveLength(1);
+    expect(topo.edges.map((e) => `${e.from}>${e.to}`)).toContain('checkout>cart');
+  });
+
   it('takes the route from a framework span and ignores background roots', () => {
     const t0 = ms;
     const doc = JSON.stringify({
@@ -183,6 +191,34 @@ Usage,2026-09-14T12:00:00Z,2026-09-14T13:00:00Z,BoxUsage:m7g.large,i-2,1,0.0816,
     const d = b.build({ name: 't' });
     expect(regrid(d, 30).services.a.rps).toEqual([1, 4]);
     expect(sliceDataset(d, 2, 4).services.a.rps).toEqual([2, 3]);
+  });
+});
+
+describe('edge metrics (ingress-nginx)', () => {
+  const prom = (metric: Record<string, string>, values: [number, string][]) => ({ status: 'success', data: { resultType: 'matrix', result: [{ metric, values }] } });
+  it('the edge count replaces span metrics for the same service, and endpoint rates are scaled to it', () => {
+    const files: Record<string, unknown> = {
+      'spans-rps.json': prom({ service_name: 'frontend' }, [[0, '60'], [60, '60']]),
+      'spans-ep.json': { status: 'success', data: { result: [{ metric: { service_name: 'frontend', span_name: 'GET /a' }, values: [[0, '30'], [60, '45']] }, { metric: { service_name: 'frontend', span_name: 'GET /b' }, values: [[0, '30'], [60, '15']] }] } },
+      'edge-rps.json': prom({ exported_service: 'frontend' }, [[0, '100'], [60, '120']]),
+    };
+    const fs = { read: (f: string) => JSON.stringify(files[f]), glob: (p: string) => [p] };
+    const { dataset, log } = importBundle(
+      {
+        name: 'x',
+        step: '60s',
+        metrics: [
+          { prometheus: 'spans-rps.json', metric: 'rps', by: 'service_name' },
+          { prometheus: 'spans-ep.json', metric: 'rps', by: 'service_name', endpointBy: 'span_name', template: true },
+          { prometheus: 'edge-rps.json', metric: 'rps', by: 'exported_service', edge: true },
+        ],
+      },
+      fs,
+    );
+    expect(dataset.services.frontend.rps).toEqual([100, 120]);
+    expect(dataset.endpoints['frontend GET /a'].rps).toEqual([50, 90]);
+    expect(dataset.endpoints['frontend GET /b'].rps).toEqual([50, 30]);
+    expect(log.some((l) => /counted 55% of the requests the edge saw/.test(l.what))).toBe(true);
   });
 });
 
@@ -281,6 +317,18 @@ describe('strategies and backtest', () => {
     expect(r.ranking[0].name).toBe('four');
     expect(r.baseline.worst.why).toMatch(/api at \d+% of capacity/);
     expect(r.baseline.series.cumulativeCost.p50.at(-1)).toBeCloseTo(r.baseline.summary.cost.p50, 6);
+  });
+
+  it('replays the history at another load, as built and every strategy alike', () => {
+    const calm = backtest(m, d, [{ name: 'four', changes: [{ service: 'api', replicas: 4 }] }], { draws: 3 });
+    const double = backtest(m, d, [{ name: 'four', changes: [{ service: 'api', replicas: 4 }] }], { draws: 3, load: { scale: 2 } });
+    expect(double.load?.factor).toBe(2);
+    expect(calm.load).toBeUndefined();
+    expect(double.baseline.summary.minutesOutOfSlo.p50).toBeGreaterThan(calm.baseline.summary.minutesOutOfSlo.p50);
+    expect(double.strategies[0].summary.minutesOutOfSlo.p50).toBeGreaterThan(calm.strategies[0].summary.minutesOutOfSlo.p50);
+    // peakRps: the busiest bucket lands on the asked rate
+    const peak = backtest(m, d, [], { draws: 1, load: { peakRps: 100 } });
+    expect(peak.load!.peakRps).toBeCloseTo(100, 6);
   });
 
   it('autoscaling follows the load and bills the replicas it runs', () => {

@@ -241,6 +241,8 @@ export interface VerifyOptions {
   gateMinutes?: number;
   draws?: number;
   report?: boolean;
+  /** replay the history at another load: ×scale, or so its busiest moment is peakRps */
+  traffic?: { scale?: number; peakRps?: number };
 }
 
 /**
@@ -271,7 +273,13 @@ export function verifyChange(ws: Workspace, inputs: ChangeInput[], o: VerifyOpti
   const gate = o.gateMinutes ?? 0.5;
   const budget = o.draws ? { draws: o.draws } : drawsFor(m, d, strategies.length + 1);
   if (budget.note) notes.push(budget.note);
-  const r = backtest(m, d, strategies, { draws: budget.draws });
+  const load = o.traffic && (o.traffic.scale !== undefined || o.traffic.peakRps !== undefined) ? o.traffic : undefined;
+  const r = backtest(m, d, strategies, { draws: budget.draws, load });
+  if (r.load) {
+    notes.push(`the history replayed at ${r2(r.load.factor)}× its load (busiest moment ${Math.round(r.load.peakRps)} req/s): the as-built system and every change see the same traffic, with the history's own daily shape, spikes and endpoint mix`);
+    const varied = Object.keys(m.services).filter((id) => new Set((d.services[id]?.replicas ?? []).filter((v) => v !== null)).size > 1);
+    if (varied.length) notes.push(`${varied.join(', ')}: the as-built replay keeps the replica counts the history had, which an autoscaler would have raised under more load`);
+  }
   const base = basePlan(m);
   const before = modelBreakingPoint(m, base);
   const results = r.strategies.map((s, i) => judge(m, r, s, strategies[i], cal, gate, before, modelBreakingPoint(m, applyStrategy(m, base, strategies[i]).plan)));

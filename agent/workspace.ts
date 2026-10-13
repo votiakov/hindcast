@@ -38,7 +38,7 @@ export const Sources = z.object({
       placement: z.record(z.string(), z.object({ zone: z.string().optional(), region: z.string().optional() })).optional(),
     })
     .default({ name: 'my system' }),
-  prometheus: z.object({ url: z.string().url(), presets: z.array(z.string()).optional(), selector: z.string().optional() }).merge(Auth).optional(),
+  prometheus: z.object({ url: z.string().url(), presets: z.array(z.string()).optional(), selector: z.string().optional(), namespaces: z.array(z.string()).optional() }).merge(Auth).optional(),
   jaeger: z.object({ url: z.string().url() }).merge(Auth).optional(),
   tempo: z.object({ url: z.string().url() }).merge(Auth).optional(),
   traceFiles: z.array(z.string()).optional(),

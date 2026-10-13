@@ -51,7 +51,7 @@ export const TOOLS: AgentTool[] = [
       'Point Bottleneck at the system\'s live telemetry and probe it, read-only: which metric presets Prometheus supports, which services it names, how far back data goes; which services Jaeger or Tempo knows and which ones requests enter through. Saves the connection in the workspace (credentials only as env var names). Call this first; calling it again merges new settings. Returns problems to fix and what the model will be able to know.',
     input: {
       workspace,
-      prometheus: z.object({ url: z.string().url(), selector: z.string().optional().describe('label matchers added to every query, e.g. namespace="shop"'), presets: z.array(z.enum(['otel-spanmetrics', 'http-server', 'cadvisor', 'kubernetes'])).optional().describe('default: every preset whose metrics exist'), ...auth }).optional(),
+      prometheus: z.object({ url: z.string().url(), selector: z.string().optional().describe('label matchers added to every query, e.g. cluster="prod-eu"'), namespaces: z.array(z.string()).optional().describe('Kubernetes namespaces the system runs in (default: the namespaces holding the traced services)'), presets: z.array(z.enum(['otel-spanmetrics', 'http-server', 'ingress-nginx', 'cadvisor', 'kubernetes'])).optional().describe('default: every preset whose metrics exist'), ...auth }).optional(),
       jaeger: z.object({ url: z.string().url().describe('Jaeger query UI/API base, e.g. http://jaeger:16686'), ...auth }).optional(),
       tempo: z.object({ url: z.string().url().describe('Tempo HTTP API base, e.g. http://tempo:3200'), ...auth }).optional(),
       traceFiles: z.array(z.string()).optional().describe('OTLP JSON lines or Jaeger JSON files (globs ok), instead of a trace backend'),
@@ -118,6 +118,10 @@ export const TOOLS: AgentTool[] = [
       last: z.string().optional().describe('only the last part of the history, e.g. "7d"'),
       gateMinutes: z.number().min(0).optional().describe('minutes out of SLO a change may add before it fails (default 0.5)'),
       draws: z.number().int().min(1).max(100).optional().describe('capacity draws for the bands (default 30)'),
+      traffic: z
+        .object({ scale: z.number().positive().optional(), peakRps: z.number().positive().optional() })
+        .optional()
+        .describe('replay the history at another load — scale ×N, or peakRps for its busiest moment — to ask "does it survive launch day / Black Friday?"; the as-built system sees the same load'),
     },
     run: (a, ws) => verifyChange(ws, a.changes as ChangeInput[], a as Parameters<typeof verifyChange>[2]),
   },

@@ -62,6 +62,19 @@ export async function connectTelemetry(ws: Workspace, input: SourcesInput) {
     const applied = Object.fromEntries(Object.entries(suggested).filter(([k]) => !(input.system?.rename ?? {})[k]));
     if (Object.keys(applied).length) next.system.rename = { ...applied, ...next.system.rename };
   }
+  // a cluster's Prometheus sees every namespace (coredns, the monitoring stack, other teams): keep
+  // the Kubernetes metrics to the namespaces the traced services run in, unless told otherwise
+  let scoped: string[] | null = null;
+  if (next.prometheus && !next.prometheus.namespaces?.length && report.prometheus && 'workloadNamespaces' in report.prometheus && report.prometheus.workloadNamespaces) {
+    const traced = new Set([...(report.traces && 'services' in report.traces ? report.traces.services : []), ...(report.prometheus.services['otel-spanmetrics'] ?? []), ...(report.prometheus.services['http-server'] ?? [])]);
+    const rename = next.system.rename ?? {};
+    const hit = new Set<string>();
+    for (const [w, nss] of Object.entries(report.prometheus.workloadNamespaces)) if (traced.has(w) || traced.has(rename[w] ?? '')) for (const n of nss) hit.add(n);
+    if (hit.size) {
+      scoped = [...hit].sort();
+      next.prometheus = { ...next.prometheus, namespaces: scoped };
+    }
+  }
   if (report.traces && 'entry' in report.traces && !next.system.entry?.length && report.traces.entry.length) next.system.entry = report.traces.entry;
   if (report.traces && 'clientsOnly' in report.traces && !next.system.ignore && report.traces.clientsOnly.length) next.system.ignore = report.traces.clientsOnly;
 
@@ -75,6 +88,7 @@ export async function connectTelemetry(ws: Workspace, input: SourcesInput) {
     traces: report.traces ?? report.traceFiles ?? null,
     bill: report.bill ?? 'none — services will be priced at AWS Fargate list prices from their CPU and memory limits',
     renamed: suggested,
+    ...(scoped ? { namespaces: `Kubernetes metrics kept to ${scoped.join(', ')} — where the traced services run (connect again with prometheus.namespaces to change)` } : {}),
     problems,
     next: ready ? 'collect_telemetry (choose how much history with `last`, e.g. "7d")' : 'fix the problems above and connect again',
   };

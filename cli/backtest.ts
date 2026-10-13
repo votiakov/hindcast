@@ -23,7 +23,7 @@ import { OUTAGES, outageById, replayOutage, type Role } from '../src/backtest/ou
  *   export-prometheus --url http://prom:9090 --start 2026-09-01 --end 2026-09-15 [--step 60] [--preset otel-spanmetrics,cadvisor] [--selector 'namespace="shop"'] --out data/
  *   import        <bottleneck.import.yaml> [--out dataset.json]
  *   calibrate     <dataset.json> [--out model.json] [--p99 500] [--errors 0.01] [--timeout 5000] [--holdout 0.3]
- *   backtest      <model.json> <dataset.json> <strategy.yaml …> [--last 14d] [--draws 30] [--md r.md] [--html r.html] [--comment pr.md] [--card card.json] [--json]
+ *   backtest      <model.json> <dataset.json> <strategy.yaml …> [--last 14d] [--scale 2 | --peak 400] [--draws 30] [--md r.md] [--html r.html] [--comment pr.md] [--card card.json] [--json]
  *   headroom      <model.json> [strategy.yaml]
  *   accuracy      <model.json>
  *   outage        <model.json> <outage-id | list> [strategy.yaml …] [--rps 120] [--role primary-db=orders-db,edge=web] [--md r.md] [--html r.html]
@@ -148,7 +148,10 @@ export async function backtestCommand(cmd: string, pos: string[], opt: Opt): Pro
       let d = readJson<Dataset>(pos[1]);
       if (opt.last) d = lastWindow(d, String(opt.last));
       const strategies = pos.slice(2).map(readAny);
-      const r = backtest(m, d, strategies, { draws: opt.draws ? Number(opt.draws) : undefined });
+      // --scale 2.2 or --peak 400: the same history at launch-day load
+      const load = opt.scale || opt.peak ? { scale: opt.scale ? Number(opt.scale) : undefined, peakRps: opt.peak ? Number(opt.peak) : undefined } : undefined;
+      const r = backtest(m, d, strategies, { draws: opt.draws ? Number(opt.draws) : undefined, load });
+      if (r.load && !json) console.log(c.dim(`  history replayed at ${r.load.factor.toFixed(2)}× its load (busiest moment ${Math.round(r.load.peakRps)} req/s)`));
       if (opt.md) writeFileSync(String(opt.md), backtestMarkdown(r, m));
       if (opt.html) writeFileSync(String(opt.html), backtestHtml(r, m));
       if (opt.comment) writeFileSync(String(opt.comment), prComment(r, { title: opt.title ? String(opt.title) : undefined, runUrl: opt['run-url'] ? String(opt['run-url']) : undefined }));

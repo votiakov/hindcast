@@ -57,6 +57,7 @@ function Bar() {
         </button>
       ))}
       {r && <span className="bt-chip dim">{r.window.stepS >= 60 ? `${r.window.stepS / 60}m` : `${r.window.stepS}s`} buckets</span>}
+      {r && !w?.outage && <Load />}
       {computing && <span className="bt-chip dim">computing…</span>}
       <span className="bt-spacer" />
       {r && (
@@ -103,6 +104,38 @@ function Bar() {
         Open files…
         <input type="file" multiple hidden onChange={(e) => e.target.files && openWorkspaceFiles([...e.target.files])} />
       </label>
+    </div>
+  );
+}
+
+/** replay the same history at more (or less) load: "would it survive launch day at 2×?" */
+function Load() {
+  const load = useBacktest((s) => s.load);
+  const setLoad = useBacktest((s) => s.setLoad);
+  const steps = [0.5, 1, 1.5, 2, 3];
+  return (
+    <span className="bt-load" title="Replay the history at a multiple of its traffic — same daily shape, spikes and endpoint mix; the as-built system and every strategy see the same load">
+      <span className="bt-dim">LOAD</span>
+      {steps.map((x) => (
+        <button key={x} className={`bt-chip ${load === x ? 'on' : ''}`} onClick={() => setLoad(x)}>
+          ×{x}
+        </button>
+      ))}
+      {!steps.includes(load) && <span className="bt-chip on">×{load}</span>}
+    </span>
+  );
+}
+
+function LoadBanner() {
+  const r = useBacktest((s) => s.result);
+  const setLoad = useBacktest((s) => s.setLoad);
+  if (!r?.load) return null;
+  return (
+    <div className="bt-loadnote">
+      <b>Load ×{r.load.factor.toFixed(2).replace(/\.?0+$/, '')}</b> — the history replayed at {r.load.factor.toFixed(2).replace(/\.?0+$/, '')}× its traffic, busiest moment {Math.round(r.load.peakRps)} req/s. Measured lines are hidden: nothing was measured at this load.
+      <button className="bt-chip" onClick={() => setLoad(1)}>
+        back to ×1
+      </button>
     </div>
   );
 }
@@ -196,7 +229,7 @@ function Panes() {
   const cw = Math.max(1.2, Math.min(9, ((s.plotW - 8) / Math.max(1, i1 - i0)) * cs.size * 0.62));
   const gridLines = Array.from({ length: 6 }, (_, k) => Math.round(i0 + ((i1 - 1 - i0) * k) / 5));
   // a replayed outage never happened to this system: there is nothing measured to show
-  const real = !w.outage;
+  const real = !w.outage && !r.load;
   const legendP99 = [
     ...(real ? [{ label: `measured p99 · ${cs.size > 1 ? `${cs.size}-bucket` : 'bucket'} candles`, color: MEASURED, value: r.actual.p99Ms[at] !== null ? ms(r.actual.p99Ms[at]!) : '—' }] : []),
     { label: 'as built (model)', color: ASBUILT, value: ms(r.baseline.series.p99Ms.p50[at]) },
@@ -673,6 +706,7 @@ export function BacktestView() {
       <header>
         <Bar />
         <OutageBanner />
+        <LoadBanner />
       </header>
       {body === 'ready' ? (
         <>

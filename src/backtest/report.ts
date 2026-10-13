@@ -52,6 +52,7 @@ export function backtestMarkdown(r: BacktestResult, model: Model): string {
   const L: string[] = [];
   L.push(`# Backtest — ${r.model}`, '');
   L.push(`Replayed **${hours >= 48 ? `${(hours / 24).toFixed(1)} days` : `${hours.toFixed(1)} hours`}** of real traffic (${new Date(r.window.start * 1000).toISOString().slice(0, 16)} → ${new Date(r.window.end * 1000).toISOString().slice(0, 16)} UTC, ${r.window.stepS}s buckets) through the calibrated model, ${r.draws} draws per strategy. Ranges are 10th–90th percentiles.`, '');
+  if (r.load) L.push(`**Load ×${r.load.factor.toFixed(2)}**: the history replayed at ${r.load.factor.toFixed(2)}× its traffic (busiest moment ${Math.round(r.load.peakRps)} req/s), the same daily shape and spikes — as built and every strategy alike.`, '');
   L.push(`SLO: p99 ≤ ${r.slo.p99Ms} ms and errors ≤ ${(r.slo.errorRate * 100).toFixed(1)}%.`, '');
   L.push('## Ranking', '');
   L.push('| # | strategy | $/month vs as built | minutes out of SLO | failed requests | verdict |', '|---|---|---|---|---|---|');
@@ -104,7 +105,7 @@ export function prComment(r: BacktestResult, opts: { title?: string; runUrl?: st
   const L: string[] = [];
   L.push(`### ${opts.title ?? 'Bottleneck backtest'}`, '');
   for (const s of r.strategies) L.push(`**${s.name}** ${headline(s, r.baseline)}.`, '');
-  L.push(`<sub>Replayed ${span} of production traffic through the calibrated model · ${r.draws} draws · ranges are 10th–90th percentiles</sub>`, '');
+  L.push(`<sub>Replayed ${span} of production traffic${r.load ? ` at ×${r.load.factor.toFixed(2)} its load (busiest moment ${Math.round(r.load.peakRps)} req/s)` : ''} through the calibrated model · ${r.draws} draws · ranges are 10th–90th percentiles</sub>`, '');
   L.push('| | $/month | minutes out of SLO | failed requests | worst moment |', '|---|---|---|---|---|');
   const row = (s: StrategyResult, d?: boolean) => `| ${s.name} | ${d ? range(s.delta.monthly, signed) : money(s.summary.monthly.p50)} | ${range(s.summary.minutesOutOfSlo, mins)} | ${range(s.summary.failedRequests, (x) => Math.round(x).toLocaleString('en-US'))} | ${when(s.worst.t)} · ${s.worst.why} |`;
   L.push(row(r.baseline));

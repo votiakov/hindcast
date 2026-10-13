@@ -149,6 +149,11 @@
 .bt-outage-tl { display: flex; gap: 6px 18px; flex-wrap: wrap; font: 12px var(--bt-mono); color: var(--bt-dim); }
 .bt-outage-tl b { color: var(--bt-text); font-weight: 500; }
 .bt-outage a { color: var(--bt-amber); }
+/* replaying the history at another load: the control in the bar, and the note above the chart */
+.bt-load { display: inline-flex; align-items: center; gap: 4px; }
+.bt-load > .bt-dim { font: 11px var(--bt-mono); letter-spacing: .06em; margin-right: 2px; }
+.bt-loadnote { border-bottom: 1px solid var(--bt-line); padding: 6px 12px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; background: #131b22; font: 12.5px var(--bt-mono); color: var(--bt-text); }
+.bt-loadnote b { color: var(--bt-amber); font-weight: 600; }
 .bt-marker line { stroke: var(--bt-amber); stroke-dasharray: 2 4; opacity: .7; }
 .bt-marker text { fill: var(--bt-amber); font: 10.5px var(--bt-mono); }
 

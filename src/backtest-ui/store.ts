@@ -48,6 +48,9 @@ interface State {
   hover: number | null;
   tab: Tab;
   draws: number;
+  /** the history replayed at this multiple of its load (1 = as recorded) */
+  load: number;
+  setLoad: (x: number) => void;
   /** the board was opened from this backtest: edits on it can come back as a strategy */
   origin: { spec: ArchitectureSpec; label: string } | null;
   setOrigin: (o: { spec: ArchitectureSpec; label: string } | null) => void;
@@ -84,10 +87,15 @@ export const useBacktest = create<State>((set, get) => ({
   hover: null,
   tab: 'overview',
   draws: 20,
+  load: 1,
+  setLoad: (load) => {
+    set({ load });
+    get().recompute();
+  },
   origin: null,
   setOrigin: (origin) => set({ origin }),
   setWorkspace: (w) => {
-    set({ workspace: w, focus: 0, view: null, hover: null, result: null });
+    set({ workspace: w, focus: 0, view: null, hover: null, result: null, ...(w.outage ? {} : { load: 1 }) });
     get().recompute();
   },
   setLoading: (loading) => set({ loading }),
@@ -135,7 +143,8 @@ export const useBacktest = create<State>((set, get) => ({
         return { ...s, error: e instanceof Error ? e.message.split('\n').slice(0, 3).join(' ') : String(e) };
       }
     });
-    const opts = { draws: get().draws, ...(w.outage ? { faults: w.outage.faults, observed: false } : {}) };
+    const load = get().load;
+    const opts = { draws: get().draws, ...(w.outage ? { faults: w.outage.faults, observed: false } : {}), ...(load !== 1 && !w.outage ? { load: { scale: load } } : {}) };
     const done = (result: BacktestResult, errors: Map<number, string>) => {
       // a strategy the model could not apply (an unknown service, say): report it on that strategy
       for (const [k, msg] of errors) strategies[okIndex[k]] = { ...strategies[okIndex[k]], error: msg };

@@ -1,4 +1,5 @@
 import { authHeaders, getJson, iso, type Sources } from './workspace';
+import { WORKLOAD_RE } from '../src/backtest/import/promExport';
 import type { Span } from '../src/backtest/import/traces';
 import { parseJaeger, parseOtlp } from '../src/backtest/import/traces';
 
@@ -15,8 +16,11 @@ type PromVector = { resultType: string; result: { metric: Record<string, string>
 export const PRESET_SIGNATURE: Record<string, { metric: string; label: string; also?: string }> = {
   'otel-spanmetrics': { metric: 'traces_span_metrics_calls_total', label: 'service_name' },
   'http-server': { metric: 'http_server_request_duration_seconds_count', label: 'service_name' },
+  // after the span-metric presets: measured at the edge, it replaces their counts for the entry service
+  'ingress-nginx': { metric: 'nginx_ingress_controller_requests', label: 'exported_service' },
   cadvisor: { metric: 'container_spec_cpu_quota', label: 'container_label_com_docker_compose_service' },
-  kubernetes: { metric: 'kube_pod_container_resource_limits', label: 'container' },
+  // workloads come from pod names (WORKLOAD_RE), not from a label; see kubernetesWorkloads
+  kubernetes: { metric: 'kube_pod_info', label: 'pod' },
 };
 
 /** metric names seen under older or vendor spellings, which the presets don't query yet */
@@ -25,6 +29,7 @@ const NEAR_MISSES: Record<string, string> = {
   traces_spanmetrics_calls_total: 'spanmetrics from the old spanmetrics processor: rename with a recording rule to traces_span_metrics_calls_total',
   http_server_duration_milliseconds_count: 'OpenTelemetry HTTP metrics under the pre-1.0 name (milliseconds): the http-server preset expects http_server_request_duration_seconds',
   http_server_requests_seconds_count: 'Spring Boot Micrometer metrics: not a preset yet — export them with a CSV mapping',
+  nginx_ingress_controller_nginx_process_requests_total: 'ingress-nginx without per-request metrics: requests to an Ingress without a host are only counted with --metrics-per-undefined-host=true (controller.extraArgs in the Helm chart)',
 };
 
 export interface PrometheusProbe {
@@ -34,6 +39,8 @@ export interface PrometheusProbe {
   presets: string[];
   nearMisses: string[];
   services: Record<string, string[]>;
+  /** Kubernetes: the namespaces each workload runs in */
+  workloadNamespaces?: Record<string, string[]>;
   /** where data exists for the main request metric: newest sample and how far back it goes */
   data?: { newest: string; oldestFound: string; hoursFound: number; probes: { at: string; requests10m: number }[] };
   warnings: string[];
@@ -71,8 +78,22 @@ export async function probePrometheus(cfg: NonNullable<Sources['prometheus']>, n
     }
     out.presets.push(id);
     out.services[id] = svcs.sort();
+    if (id === 'kubernetes') {
+      // pods → the Deployments, StatefulSets and DaemonSets that own them
+      const sel = [cfg.selector, 'pod!=""'].filter(Boolean).join(',');
+      const w = await getJson<PromResp<PromVector>>(api('api/v1/query', { query: `group by (namespace, workload) (label_replace(last_over_time(kube_pod_info{${sel}}[1d]), "workload", "$1$2$3", "pod", "${WORKLOAD_RE}"))`, time: String(now) }), h).catch(() => null);
+      const ns: Record<string, string[]> = {};
+      for (const r of w?.data?.result ?? []) {
+        const name = r.metric.workload;
+        if (name) (ns[name] ??= []).push(r.metric.namespace ?? '');
+      }
+      if (Object.keys(ns).length) {
+        out.services[id] = Object.keys(ns).sort();
+        out.workloadNamespaces = ns;
+      }
+    }
   }
-  for (const [n, why] of Object.entries(NEAR_MISSES)) if (have.has(n)) out.nearMisses.push(`${n}: ${why}`);
+  for (const [n, why] of Object.entries(NEAR_MISSES)) if (have.has(n) && !(n.startsWith('nginx_ingress') && have.has('nginx_ingress_controller_requests'))) out.nearMisses.push(`${n}: ${why}`);
   if (!out.presets.length) out.warnings.push('no metric any preset reads was found in the last 30 days');
 
   // when requests flowed: traffic (a rate above zero, not just a counter still being exported)
@@ -134,7 +155,7 @@ export async function probePrometheus(cfg: NonNullable<Sources['prometheus']>, n
 export function suggestRenames(probe: PrometheusProbe, traceServices: string[] = []): Record<string, string> {
   const canonical = new Set([...(probe.services['otel-spanmetrics'] ?? []), ...(probe.services['http-server'] ?? []), ...traceServices]);
   const out: Record<string, string> = {};
-  for (const preset of ['cadvisor', 'kubernetes']) {
+  for (const preset of ['ingress-nginx', 'cadvisor', 'kubernetes']) {
     const containers = new Set(probe.services[preset] ?? []);
     for (const raw of containers) {
       if (canonical.has(raw)) continue;
@@ -149,10 +170,12 @@ export function suggestRenames(probe: PrometheusProbe, traceServices: string[] =
 /** entry-service requests per slice of [start, end]: where the traffic was, so traces are fetched
  *  where there is something to see (a quiet week with one busy hour gets its traces in that hour) */
 export async function trafficBySlice(cfg: NonNullable<Sources['prometheus']>, presets: string[], entry: string[], start: number, end: number, slices: number): Promise<number[] | null> {
-  const width = Math.max(60, Math.floor((end - start) / slices));
+  // whole seconds, so Prometheus' step and the slice arithmetic agree (collect keeps slices ≥ 60 s)
+  const width = Math.max(1, Math.floor((end - start) / slices));
   const m = entry.map((e) => e.replace(/[.*+?^${}()|[\]\\"]/g, '\\\\$&')).join('|');
   const sel = [cfg.selector, `service_name=~"${m}"`].filter(Boolean).join(',');
-  const query = presets.includes('otel-spanmetrics') ? `sum(increase(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER",${sel}}[${width}s]))` : presets.includes('http-server') ? `sum(increase(http_server_request_duration_seconds_count{${sel}}[${width}s]))` : null;
+  const win = `${width}s`;
+  const query = presets.includes('otel-spanmetrics') ? `sum(increase(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER",${sel}}[${win}]))` : presets.includes('http-server') ? `sum(increase(http_server_request_duration_seconds_count{${sel}}[${win}]))` : null;
   if (!query) return null;
   const u = new URL('api/v1/query_range', cfg.url.endsWith('/') ? cfg.url : cfg.url + '/');
   // each point counts the slice that ends at it
@@ -192,10 +215,20 @@ export function shapeOf(spans: Span[]): { entry: string[]; clientsOnly: string[]
   const roots = new Set<string>();
   const edges = new Set<string>();
   const entry = new Set<string>();
+  // a span whose parent never arrived (dropped by an exporter, an uninstrumented hop) is not a
+  // root — unless its whole trace lost its root, then the trace's earliest orphan stands in
+  const rootless = new Map<string, Span>();
+  const hasRoot = new Set(spans.filter((s) => !s.parentId).map((s) => s.traceId));
   for (const s of spans) {
     if (s.kind === 'server' || s.kind === 'consumer') server.add(s.service);
-    if (!s.parentId || !byId.has(s.parentId)) roots.add(s.service);
+    if (!s.parentId) roots.add(s.service);
+    else if (!byId.has(s.parentId) && !hasRoot.has(s.traceId)) {
+      const cur = rootless.get(s.traceId);
+      if (!cur || s.start < cur.start) rootless.set(s.traceId, s);
+    }
   }
+  const standIns = new Set(rootless.values());
+  for (const s of standIns) roots.add(s.service);
   // services that start traces and never serve: load generators, synthetic monitors. (An
   // uninstrumented database seen through CLIENT spans has a parent, so it stays.)
   const clientsOnly = [...roots].filter((s) => !server.has(s));
@@ -204,7 +237,7 @@ export function shapeOf(spans: Span[]): { entry: string[]; clientsOnly: string[]
     if (p && p.service !== s.service) edges.add(`${p.service} → ${s.service}`);
     if (s.kind !== 'server') continue;
     // a root SERVER span, or one whose caller is outside the system (a load generator's client span)
-    if (!p || clientsOnly.includes(p.service)) entry.add(s.service);
+    if ((!s.parentId || standIns.has(s)) || (p && clientsOnly.includes(p.service))) entry.add(s.service);
   }
   return { entry: [...entry].sort(), clientsOnly: clientsOnly.sort(), edges: [...edges].sort() };
 }

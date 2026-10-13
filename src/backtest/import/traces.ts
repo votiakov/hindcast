@@ -225,7 +225,10 @@ function visitsOf(spans: Span[], ignore: Set<string>): Visit[] {
   const byId = new Map(spans.map((s) => [s.spanId, s]));
   const kids = new Map<string, Span[]>();
   for (const s of spans) if (s.parentId && byId.has(s.parentId)) (kids.get(s.parentId) ?? kids.set(s.parentId, []).get(s.parentId)!).push(s);
-  const roots = spans.filter((s) => !s.parentId || !byId.has(s.parentId));
+  // real traces lose spans (an exporter drops a batch, a hop isn't instrumented): a span whose
+  // parent never arrived is an orphan, not the start of another request
+  const roots = spans.filter((s) => !s.parentId);
+  const orphans = spans.filter((s) => s.parentId && !byId.has(s.parentId));
 
   const visits: Visit[] = [];
   const walk = (sp: Span, owner: Visit | null, viaClient: Span | undefined) => {
@@ -235,7 +238,7 @@ function visitsOf(spans: Span[], ignore: Set<string>): Visit[] {
     if (!ignored) {
       // a new visit starts at a service boundary; a framework's own SERVER span inside the same
       // service (Next.js, Spring) is part of the visit that is already open
-      const boundary = !owner || (parent && parent.service !== sp.service) || ((sp.kind === 'server' || sp.kind === 'consumer') && !!parent && parent.service !== sp.service);
+      const boundary = !owner || (parent && parent.service !== sp.service) || (!parent && owner.service !== sp.service) || ((sp.kind === 'server' || sp.kind === 'consumer') && !!parent && parent.service !== sp.service);
       const childSpans = kids.get(sp.spanId) ?? [];
       const dep = (sp.kind === 'client' || sp.kind === 'producer') && !childSpans.some((c) => c.service !== sp.service) ? dependencyOf(sp) : null;
       if (boundary || dep) {
@@ -272,6 +275,23 @@ function visitsOf(spans: Span[], ignore: Set<string>): Visit[] {
     for (const c of kids.get(sp.spanId) ?? []) walk(c, current, sp.kind === 'client' || sp.kind === 'producer' ? sp : undefined);
   };
   for (const r of roots) walk(r, null, undefined);
+  // each orphan hangs under the innermost visit whose time span contains it — its caller, as far
+  // as the trace can tell; a trace whose root itself is missing starts from its orphans
+  const all: Visit[] = [];
+  const collect = (v: Visit) => {
+    all.push(v);
+    v.children.forEach(collect);
+  };
+  visits.forEach(collect);
+  for (const o of orphans.sort((a, b) => a.start - b.start)) {
+    let best: Visit | null = null;
+    for (const v of all) if (v.start <= o.start + 1 && v.end >= o.end - 1 && (!best || v.end - v.start < best.end - best.start)) best = v;
+    const before = visits.length;
+    walk(o, best, undefined);
+    // a new top-level visit (no caller found) can host the orphans that follow
+    for (const v of visits.slice(before)) collect(v);
+    if (best) for (const v of best.children) if (!all.includes(v)) collect(v);
+  }
   return visits;
 }
 

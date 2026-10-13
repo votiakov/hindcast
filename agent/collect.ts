@@ -83,8 +83,10 @@ export async function collect(ws: Workspace, o: CollectOptions = {}, progress?: 
     if (!entry?.length) throw new Error(`could not tell which services requests enter through from ${kind}: give system.entry in connect_telemetry`);
     await say('fetching traces', 1);
     // spread the traces by where the traffic was: 96 slices, weighted by entry requests
-    const weights = await trafficBySlice(src.prometheus, presets, entry, start, end, 96).catch(() => null);
-    const got = await fetchTraces(src, entry, start, end, { maxTraces: o.maxTraces, weights, slices: 96 });
+    // at least a minute per slice: the weights and the fetches must cut the window the same way
+    const slices = Math.max(1, Math.min(96, Math.floor((end - start) / 60)));
+    const weights = await trafficBySlice(src.prometheus, presets, entry, start, end, slices).catch(() => null);
+    const got = await fetchTraces(src, entry, start, end, { maxTraces: o.maxTraces, weights, slices });
     const f = join(tel, 'traces', `${kind}.jsonl`);
     writeFileSync(f, got.lines.join('\n') + '\n');
     traceFiles = [f];
@@ -113,7 +115,7 @@ export async function collect(ws: Workspace, o: CollectOptions = {}, progress?: 
 
   // ---- metrics
   await say('querying Prometheus', 2);
-  const plan = exportPlan(presets, { window: rateWindow, selector: src.prometheus.selector, entry });
+  const plan = exportPlan(presets, { window: rateWindow, selector: src.prometheus.selector, entry, namespaces: src.prometheus.namespaces });
   const exported = await runExport(src.prometheus.url, plan, { start, end, stepS }, (file, body) => writeFileSync(join(tel, 'metrics', file), body), authHeaders(src.prometheus));
   const empty = exported.filter((e) => !e.series).map((e) => e.file);
   const endpointSeries = exported.some((e) => /endpoint-rps/.test(e.file) && e.series > 0);

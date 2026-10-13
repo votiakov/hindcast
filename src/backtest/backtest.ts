@@ -1,7 +1,7 @@
 import { quantile, type Dataset, type Num } from './dataset';
 import type { AccuracyRecord, Model } from './model';
 import { basePlan, runPlan, type Fault, type Plan, type RunResult, type Traffic } from './engine';
-import { observedReplicas, trafficOf } from './calibrate';
+import { observedReplicas, scaleTraffic, trafficOf } from './calibrate';
 import { applyStrategy, StrategySpec } from './strategy';
 
 /**
@@ -74,6 +74,8 @@ export interface BacktestResult {
   ranking: { name: string; monthlyDelta: number; minutesOutOfSloDelta: number; verdict: string }[];
   accuracy: AccuracyRecord[];
   draws: number;
+  /** the history was replayed at another load (absent: as recorded) */
+  load?: { factor: number; peakRps: number };
 }
 
 const rangeOf = (xs: number[]): Ranged => {
@@ -231,6 +233,9 @@ export interface BacktestOptions {
   /** use the observed replica counts for the baseline (default true) */
   observed?: boolean;
   traffic?: Traffic;
+  /** replay the history at another load: ×scale, or so its busiest moment is peakRps (launch day,
+   *  Black Friday). The as-built system and every strategy see the same load. */
+  load?: { scale?: number; peakRps?: number };
   /** time-boxed faults (incident and public-outage replays) */
   faults?: Fault[];
 }
@@ -260,7 +265,13 @@ export function mergeBacktests(parts: BacktestResult[]): BacktestResult {
 
 export function backtest(model: Model, d: Dataset, strategies: unknown[], opts: BacktestOptions = {}): BacktestResult {
   const draws = Math.max(1, opts.draws ?? 30);
-  const traffic = opts.traffic ?? trafficOf(d, model);
+  let traffic = opts.traffic ?? trafficOf(d, model);
+  let load: BacktestResult['load'];
+  if (opts.load && (opts.load.scale !== undefined || opts.load.peakRps !== undefined) && !(opts.load.scale === 1 && opts.load.peakRps === undefined)) {
+    const scaled = scaleTraffic(traffic, opts.load);
+    traffic = scaled.traffic;
+    load = { factor: scaled.factor, peakRps: scaled.peakRps };
+  }
   const base = basePlan(model, opts.observed === false ? undefined : observedReplicas(d, model));
   const parsed = strategies.map((s) => StrategySpec.parse(s));
   const applied = parsed.map((s) => ({ spec: s, ...applyStrategy(model, base, s) }));
@@ -347,5 +358,6 @@ export function backtest(model: Model, d: Dataset, strategies: unknown[], opts: 
     ranking,
     accuracy: model.accuracy,
     draws,
+    ...(load ? { load } : {}),
   };
 }

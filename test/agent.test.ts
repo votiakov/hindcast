@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { DatasetBuilder } from '../src/backtest/dataset';
 import { importPrometheus } from '../src/backtest/import/metrics';
 import { parseOtlp, templatePath, type Span } from '../src/backtest/import/traces';
-import { exportPlan, runExport } from '../src/backtest/import/promExport';
+import { exportPlan, runExport, WORKLOAD_RE } from '../src/backtest/import/promExport';
 import { holdoutCut } from '../src/backtest/accuracy';
 import { instanceType, strategyFromTerraformPlan } from '../src/backtest/terraformDiff';
 import { probeJaeger, probePrometheus, shapeOf, suggestRenames } from '../agent/sources';
@@ -38,6 +38,26 @@ describe('endpoint names from metrics', () => {
     expect(d.endpoints['frontend GET /'].rps).toEqual([1]);
   });
 
+  it('groups Kubernetes metrics by owning workload, scoped to the system\'s namespaces', () => {
+    const plan = exportPlan(['kubernetes', 'ingress-nginx'], { namespaces: ['shop'] });
+    const cpu = plan.find((p) => p.query.file === 'kubernetes-cpu.json')!.query;
+    expect(cpu.mapping.by).toBe('workload');
+    expect(cpu.query).toContain('namespace=~"shop"');
+    expect(cpu.query).toContain('label_replace');
+    // no CPU limits on the cluster: requests stand in
+    expect(plan.find((p) => p.query.file === 'kubernetes-cpu-limit.json')!.query.query).toMatch(/kube_pod_container_resource_limits.* or .*kube_pod_container_resource_requests/);
+    // the ingress' own namespace is `namespace`; the backend's is exported_namespace
+    const edge = plan.find((p) => p.query.file === 'ingress-nginx-rps.json')!.query;
+    expect(edge.query).toContain('exported_namespace=~"shop"');
+    expect(edge.mapping.edge).toBe(true);
+    const re = new RegExp(WORKLOAD_RE);
+    const name = (pod: string) => { const m = re.exec(pod); return m ? (m[1] ?? m[2] ?? m[3]) : null; };
+    expect(name('frontend-7557bb77cf-5xjb6')).toBe('frontend');
+    expect(name('product-catalog-65dbdfdbb6-tcgw2')).toBe('product-catalog');
+    expect(name('postgres-0')).toBe('postgres');
+    expect(name('node-exporter-x7k2p')).toBe('node-exporter');
+  });
+
   it('asks Prometheus for endpoint series only on the services requests enter through', () => {
     const plan = exportPlan(['otel-spanmetrics'], { entry: ['frontend'] });
     const ep = plan.filter((p) => p.query.file.includes('endpoint'));
@@ -56,6 +76,13 @@ describe('trace shape', () => {
     expect(s.entry).toEqual(['api', 'worker']);
     expect(s.clientsOnly).toEqual(['loadgen']);
     expect(s.edges).toContain('api → mysql');
+  });
+
+  it('treats a span whose parent never arrived as a broken link, not an entry service', () => {
+    const t = (trace: string, id: string, parent: string | null, service: string, kind: Span['kind'], start = 0): Span => ({ ...span(id, parent, service, kind), traceId: trace, start });
+    // checkout's client span to cart was dropped; cart's server span still names it as parent
+    const s = shapeOf([t('a', '1', null, 'frontend', 'server'), t('a', '2', '1', 'frontend', 'client'), t('a', '3', '2', 'checkout', 'server'), t('a', '5', 'lost', 'cart', 'server'), t('b', '9', 'gone', 'gateway', 'server', 0), t('b', '10', 'gone2', 'api', 'server', 1)]);
+    expect(s.entry).toEqual(['frontend', 'gateway']);
   });
 
   it('reads Tempo\'s trace JSON (batches, and v2 trace.resourceSpans)', () => {

@@ -16,8 +16,19 @@ export interface PresetQuery {
 export interface Preset {
   id: string;
   description: string;
-  queries: (o: { window: string; selector: string; entry?: string[] }) => PresetQuery[];
+  queries: (o: { window: string; selector: string; entry?: string[]; namespaces?: string[] }) => PresetQuery[];
 }
+
+/**
+ * A pod's owning workload from its name: Deployments name pods <name>-<replicaset hash>-<5>,
+ * StatefulSets <name>-<ordinal>, DaemonSets and Jobs <name>-<5> (Kubernetes' safe alphabet).
+ * Grouping by workload rather than container name keeps two Deployments that both call their
+ * container "app" apart, and folds sidecars (istio-proxy, linkerd-proxy) into the pod they serve.
+ */
+const SAFE = '[bcdfghjklmnpqrstvwxz2456789]';
+export const WORKLOAD_RE = `^(?:(.+)-${SAFE}{6,10}-${SAFE}{5}|(.+)-[0-9]+|(.+)-${SAFE}{5})$`;
+const workload = (expr: string) => `label_replace(${expr}, "workload", "$1$2$3", "pod", "${WORKLOAD_RE}")`;
+const nsMatcher = (namespaces?: string[]) => (namespaces?.length ? `namespace=~"${namespaces.map((n) => n.replace(/[.*+?^${}()|[\]\\"]/g, '\\\\$&')).join('|')}"` : '');
 
 const SERVER = 'span_kind="SPAN_KIND_SERVER"';
 
@@ -65,6 +76,24 @@ export const PRESETS: Record<string, Preset> = {
       ];
     },
   },
+  'ingress-nginx': {
+    id: 'ingress-nginx',
+    description: 'Requests, errors and latency at the edge from ingress-nginx (nginx_ingress_controller_*), per backend Service: every request, including those that never reach a pod',
+    queries: ({ window: w, selector: sel, namespaces }) => {
+      // the operator relabels the controller's own namespace into `namespace`; the backend's is exported_namespace
+      const ns = namespaces?.length ? nsMatcher(namespaces).replace(/^namespace=/, 'exported_namespace=') : '';
+      const s = [`exported_service!=""`, ns, sel].filter(Boolean).join(',');
+      const by = 'exported_service';
+      const m = { by, edge: true } as const;
+      return [
+        { file: 'rps.json', query: `sum by (${by}) (rate(nginx_ingress_controller_requests{${s}}[${w}]))`, mapping: { metric: 'rps', ...m } },
+        // 499: the client gave up waiting — a failed request as far as the user is concerned
+        { file: 'errors.json', query: `(sum by (${by}) (rate(nginx_ingress_controller_requests{${s},status=~"5..|499"}[${w}])) or sum by (${by}) (rate(nginx_ingress_controller_requests{${s}}[${w}])) * 0) / sum by (${by}) (rate(nginx_ingress_controller_requests{${s}}[${w}]))`, mapping: { metric: 'errorRate', unit: 'ratio', ...m } },
+        { file: 'p99.json', query: `histogram_quantile(0.99, sum by (${by}, le) (rate(nginx_ingress_controller_request_duration_seconds_bucket{${s}}[${w}])))`, mapping: { metric: 'p99Ms', unit: 's', ...m } },
+        { file: 'mean.json', query: `sum by (${by}) (rate(nginx_ingress_controller_request_duration_seconds_sum{${s}}[${w}])) / sum by (${by}) (rate(nginx_ingress_controller_request_duration_seconds_count{${s}}[${w}]))`, mapping: { metric: 'meanMs', unit: 's', ...m } },
+      ];
+    },
+  },
   cadvisor: {
     id: 'cadvisor',
     description: 'Container CPU, limits, replicas and network from cAdvisor (Docker Compose labels)',
@@ -82,14 +111,19 @@ export const PRESETS: Record<string, Preset> = {
   },
   kubernetes: {
     id: 'kubernetes',
-    description: 'Pod CPU, limits, replicas and network from kubelet/cAdvisor + kube-state-metrics, grouped by owning workload (label `container`)',
-    queries: ({ window: w, selector: sel }) => {
-      const s = [`container!=""`, `container!="POD"`, sel].filter(Boolean).join(',');
+    description: 'Pod CPU, limits (or requests, where no limit is set), ready replicas and network from kubelet/cAdvisor + kube-state-metrics, grouped by owning workload (Deployment, StatefulSet, DaemonSet)',
+    queries: ({ window: w, selector: sel, namespaces }) => {
+      const pod = [`pod!=""`, nsMatcher(namespaces), sel].filter(Boolean).join(',');
+      const ctr = [`container!=""`, `container!="POD"`, pod].join(',');
+      const perPod = (m: string) => `sum by (namespace, pod, workload) (${workload(`${m}{resource="cpu",${pod}}`)})`;
       return [
-        { file: 'cpu.json', query: `sum by (container) (rate(container_cpu_usage_seconds_total{${s}}[${w}]))`, mapping: { metric: 'cpuCores', by: 'container' } },
-        { file: 'cpu-limit.json', query: `max by (container) (kube_pod_container_resource_limits{resource="cpu",${s}})`, mapping: { metric: 'cpuLimitCores', by: 'container' } },
-        { file: 'replicas.json', query: `count by (container) (kube_pod_container_status_ready{${s}} == 1)`, mapping: { metric: 'replicas', by: 'container' } },
-        { file: 'net-tx.json', query: `sum by (pod) (rate(container_network_transmit_bytes_total{${sel ? sel : 'pod!=""'}}[${w}]))`, mapping: { metric: 'netTxBps', by: 'pod' } },
+        { file: 'cpu.json', query: `sum by (workload) (${workload(`rate(container_cpu_usage_seconds_total{${ctr}}[${w}])`)})`, mapping: { metric: 'cpuCores', by: 'workload' } },
+        // many clusters set CPU requests but no limits: then the request is the best size there is
+        { file: 'cpu-limit.json', query: `max by (workload) (${perPod('kube_pod_container_resource_limits')}) or max by (workload) (${perPod('kube_pod_container_resource_requests')})`, mapping: { metric: 'cpuLimitCores', by: 'workload' } },
+        { file: 'replicas.json', query: `count by (workload) (${workload(`kube_pod_status_ready{condition="true",${pod}} == 1`)})`, mapping: { metric: 'replicas', by: 'workload' } },
+        { file: 'net-tx.json', query: `sum by (workload) (${workload(`rate(container_network_transmit_bytes_total{${pod}}[${w}])`)})`, mapping: { metric: 'netTxBps', by: 'workload' } },
+        { file: 'memory.json', query: `sum by (workload) (${workload(`container_memory_working_set_bytes{${ctr}}`)})`, mapping: { metric: 'memoryBytes', by: 'workload' } },
+        { file: 'throttled.json', query: `sum by (workload) (${workload(`rate(container_cpu_cfs_throttled_periods_total{${ctr}}[${w}])`)}) / sum by (workload) (${workload(`rate(container_cpu_cfs_periods_total{${ctr}}[${w}])`)})`, mapping: { metric: 'cpuThrottled', by: 'workload', unit: 'ratio' } },
       ];
     },
   },
@@ -107,11 +141,11 @@ export interface ExportPlan {
   query: PresetQuery;
 }
 
-export function exportPlan(presets: string[], opts: { window?: string; selector?: string; entry?: string[] } = {}): ExportPlan[] {
+export function exportPlan(presets: string[], opts: { window?: string; selector?: string; entry?: string[]; namespaces?: string[] } = {}): ExportPlan[] {
   return presets.flatMap((p) => {
     const preset = PRESETS[p];
     if (!preset) throw new Error(`unknown preset "${p}" — one of ${Object.keys(PRESETS).join(', ')}`);
-    return preset.queries({ window: opts.window ?? '1m', selector: opts.selector ?? '', entry: opts.entry }).map((query) => ({ preset: p, query: { ...query, file: `${p}-${query.file}` } }));
+    return preset.queries({ window: opts.window ?? '1m', selector: opts.selector ?? '', entry: opts.entry, namespaces: opts.namespaces }).map((query) => ({ preset: p, query: { ...query, file: `${p}-${query.file}` } }));
   });
 }
 

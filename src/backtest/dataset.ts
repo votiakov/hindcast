@@ -34,10 +34,13 @@ export interface ServiceSeries {
   netTxBps?: Num[];
   netRxBps?: Num[];
   memoryBytes?: Num[];
+  /** share of CFS periods in which the CPU limit throttled the containers (0–1): the limit binds
+   *  in bursts even when average CPU sits below it */
+  cpuThrottled?: Num[];
 }
 
 export type ServiceMetric = keyof ServiceSeries;
-export const SERVICE_METRICS: ServiceMetric[] = ['rps', 'doneRps', 'errorRate', 'p50Ms', 'p95Ms', 'p99Ms', 'meanMs', 'selfMeanMs', 'selfP99Ms', 'cpuCores', 'cpuLimitCores', 'replicas', 'netTxBps', 'netRxBps', 'memoryBytes'];
+export const SERVICE_METRICS: ServiceMetric[] = ['rps', 'doneRps', 'errorRate', 'p50Ms', 'p95Ms', 'p99Ms', 'meanMs', 'selfMeanMs', 'selfP99Ms', 'cpuCores', 'cpuLimitCores', 'replicas', 'netTxBps', 'netRxBps', 'memoryBytes', 'cpuThrottled'];
 
 /** an endpoint as users see it: a route on the entry service */
 export interface EndpointSeries {
@@ -202,8 +205,20 @@ export class DatasetBuilder {
   minT = Infinity;
   maxT = -Infinity;
 
-  addService(service: string, metric: ServiceMetric, t: number, v: number) {
+  /** (service, metric) pairs an edge source (a load balancer, an ingress) measured: those counts
+   *  see every request, so they replace what span metrics or traces said instead of averaging with it */
+  private edge = new Set<string>();
+  /** services with at least one series measured at the edge */
+  edgeServices = new Set<string>();
+
+  addService(service: string, metric: ServiceMetric, t: number, v: number, edge = false) {
     if (!isFinite(v) || !isFinite(t)) return;
+    const key = `${service}\u0000${metric}`;
+    if (edge && !this.edge.has(key)) {
+      this.edge.add(key);
+      this.edgeServices.add(service);
+      this.svc.get(service)?.delete(metric);
+    } else if (!edge && this.edge.has(key)) return;
     let m = this.svc.get(service);
     if (!m) this.svc.set(service, (m = new Map()));
     let s = m.get(metric);

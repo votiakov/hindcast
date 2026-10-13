@@ -86,7 +86,7 @@ table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px
 details{margin-top:24px}pre{white-space:pre-wrap;font:12px "IBM Plex Mono",monospace;color:var(--text)}a{color:var(--amber)}
 </style></head><body><main>
 <h1><span>Bottleneck · backtest on real traffic</span>${esc(r.model)}</h1>
-<div class="sub">${new Date(r.window.start * 1000).toISOString().slice(0, 16).replace('T', ' ')} → ${new Date(r.window.end * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC · ${r.window.stepS}s buckets · ${r.draws} draws · bands = 10th–90th percentile · SLO p99 ≤ ${r.slo.p99Ms} ms, errors ≤ ${pct(r.slo.errorRate)}</div>
+<div class="sub">${new Date(r.window.start * 1000).toISOString().slice(0, 16).replace('T', ' ')} → ${new Date(r.window.end * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC · ${r.window.stepS}s buckets${r.load ? ` · <b>load ×${r.load.factor.toFixed(2)}</b> (busiest moment ${Math.round(r.load.peakRps)} req/s)` : ''} · ${r.draws} draws · bands = 10th–90th percentile · SLO p99 ≤ ${r.slo.p99Ms} ms, errors ≤ ${pct(r.slo.errorRate)}</div>
 ${strategies.map((s) => `<p class="verdict" style="border-left-color:${s.color}"><b style="color:${s.color}">${esc(s.name)}</b> ${esc(headline(s, r.baseline))}.</p>`).join('')}
 ${chart('p99 latency', r.t, [measured, asBuilt('p99Ms'), ...strat('p99Ms')], { unit: ms, log: true, threshold: { v: r.slo.p99Ms, label: 'SLO' } })}
 ${chart('Errors', r.t, [{ ...measured, values: r.actual.errorRate }, asBuilt('errorRate'), ...strat('errorRate')], { unit: pct, threshold: { v: r.slo.errorRate, label: 'SLO' }, cap: 1 })}

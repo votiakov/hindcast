@@ -38,6 +38,9 @@ export interface SeriesMapping {
    *  ids templated; series that template to the same endpoint are merged (rates summed, p99 the max,
    *  the rest averaged) */
   template?: boolean;
+  /** measured at the edge (an ingress or load balancer): sees every request, so it wins over span
+   *  metrics and traces for the same service and metric */
+  edge?: boolean;
 }
 
 const ENDPOINT_METRICS = new Set(['rps', 'errorRate', 'p50Ms', 'p99Ms', 'meanMs']);
@@ -68,7 +71,7 @@ function emit(b: DatasetBuilder, map: SeriesMapping, labels: Record<string, stri
     if (ENDPOINT_METRICS.has(metric)) b.addEndpoint(endpoint, service, metric as 'rps', t, v);
     return;
   }
-  b.addService(service, metric, t, v);
+  b.addService(service, metric, t, v, map.edge);
 }
 
 interface PromSeries {

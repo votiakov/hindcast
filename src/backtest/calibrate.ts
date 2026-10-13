@@ -898,6 +898,24 @@ export function trafficOf(d: Dataset, model: Model): Traffic {
   return { start: d.start, stepS: d.stepS, n: d.n, endpoints };
 }
 
+/**
+ * The history at a different load: every endpoint ×scale, or scaled so the busiest bucket carries
+ * peakRps — "would it survive launch day at 2.2× an ordinary day?" The shape (the daily curve, the
+ * spikes, the endpoint mix) stays the history's own.
+ */
+export function scaleTraffic(t: Traffic, o: { scale?: number; peakRps?: number }): { traffic: Traffic; factor: number; peakRps: number } {
+  let peak = 0;
+  for (let i = 0; i < t.n; i++) {
+    let sum = 0;
+    for (const s of Object.values(t.endpoints)) sum += s[i] ?? 0;
+    peak = Math.max(peak, sum);
+  }
+  const factor = o.peakRps !== undefined ? (peak > 0 ? o.peakRps / peak : 1) : (o.scale ?? 1);
+  if (!(factor > 0) || !isFinite(factor)) throw new Error(`traffic: scale must be above 0 (got ${factor})`);
+  const endpoints = Object.fromEntries(Object.entries(t.endpoints).map(([id, s]) => [id, s.map((v) => (v === null ? null : v * factor))]));
+  return { traffic: { ...t, endpoints }, factor, peakRps: peak * factor };
+}
+
 export function observedReplicas(d: Dataset, model: Model): Record<string, Num[] | undefined> {
   return Object.fromEntries(Object.entries(model.services).map(([id, s]) => [id, d.services[s.hostedBy ?? id]?.replicas]));
 }

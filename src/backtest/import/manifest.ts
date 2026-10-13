@@ -18,7 +18,7 @@ const duration = z.union([z.number().positive(), z.string().regex(/^\d+(\.\d+)?(
 });
 
 const Mapping = z.object({
-  metric: z.enum(['rps', 'doneRps', 'errorRate', 'p50Ms', 'p95Ms', 'p99Ms', 'meanMs', 'selfMeanMs', 'selfP99Ms', 'cpuCores', 'cpuPercent', 'cpuLimitCores', 'replicas', 'netTxBps', 'netRxBps', 'memoryBytes']),
+  metric: z.enum(['rps', 'doneRps', 'errorRate', 'p50Ms', 'p95Ms', 'p99Ms', 'meanMs', 'selfMeanMs', 'selfP99Ms', 'cpuCores', 'cpuPercent', 'cpuLimitCores', 'replicas', 'netTxBps', 'netRxBps', 'memoryBytes', 'cpuThrottled']),
   service: z.string().optional(),
   endpoint: z.string().optional(),
   by: z.string().optional(),
@@ -27,6 +27,7 @@ const Mapping = z.object({
   unit: z.enum(['ms', 's', 'us', 'percent', 'ratio', 'cores', 'millicores', 'bytes', 'rps', 'rpm', 'count-per-period']).optional(),
   scale: z.number().optional(),
   template: z.boolean().optional().describe('endpoint ids spelled as traces spell them, query strings dropped and ids templated; merged series'),
+  edge: z.boolean().optional().describe('measured at the edge (ingress, load balancer): replaces span-metric and trace values for the same service and metric'),
 });
 
 const MetricSource = z.union([
@@ -141,7 +142,7 @@ export function importBundle(manifestInput: unknown, fs: FileAccess): { dataset:
     for (const [id, shape] of Object.entries(topology.services)) {
       const k = shape.serverSpansPerVisit;
       const sv = dataset.services[id];
-      if (!k || !sv?.rps || filledFromTraces.has(id)) continue;
+      if (!k || !sv?.rps || filledFromTraces.has(id) || b.edgeServices.has(id)) continue;
       sv.rps = sv.rps.map((v) => (v === null ? null : v / k));
       corrected[id] = Math.round(k * 100) / 100;
     }
@@ -164,6 +165,26 @@ export function importBundle(manifestInput: unknown, fs: FileAccess): { dataset:
           if (sv.doneRps) sv.doneRps = sv.doneRps.map((v) => (v === null ? null : v / k));
         }
     }
+  }
+
+  // endpoint rates from span metrics miss requests (sparse high-cardinality series lose their first
+  // increment to rate(); SDKs drop spans under load): where the edge counted the entry service's
+  // requests, the endpoints keep their shares and are scaled to the edge's total
+  for (const id of b.edgeServices) {
+    const edge = dataset.services[id]?.rps;
+    const eps = Object.values(dataset.endpoints).filter((e) => e.service === id && e.rps);
+    if (!edge || !eps.length) continue;
+    let seen = 0;
+    let counted = 0;
+    for (let i = 0; i < dataset.n; i++) {
+      const total = eps.reduce((a, e) => a + (e.rps![i] ?? 0), 0);
+      if (edge[i] === null || !(total > 0)) continue;
+      seen += edge[i]!;
+      counted += total;
+      const f = edge[i]! / total;
+      for (const e of eps) if (e.rps![i] !== null) e.rps![i] = e.rps![i]! * f;
+    }
+    if (seen > 0) log.push({ file: '(edge)', what: `${id}: endpoint rates scaled to the edge's count — the endpoint series had counted ${Math.round((counted / seen) * 100)}% of the requests the edge saw` });
   }
 
   const lines: BillLine[] = [];
