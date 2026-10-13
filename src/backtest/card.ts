@@ -38,11 +38,12 @@ export function cardData(r: BacktestResult, strategyIndex: number, points = 240)
   const n = Math.min(points, r.t.length);
   const savedFull = st ? r.baseline.series.cumulativeCost.p50.map((b, i) => b - st.series.cumulativeCost.p50[i]) : r.t.map(() => 0);
   return {
-    system: r.model,
+    // at another load nothing was measured: the card names the load and draws no measured line
+    system: r.load ? `${r.model} · load ×${r1(r.load.factor)}` : r.model,
     window: { start: r.window.start, end: r.window.end },
     slo: r.slo,
     t: down(r.t, n, (s) => s[0]),
-    measured: down(r.actual.p99Ms, n, maxNull).map((x) => (x === null ? null : r1(x))),
+    measured: r.load ? down(r.t, n, (s) => s[0]).map(() => null) : down(r.actual.p99Ms, n, maxNull).map((x) => (x === null ? null : r1(x))),
     asBuilt: down(r.baseline.series.p99Ms.p50, n, maxOf).map(r1),
     strategy: st
       ? {
