@@ -217,8 +217,13 @@ describe('edge metrics (ingress-nginx)', () => {
       fs,
     );
     expect(dataset.services.frontend.rps).toEqual([100, 120]);
-    expect(dataset.endpoints['frontend GET /a'].rps).toEqual([50, 90]);
-    expect(dataset.endpoints['frontend GET /b'].rps).toEqual([50, 30]);
+    // each bucket carries the edge's count, split by the endpoints' shares over neighbouring buckets
+    // (75 of 120 span-metric requests went to /a): sparse per-bucket shares are noise
+    const a = dataset.endpoints['frontend GET /a'].rps as number[];
+    const b = dataset.endpoints['frontend GET /b'].rps as number[];
+    expect(a[0] + b[0]).toBeCloseTo(100, 6);
+    expect(a[1] + b[1]).toBeCloseTo(120, 6);
+    expect(a[0] / 100).toBeCloseTo(75 / 120, 6);
     expect(log.some((l) => /counted 55% of the requests the edge saw/.test(l.what))).toBe(true);
   });
 });

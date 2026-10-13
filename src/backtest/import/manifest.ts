@@ -190,15 +190,25 @@ export function importBundle(manifestInput: unknown, fs: FileAccess): { dataset:
     const edge = dataset.services[id]?.rps;
     const eps = Object.values(dataset.endpoints).filter((e) => e.service === id && e.rps);
     if (!edge || !eps.length) continue;
+    // each endpoint's share of the traffic over ±5 buckets: per bucket, sparse span-metric series
+    // are noisy (one bucket gave recommendations 34% of the requests, the next 6%); the mix itself
+    // drifts slowly
+    const H = 5;
+    const raw = eps.map((e) => e.rps!.slice());
+    const totals = Array.from({ length: dataset.n }, (_, i) => raw.reduce((a, r) => a + (r[i] ?? 0), 0));
     let seen = 0;
     let counted = 0;
     for (let i = 0; i < dataset.n; i++) {
-      const total = eps.reduce((a, e) => a + (e.rps![i] ?? 0), 0);
-      if (edge[i] === null || !(total > 0)) continue;
+      if (edge[i] === null || !(totals[i] > 0)) continue;
       seen += edge[i]!;
-      counted += total;
-      const f = edge[i]! / total;
-      for (const e of eps) if (e.rps![i] !== null) e.rps![i] = e.rps![i]! * f;
+      counted += totals[i];
+      let all = 0;
+      const part = raw.map(() => 0);
+      for (let j = Math.max(0, i - H); j <= Math.min(dataset.n - 1, i + H); j++) {
+        all += totals[j];
+        raw.forEach((r, k) => (part[k] += r[j] ?? 0));
+      }
+      eps.forEach((e, k) => (e.rps![i] = raw[k][i] === null && part[k] === 0 ? null : (edge[i]! * part[k]) / all));
     }
     if (seen > 0) log.push({ file: '(edge)', what: `${id}: endpoint rates scaled to the edge's count — the endpoint series had counted ${Math.round((counted / seen) * 100)}% of the requests the edge saw` });
   }

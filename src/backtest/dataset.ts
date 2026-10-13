@@ -77,6 +77,10 @@ export interface EndpointShape {
   /** mean end-to-end duration, p99, ms */
   meanMs: number;
   p99Ms: number;
+  /** the same over the quietest buckets only: the baseline before any queueing (a history with an
+   *  overload or a load test in it would otherwise put the overload into the baseline) */
+  lowMeanMs?: number;
+  lowP99Ms?: number;
   /** bytes moved per request per edge key */
   bytes: Record<string, number>;
   /** share of traces with an error */

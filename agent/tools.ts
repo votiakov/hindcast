@@ -122,6 +122,10 @@ export const TOOLS: AgentTool[] = [
       last: z.string().optional().describe('only the last part of the history, e.g. "7d"'),
       gateMinutes: z.number().min(0).optional().describe('minutes out of SLO a change may add before it fails (default 0.5)'),
       draws: z.number().int().min(1).max(100).optional().describe('capacity draws for the bands (default 30)'),
+      window: z
+        .object({ start: z.union([z.string(), z.number()]), end: z.union([z.string(), z.number()]) })
+        .optional()
+        .describe('replay only this part of the history — the ordinary week, when the history also holds a load test (the model still learned from all of it)'),
       traffic: z
         .object({ scale: z.number().positive().optional(), peakRps: z.number().positive().optional() })
         .optional()

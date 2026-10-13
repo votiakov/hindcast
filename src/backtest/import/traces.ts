@@ -470,7 +470,17 @@ export function buildTopology(spans: Span[], b: DatasetBuilder | null, opts: Tra
   for (const [id, e] of eps) {
     const dur = [...e.dur].sort((a, b) => a - b);
     const per = (m: Map<string, number>) => Object.fromEntries([...m].map(([k, v]) => [k, v / e.n]));
-    endpoints[id] = { service: e.service, traces: e.n, calls: per(e.calls), visits: per(e.visits), criticalMs: per(e.cp), meanMs: dur.reduce((a, x) => a + x, 0) / dur.length, p99Ms: quantile(dur, 0.99), bytes: per(e.bytes), errorRate: e.err / e.n };
+    // the quietest buckets, until they hold at least 30% of the buckets and 100 requests
+    const byBucket = [...(eb.get(id)?.values() ?? [])].sort((a, b) => a.n - b.n);
+    const low: number[] = [];
+    for (let k = 0; k < byBucket.length; k++) {
+      low.push(...byBucket[k].dur);
+      if (k + 1 >= byBucket.length * 0.3 && low.length >= 100) break;
+      if (k + 1 >= byBucket.length * 0.6) break;
+    }
+    low.sort((a, b) => a - b);
+    const lowStats = low.length >= 20 ? { lowMeanMs: low.reduce((a, x) => a + x, 0) / low.length, lowP99Ms: quantile(low, 0.99) } : {};
+    endpoints[id] = { service: e.service, traces: e.n, calls: per(e.calls), visits: per(e.visits), criticalMs: per(e.cp), meanMs: dur.reduce((a, x) => a + x, 0) / dur.length, p99Ms: quantile(dur, 0.99), ...lowStats, bytes: per(e.bytes), errorRate: e.err / e.n };
   }
 
   if (b) {

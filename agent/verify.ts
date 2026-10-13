@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse as parseYaml, stringify as toYaml } from 'yaml';
-import type { Dataset } from '../src/backtest/dataset';
+import { sliceDataset, type Dataset } from '../src/backtest/dataset';
 import { calibrate, type CalibrateOptions } from '../src/backtest/calibrate';
 import { holdoutAccuracy, modelBreakingPoint } from '../src/backtest/accuracy';
 import { backtest, type BacktestResult, type Ranged, type StrategyResult } from '../src/backtest/backtest';
@@ -243,6 +243,9 @@ export interface VerifyOptions {
   report?: boolean;
   /** replay the history at another load: ×scale, or so its busiest moment is peakRps */
   traffic?: { scale?: number; peakRps?: number };
+  /** replay only this part of the history (the model still learned from all of it): an ordinary
+   *  week, when the history also holds a load test */
+  window?: { start: string | number; end: string | number };
 }
 
 /**
@@ -263,6 +266,13 @@ export function drawsFor(m: Model, d: Dataset, plans: number, requested = 30, bu
 export function verifyChange(ws: Workspace, inputs: ChangeInput[], o: VerifyOptions = {}) {
   const m = reviveModel(ws.readJson<Model>('model.json'));
   let d = ws.readJson<Dataset>('dataset.json');
+  if (o.window) {
+    const t = (v: string | number) => (typeof v === 'number' ? (v > 1e12 ? v / 1000 : v) : Date.parse(v) / 1000);
+    const a = Math.max(d.start, t(o.window.start));
+    const b = Math.min(d.start + d.n * d.stepS, t(o.window.end));
+    if (!(b > a)) throw new Error(`window ${iso(t(o.window.start))} … ${iso(t(o.window.end))} is outside the history (${iso(d.start)} … ${iso(d.start + d.n * d.stepS)})`);
+    d = sliceDataset(d, Math.floor((a - d.start) / d.stepS), Math.ceil((b - d.start) / d.stepS));
+  }
   if (o.last) {
     const buckets = Math.ceil(seconds(o.last) / d.stepS);
     if (buckets < d.n) d = { ...d, ...sliceLast(d, buckets) };

@@ -1,0 +1,18 @@
+{
+  "system": "shop",
+  "run": "stress",
+  "start": 1791926097,
+  "end": 1791926823,
+  "day": null,
+  "minutes": null,
+  "scale": null,
+  "steps": [
+    50,
+    600,
+    50,
+    60
+  ],
+  "manifests": "shop.yaml",
+  "note": "run.json written from requests.csv: the recorder's collect step failed (Jaeger was OOM-killed); telemetry is collected again by evaluate.ts",
+  "recordedAt": "2026-10-13T21:27:00Z"
+}

@@ -1,0 +1,13 @@
+{
+  "system": "shop",
+  "run": "launch-hpa",
+  "start": 1791927314,
+  "end": 1791929714,
+  "day": "13/Jul/1995",
+  "minutes": 40,
+  "scale": "x83",
+  "steps": null,
+  "manifests": "variants/frontend-hpa.yaml",
+  "note": null,
+  "recordedAt": "2026-10-13T22:16:06.059Z"
+}

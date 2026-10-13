@@ -311,9 +311,15 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
     return d.services[id]?.replicas ?? new Array(d.n).fill(1);
   };
 
-  /** buckets where users were timing out: some endpoint failing ≥ 5% with p99 at the deadline */
-  const overloaded = Array.from({ length: d.n }, (_, i) =>
-    Object.values(d.endpoints).some((e) => (vals(e.errorRate, i) ?? 0) >= 0.05 && (vals(e.p99Ms, i) ?? 0) >= timeoutMs * 0.8),
+  /** buckets where users were timing out: some endpoint failing ≥ 5% with p99 at the deadline — or,
+   *  where endpoints carry no latency series (raw-URL span names), an entry service measured at the
+   *  edge failing ≥ 3% with p99 at the deadline */
+  const entryIds = [...new Set(Object.values(d.endpoints).map((e) => e.service))];
+  const overloaded = Array.from(
+    { length: d.n },
+    (_, i) =>
+      Object.values(d.endpoints).some((e) => (vals(e.errorRate, i) ?? 0) >= 0.05 && (vals(e.p99Ms, i) ?? 0) >= timeoutMs * 0.8) ||
+      entryIds.some((id) => (vals(d.services[id]?.errorRate, i) ?? 0) >= 0.03 && (vals(d.services[id]?.p99Ms, i) ?? 0) >= timeoutMs * 0.8),
   );
   const services: Record<string, ServiceModel> = {};
   /** services whose queue sits outside their spans (CPU pinned, latency fit blind to it) */
@@ -736,8 +742,8 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
     const lowP50 = median(lowIdx.map((i) => vals(ser?.p50Ms, i)).filter((x): x is number => x !== null));
     const pathMean = Object.entries(weights).reduce((a, [svc, w]) => a + w * (services[svc]?.self.mean ?? 0), 0);
     // the traces' mean covers the whole history, overloads included: a low-load median is closer
-    const measuredMean = isFinite(lowMean) ? lowMean : isFinite(lowP50) && lowP50 > 0 ? lowP50 : shape?.meanMs ?? pathMean;
-    const measuredP99 = isFinite(lowP99) ? lowP99 : shape?.p99Ms ?? measuredMean * 1.5;
+    const measuredMean = isFinite(lowMean) ? lowMean : isFinite(lowP50) && lowP50 > 0 ? lowP50 : shape?.lowMeanMs ?? shape?.meanMs ?? pathMean;
+    const measuredP99 = isFinite(lowP99) ? lowP99 : shape?.lowP99Ms ?? shape?.p99Ms ?? measuredMean * 1.5;
     // baseline errors: request-weighted over the low-traffic buckets (a median would read 0 for rare errors)
     let errN = 0;
     let errF = 0;

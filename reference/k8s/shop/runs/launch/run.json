@@ -1,0 +1,12 @@
+{
+  "system": "shop",
+  "run": "launch",
+  "start": 1791912490,
+  "end": 1791914891,
+  "day": "13/Jul/1995",
+  "minutes": 40,
+  "scale": "x83",
+  "manifests": "shop.yaml",
+  "note": null,
+  "recordedAt": "2026-10-13T18:09:05.131Z"
+}

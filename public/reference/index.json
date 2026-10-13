@@ -10,5 +10,9 @@
  {
   "id": "petclinic",
   "label": "PetClinic (reference)"
+ },
+ {
+  "id": "k8s-shop",
+  "label": "Astronomy Shop on Kubernetes (reference)"
  }
 ]

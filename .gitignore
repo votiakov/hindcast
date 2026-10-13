@@ -21,3 +21,8 @@ reference/k8s/nasa/*.gz
 demos/out/
 demos/ws/
 demos/mcp.json
+# Kubernetes reference: request logs are committed gzipped; traces and evaluation working files are not
+reference/k8s/*/runs/*/requests.csv
+reference/k8s/*/runs/*/workspace/telemetry/traces/
+reference/k8s/*/validation/*
+!reference/k8s/*/validation/validation.json

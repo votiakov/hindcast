@@ -1,0 +1,291 @@
+{
+ "window": {
+  "start": "2026-10-13T17:27:00Z",
+  "end": "2026-10-13T18:08:30Z",
+  "stepS": 30,
+  "buckets": 83,
+  "hours": 0.7
+ },
+ "presets": [
+  "otel-spanmetrics",
+  "ingress-nginx",
+  "kubernetes"
+ ],
+ "entry": [
+  "frontend"
+ ],
+ "ignored": [],
+ "traces": "2967 traces from jaeger through frontend (40 requests)",
+ "services": 15,
+ "endpoints": [
+  "frontend GET /",
+  "frontend GET /api/cart",
+  "frontend GET /api/data",
+  "frontend GET /api/products/{id}",
+  "frontend GET /api/recommendations",
+  "frontend POST /api/cart",
+  "frontend POST /api/checkout"
+ ],
+ "coverage": [
+  {
+   "service": "ad",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 0.98
+  },
+  {
+   "service": "cart",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 0.98
+  },
+  {
+   "service": "checkout",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 0.98
+  },
+  {
+   "service": "currency",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 0.98
+  },
+  {
+   "service": "email",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 0.98
+  },
+  {
+   "service": "frontend",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 0.98
+  },
+  {
+   "service": "payment",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 0.98
+  },
+  {
+   "service": "product-catalog",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 0.98
+  },
+  {
+   "service": "quote",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 0.98
+  },
+  {
+   "service": "recommendation",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 0.98
+  },
+  {
+   "service": "shipping",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 0.98
+  },
+  {
+   "service": "jaeger",
+   "has": [
+    "rps",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes"
+   ],
+   "missing": [
+    "errorRate",
+    "p99Ms"
+   ],
+   "filled": 0.98
+  },
+  {
+   "service": "flagd",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 0.49
+  },
+  {
+   "service": "otel-collector",
+   "has": [
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes"
+   ],
+   "missing": [
+    "rps",
+    "errorRate",
+    "p99Ms"
+   ],
+   "filled": 0
+  },
+  {
+   "service": "valkey-cart",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 0.61
+  }
+ ],
+ "emptyQueries": [],
+ "imported": [
+  "prometheus rps (891 points)",
+  "prometheus errorRate (884 points)",
+  "prometheus p50Ms (884 points)",
+  "prometheus p99Ms (884 points)",
+  "prometheus meanMs (884 points)",
+  "prometheus rps (729 points)",
+  "prometheus errorRate (726 points)",
+  "prometheus p99Ms (1402 points)",
+  "prometheus meanMs (726 points)",
+  "prometheus rps (162 points)",
+  "prometheus errorRate (81 points)",
+  "prometheus p99Ms (81 points)",
+  "prometheus meanMs (81 points)",
+  "prometheus cpuCores (1215 points)",
+  "prometheus cpuLimitCores (1215 points)",
+  "prometheus replicas (1215 points)",
+  "prometheus netTxBps (1215 points)",
+  "prometheus memoryBytes (1215 points)",
+  "prometheus cpuThrottled (1052 points)",
+  "traces: 2967 requests, 13 services, 7 endpoints (30 186 points)",
+  "frontend: dropped \"frontend GET\", \"frontend POST\" — the outer server span of requests already counted under their routes",
+  "frontend: endpoint rates scaled to the edge's count — the endpoint series had counted 777% of the requests the edge saw"
+ ],
+ "bill": null,
+ "warnings": [
+  "in the metrics but in no trace: jaeger, otel-collector. If they belong to another system, connect_telemetry with system.exclude; if they are part of this one (load balancers, databases), they are priced but not modelled for latency",
+  "no bill: calibrate_model prices services at AWS Fargate list prices from their CPU and memory limits"
+ ],
+ "files": {
+  "manifest": "/Users/andrii/Workspace/votiakov/system-design-sandbox/reference/k8s/shop/runs/launch/workspace/telemetry/bottleneck.import.yaml",
+  "dataset": "/Users/andrii/Workspace/votiakov/system-design-sandbox/reference/k8s/shop/runs/launch/workspace/dataset.json"
+ },
+ "next": "calibrate_model"
+}

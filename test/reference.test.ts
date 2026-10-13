@@ -24,6 +24,9 @@ describe.each(bundles)('reference workspace %s', (file) => {
     expect(reference, 'no reference-run accuracy record').toBeTruthy();
     const checks = reference!.checks.filter((c) => c.metric !== 'errors');
     expect(checks.length).toBeGreaterThan(0);
+    // the Kubernetes reference is the validation study itself (reference/k8s/README.md): its record
+    // is published as measured, misses included, so it is checked for being there, not for passing
+    if (file.startsWith('k8s-')) return;
     for (const c of checks) expect(c.pass, `${c.metric}: ${c.note} (${(c.error * 100).toFixed(1)}%)`).toBe(true);
   });
 

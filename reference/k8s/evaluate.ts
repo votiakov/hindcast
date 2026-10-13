@@ -16,6 +16,7 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gunzipSync } from 'node:zlib';
 import { parse, stringify as toYaml } from 'yaml';
 import { Workspace } from '../../agent/workspace';
 import { calibrateModel, strategiesFrom, verifyChange } from '../../agent/verify';
@@ -66,8 +67,8 @@ const recorded = (r: string) => existsSync(join(runDir(r), 'run.json'));
  *  and Jaeger (the agent's path; both keep every run). Without the cluster: the files collected
  *  during the recording, imported with today's importer */
 const collected = new Map<string, Dataset>();
-async function telemetryOf(runs: string[], out: string): Promise<Dataset> {
-  const key = runs.join('+');
+async function telemetryOf(runs: string[], out: string, settle = false): Promise<Dataset> {
+  const key = runs.join('+') + (settle ? ':settled' : '');
   if (collected.has(key)) return collected.get(key)!;
   let d: Dataset;
   try {
@@ -75,7 +76,8 @@ async function telemetryOf(runs: string[], out: string): Promise<Dataset> {
     mkdirSync(out, { recursive: true });
     cpSync(join(runDir(runs[0]), 'workspace', 'sources.json'), join(out, 'sources.json'));
     const ws = new Workspace(out);
-    const w = runs.map((r) => ({ start: meta(r).start, end: meta(r).end }));
+    // calibration histories leave out the same settling minutes the scoring leaves out
+    const w = runs.map((r) => ({ start: meta(r).start + (settle ? SETTLE_S : 0), end: meta(r).end }));
     await collect(ws, w.length > 1 ? { windows: w, stepS: STEP, maxTraces: 6000 * w.length } : { ...w[0], stepS: STEP, maxTraces: 6000 });
     d = ws.readJson<Dataset>('dataset.json');
   } catch (e) {
@@ -88,7 +90,8 @@ async function telemetryOf(runs: string[], out: string): Promise<Dataset> {
   return d;
 }
 
-const requestsOf = (r: string) => parseRequestLog(readFileSync(join(runDir(r), 'requests.csv'), 'utf8'));
+// committed gzipped; the recorder leaves the plain file
+const requestsOf = (r: string) => parseRequestLog(existsSync(join(runDir(r), 'requests.csv')) ? readFileSync(join(runDir(r), 'requests.csv'), 'utf8') : gunzipSync(readFileSync(join(runDir(r), 'requests.csv.gz'))).toString('utf8'));
 /** a run's requests after the settling period */
 function settled(log: RequestLog, start: number): RequestLog {
   const keep = log.t.map((t) => t >= start + SETTLE_S);
@@ -177,9 +180,10 @@ function naive(history: Dataset, replicasAfter: number | 'hpa', scale: number) {
 const strategyName = (head: string) => (head.includes('hpa') ? 'Frontend on an HPA, 1–3 replicas' : `Frontend at ${/frontend-(\d)/.exec(head)![1]} replica${head.includes('-1') ? '' : 's'}`);
 
 /** score one calibrated model on every recorded case */
-async function score(label: string, ws: Workspace, base: string, evalDir: string) {
+async function score(label: string, ws: Workspace, base: string, evalDir: string, ordinaryDay: Dataset) {
   const m = reviveModel(ws.readJson<Model>('model.json'));
-  const history = ws.readJson<Dataset>('dataset.json');
+  // the naive estimate reads the ordinary day's CPU, whatever the model was calibrated on
+  const history = ordinaryDay;
   const rows = [];
   for (const c of CASES) {
     if (!recorded(c.run) || !recorded(c.asBuilt)) continue;
@@ -188,7 +192,9 @@ async function score(label: string, ws: Workspace, base: string, evalDir: string
     const head = c.head ? resolve(SYS, c.head) : undefined;
     // before the day: what verify_change says from the calibration history alone
     const traffic = c.scale !== 1 ? { scale: c.scale } : undefined;
-    const exAnte = verifyChange(ws, [head ? { kubernetes: { base, head } } : { strategy: { name: 'as built', changes: [] } }], { traffic, report: false });
+    // the replay is the ordinary day, whatever else the model learned from (a load test)
+    const window = { start: meta('history').start + SETTLE_S, end: meta('history').end };
+    const exAnte = verifyChange(ws, [head ? { kubernetes: { base, head } } : { strategy: { name: 'as built', changes: [] } }], { traffic, window, report: false });
     const res = exAnte.results[0];
     const asBuiltMin = exAnte.asBuilt?.minutesOutOfSlo ?? 0;
     const actual = measured(log, m.slo);
@@ -230,7 +236,7 @@ async function calibrated(name: string, runs: string[], evalDir: string, slo: Mo
   mkdirSync(dir, { recursive: true });
   cpSync(join(runDir(runs[0]), 'workspace', 'sources.json'), join(dir, 'sources.json'));
   const ws = new Workspace(dir);
-  ws.writeJson('dataset.json', await telemetryOf(runs, join(evalDir, 'collected', runs.join('+'))), false);
+  ws.writeJson('dataset.json', await telemetryOf(runs, join(evalDir, 'collected', runs.join('+')), true), false);
   const trust = await calibrateModel(ws, { slo, holdout: runs.length > 1 ? 0 : 0.3 });
   return { ws, trust };
 }
@@ -246,10 +252,10 @@ async function main() {
   const base = resolve(SYS, 'shop.yaml');
 
   const calm = await calibrated('calm', ['history'], evalDir, cfg.slo);
-  const models: { id: string; label: string; rows: Awaited<ReturnType<typeof score>>; trust: unknown }[] = [{ id: 'calm', label: 'calibrated on the ordinary day', rows: await score('calm', calm.ws, base, evalDir), trust: calm.trust }];
+  const models: { id: string; label: string; rows: Awaited<ReturnType<typeof score>>; trust: unknown }[] = [{ id: 'calm', label: 'calibrated on the ordinary day', rows: await score('calm', calm.ws, base, evalDir, calm.ws.readJson<Dataset>('dataset.json')), trust: calm.trust }];
   if (recorded('stress')) {
     const tested = await calibrated('load-tested', ['history', 'stress'], evalDir, cfg.slo);
-    models.push({ id: 'load-tested', label: 'calibrated on the ordinary day and a 12-minute load test', rows: await score('load-tested', tested.ws, base, evalDir), trust: tested.trust });
+    models.push({ id: 'load-tested', label: 'calibrated on the ordinary day and a 12-minute load test', rows: await score('load-tested', tested.ws, base, evalDir, calm.ws.readJson<Dataset>('dataset.json')), trust: tested.trust });
   }
 
   // the model the app bundles: the best history a team would have, with its accuracy on every run it never saw

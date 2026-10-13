@@ -16,7 +16,7 @@ const pack = (r) => ({ ...r, series: { measured: r.series.measured.map((x) => [x
 const models = v.models.map((m) => ({ id: m.id, label: m.label, rows: m.rows.map(pack) }));
 const data = { slo: v.slo, settleS: v.settleS, models, ali, evaluatedAt: v.evaluatedAt };
 
-const html = `<title>Backtest vs Reality</title>
+const html = `<title>Hindcast vs Reality</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
 <style>
@@ -83,6 +83,16 @@ a { color: var(--amber); }
   <div class="runs" id="runs"></div>
 </section>
 <section>
+  <h2>What it got wrong, and why</h2>
+  <div class="cols"><div style="display:grid;gap:10px">
+  <p><b>It overestimates a single-threaded service under a CPU limit.</b> The frontend (Node.js, half a core per pod) collapsed at about 195 requests/s per pod, with its CPU at 79% of the limit and throttled in 44% of CFS periods. The model reads capacity from CPU per request and extrapolates to 100% of the limit: 214–246 req/s. So it called one replica safe on an ordinary day, which failed with 27% errors.</p>
+  <p><b>It underestimates the tail before the limit.</b> On launch day the frontend's p99 climbed to 500–700 ms at 60% CPU, as quota stalls and a few slow requests on one thread compound. The queueing model sees far less.</p>
+  </div><div style="display:grid;gap:10px">
+  <p><b>It knew when it didn't know.</b> Where a change pushed the frontend past anything the history had seen, <code>verify_change</code> did not say pass. It said <i>inconclusive</i> and asked for a load test. It never called the 2-replica launch day safe, and that run failed 44% of its requests.</p>
+  <p><b>What would fix it:</b> a load test that runs past the collapse for a few minutes, not just to its edge. Calibration takes the limit from the point where the system broke, when the history contains one. This load test ended in the very bucket it broke.</p>
+  </div></div>
+</section>
+<section>
   <h2>And on real production telemetry</h2>
   <p>Alibaba's 2021 microservices trace: 12 hours of calls, response times and CPU for every container of ~1,300 services. For the ${ali.services} busiest, the same calibration was fitted on the first ${ali.trainedOn.split(' ')[1]} minutes and asked for each service's CPU over the last ${ali.heldOut.split(' ')[1]}, from its traffic alone.</p>
   <div class="tw"><table id="ali"></table></div>
@@ -129,15 +139,16 @@ const runs = document.getElementById('runs');
 for (const r of rows) {
   const m = r.series.measured;
   const n = Math.min(m.length, r.series.predicted.length);
+  const first = Math.ceil((D.settleS ?? 0) / 30);
   const x = (i) => L + (i / Math.max(1, n - 1)) * (W - L - R);
   const lo = Math.log(20), hi = Math.log(6000);
   const y = (v) => T + (H - T - B) * (1 - (Math.log(Math.max(20, Math.min(6000, v))) - lo) / (hi - lo));
   const maxRps = Math.max(1, ...m.map((p) => p[0] ?? 0));
   const ya = (v) => H - B - (v / maxRps) * (H - T - B) * 0.55;
-  let area = 'M' + x(0) + ',' + (H - B);
-  for (let i = 0; i < n; i++) area += 'L' + x(i).toFixed(1) + ',' + ya(m[i][0] ?? 0).toFixed(1);
+  let area = 'M' + x(first) + ',' + (H - B);
+  for (let i = first; i < n; i++) area += 'L' + x(i).toFixed(1) + ',' + ya(m[i][0] ?? 0).toFixed(1);
   area += 'L' + x(n - 1) + ',' + (H - B) + 'Z';
-  const line = (vals) => { let d = ''; let pen = false; for (let i = 0; i < n; i++) { const v = vals(i); if (v == null || !isFinite(v)) { pen = false; continue; } d += (pen ? 'L' : 'M') + x(i).toFixed(1) + ',' + y(v).toFixed(1); pen = true; } return d; };
+  const line = (vals) => { let d = ''; let pen = false; for (let i = first; i < n; i++) { const v = vals(i); if (v == null || !isFinite(v)) { pen = false; continue; } d += (pen ? 'L' : 'M') + x(i).toFixed(1) + ',' + y(v).toFixed(1); pen = true; } return d; };
   const ticks = [50, 200, 1000, 5000];
   const svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="p99 over the run, measured and predicted">' +
     '<path d="' + area + '" fill="#3a4a58" opacity=".55"/>' +
