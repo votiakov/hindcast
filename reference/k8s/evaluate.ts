@@ -1,58 +1,41 @@
 /**
  * Would the backtest have told you the truth? For every recorded Kubernetes run with a change
- * really applied, compare three things with what k6 measured on every request:
+ * really applied, compare three answers with what k6 measured on every request:
  *
- *   - the agent's verdict before the change shipped: verify_change on the calibration day's history
- *     (launch day forecast as the calibration day at the launch day's ratio, 2.2×)
+ *   - the agent's verdict before the change shipped: verify_change on the calibration history
+ *     (launch day forecast as the ordinary day at the launch day's ratio, 2.2×)
  *   - the model's prediction over the traffic that actually came (model error alone, no forecast error)
  *   - a naive estimate: the frontend's busiest CPU utilisation in the history, scaled by the change
  *
- *   npx tsx reference/k8s/evaluate.ts <system>          writes runs/../validation.json and .md
+ * Two models are scored: calibrated on the ordinary day alone, and on the ordinary day plus a
+ * 12-minute step load test (the `stress` run) — what a team that load-tests before a launch has.
+ *
+ *   npx tsx reference/k8s/evaluate.ts [system]     → <system>/validation/validation.json, the README's table,
+ *                                                   public/reference/k8s-<system>.json for the app
  */
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parse } from 'yaml';
+import { parse, stringify as toYaml } from 'yaml';
 import { Workspace } from '../../agent/workspace';
 import { calibrateModel, strategiesFrom, verifyChange } from '../../agent/verify';
 import { collect } from '../../agent/collect';
 import { reviveModel, type Model } from '../../src/backtest/model';
-import type { Dataset } from '../../src/backtest/dataset';
-import { quantile } from '../../src/backtest/dataset';
-import { basePlan, runPlan } from '../../src/backtest/engine';
+import { quantile, type Dataset } from '../../src/backtest/dataset';
+import { basePlan, mixtureQuantile, runPlan } from '../../src/backtest/engine';
 import { applyStrategy } from '../../src/backtest/strategy';
 import { observedReplicas, trafficOf } from '../../src/backtest/calibrate';
-import { accuracyLines, parseRequestLog, pooledP99, referenceAccuracy, type ReferenceRun, type RequestLog } from '../../src/backtest/accuracy';
-import { stringify as toYaml } from 'yaml';
-import type { K8sReference } from './record';
+import { accuracyLines, parseRequestLog, referenceAccuracy, type ReferenceRun, type RequestLog } from '../../src/backtest/accuracy';
 import { importBundle } from '../../src/backtest/import/manifest';
 import { fileAccess } from '../../cli/files';
+import type { K8sReference } from './record';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
-
-/** a run's telemetry, collected again with today's code from the live Prometheus and Jaeger (the
- *  agent's path; both keep every run). Without the cluster: the files the recording collected,
- *  imported with today's importer */
-const collected = new Map<string, Dataset>();
-async function importRun(dir: string, out: string): Promise<Dataset> {
-  if (collected.has(dir)) return collected.get(dir)!;
-  const meta = JSON.parse(readFileSync(join(dir, 'run.json'), 'utf8')) as { start: number; end: number };
-  let d: Dataset;
-  try {
-    rmSync(out, { recursive: true, force: true });
-    mkdirSync(out, { recursive: true });
-    cpSync(join(dir, 'workspace', 'sources.json'), join(out, 'sources.json'));
-    const ws = new Workspace(out);
-    await collect(ws, { start: meta.start, end: meta.end, stepS: 30, maxTraces: 6000 });
-    d = ws.readJson<Dataset>('dataset.json');
-  } catch (e) {
-    console.warn(`(${dir}: live telemetry unavailable — ${(e as Error).message.slice(0, 120)}; using the recorded files)`);
-    const mp = join(dir, 'workspace', 'telemetry', 'bottleneck.import.yaml');
-    d = importBundle(parse(readFileSync(mp, 'utf8')), fileAccess(mp)).dataset;
-  }
-  collected.set(dir, d);
-  return d;
-}
+const STEP = 30;
+/** the first two minutes of every run are left out of the scoring, measured and predicted alike:
+ *  pods restarted minutes earlier and carts filled during the warm-up — the recording's own
+ *  transient, not the day's */
+const SETTLE_S = 120;
 
 interface Case {
   run: string;
@@ -60,43 +43,64 @@ interface Case {
   asBuilt: string;
   /** manifests the change leaves (none: the as-built system itself) */
   head?: string;
-  /** the forecast an engineer would make before the day: the calibration day ×scale */
+  /** the forecast an engineer would make before the day: the ordinary day ×scale */
   scale: number;
   question: string;
 }
 
-// the calibration run (EVAL_HISTORY=smoke checks the script without the 47-minute recording)
-const HIST = process.env.EVAL_HISTORY ?? 'history';
 const LAUNCH = 2.22; // 13 July's busiest 10 minutes over 12 July's, from the log itself
 const CASES: Case[] = [
-  { run: 'launch', asBuilt: 'launch', scale: LAUNCH, question: 'As built, on launch day?' },
-  { run: 'normal-2', asBuilt: HIST, head: 'variants/frontend-2.yaml', scale: 1, question: '2 frontend replicas instead of 3, on an ordinary day?' },
+  { run: 'launch', asBuilt: 'launch', scale: LAUNCH, question: 'As built (3 frontend replicas), on launch day?' },
+  { run: 'normal-2', asBuilt: 'history', head: 'variants/frontend-2.yaml', scale: 1, question: '2 frontend replicas instead of 3, on an ordinary day?' },
   { run: 'launch-2', asBuilt: 'launch', head: 'variants/frontend-2.yaml', scale: LAUNCH, question: '2 frontend replicas instead of 3, on launch day?' },
-  { run: 'normal-1', asBuilt: HIST, head: 'variants/frontend-1.yaml', scale: 1, question: '1 frontend replica, on an ordinary day?' },
+  { run: 'normal-1', asBuilt: 'history', head: 'variants/frontend-1.yaml', scale: 1, question: '1 frontend replica, on an ordinary day?' },
   { run: 'launch-hpa', asBuilt: 'launch', head: 'variants/frontend-hpa.yaml', scale: LAUNCH, question: 'An HPA (1–3 replicas at 60% CPU) instead of 3 fixed, on launch day?' },
 ];
 
-/** what k6 measured per bucket of the run's grid: requests/s, p99, error rate */
-function measuredSeries(log: RequestLog, start: number, n: number, stepS = 30) {
-  const b = Array.from({ length: n }, () => ({ ms: [] as number[], failed: 0 }));
-  for (let k = 0; k < log.t.length; k++) {
-    const i = Math.floor((log.t[k] - start) / stepS);
-    if (i < 0 || i >= n) continue;
-    b[i].ms.push(log.ms[k]);
-    if (log.failed[k]) b[i].failed++;
+let SYS = '';
+const runDir = (r: string) => join(SYS, 'runs', r);
+const meta = (r: string) => JSON.parse(readFileSync(join(runDir(r), 'run.json'), 'utf8')) as { start: number; end: number };
+const recorded = (r: string) => existsSync(join(runDir(r), 'run.json'));
+
+/** the telemetry of one or more runs, collected again with today's code from the live Prometheus
+ *  and Jaeger (the agent's path; both keep every run). Without the cluster: the files collected
+ *  during the recording, imported with today's importer */
+const collected = new Map<string, Dataset>();
+async function telemetryOf(runs: string[], out: string): Promise<Dataset> {
+  const key = runs.join('+');
+  if (collected.has(key)) return collected.get(key)!;
+  let d: Dataset;
+  try {
+    rmSync(out, { recursive: true, force: true });
+    mkdirSync(out, { recursive: true });
+    cpSync(join(runDir(runs[0]), 'workspace', 'sources.json'), join(out, 'sources.json'));
+    const ws = new Workspace(out);
+    const w = runs.map((r) => ({ start: meta(r).start, end: meta(r).end }));
+    await collect(ws, w.length > 1 ? { windows: w, stepS: STEP, maxTraces: 6000 * w.length } : { ...w[0], stepS: STEP, maxTraces: 6000 });
+    d = ws.readJson<Dataset>('dataset.json');
+  } catch (e) {
+    if (runs.length > 1) throw e;
+    console.warn(`(${runs[0]}: live telemetry unavailable — ${(e as Error).message.slice(0, 120)}; using the recorded files)`);
+    const mp = join(runDir(runs[0]), 'workspace', 'telemetry', 'bottleneck.import.yaml');
+    d = importBundle(parse(readFileSync(mp, 'utf8')), fileAccess(mp)).dataset;
   }
-  return b.map((x) => {
-    x.ms.sort((a, c) => a - c);
-    return { rps: Math.round((x.ms.length / stepS) * 10) / 10, p99Ms: x.ms.length ? Math.round(quantile(x.ms, 0.99)) : null, errorRate: x.ms.length ? Math.round((x.failed / x.ms.length) * 1e4) / 1e4 : null };
-  });
+  collected.set(key, d);
+  return d;
+}
+
+const requestsOf = (r: string) => parseRequestLog(readFileSync(join(runDir(r), 'requests.csv'), 'utf8'));
+/** a run's requests after the settling period */
+function settled(log: RequestLog, start: number): RequestLog {
+  const keep = log.t.map((t) => t >= start + SETTLE_S);
+  return { t: log.t.filter((_, k) => keep[k]), ms: log.ms.filter((_, k) => keep[k]), failed: log.failed.filter((_, k) => keep[k]) };
 }
 
 /** what k6 measured: p99 and errors over every request, and 30-second buckets out of SLO */
-function measured(log: RequestLog, slo: Model['slo'], stepS = 30) {
+function measured(log: RequestLog, slo: Model['slo']) {
   const ms = [...log.ms].sort((a, b) => a - b);
   const byBucket = new Map<number, { ms: number[]; failed: number }>();
   for (let k = 0; k < log.t.length; k++) {
-    const b = Math.floor(log.t[k] / stepS);
+    const b = Math.floor(log.t[k] / STEP);
     const x = byBucket.get(b) ?? byBucket.set(b, { ms: [], failed: 0 }).get(b)!;
     x.ms.push(log.ms[k]);
     if (log.failed[k]) x.failed++;
@@ -108,11 +112,26 @@ function measured(log: RequestLog, slo: Model['slo'], stepS = 30) {
     if (quantile(x.ms, 0.99) > slo.p99Ms || x.failed / x.ms.length > slo.errorRate) out++;
   }
   const failed = log.failed.filter(Boolean).length;
-  return { requests: log.t.length, p99: quantile(ms, 0.99), errorRate: failed / log.t.length, minutesOutOfSlo: (out * stepS) / 60 };
+  return { requests: log.t.length, p99: quantile(ms, 0.99), errorRate: failed / Math.max(1, log.t.length), minutesOutOfSlo: (out * STEP) / 60 };
 }
 
-/** the model with the change, replayed over the traffic the run actually had */
-function predicted(m: Model, ws: Workspace, run: Dataset, log: RequestLog, head: string | undefined, base: string) {
+/** what k6 measured per bucket of the run's grid, for the charts */
+function measuredSeries(log: RequestLog, start: number, n: number) {
+  const b = Array.from({ length: n }, () => ({ ms: [] as number[], failed: 0 }));
+  for (let k = 0; k < log.t.length; k++) {
+    const i = Math.floor((log.t[k] - start) / STEP);
+    if (i < 0 || i >= n) continue;
+    b[i].ms.push(log.ms[k]);
+    if (log.failed[k]) b[i].failed++;
+  }
+  return b.map((x) => {
+    x.ms.sort((a, c) => a - c);
+    return { rps: Math.round((x.ms.length / STEP) * 10) / 10, p99Ms: x.ms.length ? Math.round(quantile(x.ms, 0.99)) : null, errorRate: x.ms.length ? Math.round((x.failed / x.ms.length) * 1e4) / 1e4 : null };
+  });
+}
+
+/** the model with the change, replayed over the traffic the run actually had (after settling) */
+function predicted(m: Model, ws: Workspace, run: Dataset, runStart: number, head: string | undefined, base: string) {
   const strat = head ? strategiesFrom(ws, [{ kubernetes: { base, head } }], m).strategies[0] : undefined;
   const plan = strat ? applyStrategy(m, basePlan(m), strat).plan : basePlan(m);
   // a fixed replica count was really applied: replay the counts the run had (pods start seconds
@@ -124,19 +143,19 @@ function predicted(m: Model, ws: Workspace, run: Dataset, log: RequestLog, head:
       s.observedReplicas = obs[id];
     }
   const r = runPlan(plan, trafficOf(run, m));
+  const i0 = Math.max(0, Math.ceil((runStart + SETTLE_S - run.start) / run.stepS));
   let n = 0;
   let f = 0;
   let out = 0;
-  for (let i = 0; i < r.t.length; i++) {
+  const parts: { w: number; mean: number; p99: number; p50?: number }[] = [];
+  for (let i = i0; i < r.t.length; i++) {
     n += r.rps[i];
     f += r.rps[i] * r.errorRate[i];
     if (r.rps[i] > 0 && (r.p99Ms[i] > m.slo.p99Ms || r.errorRate[i] > m.slo.errorRate)) out++;
+    for (const e of Object.values(r.endpoints)) if (e.rps[i] > 0) parts.push({ w: e.rps[i], mean: e.meanMs[i], p99: e.p99Ms[i], ...(e.p50Ms[i] > 0 && e.p99Ms[i] < 4000 ? { p50: e.p50Ms[i] } : {}) });
   }
-  const pool = pooledP99(r, log, run.start, run.stepS);
-  const peakReplicas = Math.max(...(r.services.frontend?.replicas ?? [0]));
-  // per bucket, for the charts: offered load, predicted p99 and errors, frontend replicas
-  const series = { t: r.t, rps: r.rps.map((x) => Math.round(x * 10) / 10), p99Ms: r.p99Ms.map((x) => Math.round(x)), errorRate: r.errorRate.map((x) => Math.round(x * 1e4) / 1e4), frontendReplicas: r.services.frontend?.replicas ?? [] };
-  return { p99: pool.predicted, errorRate: n > 0 ? f / n : 0, minutesOutOfSlo: (out * run.stepS) / 60, frontendReplicasPeak: peakReplicas, series };
+  const series = { rps: r.rps.map((x) => Math.round(x * 10) / 10), p99Ms: r.p99Ms.map((x) => Math.round(x)), errorRate: r.errorRate.map((x) => Math.round(x * 1e4) / 1e4), frontendReplicas: r.services.frontend?.replicas ?? [] };
+  return { p99: parts.length ? mixtureQuantile(parts) : 0, errorRate: n > 0 ? f / n : 0, minutesOutOfSlo: (out * run.stepS) / 60, frontendReplicasPeak: Math.max(...(r.services.frontend?.replicas ?? [0])), series };
 }
 
 /** the spreadsheet answer: the frontend's busiest CPU share in the history, scaled by the change */
@@ -151,98 +170,104 @@ function naive(history: Dataset, replicasAfter: number | 'hpa', scale: number) {
     peak = Math.max(peak, cpu / (lim * reps));
   }
   const repsBefore = Math.max(...(f.replicas ?? []).filter((x): x is number => x !== null));
-  const after = replicasAfter === 'hpa' ? 3 : replicasAfter;
-  const util = (peak * scale * repsBefore) / after;
+  const util = (peak * scale * repsBefore) / (replicasAfter === 'hpa' ? 3 : replicasAfter);
   return { historyPeakUtil: peak, predictedPeakUtil: util, verdict: util < 1 ? 'pass' : 'fail' };
+}
+
+const strategyName = (head: string) => (head.includes('hpa') ? 'Frontend on an HPA, 1–3 replicas' : `Frontend at ${/frontend-(\d)/.exec(head)![1]} replica${head.includes('-1') ? '' : 's'}`);
+
+/** score one calibrated model on every recorded case */
+async function score(label: string, ws: Workspace, base: string, evalDir: string) {
+  const m = reviveModel(ws.readJson<Model>('model.json'));
+  const history = ws.readJson<Dataset>('dataset.json');
+  const rows = [];
+  for (const c of CASES) {
+    if (!recorded(c.run) || !recorded(c.asBuilt)) continue;
+    const run = await telemetryOf([c.run], join(evalDir, 'runs', c.run));
+    const log = settled(requestsOf(c.run), meta(c.run).start);
+    const head = c.head ? resolve(SYS, c.head) : undefined;
+    // before the day: what verify_change says from the calibration history alone
+    const traffic = c.scale !== 1 ? { scale: c.scale } : undefined;
+    const exAnte = verifyChange(ws, [head ? { kubernetes: { base, head } } : { strategy: { name: 'as built', changes: [] } }], { traffic, report: false });
+    const res = exAnte.results[0];
+    const asBuiltMin = exAnte.asBuilt?.minutesOutOfSlo ?? 0;
+    const actual = measured(log, m.slo);
+    const actualBase = measured(settled(requestsOf(c.asBuilt), meta(c.asBuilt).start), m.slo);
+    const post = predicted(m, ws, run, meta(c.run).start, head, base);
+    const nv = naive(history, !c.head ? 3 : c.head.includes('hpa') ? 'hpa' : Number(/frontend-(\d)/.exec(c.head)![1]), c.scale);
+    // reality's verdict, judged like verify_change's gate: more than 0.5 min out of SLO added over
+    // the as-built system on the same day (for the as-built system itself: more than 0.5 min)
+    const added = c.run === c.asBuilt ? actual.minutesOutOfSlo : actual.minutesOutOfSlo - actualBase.minutesOutOfSlo;
+    const truth = added > 0.5 ? 'fail' : 'pass';
+    const verdict = c.run === c.asBuilt ? (asBuiltMin > 0.5 ? 'fail' : 'pass') : res?.verdict;
+    const row = {
+      run: c.run,
+      question: c.question,
+      exAnte: {
+        verdict,
+        confidence: c.run === c.asBuilt ? null : (res?.confidence.level ?? null),
+        minutesOutOfSlo: c.run === c.asBuilt ? asBuiltMin : (res?.reliability.minutesOutOfSlo ?? null),
+        peakP99Ms: c.run === c.asBuilt ? null : (res?.reliability.peakP99Ms ?? null),
+        monthlyDelta: c.run === c.asBuilt ? null : (res?.cost.monthlyDelta ?? null),
+        reasons: c.run === c.asBuilt ? [] : (res?.reasons ?? []),
+        warnings: c.run === c.asBuilt ? [] : (res?.confidence.warnings ?? []),
+      },
+      exPost: { p99Ms: Math.round(post.p99), errorRate: post.errorRate, minutesOutOfSlo: post.minutesOutOfSlo, frontendReplicasPeak: post.frontendReplicasPeak },
+      measured: { p99Ms: Math.round(actual.p99), errorRate: actual.errorRate, minutesOutOfSlo: actual.minutesOutOfSlo, requests: actual.requests, addedOverAsBuilt: Math.round(added * 10) / 10 },
+      series: { predicted: post.series, measured: measuredSeries(log, run.start, run.n), frontendReplicas: run.services.frontend?.replicas ?? [] },
+      truth,
+      naive: nv,
+      agrees: { backtest: verdict === truth, naive: nv.verdict === truth },
+    };
+    rows.push(row);
+    console.log(`[${label}] ${c.run.padEnd(11)} truth ${truth.padEnd(4)} | backtest ${String(verdict).padEnd(12)} ${row.agrees.backtest ? '✓' : '✗'} | naive ${nv.verdict.padEnd(4)} ${row.agrees.naive ? '✓' : '✗'} (${Math.round(nv.predictedPeakUtil * 100)}% CPU) | p99 model ${row.exPost.p99Ms} measured ${row.measured.p99Ms} | min out model ${row.exPost.minutesOutOfSlo} measured ${row.measured.minutesOutOfSlo}`);
+  }
+  return rows;
+}
+
+async function calibrated(name: string, runs: string[], evalDir: string, slo: Model['slo']) {
+  const dir = join(evalDir, name);
+  mkdirSync(dir, { recursive: true });
+  cpSync(join(runDir(runs[0]), 'workspace', 'sources.json'), join(dir, 'sources.json'));
+  const ws = new Workspace(dir);
+  ws.writeJson('dataset.json', await telemetryOf(runs, join(evalDir, 'collected', runs.join('+'))), false);
+  const trust = await calibrateModel(ws, { slo, holdout: runs.length > 1 ? 0 : 0.3 });
+  return { ws, trust };
 }
 
 async function main() {
   const system = process.argv[2] ?? 'shop';
-  const sysDir = join(ROOT, system);
-  const cfg = parse(readFileSync(join(sysDir, 'reference.yaml'), 'utf8')) as K8sReference;
-  const runDir = (r: string) => join(sysDir, 'runs', r);
-  if (!existsSync(join(runDir(HIST), 'workspace', 'dataset.json'))) throw new Error(`record the ${HIST} run first`);
-
-  // the agent's workspace: the calibration day's telemetry, calibrated as calibrate_model does it
-  const evalDir = join(sysDir, 'validation');
+  SYS = join(ROOT, system);
+  const cfg = parse(readFileSync(join(SYS, 'reference.yaml'), 'utf8')) as K8sReference;
+  if (!recorded('history')) throw new Error('record the history run first');
+  const evalDir = join(SYS, 'validation');
   rmSync(evalDir, { recursive: true, force: true });
   mkdirSync(evalDir, { recursive: true });
-  cpSync(join(runDir(HIST), 'workspace'), join(evalDir, 'workspace'), { recursive: true });
-  const ws = new Workspace(join(evalDir, 'workspace'));
-  ws.writeJson('dataset.json', await importRun(runDir(HIST), join(evalDir, 'runs', HIST)), false);
-  rmSync(ws.path('model.json'), { force: true });
-  const cal = await calibrateModel(ws, { slo: cfg.slo, holdout: 0.3 });
-  const m = reviveModel(ws.readJson<Model>('model.json'));
-  const history = ws.readJson<Dataset>('dataset.json');
-  const base = resolve(sysDir, 'shop.yaml');
+  const base = resolve(SYS, 'shop.yaml');
 
-  const rows = [];
-  const measuredCache = new Map<string, ReturnType<typeof measured>>();
-  const meas = (run: string) => {
-    if (!measuredCache.has(run)) measuredCache.set(run, measured(parseRequestLog(readFileSync(join(runDir(run), 'requests.csv'), 'utf8')), m.slo));
-    return measuredCache.get(run)!;
-  };
-  for (const c of CASES) {
-    if (!existsSync(join(runDir(c.run), 'run.json'))) {
-      console.log(`(${c.run} not recorded yet — skipped)`);
-      continue;
-    }
-    const run = await importRun(runDir(c.run), join(evalDir, 'runs', c.run));
-    const log = parseRequestLog(readFileSync(join(runDir(c.run), 'requests.csv'), 'utf8'));
-    const head = c.head ? resolve(sysDir, c.head) : undefined;
-
-    // before the day: what verify_change says from the calibration day alone
-    const exAnte = head
-      ? verifyChange(ws, [{ kubernetes: { base, head } }], { traffic: c.scale !== 1 ? { scale: c.scale } : undefined, report: false })
-      : verifyChange(ws, [{ strategy: { name: 'as built', changes: [] } }], { traffic: c.scale !== 1 ? { scale: c.scale } : undefined, report: false });
-    const res = exAnte.results[0];
-    const asBuiltMin = exAnte.asBuilt?.minutesOutOfSlo ?? 0;
-
-    const actual = meas(c.run);
-    const actualBase = meas(c.asBuilt);
-    const post = predicted(m, ws, run, log, head, base);
-    const replicasAfter = !c.head ? 3 : c.head.includes('hpa') ? ('hpa' as const) : Number(/frontend-(\d)/.exec(c.head)![1]);
-    const nv = naive(history, replicasAfter, c.scale);
-    // reality's verdict, judged like verify_change's gate: more than 0.5 min out of SLO added over
-    // the as-built system on the same day (the as-built system itself: any minute out of SLO)
-    const added = c.run === c.asBuilt ? actual.minutesOutOfSlo : actual.minutesOutOfSlo - actualBase.minutesOutOfSlo;
-    const truth = added > 0.5 ? 'fail' : 'pass';
-    const predictedVerdict = c.run === c.asBuilt ? (asBuiltMin > 0.5 ? 'fail' : 'pass') : res?.verdict;
-    rows.push({
-      run: c.run,
-      question: c.question,
-      exAnte: {
-        verdict: predictedVerdict,
-        confidence: res?.confidence.level ?? null,
-        minutesOutOfSlo: c.run === c.asBuilt ? asBuiltMin : (res?.reliability.minutesOutOfSlo ?? null),
-        monthlyDelta: c.run === c.asBuilt ? null : (res?.cost.monthlyDelta ?? null),
-        worst: c.run === c.asBuilt ? null : (res?.reliability.worst ?? null),
-        summary: res?.summary ?? null,
-      },
-      exPost: { p99Ms: Math.round(post.p99), errorRate: post.errorRate, minutesOutOfSlo: post.minutesOutOfSlo, frontendReplicasPeak: post.frontendReplicasPeak },
-      series: { predicted: post.series, measured: measuredSeries(log, run.start, run.n, run.stepS), frontendReplicas: run.services.frontend?.replicas ?? [] },
-      measured: { p99Ms: Math.round(actual.p99), errorRate: actual.errorRate, minutesOutOfSlo: actual.minutesOutOfSlo, requests: actual.requests, addedOverAsBuilt: Math.round(added * 10) / 10 },
-      truth,
-      naive: nv,
-      agrees: { backtest: predictedVerdict === truth, naive: nv.verdict === truth },
-    });
-    const last = rows[rows.length - 1];
-    console.log(`${c.run.padEnd(11)} truth ${truth.padEnd(4)} | backtest ${String(predictedVerdict).padEnd(4)} ${last.agrees.backtest ? '✓' : '✗'} | naive ${nv.verdict.padEnd(4)} ${last.agrees.naive ? '✓' : '✗'} (${Math.round(nv.predictedPeakUtil * 100)}% CPU) | p99 pred ${last.exPost.p99Ms} meas ${last.measured.p99Ms} | min out pred ${last.exPost.minutesOutOfSlo} meas ${last.measured.minutesOutOfSlo}`);
+  const calm = await calibrated('calm', ['history'], evalDir, cfg.slo);
+  const models: { id: string; label: string; rows: Awaited<ReturnType<typeof score>>; trust: unknown }[] = [{ id: 'calm', label: 'calibrated on the ordinary day', rows: await score('calm', calm.ws, base, evalDir), trust: calm.trust }];
+  if (recorded('stress')) {
+    const tested = await calibrated('load-tested', ['history', 'stress'], evalDir, cfg.slo);
+    models.push({ id: 'load-tested', label: 'calibrated on the ordinary day and a 12-minute load test', rows: await score('load-tested', tested.ws, base, evalDir), trust: tested.trust });
   }
-  // the model's accuracy record: every recorded run it never saw, the change really applied
+
+  // the model the app bundles: the best history a team would have, with its accuracy on every run it never saw
+  const best = recorded('stress') ? new Workspace(join(evalDir, 'load-tested')) : calm.ws;
+  const m = reviveModel(best.readJson<Model>('model.json'));
   const refRuns: ReferenceRun[] = [];
   const strategies: string[] = [];
   for (const c of CASES) {
-    if (!existsSync(join(runDir(c.run), 'run.json'))) continue;
-    const head = c.head ? resolve(sysDir, c.head) : undefined;
-    const spec = head ? strategiesFrom(ws, [{ kubernetes: { base, head } }], m).strategies[0] : undefined;
+    if (!recorded(c.run)) continue;
+    const head = c.head ? resolve(SYS, c.head) : undefined;
+    const spec = head ? strategiesFrom(best, [{ kubernetes: { base, head } }], m).strategies[0] : undefined;
     if (spec) {
-      spec.name = c.head!.includes('hpa') ? 'Frontend on an HPA, 1–3 replicas' : `Frontend at ${/frontend-(\d)/.exec(c.head!)![1]} replica${c.head!.includes('-1') ? '' : 's'}`;
+      spec.name = strategyName(c.head!);
       spec.description = `${c.head} — the manifests applied for real in run ${c.run}`;
       const y = toYaml(spec);
       if (!strategies.includes(y)) strategies.push(y);
     }
-    refRuns.push({ label: c.run, dataset: await importRun(runDir(c.run), join(evalDir, 'runs', c.run)), requests: parseRequestLog(readFileSync(join(runDir(c.run), 'requests.csv'), 'utf8')), strategy: spec });
+    refRuns.push({ label: c.run, dataset: await telemetryOf([c.run], join(evalDir, 'runs', c.run)), requests: requestsOf(c.run), strategy: spec });
   }
   if (refRuns.length) m.accuracy.push(referenceAccuracy(m, refRuns, `recorded Kubernetes runs the model never saw: ${refRuns.map((r) => r.label).join(', ')}`));
   for (const a of m.accuracy) {
@@ -250,30 +275,35 @@ async function main() {
     for (const l of accuracyLines(a)) console.log('  ' + l);
   }
   m.name = cfg.name;
-  ws.writeJson('model.json', m, false);
-  // the app's bundled reference
+  best.writeJson('model.json', m, false);
+  const history = best.readJson<Dataset>('dataset.json');
   const pub = join(ROOT, '..', '..', 'public', 'reference');
-  writeFileSync(join(pub, `k8s-${system}.json`), JSON.stringify({ name: cfg.name, source: `reference/k8s/${system} — a kind cluster, NASA's 12 July 1995 traffic, recorded ${new Date(history.start * 1000).toISOString().slice(0, 10)}`, dataset: history, model: m, strategies }));
+  writeFileSync(join(pub, `k8s-${system}.json`), JSON.stringify({ name: cfg.name, source: `reference/k8s/${system} — a kind cluster, NASA's 12 July 1995 traffic${recorded('stress') ? ' and a load test' : ''}, recorded ${new Date(history.start * 1000).toISOString().slice(0, 10)}`, dataset: history, model: m, strategies }));
   const indexPath = join(pub, 'index.json');
   const index = JSON.parse(readFileSync(indexPath, 'utf8')) as { id: string; label: string }[];
   const entry = { id: `k8s-${system}`, label: `${cfg.name} (reference)` };
   writeFileSync(indexPath, JSON.stringify([...index.filter((x) => x.id !== entry.id), entry], null, 1));
 
-  const out = { system: cfg.name, slo: cfg.slo, calibratedOn: 'history (12 July 1995, as built)', trust: cal, rows, evaluatedAt: new Date().toISOString() };
-  writeFileSync(join(evalDir, 'validation.json'), JSON.stringify(out, null, 1));
+  writeFileSync(join(evalDir, 'validation.json'), JSON.stringify({ system: cfg.name, slo: cfg.slo, settleS: SETTLE_S, models, evaluatedAt: new Date().toISOString() }, null, 1));
 
-  // the README's results table
+  // the README's results tables, one per model
   const pc = (v: number) => `${(v * 100).toFixed(v < 0.01 ? 2 : 1)}%`;
-  const verdict = (v: string | null | undefined, ok: boolean) => `${v ?? '—'} ${ok ? '✅' : v === 'inconclusive' ? '⚠️' : '❌'}`;
-  const md = [
-    '| run | question | measured (k6, every request) | backtest before the day | model on the day’s real traffic | naive CPU ratio |',
-    '|---|---|---|---|---|---|',
-    ...rows.map((r) => `| \`${r.run}\` | ${r.question} | **${r.truth}** — p99 ${r.measured.p99Ms} ms, errors ${pc(r.measured.errorRate)}, ${r.measured.minutesOutOfSlo} min out of SLO | ${verdict(r.exAnte.verdict, r.agrees.backtest)}${r.exAnte.confidence ? ` (${r.exAnte.confidence} confidence)` : ''}, ${r.exAnte.minutesOutOfSlo ?? '—'} min | p99 ${r.exPost.p99Ms} ms, errors ${pc(r.exPost.errorRate)}, ${r.exPost.minutesOutOfSlo} min | ${verdict(r.naive.verdict, r.agrees.naive)} at ${Math.round(r.naive.predictedPeakUtil * 100)}% CPU |`),
-    '',
-    `Backtest verdicts: **${rows.filter((r) => r.agrees.backtest).length} right**, ${rows.filter((r) => r.exAnte.verdict === 'inconclusive').length} inconclusive (it said to load-test), ${rows.filter((r) => !r.agrees.backtest && r.exAnte.verdict !== 'inconclusive').length} wrong, of ${rows.length}. Naive CPU ratio: ${rows.filter((r) => r.agrees.naive).length} right of ${rows.length}. Generated by \`npx tsx reference/k8s/evaluate.ts\`, ${new Date().toISOString().slice(0, 10)}.`,
-  ].join('\n');
+  const mark = (v: string | null | undefined, ok: boolean) => `${v ?? '—'} ${ok ? '✅' : v === 'inconclusive' ? '⚠️' : '❌'}`;
+  const md = models
+    .map((mod) =>
+      [
+        `**${mod.label[0].toUpperCase()}${mod.label.slice(1)}:**`,
+        '',
+        '| run | question | measured (k6, every request) | backtest before the day | model on the day’s real traffic | naive CPU ratio |',
+        '|---|---|---|---|---|---|',
+        ...mod.rows.map((r) => `| \`${r.run}\` | ${r.question} | **${r.truth}**: p99 ${r.measured.p99Ms} ms, errors ${pc(r.measured.errorRate)}, ${r.measured.minutesOutOfSlo} min out of SLO | ${mark(r.exAnte.verdict, r.agrees.backtest)}${r.exAnte.confidence ? ` (${r.exAnte.confidence} confidence)` : ''}, ${r.exAnte.minutesOutOfSlo ?? '—'} min | p99 ${r.exPost.p99Ms} ms, errors ${pc(r.exPost.errorRate)}, ${r.exPost.minutesOutOfSlo} min | ${mark(r.naive.verdict, r.agrees.naive)} at ${Math.round(r.naive.predictedPeakUtil * 100)}% CPU |`),
+        '',
+        `Backtest verdicts: **${mod.rows.filter((r) => r.agrees.backtest).length} right**, ${mod.rows.filter((r) => r.exAnte.verdict === 'inconclusive').length} inconclusive (it said to load-test), ${mod.rows.filter((r) => !r.agrees.backtest && r.exAnte.verdict !== 'inconclusive').length} wrong, of ${mod.rows.length}. Naive CPU ratio: ${mod.rows.filter((r) => r.agrees.naive).length} right.`,
+      ].join('\n'),
+    )
+    .join('\n\n');
   const readme = join(ROOT, 'README.md');
-  writeFileSync(readme, readFileSync(readme, 'utf8').replace(/<!-- RESULTS -->[\s\S]*<!-- \/RESULTS -->/, `<!-- RESULTS -->\n${md}\n<!-- /RESULTS -->`));
+  writeFileSync(readme, readFileSync(readme, 'utf8').replace(/<!-- RESULTS -->[\s\S]*<!-- \/RESULTS -->/, `<!-- RESULTS -->\n${md}\n\nThe first ${SETTLE_S / 60} minutes of every run are left out of the scoring, measured and predicted alike (pods restarted minutes earlier). Generated by \`npx tsx reference/k8s/evaluate.ts\`, ${new Date().toISOString().slice(0, 10)}.\n<!-- /RESULTS -->`));
   console.log(`\nwrote ${join(evalDir, 'validation.json')}`);
 }
 

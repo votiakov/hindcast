@@ -25,7 +25,7 @@ Type "rm -rf demos/ws && clear"
 Enter
 Show
 
-Type "claude --mcp-config demos/mcp.json --strict-mcp-config --allowedTools mcp__bottleneck"
+Type "claude --mcp-config demos/mcp.json --strict-mcp-config --allowedTools mcp__hindcast"
 Sleep 400ms
 Enter
 Sleep 5s
@@ -33,7 +33,7 @@ Sleep 5s
 Type "Our shop runs on the local Kubernetes cluster — Prometheus at http://localhost:8088/prometheus, Jaeger at http://localhost:8088/jaeger. "
 Type "Our history is the ordinary day recorded 16:43-17:23 UTC today. "
 Type "This PR cuts the frontend from 3 to 2 replicas: reference/k8s/shop/variants/frontend-2.yaml (base: reference/k8s/shop/shop.yaml). "
-Type "Is it safe on a normal day — and on launch day, when we expect 2.2x the traffic? Use bottleneck."
+Type "Is it safe on a normal day, and on launch day, when we expect 2.2x the traffic? Use hindcast."
 Sleep 600ms
 Enter
 

@@ -11,9 +11,10 @@ const v = JSON.parse(readFileSync(join(ROOT, 'shop/validation/validation.json'),
 const ali = JSON.parse(readFileSync(join(ROOT, '../alibaba/results.json'), 'utf8')).summary;
 const out = process.argv[2] ?? join(ROOT, 'shop/validation/report.html');
 
-// keep the page light: rows without their full series, series rounded
-const rows = v.rows.map((r) => ({ ...r, series: { measured: r.series.measured.map((x) => [x.rps, x.p99Ms, x.errorRate]), predicted: r.series.predicted.p99Ms, predErr: r.series.predicted.errorRate, replicasPred: r.series.predicted.frontendReplicas, replicasMeas: r.series.frontendReplicas } }));
-const data = { slo: v.slo, rows, ali, evaluatedAt: v.evaluatedAt };
+// keep the page light: series rounded and packed; the charts use the best model (the last one)
+const pack = (r) => ({ ...r, series: { measured: r.series.measured.map((x) => [x.rps, x.p99Ms, x.errorRate]), predicted: r.series.predicted.p99Ms, replicasPred: r.series.predicted.frontendReplicas, replicasMeas: r.series.frontendReplicas } });
+const models = v.models.map((m) => ({ id: m.id, label: m.label, rows: m.rows.map(pack) }));
+const data = { slo: v.slo, settleS: v.settleS, models, ali, evaluatedAt: v.evaluatedAt };
 
 const html = `<title>Backtest vs Reality</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -77,7 +78,7 @@ a { color: var(--amber); }
 </section>
 <section>
   <h2>Predicted and measured p99, run by run</h2>
-  <p class="dim">The model replayed over the traffic each run actually received: model error alone, without forecast error. Measured is the p99 of every request k6 made in each 30-second bucket.</p>
+  <p class="dim">The model (calibrated on the day and the load test) replayed over the traffic each run actually received: model error alone, without forecast error. Measured is the p99 of every request k6 made in each 30-second bucket. The first two minutes of each run are left out of the scores.</p>
   <div class="legend"><span><i style="background:var(--hi)"></i>measured (k6)</span><span><i style="background:var(--cyan)"></i>model</span><span><i style="background:var(--amber)"></i>SLO 1 s</span><span><i style="background:#3a4a58;height:8px"></i>requests/s</span></div>
   <div class="runs" id="runs"></div>
 </section>
@@ -104,23 +105,22 @@ const esc = (s) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<'
 const verdict = (v) => '<span class="v ' + v + '">' + v + '</span>';
 const mark = (ok, v) => (ok ? '<span class="ok">✓</span>' : v === 'inconclusive' ? '<span class="meh">?</span>' : '<span class="no">✗</span>');
 
-// scorecard
-const rows = D.rows;
-const right = rows.filter((r) => r.agrees.backtest).length;
-const inc = rows.filter((r) => r.exAnte.verdict === 'inconclusive').length;
-const naive = rows.filter((r) => r.agrees.naive).length;
+// scorecard: each model's verdicts against reality, and the naive estimate
+const M = D.models;
+const best = M[M.length - 1];
+const rows = best.rows;
+const tally = (rs) => ({ right: rs.filter((r) => r.agrees.backtest).length, inc: rs.filter((r) => r.exAnte.verdict === 'inconclusive').length, n: rs.length });
 document.getElementById('score').innerHTML = '<div class="score">' +
-  '<span><b>' + right + ' of ' + rows.length + '</b>backtest verdicts matched reality</span>' +
-  (inc ? '<span><b>' + inc + '</b>inconclusive: it asked for a load test</span>' : '') +
-  '<span><b>' + naive + ' of ' + rows.length + '</b>for the CPU-ratio estimate</span>' +
+  M.map((m) => { const t = tally(m.rows); return '<span><b>' + t.right + ' of ' + t.n + '</b>verdicts right, ' + (m.id === 'calm' ? 'from an ordinary day' : 'from a day and a load test') + (t.inc ? ' · ' + t.inc + ' inconclusive' : '') + '</span>'; }).join('') +
+  '<span><b>' + rows.filter((r) => r.agrees.naive).length + ' of ' + rows.length + '</b>for the CPU-ratio estimate</span>' +
   '<span><b>' + rows.reduce((a, r) => a + r.measured.requests, 0).toLocaleString('en-US') + '</b>requests measured</span></div>';
 
-// the table
-document.getElementById('table').innerHTML = '<tr><th>decision</th><th>reality (k6)</th><th>backtest, before the day</th><th>model, on the day</th><th>CPU ratio</th></tr>' +
-  rows.map((r) => '<tr><td>' + esc(r.question) + '<div class="dim mono" style="font-size:12px">' + r.run + '</div></td>' +
+// the table: reality, then each model's verdict before the day, then the naive estimate
+const verdictCell = (r) => '<td>' + mark(r.agrees.backtest, r.exAnte.verdict) + ' ' + verdict(r.exAnte.verdict) + (r.exAnte.confidence ? ' <span class="dim">' + r.exAnte.confidence + '</span>' : '') + '<div class="num dim">' + (r.exAnte.minutesOutOfSlo ?? '—') + ' min out predicted · on the day p99 ' + r.exPost.p99Ms + ' ms</div></td>';
+document.getElementById('table').innerHTML = '<tr><th>decision</th><th>reality (k6)</th>' + M.map((m) => '<th>backtest, ' + (m.id === 'calm' ? 'ordinary day' : 'day + load test') + '</th>').join('') + '<th>CPU ratio</th></tr>' +
+  rows.map((r, k) => '<tr><td>' + esc(r.question) + '<div class="dim mono" style="font-size:12px">' + r.run + '</div></td>' +
     '<td>' + verdict(r.truth) + '<div class="num dim">p99 ' + r.measured.p99Ms + ' ms · ' + pc(r.measured.errorRate) + ' errors · ' + r.measured.minutesOutOfSlo + ' min out</div></td>' +
-    '<td>' + mark(r.agrees.backtest, r.exAnte.verdict) + ' ' + verdict(r.exAnte.verdict) + (r.exAnte.confidence ? ' <span class="dim">' + r.exAnte.confidence + ' confidence</span>' : '') + '<div class="num dim">' + (r.exAnte.minutesOutOfSlo ?? '—') + ' min out of SLO predicted</div></td>' +
-    '<td class="num">p99 ' + r.exPost.p99Ms + ' ms<div class="dim">' + pc(r.exPost.errorRate) + ' errors · ' + r.exPost.minutesOutOfSlo + ' min out</div></td>' +
+    M.map((m) => verdictCell(m.rows.find((x) => x.run === r.run) ?? r)).join('') +
     '<td>' + mark(r.agrees.naive, r.naive.verdict) + ' ' + verdict(r.naive.verdict) + '<div class="num dim">' + Math.round(r.naive.predictedPeakUtil * 100) + '% CPU at peak</div></td></tr>').join('');
 
 // per-run charts: requests/s as an area, p99 measured and predicted on a log scale

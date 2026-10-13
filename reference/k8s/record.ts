@@ -115,6 +115,9 @@ async function main() {
   writeFileSync(join(out, 'client.csv'), clientCsv(reqs, 30));
   rmSync(join(out, 'raw', 'k6.csv'));
 
+  // the run is recorded: its metadata first, so a failed collection below doesn't lose it
+  writeFileSync(join(out, 'run.json'), JSON.stringify({ system, run, start, end, day: r.day ?? null, minutes: r.minutes ?? null, scale: r.scale ?? null, steps: r.steps ?? null, manifests: r.manifests, note: r.note ?? null, recordedAt: new Date().toISOString() }, null, 2));
+
   // 4. telemetry, collected the way an agent collects it: from the live Prometheus and Jaeger
   const ws = new Workspace(join(out, 'workspace'));
   const conn = await connectTelemetry(ws, { prometheus: { url: cfg.prometheus }, jaeger: { url: cfg.jaeger }, system: { name: `${cfg.name} — ${run}`, slo: cfg.slo, timeoutMs: Number(String(cfg.timeout ?? '5s').replace('s', '')) * 1000 } });
@@ -122,7 +125,6 @@ async function main() {
   const col = await collect(ws, { start, end, stepS: 30 });
   writeFileSync(join(out, 'collect.json'), JSON.stringify(col, null, 1));
   console.log(`collected ${col.window.buckets} buckets, ${col.services} services; warnings: ${col.warnings.length}`);
-  writeFileSync(join(out, 'run.json'), JSON.stringify({ system, run, start, end, day: r.day ?? null, minutes: r.minutes ?? null, scale: r.scale ?? null, steps: r.steps ?? null, manifests: r.manifests, note: r.note ?? null, recordedAt: new Date().toISOString() }, null, 2));
   console.log(`done: ${out} (${Math.round((end - start) / 60)} min, ${reqs.length} requests)`);
 }
 
