@@ -116,7 +116,7 @@ export function TopBar() {
       <div className="brand">
         <BrandMark />
         <div>
-          <div className="brand-name">Bottleneck</div>
+          <div className="brand-name">Hindcast</div>
           <div className="brand-sub">system design simulator</div>
         </div>
       </div>

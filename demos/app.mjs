@@ -1,6 +1,6 @@
-// The Backtest screen on the Kubernetes reference, as a narrated walkthrough recorded to video:
-// the calibration day, three changes to the frontend, then launch day at 2.2× — and the model's
-// accuracy against the runs where those changes were really applied.
+// The Backtest screen as a narrated walkthrough recorded to video, on the Astronomy Shop reference
+// (its accuracy is within target on every recorded run it never saw): the recorded day, four changes,
+// the same day at twice the traffic, and the model's accuracy record.
 //
 //   npm run dev &   node demos/app.mjs [--url http://localhost:5173] [--out demos/out]
 // Needs ffmpeg for the MP4 (Playwright records WebM).
@@ -54,40 +54,33 @@ const computed = () => page.waitForFunction(() => !document.body.innerText.inclu
 
 await page.goto(`${url}/#backtest`);
 await wait(2500);
-await page.locator('.bt-select').first().selectOption('k8s-shop');
+await page.locator('.bt-select').first().selectOption('shop');
 await computed();
-await wait(1500);
-await caption('A real Kubernetes cluster: the Astronomy Shop, 11 services, observed with Prometheus, ingress-nginx and Jaeger');
-await wait(4500);
-await caption('The history: one ordinary day of real traffic (NASA’s web log, 12 July 1995), recorded through the ingress');
+await wait(1200);
+await caption('A recorded day of a real microservices shop: 11 services, its telemetry from Prometheus, OpenTelemetry and the bill');
 await page.mouse.move(300, 300, { steps: 20 });
-await page.mouse.move(820, 250, { steps: 60 });
+await page.mouse.move(860, 260, { steps: 60 });
 await wait(4500);
-await caption('Three changes to the frontend, from their manifests: 2 replicas, 1 replica, an HPA — each backtested over that day');
-await focusStrategy('Frontend at 2 replicas');
+await caption('Four infrastructure changes, each replayed over that day: what it saves, and what it would have broken');
+await focusStrategy('Frontend on 1 vCPU');
 await wait(3500);
-await focusStrategy('Frontend at 1 replica');
-await wait(4000);
-await caption('On an ordinary day: 2 replicas save money and hold the SLO; 1 replica breaks it at the lunch peak');
-await wait(4500);
-await caption('Now launch day: the same day at 2.2× the load — STS-70 launched on 13 July, and NASA’s traffic more than doubled');
-await page.evaluate(() => window.backtest.getState().setLoad(2.2));
+await focusStrategy('Autoscale the frontend');
+await wait(3500);
+await caption('Now the same day at twice the traffic. As built, the shop breaks at the peak');
+await page.locator('.bt-load button', { hasText: '×2' }).first().click();
 await computed();
-await wait(1500);
+await wait(1200);
 await pointAt(page.locator('.bt-loadnote'));
 await wait(3500);
-await focusStrategy('Frontend at 2 replicas');
-await caption('At launch-day load, 2 replicas fail. The HPA scales out and holds');
+await focusStrategy('Autoscale the frontend');
+await caption('Autoscaling the frontend holds the SLO through it, at a cost the backtest prices per month');
 await wait(4500);
-await focusStrategy('Frontend on an HPA');
-await wait(4500);
-await caption('Then each change was applied for real and launch day replayed. The model’s predictions, against what was measured:');
-await page.evaluate(() => window.backtest.getState().setLoad(1));
+await page.locator('.bt-load button', { hasText: '×1' }).first().click();
 await computed();
-await page.locator('.bt-tabs button, [role=tab]', { hasText: 'Model' }).first().click().catch(() => {});
-await wait(1200);
-await pointAt(page.locator('text=Kubernetes runs').first());
-await wait(6500);
+await caption('Every answer comes with the model\u2019s accuracy, measured against recorded runs it never saw');
+await wait(800);
+await pointAt(page.locator('.bt-acc').first());
+await wait(6000);
 await caption('');
 await wait(800);
 
@@ -95,8 +88,8 @@ await ctx.close();
 await browser.close();
 const webm = readdirSync(tmp).find((f) => f.endsWith('.webm'));
 const raw = join(tmp, webm);
-const mp4 = join(out, 'app-backtest-k8s.mp4');
+const mp4 = join(out, 'app-backtest.mp4');
 execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', raw, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '20', '-preset', 'slow', '-movflags', '+faststart', mp4]);
-renameSync(raw, join(out, 'app-backtest-k8s.webm'));
+renameSync(raw, join(out, 'app-backtest.webm'));
 rmSync(tmp, { recursive: true, force: true });
 console.log(`wrote ${mp4}`, errors.length ? errors : '');

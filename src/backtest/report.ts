@@ -103,7 +103,7 @@ export function prComment(r: BacktestResult, opts: { title?: string; runUrl?: st
   const hrs = Math.round(days * 24);
   const span = days >= 1.5 ? `the last ${Math.round(days)} days` : days >= 1 ? 'the last day' : hrs > 1 ? `the last ${hrs} hours` : `the last ${Math.max(1, Math.round(days * 1440))} minutes`;
   const L: string[] = [];
-  L.push(`### ${opts.title ?? 'Bottleneck backtest'}`, '');
+  L.push(`### ${opts.title ?? 'Hindcast backtest'}`, '');
   for (const s of r.strategies) L.push(`**${s.name}** ${headline(s, r.baseline)}.`, '');
   L.push(`<sub>Replayed ${span} of production traffic${r.load ? ` at ×${r.load.factor.toFixed(2)} its load (busiest moment ${Math.round(r.load.peakRps)} req/s)` : ''} through the calibrated model · ${r.draws} draws · ranges are 10th–90th percentiles</sub>`, '');
   L.push('| | $/month | minutes out of SLO | failed requests | worst moment |', '|---|---|---|---|---|');

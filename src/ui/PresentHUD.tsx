@@ -31,7 +31,7 @@ export function PresentHUD() {
   const b = useSim((s) => s.boards.B.global);
   const titleA = useSim((s) => s.boards.A.title);
   const titleB = useSim((s) => s.boards.B.title);
-  const title = useSim((s) => (s.mode === 'sandbox' ? s.boards.main.title : s.mode === 'compare' ? `${s.boards.A.title} vs ${s.boards.B.title}` : s.mode === 'lesson' ? s.lesson.lesson.title : 'Bottleneck'));
+  const title = useSim((s) => (s.mode === 'sandbox' ? s.boards.main.title : s.mode === 'compare' ? `${s.boards.A.title} vs ${s.boards.B.title}` : s.mode === 'lesson' ? s.lesson.lesson.title : 'Hindcast'));
   const pb = useSim((s) => s.playback);
   const idx = useSim((s) => s.presentIdx);
   const toasts = useSim((s) => s.toasts);

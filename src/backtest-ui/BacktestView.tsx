@@ -42,7 +42,7 @@ function Bar() {
   const cur = view ? view[1] - view[0] : n;
   return (
     <div className="bt-bar">
-      <span className="bt-brand">Bottleneck</span>
+      <span className="bt-brand">Hindcast</span>
       <nav className="bt-modes" aria-label="Views">
         {(['backtest', 'home', 'lesson', 'sandbox', 'compare', 'studio'] as Mode[]).map((m) => (
           <button key={m} className={m === 'backtest' ? 'on' : ''} onClick={() => m !== 'backtest' && setMode(m)}>

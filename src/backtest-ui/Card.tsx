@@ -86,7 +86,7 @@ export function BacktestCard({ c, aspect, t }: { c: CardData; aspect: string; t:
   return (
     <div className="cd" style={{ width: W, height: H }}>
       <header className="cd-head" style={{ opacity: Math.min(1, t * 2) }}>
-        <div className="cd-kicker">Bottleneck · backtest on real traffic</div>
+        <div className="cd-kicker">Hindcast · backtest on real traffic</div>
         <div className="cd-sys">
           {c.system}
           <span>

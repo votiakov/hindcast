@@ -4480,12 +4480,30 @@
       ]
      },
      {
+      "service": "shipping",
+      "fit": "good",
+      "capacityPerReplica": 765.09,
+      "band": [
+       698.22,
+       829.85
+      ],
+      "limit": "CPU",
+      "replicas": 1,
+      "historyPeakUtil": 0.02,
+      "basis": "extrapolated",
+      "cost": "$0.0101/replica-hour at list price",
+      "notes": [
+       "replaying the history reproduces its self time within 4% (mean abs. error)",
+       "priced at list price: 0.25 vCPU + 0.00 GB = $0.0101/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+      ]
+     },
+     {
       "service": "email",
       "fit": "good",
       "capacityPerReplica": 208.36,
       "band": [
-       166.49,
-       262.11
+       168.01,
+       258.4
       ],
       "limit": "CPU",
       "replicas": 1,
@@ -4496,25 +4514,6 @@
        "CPU barely follows load (R² 0.27) — capacity is not CPU-bound or CPU data is noisy",
        "replaying the history reproduces its self time within 14% (mean abs. error)",
        "priced at list price: 0.25 vCPU + 0.09 GB = $0.0105/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
-      ]
-     },
-     {
-      "service": "payment",
-      "fit": "good",
-      "capacityPerReplica": 1008.32,
-      "band": [
-       545.06,
-       3221.28
-      ],
-      "limit": "CPU",
-      "replicas": 1,
-      "historyPeakUtil": 0.01,
-      "basis": "extrapolated",
-      "cost": "$0.0104/replica-hour at list price",
-      "notes": [
-       "CPU barely follows load (R² 0.03) — capacity is not CPU-bound or CPU data is noisy",
-       "replaying the history reproduces its self time within 2% (mean abs. error)",
-       "priced at list price: 0.25 vCPU + 0.07 GB = $0.0104/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
       ]
      },
      {
@@ -4536,29 +4535,11 @@
       ]
      },
      {
-      "service": "flagd",
-      "fit": "good",
-      "capacityPerReplica": 38053.32,
-      "band": [
-       11621.05,
-       190266.58
-      ],
-      "limit": "CPU",
-      "replicas": 1,
-      "historyPeakUtil": 0,
-      "basis": "not modelled",
-      "cost": "no price",
-      "notes": [
-       "CPU barely follows load (R² 0.00) — capacity is not CPU-bound or CPU data is noisy",
-       "replaying the history reproduces its self time within 3% (mean abs. error)"
-      ]
-     },
-     {
       "service": "valkey-cart",
       "fit": "good",
       "capacityPerReplica": 179114.63,
       "band": [
-       69071.77,
+       58844.97,
        895573.15
       ],
       "limit": "CPU",
@@ -4573,21 +4554,21 @@
       ]
      },
      {
-      "service": "shipping",
+      "service": "flagd",
       "fit": "good",
-      "capacityPerReplica": 765.09,
+      "capacityPerReplica": 38053.32,
       "band": [
-       695.36,
-       875.43
+       13723.42,
+       190266.58
       ],
       "limit": "CPU",
       "replicas": 1,
-      "historyPeakUtil": 0.02,
-      "basis": "extrapolated",
-      "cost": "$0.0101/replica-hour at list price",
+      "historyPeakUtil": 0,
+      "basis": "not modelled",
+      "cost": "no price",
       "notes": [
-       "replaying the history reproduces its self time within 4% (mean abs. error)",
-       "priced at list price: 0.25 vCPU + 0.00 GB = $0.0101/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+       "CPU barely follows load (R² 0.00) — capacity is not CPU-bound or CPU data is noisy",
+       "replaying the history reproduces its self time within 3% (mean abs. error)"
       ]
      },
      {
@@ -4595,8 +4576,8 @@
       "fit": "good",
       "capacityPerReplica": 1100.65,
       "band": [
-       750.6,
-       2319.73
+       706.23,
+       3696.29
       ],
       "limit": "CPU",
       "replicas": 1,
@@ -4614,8 +4595,8 @@
       "fit": "good",
       "capacityPerReplica": 408.81,
       "band": [
-       376.69,
-       433.06
+       379.68,
+       447.25
       ],
       "limit": "CPU",
       "replicas": 1,
@@ -4625,6 +4606,25 @@
       "notes": [
        "replaying the history reproduces its self time within 3% (mean abs. error)",
        "priced at list price: 0.25 vCPU + 0.00 GB = $0.0101/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+      ]
+     },
+     {
+      "service": "payment",
+      "fit": "good",
+      "capacityPerReplica": 1008.32,
+      "band": [
+       540.58,
+       2340.96
+      ],
+      "limit": "CPU",
+      "replicas": 1,
+      "historyPeakUtil": 0.01,
+      "basis": "extrapolated",
+      "cost": "$0.0104/replica-hour at list price",
+      "notes": [
+       "CPU barely follows load (R² 0.03) — capacity is not CPU-bound or CPU data is noisy",
+       "replaying the history reproduces its self time within 2% (mean abs. error)",
+       "priced at list price: 0.25 vCPU + 0.07 GB = $0.0104/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
       ]
      },
      {
@@ -4776,13 +4776,13 @@
      "caution": [
       "frontend: capacity extrapolated (history peaked at 26% of it)",
       "checkout: capacity extrapolated (history peaked at 7% of it)",
+      "shipping: capacity extrapolated (history peaked at 2% of it)",
       "email: capacity extrapolated (history peaked at 4% of it)",
-      "payment: capacity extrapolated (history peaked at 1% of it)",
       "cart: capacity extrapolated (history peaked at 11% of it)",
       "valkey-cart: capacity extrapolated (history peaked at 0% of it)",
-      "shipping: capacity extrapolated (history peaked at 2% of it)",
       "quote: capacity extrapolated (history peaked at 1% of it)",
       "currency: capacity extrapolated (history peaked at 6% of it)",
+      "payment: capacity extrapolated (history peaked at 1% of it)",
       "product-catalog: capacity extrapolated (history peaked at 23% of it)",
       "recommendation: capacity extrapolated (history peaked at 21% of it)"
      ],
@@ -6610,7 +6610,7 @@
      },
      "exPost": {
       "p99Ms": 693,
-      "errorRate": 0.0018895170644594131,
+      "errorRate": 0.0018895115578259343,
       "minutesOutOfSlo": 0.5,
       "frontendReplicasPeak": 1.9999999999999998
      },
@@ -9319,49 +9319,12 @@
       ]
      },
      {
-      "service": "flagd",
-      "fit": "good",
-      "capacityPerReplica": 9825.99,
-      "band": [
-       6040.07,
-       49129.95
-      ],
-      "limit": "CPU",
-      "replicas": 1,
-      "historyPeakUtil": 0,
-      "basis": "not modelled",
-      "cost": "no price",
-      "notes": [
-       "CPU barely follows load (R² 0.02) — capacity is not CPU-bound or CPU data is noisy",
-       "replaying the history reproduces its self time within 2% (mean abs. error)"
-      ]
-     },
-     {
-      "service": "payment",
-      "fit": "good",
-      "capacityPerReplica": 276.8,
-      "band": [
-       262.2,
-       288.82
-      ],
-      "limit": "CPU",
-      "replicas": 1,
-      "historyPeakUtil": 0.06,
-      "basis": "extrapolated",
-      "cost": "$0.0104/replica-hour at list price",
-      "notes": [
-       "load never approached capacity; the CPU limit is extrapolated",
-       "replaying the history reproduces its self time within 2% (mean abs. error)",
-       "priced at list price: 0.25 vCPU + 0.07 GB = $0.0104/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
-      ]
-     },
-     {
       "service": "currency",
       "fit": "good",
       "capacityPerReplica": 380.16,
       "band": [
-       371.69,
-       387.99
+       375.48,
+       387.03
       ],
       "limit": "CPU",
       "replicas": 1,
@@ -9379,8 +9342,8 @@
       "fit": "good",
       "capacityPerReplica": 628.77,
       "band": [
-       615.82,
-       646.33
+       615.48,
+       639.1
       ],
       "limit": "CPU",
       "replicas": 1,
@@ -9397,8 +9360,8 @@
       "fit": "good",
       "capacityPerReplica": 422.09,
       "band": [
-       401.49,
-       449.65
+       401.62,
+       442.05
       ],
       "limit": "CPU",
       "replicas": 1,
@@ -9411,12 +9374,31 @@
       ]
      },
      {
+      "service": "payment",
+      "fit": "good",
+      "capacityPerReplica": 276.8,
+      "band": [
+       262.57,
+       297.62
+      ],
+      "limit": "CPU",
+      "replicas": 1,
+      "historyPeakUtil": 0.06,
+      "basis": "extrapolated",
+      "cost": "$0.0104/replica-hour at list price",
+      "notes": [
+       "load never approached capacity; the CPU limit is extrapolated",
+       "replaying the history reproduces its self time within 2% (mean abs. error)",
+       "priced at list price: 0.25 vCPU + 0.07 GB = $0.0104/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+      ]
+     },
+     {
       "service": "email",
       "fit": "fair",
       "capacityPerReplica": 115.92,
       "band": [
-       104.65,
-       125.91
+       104.47,
+       133.38
       ],
       "limit": "CPU",
       "replicas": 1,
@@ -9426,6 +9408,24 @@
       "notes": [
        "replaying the history reproduces its self time within 17% (mean abs. error)",
        "priced at list price: 0.25 vCPU + 0.09 GB = $0.0105/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+      ]
+     },
+     {
+      "service": "flagd",
+      "fit": "good",
+      "capacityPerReplica": 9825.99,
+      "band": [
+       4589.15,
+       49129.95
+      ],
+      "limit": "CPU",
+      "replicas": 1,
+      "historyPeakUtil": 0,
+      "basis": "not modelled",
+      "cost": "no price",
+      "notes": [
+       "CPU barely follows load (R² 0.02) — capacity is not CPU-bound or CPU data is noisy",
+       "replaying the history reproduces its self time within 2% (mean abs. error)"
       ]
      },
      {
@@ -9590,10 +9590,10 @@
       "checkout: capacity extrapolated (history peaked at 18% of it)",
       "cart: capacity extrapolated (history peaked at 31% of it)",
       "valkey-cart: capacity extrapolated (history peaked at 0% of it)",
-      "payment: capacity extrapolated (history peaked at 6% of it)",
       "currency: capacity extrapolated (history peaked at 13% of it)",
       "shipping: capacity extrapolated (history peaked at 5% of it)",
       "quote: capacity extrapolated (history peaked at 4% of it)",
+      "payment: capacity extrapolated (history peaked at 6% of it)",
       "email: capacity extrapolated (history peaked at 13% of it)",
       "product-catalog: capacity extrapolated (history peaked at 47% of it)"
      ],
@@ -9614,5 +9614,5 @@
    }
   }
  ],
- "evaluatedAt": "2026-10-13T22:30:23.113Z"
+ "evaluatedAt": "2026-10-13T22:34:01.475Z"
 }

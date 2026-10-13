@@ -42,8 +42,8 @@ export function Embed() {
         </button>
         <input type="range" min={0} max={5000} step={10} value={traffic} onChange={(e) => setTraffic(+e.target.value)} aria-label="Traffic" />
         <span className="em-rps">{traffic.toLocaleString('en-US')} req/s</span>
-        <button className="em-open" onClick={open} title="Open this design in Bottleneck">
-          Bottleneck <ExternalLink size={11} />
+        <button className="em-open" onClick={open} title="Open this design in Hindcast">
+          Hindcast <ExternalLink size={11} />
         </button>
       </div>
     </div>

@@ -43,6 +43,11 @@
 <tr><td>PetClinic</td><td class="num miss">99.4%</td><td class="num pass">0.3%</td></tr>
 </table></div>
 
+<h2>On Kubernetes, with real traffic</h2>
+<p>The Astronomy Shop ran on a kind cluster, observed the way production clusters are: kube-prometheus-stack, ingress-nginx, span metrics and Jaeger. It served two real days of NASA's 1995 web log, an ordinary day and the STS-70 launch day at 2.2× the traffic. Five changes to its frontend were answered by <code>verify_change</code> before the day, then made for real. From the ordinary day alone, the backtest got 2 verdicts right, called 1 inconclusive (and asked for a load test), and got 2 wrong. A plain CPU-ratio rule got 4 right. The misses share one cause. A single-threaded service under a CPU limit collapses at about 80% of the limit (CFS throttling), and extrapolating CPU per request reads that as more capacity than there is. It never called the failing launch-day cut safe. The full study, with every run, is in <code>reference/k8s/README.md</code>.</p>
+<h2>On real production telemetry</h2>
+<p>On 60 of the busiest services in Alibaba's 2021 microservices trace, the calibration predicted each service's CPU from its traffic over 3.6 held-out hours. When traffic moved by 15% or more within an hour, it was off by 5.9%, against 11.0% for CPU per request held constant and 13.2% for "the same as an hour ago". Above anything the training saw, it was off by 12.9% against 30.4%. Details: <code>reference/alibaba/README.md</code>.</p>
+
 <h2>Where you see it</h2>
 <p>The accuracy record travels with the model: the backtest screen's <b>Model accuracy</b> panel, <code>bottleneck accuracy model.json</code>, the footer of every report, pull-request comment and card. For your own data, <code>bottleneck calibrate --holdout 0.3</code> adds the same holdout check.</p>
 </section>

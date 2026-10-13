@@ -88,7 +88,7 @@ a { color: var(--amber); }
   <p><b>It overestimates a single-threaded service under a CPU limit.</b> The frontend (Node.js, half a core per pod) collapsed at about 195 requests/s per pod, with its CPU at 79% of the limit and throttled in 44% of CFS periods. The model reads capacity from CPU per request and extrapolates to 100% of the limit: 214–246 req/s. So it called one replica safe on an ordinary day, which failed with 27% errors.</p>
   <p><b>It underestimates the tail before the limit.</b> On launch day the frontend's p99 climbed to 500–700 ms at 60% CPU, as quota stalls and a few slow requests on one thread compound. The queueing model sees far less.</p>
   </div><div style="display:grid;gap:10px">
-  <p><b>It knew when it didn't know.</b> Where a change pushed the frontend past anything the history had seen, <code>verify_change</code> did not say pass. It said <i>inconclusive</i> and asked for a load test. It never called the 2-replica launch day safe, and that run failed 44% of its requests.</p>
+  <p><b>It knew when it didn't know.</b> Where a change pushed the frontend past anything the history had seen, <code>verify_change</code> did not say pass. It said <i>inconclusive</i> and asked for a load test. It never called the 2-replica launch day safe, and that run failed 45% of its requests.</p>
   <p><b>What would fix it:</b> a load test that runs past the collapse for a few minutes, not just to its edge. Calibration takes the limit from the point where the system broke, when the history contains one. This load test ended in the very bucket it broke.</p>
   </div></div>
 </section>

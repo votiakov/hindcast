@@ -267,11 +267,10 @@ async function main() {
     if (!recorded(c.run)) continue;
     const head = c.head ? resolve(SYS, c.head) : undefined;
     const spec = head ? strategiesFrom(best, [{ kubernetes: { base, head } }], m).strategies[0] : undefined;
-    if (spec) {
+    if (spec && !strategies.some((y) => y.includes(`name: ${strategyName(c.head!)}\n`))) {
       spec.name = strategyName(c.head!);
-      spec.description = `${c.head} — the manifests applied for real in run ${c.run}`;
-      const y = toYaml(spec);
-      if (!strategies.includes(y)) strategies.push(y);
+      spec.description = `${c.head} — the manifests applied for real (${CASES.filter((x) => x.head === c.head).map((x) => x.run).join(', ')})`;
+      strategies.push(toYaml(spec));
     }
     refRuns.push({ label: c.run, dataset: await telemetryOf([c.run], join(evalDir, 'runs', c.run)), requests: requestsOf(c.run), strategy: spec });
   }
@@ -282,7 +281,8 @@ async function main() {
   }
   m.name = cfg.name;
   best.writeJson('model.json', m, false);
-  const history = best.readJson<Dataset>('dataset.json');
+  // the app replays the ordinary day; the model learned from it and the load test
+  const history = calm.ws.readJson<Dataset>('dataset.json');
   const pub = join(ROOT, '..', '..', 'public', 'reference');
   writeFileSync(join(pub, `k8s-${system}.json`), JSON.stringify({ name: cfg.name, source: `reference/k8s/${system} — a kind cluster, NASA's 12 July 1995 traffic${recorded('stress') ? ' and a load test' : ''}, recorded ${new Date(history.start * 1000).toISOString().slice(0, 10)}`, dataset: history, model: m, strategies }));
   const indexPath = join(pub, 'index.json');

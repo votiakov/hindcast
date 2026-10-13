@@ -12,7 +12,7 @@ import { useSim } from './sim/store';
  * The `show_architecture` tool's structured result is opened as a sandbox or comparison and
  * starts playing immediately.
  */
-const bridge = new McpApp({ name: 'Bottleneck', version: '0.1.0' });
+const bridge = new McpApp({ name: 'Hindcast', version: '0.1.0' });
 
 bridge.ontoolresult = (result) => {
   const p = result.structuredContent as { spec?: unknown; compare?: ComparePayload } | undefined;
