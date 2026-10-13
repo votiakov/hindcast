@@ -50,10 +50,11 @@ export const PRESETS: Record<string, Preset> = {
           const ep = { by: 'service_name', endpointBy: 'span_name', template: true } as const;
           return [
             { file: 'endpoint-rps.json', query: `sum by (service_name, span_name) (rate(traces_span_metrics_calls_total{${se}}[${w}]))`, mapping: { metric: 'rps', ...ep } },
-            { file: 'endpoint-errors.json', query: `(sum by (service_name, span_name) (rate(traces_span_metrics_calls_total{${se},status_code="STATUS_CODE_ERROR"}[${w}])) or sum by (service_name, span_name) (rate(traces_span_metrics_calls_total{${se}}[${w}])) * 0) / sum by (service_name, span_name) (rate(traces_span_metrics_calls_total{${se}}[${w}]))`, mapping: { metric: 'errorRate', unit: 'ratio', ...ep } },
-            { file: 'endpoint-p50.json', query: `histogram_quantile(0.5, sum by (service_name, span_name, le) (rate(traces_span_metrics_duration_milliseconds_bucket{${se}}[${w}])))`, mapping: { metric: 'p50Ms', unit: 'ms', ...ep } },
-            { file: 'endpoint-p99.json', query: `histogram_quantile(0.99, sum by (service_name, span_name, le) (rate(traces_span_metrics_duration_milliseconds_bucket{${se}}[${w}])))`, mapping: { metric: 'p99Ms', unit: 'ms', ...ep } },
-            { file: 'endpoint-mean.json', query: `sum by (service_name, span_name) (rate(traces_span_metrics_duration_milliseconds_sum{${se}}[${w}])) / sum by (service_name, span_name) (rate(traces_span_metrics_duration_milliseconds_count{${se}}[${w}]))`, mapping: { metric: 'meanMs', unit: 'ms', ...ep } },
+            // parts, merged after templating: one series per session id or product id in a span
+            // name can't be averaged or maxed into the endpoint's error rate, mean or p99
+            { file: 'endpoint-errors.json', query: `label_replace(sum by (service_name, span_name) (rate(traces_span_metrics_calls_total{${se},status_code="STATUS_CODE_ERROR"}[${w}])), "part", "num", "", "") or label_replace(sum by (service_name, span_name) (rate(traces_span_metrics_calls_total{${se}}[${w}])), "part", "den", "", "")`, mapping: { metric: 'errorRate', unit: 'ratio', ...ep, combine: 'ratio' } },
+            { file: 'endpoint-latency.json', query: `sum by (service_name, span_name, le) (rate(traces_span_metrics_duration_milliseconds_bucket{${se}}[${w}]))`, mapping: { metric: 'p99Ms', unit: 'ms', ...ep, combine: 'histogram' } },
+            { file: 'endpoint-mean.json', query: `label_replace(sum by (service_name, span_name) (rate(traces_span_metrics_duration_milliseconds_sum{${se}}[${w}])), "part", "num", "", "") or label_replace(sum by (service_name, span_name) (rate(traces_span_metrics_duration_milliseconds_count{${se}}[${w}])), "part", "den", "", "")`, mapping: { metric: 'meanMs', unit: 'ms', ...ep, combine: 'ratio' } },
           ];
         }),
       ];

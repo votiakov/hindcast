@@ -3,7 +3,7 @@ import { isAbsolute, join, relative, resolve } from 'node:path';
 import { stringify as toYaml } from 'yaml';
 import { importBundle } from '../src/backtest/import/manifest';
 import { exportPlan, manifestMetrics, runExport } from '../src/backtest/import/promExport';
-import { parseTraceFile, parseTraceLines, type Span } from '../src/backtest/import/traces';
+import { parseTraceFile, parseTraceLines, templatePath, type Span } from '../src/backtest/import/traces';
 import type { Dataset } from '../src/backtest/dataset';
 import { fileAccess, glob, readLines } from '../cli/files';
 import { fetchTraces, probeJaeger, probePrometheus, probeTempo, shapeOf, trafficBySlice } from './sources';
@@ -121,13 +121,32 @@ export async function collect(ws: Workspace, o: CollectOptions = {}, progress?: 
   const endpointSeries = exported.some((e) => /endpoint-rps/.test(e.file) && e.series > 0);
   if (!endpointSeries && entry?.length) warnings.push(`no endpoint-level request metrics for ${entry.join(', ')}: endpoint rates come from the traces, scaled by the measured sampling share`);
 
+  // span names that carry raw URLs ("GET /api/cart?sessionId=…") make a series per session and per
+  // id: each one sparse, and latency quantiles over sparse series are noise (on the Kubernetes
+  // reference, a cart p99 of 1.4 s where clients measured 50 ms). Their counts still add up; their
+  // latency does not — endpoint latency then comes from the traces' call paths
+  let rawUrls: string | null = null;
+  const epRps = plan.find((p) => /endpoint-rps\.json$/.test(p.query.file));
+  if (epRps) {
+    try {
+      const doc = JSON.parse(readFileSync(join(tel, 'metrics', epRps.query.file), 'utf8')) as { data?: { result?: { metric: Record<string, string> }[] } };
+      const names = (doc.data?.result ?? []).map((r) => `${r.metric.service_name ?? ''} ${r.metric.span_name ?? r.metric.http_route ?? ''}`);
+      const templates = new Set(names.map((n) => templatePath(n)));
+      if (names.length >= 30 && names.length >= 3 * templates.size) rawUrls = `${names.length} span-name series for ${templates.size} endpoints`;
+    } catch {
+      /* no endpoint series */
+    }
+  }
+  const metricsPlan = rawUrls ? plan.filter((p) => !/endpoint-(latency|mean|p50|p99)\.json$/.test(p.query.file)) : plan;
+  if (rawUrls) warnings.push(`span names on ${entry?.join(', ')} carry raw URLs (${rawUrls}): per-endpoint latency from span metrics is unusable, so it comes from the traces' call paths instead. Naming server spans by route (http.route) fixes it at the source`);
+
   // ---- manifest
   const rel = (p: string) => (isAbsolute(p) ? relative(tel, p) : p);
   const manifest = {
     name: src.system.name,
     step: `${stepS}s`,
     ...(src.system.rename && Object.keys(src.system.rename).length ? { rename: src.system.rename } : {}),
-    metrics: manifestMetrics(plan, 'metrics'),
+    metrics: manifestMetrics(metricsPlan, 'metrics'),
     traces: traceFiles.length
       ? [{ file: traceFiles.length === 1 ? rel(traceFiles[0]) : rel(traceFiles[0]).replace(/[^/]+$/, '*'), ...(ignore?.length ? { ignore } : {}), series: { rps: false, latency: false, endpoints: !endpointSeries } }]
       : [],

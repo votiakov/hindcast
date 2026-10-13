@@ -28,6 +28,7 @@ const Mapping = z.object({
   scale: z.number().optional(),
   template: z.boolean().optional().describe('endpoint ids spelled as traces spell them, query strings dropped and ids templated; merged series'),
   edge: z.boolean().optional().describe('measured at the edge (ingress, load balancer): replaces span-metric and trace values for the same service and metric'),
+  combine: z.enum(['ratio', 'histogram']).optional().describe('templated series returned as parts: ratio (part="num"/"den") or histogram buckets (le) — merged before the value is computed'),
 });
 
 const MetricSource = z.union([

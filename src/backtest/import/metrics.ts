@@ -41,6 +41,12 @@ export interface SeriesMapping {
   /** measured at the edge (an ingress or load balancer): sees every request, so it wins over span
    *  metrics and traces for the same service and metric */
   edge?: boolean;
+  /** how templated series merge when the query returns their parts rather than the finished value:
+   *  `ratio` — series labelled part="num" and part="den", merged as Σnum / Σden (error rates, means);
+   *  `histogram` — bucket rates labelled `le`, summed per bucket, then p50 and p99 as
+   *  histogram_quantile computes them. A p99 can't be merged from p99s: the worst of forty sparse
+   *  per-session series is not the endpoint's p99 */
+  combine?: 'ratio' | 'histogram';
 }
 
 const ENDPOINT_METRICS = new Set(['rps', 'errorRate', 'p50Ms', 'p99Ms', 'meanMs']);
@@ -100,10 +106,35 @@ export function importPrometheus(b: DatasetBuilder, json: unknown, map: SeriesMa
   return points;
 }
 
+/** histogram_quantile over cumulative bucket rates keyed by their `le` ("+Inf" included). Buckets
+ *  summed from many sparse series come out non-monotonic (each rate() extrapolates on its own);
+ *  like Prometheus, each bucket is raised to the largest count below it. With fewer than `minCount`
+ *  observations behind it a p99 is noise, not a tail: null */
+export function bucketQuantile(q: number, buckets: Map<string, number>, minCount = 0): number | null {
+  const bs = [...buckets.entries()].map(([le, c]) => ({ le: le === '+Inf' ? Infinity : Number(le), c })).filter((x) => !isNaN(x.le)).sort((a, b) => a.le - b.le);
+  if (!bs.length) return null;
+  for (let i = 1; i < bs.length; i++) bs[i].c = Math.max(bs[i].c, bs[i - 1].c);
+  const total = bs[bs.length - 1].c;
+  if (!(total > 0) || total < minCount) return null;
+  const rank = q * total;
+  let prevLe = 0;
+  let prevC = 0;
+  for (const x of bs) {
+    if (x.c >= rank) {
+      // past the largest finite bound: the answer is that bound, as Prometheus gives it
+      if (x.le === Infinity) return prevLe;
+      return prevLe + ((x.le - prevLe) * (rank - prevC)) / Math.max(1e-12, x.c - prevC);
+    }
+    prevLe = x.le;
+    prevC = x.c;
+  }
+  return prevLe;
+}
+
 /** endpoint series whose names template to the same endpoint (one series per user id in a path,
  *  say) merged before they reach the dataset: rates add up, p99 takes the worst, the rest average */
 function importTemplated(b: DatasetBuilder, result: PromSeries[], map: SeriesMapping): number {
-  const groups = new Map<string, { labels: Record<string, string>; byT: Map<number, number[]>; period: number }>();
+  const groups = new Map<string, { labels: Record<string, string>; byT: Map<number, number[]>; parts: Map<number, Map<string, number>>; period: number }>();
   for (const s of result) {
     const labels = s.metric ?? {};
     const raw = labels[map.endpointBy!];
@@ -113,12 +144,42 @@ function importTemplated(b: DatasetBuilder, result: PromSeries[], map: SeriesMap
     const key = `${rawSvc}\u0000${templatePath(name)}`;
     const vals = s.values ?? (s.value ? [s.value] : []);
     let g = groups.get(key);
-    if (!g) groups.set(key, (g = { labels: { ...labels, [map.endpointBy!]: templatePath(name) }, byT: new Map(), period: vals.length > 1 ? Number(vals[1][0]) - Number(vals[0][0]) : 60 }));
+    if (!g) groups.set(key, (g = { labels: { ...labels, [map.endpointBy!]: templatePath(name) }, byT: new Map(), parts: new Map(), period: vals.length > 1 ? Number(vals[1][0]) - Number(vals[0][0]) : 60 }));
+    // the part this series carries: a ratio's numerator or denominator, or a histogram bucket
+    const part = map.combine === 'ratio' ? labels.part : map.combine === 'histogram' ? labels.le : undefined;
     for (const [ts, raw] of vals) {
       const v = parseFloat(raw);
       if (!isFinite(v)) continue;
-      (g.byT.get(Number(ts)) ?? g.byT.set(Number(ts), []).get(Number(ts))!).push(v);
+      if (part !== undefined) {
+        const at = g.parts.get(Number(ts)) ?? g.parts.set(Number(ts), new Map()).get(Number(ts))!;
+        at.set(part, (at.get(part) ?? 0) + v);
+      } else (g.byT.get(Number(ts)) ?? g.byT.set(Number(ts), []).get(Number(ts))!).push(v);
     }
+  }
+  if (map.combine) {
+    const m = { ...map, methodBy: undefined };
+    let points = 0;
+    for (const g of groups.values())
+      for (const [t, parts] of g.parts) {
+        if (map.combine === 'ratio') {
+          const den = parts.get('den') ?? 0;
+          if (den <= 0) continue;
+          emit(b, m, g.labels, t, (parts.get('num') ?? 0) / den, g.period);
+          points++;
+        } else {
+          for (const [q, metric] of [
+            [0.5, 'p50Ms'],
+            [0.99, 'p99Ms'],
+          ] as const) {
+            // bucket rates are per second: a p99 wants ~100 requests behind it, a median ~20
+            const v = bucketQuantile(q, parts, (q > 0.9 ? 100 : 20) / g.period);
+            if (v === null) continue;
+            emit(b, { ...m, metric }, g.labels, t, v, g.period);
+            points++;
+          }
+        }
+      }
+    return points;
   }
   const combine = map.metric === 'rps' || map.metric === 'doneRps' ? (xs: number[]) => xs.reduce((a, x) => a + x, 0) : map.metric === 'p99Ms' || map.metric === 'p95Ms' ? (xs: number[]) => Math.max(...xs) : (xs: number[]) => xs.reduce((a, x) => a + x, 0) / xs.length;
   // the method is already part of the templated name

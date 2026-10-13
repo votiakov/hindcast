@@ -10,6 +10,7 @@ bottleneck export-prometheus --url http://prometheus:9090 --start 2026-09-01 --e
 bottleneck import    telemetry/bottleneck.import.yaml --out dataset.json
 bottleneck calibrate dataset.json --holdout 0.3 --out model.json
 bottleneck backtest  model.json dataset.json graviton.yaml autoscale.yaml --last 14d --html report.html
+bottleneck backtest  model.json dataset.json fewer-replicas.yaml --scale 2.2      # …on launch day
 ```
 
 or open the app's **Backtest** tab (or go straight to `#backtest`). Drop the files (or a `dataset.json` + `model.json`)
@@ -66,8 +67,10 @@ model:                                 # hints for calibration
 
 `bottleneck export-prometheus` writes the `metrics:` block for you. Presets: `otel-spanmetrics`
 (OpenTelemetry Collector spanmetrics connector), `http-server` (OTel HTTP semantic-convention
-histograms, with per-route series), `cadvisor` (Docker Compose labels), `kubernetes` (kubelet +
-kube-state-metrics). `--selector 'namespace="shop"'` scopes every query.
+histograms, with per-route series), `ingress-nginx` (requests, errors and latency at the edge, per
+backend Service — they replace span-metric values for the same service), `cadvisor` (Docker Compose
+labels), `kubernetes` (kubelet + kube-state-metrics, grouped by owning workload; requests stand in
+for missing CPU limits). `--selector 'namespace="shop"'` scopes every query.
 
 What each source gives the model:
 
@@ -154,10 +157,18 @@ are used for the as-built run, so differences are paired. Results:
 - **series** — p99, errors, $/h, cumulative cost, error budget, replicas, each with a band
 - **ranking** — strategies that keep SLO first, then cheapest
 
+**At another load.** `--scale 2.2` (or `--peak 400` for the busiest moment's req/s) replays the
+same history at that multiple of its traffic — the daily shape, the spikes and the endpoint mix stay
+its own; the as-built system and every strategy see the same load. It answers "does it survive
+launch day?" from an ordinary day. The app's **LOAD** control does the same (×0.5 … ×3), and every
+report says when a load other than ×1 was used. A load the history never reached is extrapolation:
+the trust report lowers the confidence to match.
+
 ## 5. Surfaces
 
 - **App** — the Backtest tab: measured p99 as candles, the as-built replay and every
-  strategy over it with bands, errors, cost and the savings curve on one time axis; ranked strategy
+  strategy over it with bands, errors, cost and the savings curve on one time axis; LOAD replays it
+  at ×0.5–×3; ranked strategy
   list; Overview / Incidents / Endpoints / Changes (edit the YAML live) / Model tabs. Click any
   moment to open it on the board as a replay. *Card ↗* makes a Studio card of the focused strategy.
 - **CLI** — `import`, `calibrate`, `backtest`, `headroom` (model breaking point), `accuracy`,

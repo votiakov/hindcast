@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DatasetBuilder, regrid, sliceDataset, type Dataset } from '../src/backtest/dataset';
-import { importCloudWatch, importLongCsv, importPrometheus, importWideCsv } from '../src/backtest/import/metrics';
+import { bucketQuantile, importCloudWatch, importLongCsv, importPrometheus, importWideCsv } from '../src/backtest/import/metrics';
 import { buildTopology, parseTraceFile, type Span } from '../src/backtest/import/traces';
 import { parseCur, parseGcpBilling, summariseBill } from '../src/backtest/import/billing';
 import { parseCsv } from '../src/backtest/import/csv';
@@ -219,6 +219,27 @@ describe('edge metrics (ingress-nginx)', () => {
     expect(dataset.endpoints['frontend GET /a'].rps).toEqual([50, 90]);
     expect(dataset.endpoints['frontend GET /b'].rps).toEqual([50, 30]);
     expect(log.some((l) => /counted 55% of the requests the edge saw/.test(l.what))).toBe(true);
+  });
+});
+
+describe('templated endpoint series merged from their parts', () => {
+  it('computes p99 from summed buckets, not the worst series, and ratios as Σnum/Σden', () => {
+    // 100 fast requests on one session's series, 1 slow one on another: the endpoint's p99 is fast
+    const bucket = (span: string, le: string, v: number) => ({ metric: { service_name: 'shop', span_name: span, le }, values: [[0, String(v)]] });
+    const hist = { status: 'success', data: { result: [bucket('GET /cart?s=1', '10', 100), bucket('GET /cart?s=1', '1000', 100), bucket('GET /cart?s=1', '+Inf', 100), bucket('GET /cart?s=2', '10', 0), bucket('GET /cart?s=2', '1000', 1), bucket('GET /cart?s=2', '+Inf', 1)] } };
+    const b = new DatasetBuilder();
+    importPrometheus(b, hist, { metric: 'p99Ms', unit: 'ms', by: 'service_name', endpointBy: 'span_name', template: true, combine: 'histogram' });
+    const ratio = { status: 'success', data: { result: [{ metric: { service_name: 'shop', span_name: 'GET /cart?s=1', part: 'num' }, values: [[0, '1']] }, { metric: { service_name: 'shop', span_name: 'GET /cart?s=1', part: 'den' }, values: [[0, '99']] }, { metric: { service_name: 'shop', span_name: 'GET /cart?s=2', part: 'den' }, values: [[0, '1']] }] } };
+    importPrometheus(b, ratio, { metric: 'errorRate', unit: 'ratio', by: 'service_name', endpointBy: 'span_name', template: true, combine: 'ratio' });
+    const d = b.build({ name: 'x', stepS: 60 });
+    const ep = Object.values(d.endpoints)[0];
+    expect(ep.p99Ms![0]).toBeLessThan(10);
+    expect(ep.errorRate![0]).toBeCloseTo(0.01, 6);
+  });
+  it('repairs non-monotonic buckets and refuses a p99 with too few requests behind it', () => {
+    const m = new Map([['50', 10], ['75', 8], ['100', 10], ['+Inf', 10]]);
+    expect(bucketQuantile(0.99, m)).toBeLessThanOrEqual(75);
+    expect(bucketQuantile(0.99, m, 100)).toBeNull();
   });
 });
 

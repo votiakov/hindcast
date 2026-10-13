@@ -92,7 +92,7 @@ Hosts that surface MCP prompts get two commands:
 ### 1. `connect_telemetry`: what is there
 
 ```json
-{ "prometheus": { "url": "http://prometheus:9090", "selector": "namespace=\"shop\"" },
+{ "prometheus": { "url": "http://prometheus:9090" },
   "jaeger": { "url": "http://jaeger:16686" },
   "system": { "name": "shop", "slo": { "p99Ms": 800, "errorRate": 0.01 }, "timeoutMs": 5000 } }
 ```
@@ -106,6 +106,12 @@ It probes before anything is collected:
   traces as clients (load generators, which it then ignores), and the call edges.
 - **Renames**: container metrics often spell services differently from traces (`shop-worker` vs
   `worker`). Unambiguous renames are applied; a load balancer is never folded into its backend.
+- **Namespaces**: a cluster's Prometheus sees every namespace (coredns, the monitoring stack, other
+  teams). Kubernetes metrics are kept to the namespaces the traced services run in; pass
+  `prometheus.namespaces` to choose them yourself.
+- **Broken traces**: real traces lose spans (an exporter drops a batch, a hop isn't instrumented).
+  A span whose parent never arrived is a broken link, not an entry service; only true roots (or, in
+  a trace that lost its root, its earliest span) count.
 
 It returns `problems` to fix and `ready`. Calling it again merges new settings. Everything goes
 into `sources.json` in the workspace, with credentials as env var names only.
@@ -121,8 +127,16 @@ into `sources.json` in the workspace, with credentials as env var names only.
   away. Ranges past Prometheus' 11,000 points per series are fetched in chunks.
 - Endpoint-level series are queried only on the entry services; counting every service's spans
   would count each request several times.
+- **The edge wins.** Where ingress-nginx counts the entry service's requests, its rate, errors
+  (5xx and 499, the client giving up) and latency replace the span-metric values, and the endpoint
+  rates keep their shares but are scaled to the edge's total. Span metrics undercount: span names
+  that carry raw URLs (`GET /api/cart?sessionId=…`) make thousands of sparse series, and `rate()`
+  loses each one's first increment — 38% of the requests at low load on the Kubernetes reference.
+- A framework that wraps each request in two server spans (Next.js: `GET`, then `GET /api/cart`)
+  shows the outer one as an endpoint named only by its method. Where the traces see two server spans
+  per visit, those method-only series are dropped as the duplicates they are.
 - Fetches traces spread over the window. Jaeger and Tempo return the newest first, so it cuts the
-  window into 96 slices and gives each slice a share of the traces (3,000 by default) weighted by
+  window into up to 96 slices (at least a minute each) and gives each slice a share of the traces (3,000 by default) weighted by
   the requests Prometheus saw in it. Idle slices get none, and a quiet day with one busy hour gets
   its traces from that hour.
 - Imports everything into `dataset.json`. Collecting again replaces the dataset and drops the old
@@ -165,8 +179,14 @@ Per service: `historyPeakUtil` (the highest share of capacity the history ran it
     { "terraformPlan": "plan.json" },
     { "cluster": { "head": "k8s/edited/" } }
   ],
-  "last": "7d" }
+  "last": "7d",
+  "traffic": { "scale": 2.2 } }
 ```
+
+`traffic` replays the history at another load: `scale` ×N, or `peakRps` for its busiest moment.
+"Is it safe on launch day, at 2.2× a normal day?" is the same history with the same daily shape,
+spikes and endpoint mix, as built and with the change alike. A load the history never reached
+lowers the confidence to match.
 
 | a change can be | read from |
 |---|---|
@@ -315,15 +335,16 @@ the system runs, calibrate it on telemetry for real numbers.
 |---|---|---|
 | request rate, errors, latency per service | Prometheus: OpenTelemetry Collector **spanmetrics** (`traces_span_metrics_*`) or OpenTelemetry **HTTP server** metrics (`http_server_request_duration_seconds_*`) | nothing to model |
 | the same per endpoint, on entry services | the same metrics, by `span_name` or `http_route` | endpoint rates from traces, scaled by the measured sampling share |
-| CPU used, CPU limit, replicas, memory | **cAdvisor** (Docker Compose labels) or **Kubernetes** (kubelet cAdvisor + kube-state-metrics) | capacity only from latency; resize strategies can't be priced |
+| requests, errors, latency at the edge | **ingress-nginx** (`nginx_ingress_controller_*`, by backend Service). Requests to an Ingress without a host are only counted with `--metrics-per-undefined-host=true` | the entry service's rates come from span metrics, which undercount sparse series |
+| CPU used, CPU limit, replicas, memory | **cAdvisor** (Docker Compose labels) or **Kubernetes** (kubelet cAdvisor + kube-state-metrics, grouped by the Deployment, StatefulSet or DaemonSet that owns each pod; CPU requests stand in where no limit is set; CFS throttling is collected) | capacity only from latency; resize strategies can't be priced |
 | topology, self time per service | **Jaeger** (`/api/traces`), **Tempo** (`/api/search` + `/api/traces/{id}`), or OTLP / Jaeger JSON files | no topology: which service calls which is unknown |
 | cost | AWS CUR or GCP billing export (file) | AWS Fargate list prices from CPU and memory limits |
 
 Older names are recognised and reported as `nearMisses` with what to do, but not read: spanmetrics
 `calls_total` from the old processor, `http_server_duration_milliseconds`, Spring Micrometer's
 `http_server_requests_seconds`. A recording rule that renames them makes them work. `selector`
-adds label matchers to every query (`namespace="shop"`). `exclude` drops another system's
-services.
+adds label matchers to every query (`cluster="prod-eu"`); `namespaces` scopes the Kubernetes and
+ingress metrics. `exclude` drops another system's services.
 
 Authentication: `tokenEnv` (bearer), `basicAuthEnv` (`user:password`) and `headersEnv` (e.g.
 `X-Scope-OrgID` for Mimir/Cortex/Tempo multi-tenancy), each naming an env var. Path prefixes
@@ -361,11 +382,11 @@ or dropped on the app's Backtest screen.
 
 | tool | inputs | returns |
 |---|---|---|
-| `connect_telemetry` | `prometheus{url, selector?, presets?, tokenEnv?…}`, `jaeger{url}` \| `tempo{url}` \| `traceFiles[]`, `bill{cur\|gcp, tag?}`, `system{name, slo, timeoutMs, rename, hostedBy, entry, ignore, exclude}` | probes, renames applied, `problems`, `ready` |
+| `connect_telemetry` | `prometheus{url, selector?, namespaces?, presets?, tokenEnv?…}`, `jaeger{url}` \| `tempo{url}` \| `traceFiles[]`, `bill{cur\|gcp, tag?}`, `system{name, slo, timeoutMs, rename, hostedBy, entry, ignore, exclude}` | probes, renames applied, `problems`, `ready` |
 | `collect_telemetry` | `last` \| `start`/`end`, `stepS?`, `maxTraces?` | window, coverage per service, endpoints, warnings |
 | `calibrate_model` | `holdout?` (0.3), `slo?`, `timeoutMs?`, `listPrices?` | services with capacity, band, limit, basis, cost; accuracy; trust lists |
 | `model_status` | — | what the workspace holds, warnings, next step |
-| `verify_change` | `changes[]`, `last?`, `gateMinutes?`, `draws?` (30, fewer on long histories to fit ~40 s) | per change: verdict, confidence, cost, reliability, headroom, reasons; reports and `app.open` |
+| `verify_change` | `changes[]`, `last?`, `traffic?{scale \| peakRps}`, `gateMinutes?`, `draws?` (30, fewer on long histories to fit ~40 s) | per change: verdict, confidence, cost, reliability, headroom, reasons; reports and `app.open` |
 | `suggest_changes` | `goal?` (reliability \| cost \| both), `last?`, `draws?`, `gateMinutes?`, `idleBelow?` | saturated services; fixes and savings that pass, each judged; the savings combined; rejected candidates |
 | `find_headroom` | `strategy?` | req/s within SLO, what binds, history peak |
 | `verify_design` | `spec`, `rps?`, `slo?`, `budgetMonthly?`, `incidentCostPerMinute?` | verdict, problems, findings with fixes as spec changes, app link |
