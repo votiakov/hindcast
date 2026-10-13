@@ -5,6 +5,7 @@ import { buildTopology, parseTraceFile, type Span } from '../src/backtest/import
 import { parseCur, parseGcpBilling, summariseBill } from '../src/backtest/import/billing';
 import { parseCsv } from '../src/backtest/import/csv';
 import { importBundle } from '../src/backtest/import/manifest';
+import { exportPlan } from '../src/backtest/import/promExport';
 import { erlangC, mmcWait } from '../src/backtest/queueing';
 import { calibrate, trafficOf } from '../src/backtest/calibrate';
 import { basePlan, runPlan } from '../src/backtest/engine';
@@ -219,6 +220,23 @@ describe('edge metrics (ingress-nginx)', () => {
     expect(dataset.endpoints['frontend GET /a'].rps).toEqual([50, 90]);
     expect(dataset.endpoints['frontend GET /b'].rps).toEqual([50, 30]);
     expect(log.some((l) => /counted 55% of the requests the edge saw/.test(l.what))).toBe(true);
+  });
+});
+
+describe('Spring Boot (Micrometer) preset', () => {
+  it('names services by application tag or scrape job, skips Actuator, and reads per-URI endpoints', () => {
+    const plan = exportPlan(['spring'], { window: '1m', entry: ['petclinic'] });
+    expect(plan.every((p) => p.query.query.includes('uri!~"/actuator.*"'))).toBe(true);
+    expect(plan.some((p) => p.query.file === 'spring-endpoint-latency.json' && p.query.mapping.combine === 'histogram')).toBe(true);
+    const prom = (result: unknown[]) => JSON.stringify({ status: 'success', data: { result } });
+    const files: Record<string, string> = {
+      'rps.json': prom([{ metric: { application: 'petclinic', job: 'petclinic-svc' }, values: [[0, '40']] }, { metric: { job: 'billing' }, values: [[0, '5']] }]),
+      'ep.json': prom([{ metric: { application: 'petclinic', job: 'x', uri: '/owners/{ownerId}', method: 'GET' }, values: [[0, '30']] }, { metric: { application: 'petclinic', job: 'x', uri: '/vets', method: 'GET' }, values: [[0, '10']] }]),
+    };
+    const { dataset } = importBundle({ name: 'x', step: '60s', metrics: [{ prometheus: 'rps.json', metric: 'rps', by: 'application' }, { prometheus: 'ep.json', metric: 'rps', by: 'application', endpointBy: 'uri', methodBy: 'method', template: true }] }, { read: (f: string) => files[f], glob: (p: string) => [p] });
+    expect(dataset.services.petclinic.rps).toEqual([40]);
+    expect(dataset.services.billing.rps).toEqual([5]);
+    expect(Object.keys(dataset.endpoints).sort()).toEqual(['petclinic GET /owners/{ownerId}', 'petclinic GET /vets']);
   });
 });
 

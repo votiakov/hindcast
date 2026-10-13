@@ -66,7 +66,7 @@ export function convert(metric: MetricName, v: number, unit: Unit | undefined, p
 }
 
 function emit(b: DatasetBuilder, map: SeriesMapping, labels: Record<string, string>, t: number, raw: number, periodS: number) {
-  const rawSvc = map.service ?? labels[map.by ?? 'service'] ?? labels.service_name ?? labels.job ?? labels.container ?? labels.app;
+  const rawSvc = map.service ?? labels[map.by ?? 'service'] ?? labels.service_name ?? labels.application ?? labels.job ?? labels.container ?? labels.app;
   if (!rawSvc) return;
   const service = map.rename?.[rawSvc] ?? rawSvc;
   const { metric, v } = convert(map.metric, raw, map.unit, periodS, map.scale);
@@ -139,7 +139,7 @@ function importTemplated(b: DatasetBuilder, result: PromSeries[], map: SeriesMap
     const labels = s.metric ?? {};
     const raw = labels[map.endpointBy!];
     if (!raw) continue;
-    const rawSvc = map.service ?? labels[map.by ?? 'service'] ?? labels.service_name ?? '';
+    const rawSvc = map.service ?? labels[map.by ?? 'service'] ?? labels.service_name ?? labels.application ?? labels.job ?? '';
     const name = `${map.methodBy && labels[map.methodBy] ? labels[map.methodBy] + ' ' : ''}${raw}`;
     const key = `${rawSvc}\u0000${templatePath(name)}`;
     const vals = s.values ?? (s.value ? [s.value] : []);

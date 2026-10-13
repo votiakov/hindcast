@@ -16,6 +16,8 @@ type PromVector = { resultType: string; result: { metric: Record<string, string>
 export const PRESET_SIGNATURE: Record<string, { metric: string; label: string; also?: string }> = {
   'otel-spanmetrics': { metric: 'traces_span_metrics_calls_total', label: 'service_name' },
   'http-server': { metric: 'http_server_request_duration_seconds_count', label: 'service_name' },
+  // Spring Boot: services are named by the `application` tag where it is set, else by the scrape job
+  spring: { metric: 'http_server_requests_seconds_count', label: 'job' },
   // after the span-metric presets: measured at the edge, it replaces their counts for the entry service
   'ingress-nginx': { metric: 'nginx_ingress_controller_requests', label: 'exported_service' },
   cadvisor: { metric: 'container_spec_cpu_quota', label: 'container_label_com_docker_compose_service' },
@@ -28,7 +30,6 @@ const NEAR_MISSES: Record<string, string> = {
   calls_total: 'spanmetrics from an older collector (calls_total): rename with a recording rule to traces_span_metrics_calls_total',
   traces_spanmetrics_calls_total: 'spanmetrics from the old spanmetrics processor: rename with a recording rule to traces_span_metrics_calls_total',
   http_server_duration_milliseconds_count: 'OpenTelemetry HTTP metrics under the pre-1.0 name (milliseconds): the http-server preset expects http_server_request_duration_seconds',
-  http_server_requests_seconds_count: 'Spring Boot Micrometer metrics: not a preset yet — export them with a CSV mapping',
   nginx_ingress_controller_nginx_process_requests_total: 'ingress-nginx without per-request metrics: requests to an Ingress without a host are only counted with --metrics-per-undefined-host=true (controller.extraArgs in the Helm chart)',
 };
 
@@ -98,7 +99,7 @@ export async function probePrometheus(cfg: NonNullable<Sources['prometheus']>, n
 
   // when requests flowed: traffic (a rate above zero, not just a counter still being exported)
   // at a few lookbacks, then bisected to ~1% of the gap for the newest and oldest edges
-  const main = out.presets.find((p) => p === 'otel-spanmetrics' || p === 'http-server');
+  const main = out.presets.find((p) => p === 'otel-spanmetrics' || p === 'http-server' || p === 'spring');
   if (main) {
     const m = PRESET_SIGNATURE[main].metric;
     const sel = cfg.selector ? `{${cfg.selector}}` : '';
@@ -175,7 +176,7 @@ export async function trafficBySlice(cfg: NonNullable<Sources['prometheus']>, pr
   const m = entry.map((e) => e.replace(/[.*+?^${}()|[\]\\"]/g, '\\\\$&')).join('|');
   const sel = [cfg.selector, `service_name=~"${m}"`].filter(Boolean).join(',');
   const win = `${width}s`;
-  const query = presets.includes('otel-spanmetrics') ? `sum(increase(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER",${sel}}[${win}]))` : presets.includes('http-server') ? `sum(increase(http_server_request_duration_seconds_count{${sel}}[${win}]))` : null;
+  const query = presets.includes('otel-spanmetrics') ? `sum(increase(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER",${sel}}[${win}]))` : presets.includes('http-server') ? `sum(increase(http_server_request_duration_seconds_count{${sel}}[${win}]))` : presets.includes('spring') ? `sum(increase(http_server_requests_seconds_count{${[cfg.selector, `job=~"${m}"`].filter(Boolean).join(',')}}[${win}]))` : null;
   if (!query) return null;
   const u = new URL('api/v1/query_range', cfg.url.endsWith('/') ? cfg.url : cfg.url + '/');
   // each point counts the slice that ends at it

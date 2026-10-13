@@ -67,7 +67,8 @@ model:                                 # hints for calibration
 
 `bottleneck export-prometheus` writes the `metrics:` block for you. Presets: `otel-spanmetrics`
 (OpenTelemetry Collector spanmetrics connector), `http-server` (OTel HTTP semantic-convention
-histograms, with per-route series), `ingress-nginx` (requests, errors and latency at the edge, per
+histograms, with per-route series), `spring` (Spring Boot / Micrometer `http_server_requests_seconds`,
+per application, Actuator's own scrapes left out), `ingress-nginx` (requests, errors and latency at the edge, per
 backend Service — they replace span-metric values for the same service), `cadvisor` (Docker Compose
 labels), `kubernetes` (kubelet + kube-state-metrics, grouped by owning workload; requests stand in
 for missing CPU limits). `--selector 'namespace="shop"'` scopes every query.

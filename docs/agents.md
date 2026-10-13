@@ -333,7 +333,7 @@ the system runs, calibrate it on telemetry for real numbers.
 
 | signal | where Bottleneck reads it | without it |
 |---|---|---|
-| request rate, errors, latency per service | Prometheus: OpenTelemetry Collector **spanmetrics** (`traces_span_metrics_*`) or OpenTelemetry **HTTP server** metrics (`http_server_request_duration_seconds_*`) | nothing to model |
+| request rate, errors, latency per service | Prometheus: OpenTelemetry Collector **spanmetrics** (`traces_span_metrics_*`), OpenTelemetry **HTTP server** metrics (`http_server_request_duration_seconds_*`) or **Spring Boot / Micrometer** (`http_server_requests_seconds_*`, by `application` tag or scrape job; p99 needs `percentiles-histogram`) | nothing to model |
 | the same per endpoint, on entry services | the same metrics, by `span_name` or `http_route` | endpoint rates from traces, scaled by the measured sampling share |
 | requests, errors, latency at the edge | **ingress-nginx** (`nginx_ingress_controller_*`, by backend Service). Requests to an Ingress without a host are only counted with `--metrics-per-undefined-host=true` | the entry service's rates come from span metrics, which undercount sparse series |
 | CPU used, CPU limit, replicas, memory | **cAdvisor** (Docker Compose labels) or **Kubernetes** (kubelet cAdvisor + kube-state-metrics, grouped by the Deployment, StatefulSet or DaemonSet that owns each pod; CPU requests stand in where no limit is set; CFS throttling is collected) | capacity only from latency; resize strategies can't be priced |
@@ -341,8 +341,8 @@ the system runs, calibrate it on telemetry for real numbers.
 | cost | AWS CUR or GCP billing export (file) | AWS Fargate list prices from CPU and memory limits |
 
 Older names are recognised and reported as `nearMisses` with what to do, but not read: spanmetrics
-`calls_total` from the old processor, `http_server_duration_milliseconds`, Spring Micrometer's
-`http_server_requests_seconds`. A recording rule that renames them makes them work. `selector`
+`calls_total` from the old processor, `http_server_duration_milliseconds`. A recording rule that
+renames them makes them work. `selector`
 adds label matchers to every query (`cluster="prod-eu"`); `namespaces` scopes the Kubernetes and
 ingress metrics. `exclude` drops another system's services.
 

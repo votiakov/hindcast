@@ -77,6 +77,31 @@ export const PRESETS: Record<string, Preset> = {
       ];
     },
   },
+  spring: {
+    id: 'spring',
+    description: 'Spring Boot / Micrometer HTTP server metrics (http_server_requests_seconds_*), per application (or scrape job), with per-URI series; p99 needs percentiles-histogram enabled',
+    queries: ({ window: w, selector: sel, entry, namespaces }) => {
+      // the scrapes of Actuator itself are not traffic
+      const base = [`uri!~"/actuator.*"`, nsMatcher(namespaces), sel].filter(Boolean).join(',');
+      const by = 'application, job';
+      const m = { by: 'application' } as const;
+      const se = entry?.length ? `${base},${entry.length ? `application=~"${entry.map((e) => e.replace(/[.*+?^${}()|[\]\\"]/g, '\\\\$&')).join('|')}"` : ''}` : base;
+      const ep = { by: 'application', endpointBy: 'uri', methodBy: 'method', template: true } as const;
+      return [
+        { file: 'rps.json', query: `sum by (${by}) (rate(http_server_requests_seconds_count{${base}}[${w}]))`, mapping: { metric: 'rps', ...m } },
+        { file: 'errors.json', query: `(sum by (${by}) (rate(http_server_requests_seconds_count{${base},status=~"5.."}[${w}])) or sum by (${by}) (rate(http_server_requests_seconds_count{${base}}[${w}])) * 0) / sum by (${by}) (rate(http_server_requests_seconds_count{${base}}[${w}]))`, mapping: { metric: 'errorRate', unit: 'ratio', ...m } },
+        { file: 'p99.json', query: `histogram_quantile(0.99, sum by (${by}, le) (rate(http_server_requests_seconds_bucket{${base}}[${w}])))`, mapping: { metric: 'p99Ms', unit: 's', ...m } },
+        { file: 'mean.json', query: `sum by (${by}) (rate(http_server_requests_seconds_sum{${base}}[${w}])) / sum by (${by}) (rate(http_server_requests_seconds_count{${base}}[${w}]))`, mapping: { metric: 'meanMs', unit: 's', ...m } },
+        ...(entry?.length
+          ? [
+              { file: 'endpoint-rps.json', query: `sum by (${by}, uri, method) (rate(http_server_requests_seconds_count{${se}}[${w}]))`, mapping: { metric: 'rps' as const, ...ep } },
+              { file: 'endpoint-latency.json', query: `sum by (${by}, uri, method, le) (rate(http_server_requests_seconds_bucket{${se}}[${w}]))`, mapping: { metric: 'p99Ms' as const, unit: 's' as const, ...ep, combine: 'histogram' as const } },
+              { file: 'endpoint-mean.json', query: `label_replace(sum by (${by}, uri, method) (rate(http_server_requests_seconds_sum{${se}}[${w}])), "part", "num", "", "") or label_replace(sum by (${by}, uri, method) (rate(http_server_requests_seconds_count{${se}}[${w}])), "part", "den", "", "")`, mapping: { metric: 'meanMs' as const, unit: 's' as const, ...ep, combine: 'ratio' as const } },
+            ]
+          : []),
+      ];
+    },
+  },
   'ingress-nginx': {
     id: 'ingress-nginx',
     description: 'Requests, errors and latency at the edge from ingress-nginx (nginx_ingress_controller_*), per backend Service: every request, including those that never reach a pod',
