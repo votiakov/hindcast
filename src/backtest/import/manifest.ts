@@ -167,6 +167,21 @@ export function importBundle(manifestInput: unknown, fs: FileAccess): { dataset:
     }
   }
 
+  // a framework that wraps each request in two SERVER spans (Next.js: "GET", then "GET /api/cart")
+  // makes span metrics show the outer one as an endpoint named only by its method, counting the same
+  // requests twice. Where the traces see two server spans per visit and routed series exist, the
+  // method-only series are the duplicates
+  if (topology) {
+    for (const [id, shape] of Object.entries(topology.services)) {
+      if (!shape.serverSpansPerVisit || shape.serverSpansPerVisit < 2) continue;
+      const mine = Object.entries(dataset.endpoints).filter(([, e]) => e.service === id);
+      const bare = mine.filter(([eid]) => /^\S+ [A-Z]+$/.test(eid));
+      if (!bare.length || bare.length === mine.length) continue;
+      for (const [eid] of bare) delete dataset.endpoints[eid];
+      log.push({ file: '(traces)', what: `${id}: dropped ${bare.map(([eid]) => `"${eid}"`).join(', ')} — the outer server span of requests already counted under their routes` });
+    }
+  }
+
   // endpoint rates from span metrics miss requests (sparse high-cardinality series lose their first
   // increment to rate(); SDKs drop spans under load): where the edge counted the entry service's
   // requests, the endpoints keep their shares and are scaled to the edge's total

@@ -222,6 +222,20 @@ describe('edge metrics (ingress-nginx)', () => {
   });
 });
 
+describe('frameworks with two server spans per request', () => {
+  it('drops the method-only span-metric series when routed ones exist and traces show two server spans per visit', () => {
+    const sp = (tr: string, id: string, parent: string | null, name: string, kind: Span['kind'], route?: string) => ({ traceId: tr, spanId: id, parentId: parent, service: 'frontend', name, kind, start: 0, end: 10, error: false, attrs: route ? { 'http.route': route } : {} });
+    const traces = [sp('a', '1', null, 'GET', 'server'), sp('a', '2', '1', 'GET /api/cart', 'server', '/api/cart'), sp('b', '3', null, 'GET', 'server'), sp('b', '4', '3', 'GET /api/x', 'server', '/api/x')];
+    const files: Record<string, string> = {
+      'ep.json': JSON.stringify({ status: 'success', data: { result: [{ metric: { service_name: 'frontend', span_name: 'GET' }, values: [[0, '20']] }, { metric: { service_name: 'frontend', span_name: 'GET /api/cart' }, values: [[0, '10']] }, { metric: { service_name: 'frontend', span_name: 'GET /api/x' }, values: [[0, '10']] }] } }),
+      't.jsonl': traces.map((t) => JSON.stringify({ resourceSpans: [{ resource: { attributes: [{ key: 'service.name', value: { stringValue: 'frontend' } }] }, scopeSpans: [{ spans: [{ traceId: t.traceId, spanId: t.spanId, ...(t.parentId ? { parentSpanId: t.parentId } : {}), name: t.name, kind: 'SPAN_KIND_SERVER', startTimeUnixNano: '0', endTimeUnixNano: '10000000', attributes: Object.entries(t.attrs).map(([key, v]) => ({ key, value: { stringValue: v } })) }] }] }] })).join('\n'),
+    };
+    const fs = { read: (f: string) => files[f], glob: (p: string) => [p] };
+    const { dataset } = importBundle({ name: 'x', step: '60s', metrics: [{ prometheus: 'ep.json', metric: 'rps', by: 'service_name', endpointBy: 'span_name', template: true }], traces: [{ file: 't.jsonl', series: { endpoints: false } }] }, fs);
+    expect(Object.keys(dataset.endpoints).sort()).toEqual(['frontend GET /api/cart', 'frontend GET /api/x']);
+  });
+});
+
 describe('queueing', () => {
   it('Erlang C matches M/M/1', () => {
     expect(erlangC(1, 0.5)).toBeCloseTo(0.5);
