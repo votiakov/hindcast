@@ -59,7 +59,8 @@ npm run sim -- agent setup cursor --write  # or claude, vscode, desktop, windsur
 <div class="table-wrap"><table>
 <tr><th>signal</th><th>from</th></tr>
 <tr><td>requests, errors, latency</td><td>OpenTelemetry Collector span metrics, or OpenTelemetry HTTP server metrics, in any Prometheus-compatible store (Prometheus, Thanos, Mimir, VictoriaMetrics)</td></tr>
-<tr><td>CPU, limits, replicas</td><td>cAdvisor, or kubelet + kube-state-metrics</td></tr>
+<tr><td>requests, errors, latency at the edge</td><td>ingress-nginx (takes precedence over span metrics for the entry service)</td></tr>
+<tr><td>CPU, limits, replicas</td><td>cAdvisor, or kubelet + kube-state-metrics, grouped by Deployment/StatefulSet/DaemonSet and kept to the system's namespaces</td></tr>
 <tr><td>topology and self time</td><td>Jaeger or Tempo, or OTLP / Jaeger JSON files</td></tr>
 <tr><td>cost</td><td>an AWS CUR or GCP billing export; list prices otherwise</td></tr>
 </table></div>

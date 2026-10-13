@@ -130,8 +130,9 @@ export async function collect(ws: Workspace, o: CollectOptions = {}, progress?: 
   if (epRps) {
     try {
       const doc = JSON.parse(readFileSync(join(tel, 'metrics', epRps.query.file), 'utf8')) as { data?: { result?: { metric: Record<string, string> }[] } };
-      const names = (doc.data?.result ?? []).map((r) => `${r.metric.service_name ?? ''} ${r.metric.span_name ?? r.metric.http_route ?? ''}`);
-      const templates = new Set(names.map((n) => templatePath(n)));
+      // templatePath reads "<METHOD> <path>"; the service goes in front of the result
+      const names = (doc.data?.result ?? []).map((r) => ({ svc: r.metric.service_name ?? '', name: r.metric.span_name ?? r.metric.http_route ?? '' }));
+      const templates = new Set(names.map((n) => `${n.svc} ${templatePath(n.name)}`));
       if (names.length >= 30 && names.length >= 3 * templates.size) rawUrls = `${names.length} span-name series for ${templates.size} endpoints`;
     } catch {
       /* no endpoint series */
