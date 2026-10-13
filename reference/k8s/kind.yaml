@@ -1,0 +1,18 @@
+# A local Kubernetes cluster for the Kubernetes reference runs: one control plane (also running the
+# ingress controller, published on localhost:8088) and two workers, as a small production cluster
+# would schedule pods across nodes.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: bnk8s
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      - { containerPort: 80, hostPort: 8088, protocol: TCP }
+  - role: worker
+  - role: worker

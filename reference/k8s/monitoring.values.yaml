@@ -1,0 +1,23 @@
+# kube-prometheus-stack as a production cluster typically runs it: kubelet/cAdvisor container
+# metrics, kube-state-metrics, node-exporter, a Prometheus scraping every 15 s. Grafana and
+# Alertmanager are left out (not read by the backtest). Prometheus is published through the
+# ingress at http://localhost:8088/prometheus.
+grafana: { enabled: false }
+alertmanager: { enabled: false }
+prometheus:
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    paths: [/prometheus]
+    pathType: Prefix
+  prometheusSpec:
+    scrapeInterval: 15s
+    evaluationInterval: 15s
+    retention: 30d
+    routePrefix: /prometheus
+    externalUrl: http://localhost:8088/prometheus
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    resources: { requests: { cpu: 200m, memory: 512Mi }, limits: { memory: 1536Mi } }
+    nodeSelector: { ingress-ready: "true" }
+    tolerations: [{ key: node-role.kubernetes.io/control-plane, operator: Exists, effect: NoSchedule }]
