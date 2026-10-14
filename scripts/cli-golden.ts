@@ -1,14 +1,16 @@
-// The native CLI (engine-rs, `hindcast`) against the Node one (cli/bottleneck.ts): every case runs
-// through both; stdout, stderr and the exit code must match (wall-clock timings masked).
-// npx tsx scripts/cli-parity.ts [filter]
+// The native CLI (engine-rs, `hindcast`) against its golden outputs (test/golden/cli.json), which were
+// recorded from the Node CLI it replaced: stdout, stderr, the exit code and every file each command
+// wrote must match (wall-clock timings and temp dirs masked).
+// npx tsx scripts/cli-golden.ts [filter]
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
-const walk = (d: string): string[] => readdirSync(d).sort().flatMap((f) => (statSync(`${d}/${f}`).isDirectory() ? walk(`${d}/${f}`) : [`${d}/${f}`]));
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { changed, firstDiff, read, snapshot, store, write, type Stored } from './golden';
 
 const BIN = 'engine-rs/target/release/hindcast';
-const out = mkdtempSync(join(tmpdir(), 'cli-parity-'));
+const out = mkdtempSync(join(tmpdir(), 'cli-golden-'));
+const GOLDEN = 'test/golden/cli.json';
 const ex = 'examples';
 const fx = 'test/cli-fixtures';
 const PROM = 'http://127.0.0.1:19090';
@@ -140,58 +142,69 @@ export const CASES: string[][] = [
 ];
 
 /** wall-clock numbers differ run to run */
-const mask = (s: string) => s.replace(/(in |· )\d+ ms/g, '$1# ms').replace(/"wallMs": \d+(\.\d+)?/g, '"wallMs": #').replace(/"measuredAt": ?"[^"]*"/g, '"measuredAt": #').replace(/cli-parity-\w+/g, 'cli-parity-X').replace(/\/OUT[12]\//g, '/OUT/');
+const mask = (s: string) => s.replace(/(in |· )\d+ ms/g, '$1# ms').replace(/"wallMs": \d+(\.\d+)?/g, '"wallMs": #').replace(/"measuredAt": ?"[^"]*"/g, '"measuredAt": #').replaceAll(realpathSync(out), '$OUT').replaceAll(out, '$OUT').replaceAll(process.cwd(), '$CWD');
 
-function run(cmd: string, args: string[], tag: string) {
-  const a = args.map((x) => x.replace('/OUT/', `/OUT${tag}/`));
-  for (const x of a) if (x.startsWith(`${out}/OUT${tag}/`)) spawnSync('mkdir', ['-p', x.slice(0, x.lastIndexOf('/'))]);
-  const r = spawnSync(cmd, cmd === 'npx' ? ['tsx', 'cli/bottleneck.ts', ...a] : a, { encoding: 'utf8', env: { ...process.env, NO_COLOR: '', HINDCAST_NOW: '1791500000', HINDCAST_KUBECTL: 'test/cli-fixtures/fake-kubectl.mjs' } });
-  // everything either CLI wrote: named outputs, workspaces, reports
-  const root = `${out}/OUT${tag}`;
-  const files = existsSync(root) ? walk(root).map((x) => `${x.replace(/OUT[12]/, 'OUT')}\n${mask(readFileSync(x, 'utf8'))}`) : [];
-  return { stdout: mask(r.stdout), stderr: mask(r.stderr), code: r.status, files };
+interface Golden {
+  stdout: string;
+  stderr: Stored;
+  code: number | null;
+  files: Record<string, Stored>;
+}
+
+const root = `${out}/OUT`;
+let files = snapshot(root, mask);
+function run(args: string[], record: boolean): Golden {
+  for (const x of args) if (x.startsWith(`${root}/`)) mkdirSync(x.slice(0, x.lastIndexOf('/')), { recursive: true });
+  const env = { ...process.env, NO_COLOR: '', HINDCAST_NOW: '1791500000', HINDCAST_KUBECTL: 'test/cli-fixtures/fake-kubectl.mjs' };
+  const r = record ? spawnSync('npx', ['tsx', 'cli/bottleneck.ts', ...args], { encoding: 'utf8', env }) : spawnSync(BIN, args, { encoding: 'utf8', env });
+  // everything the command wrote: named outputs, workspaces, reports
+  const now = snapshot(root, mask);
+  const g = { stdout: mask(r.stdout), stderr: store(mask(r.stderr)), code: r.status, files: changed(files, now) };
+  files = now;
+  return g;
 }
 
 const prom = spawn('node', ['test/cli-fixtures/mock-prometheus.mjs', '19090'], { stdio: 'ignore' });
 const tel = spawn('node', ['test/cli-fixtures/mock-telemetry.mjs', '19091'], { stdio: 'ignore' });
 spawnSync('sleep', ['0.5']);
-// workspaces seeded with recorded histories, for the verdict tools
-import { writeFileSync as wf, mkdirSync as md, copyFileSync } from 'node:fs';
-for (const tag of ['1', '2']) {
-  md(`${out}/OUT${tag}/ws-v`, { recursive: true });
-  copyFileSync('reference/hotrod/dataset.json', `${out}/OUT${tag}/ws-v/dataset.json`);
-  md(`${out}/OUT${tag}/ws-n`, { recursive: true });
-  wf(`${out}/OUT${tag}/ws-n/dataset.json`, JSON.stringify(JSON.parse(readFileSync('public/reference/k8s-shop.json', 'utf8')).dataset));
-}
-const filter = process.argv[2];
+// workspaces seeded with recorded histories, for the verdict tools ("collected N hours ago" reads the mtime)
+mkdirSync(`${root}/ws-v`, { recursive: true });
+copyFileSync('reference/hotrod/dataset.json', `${root}/ws-v/dataset.json`);
+mkdirSync(`${root}/ws-n`, { recursive: true });
+writeFileSync(`${root}/ws-n/dataset.json`, JSON.stringify(JSON.parse(readFileSync('public/reference/k8s-shop.json', 'utf8')).dataset));
+for (const k of ['v', 'n']) utimesSync(`${root}/ws-${k}/dataset.json`, 1791400000, 1791400000);
+files = snapshot(root, mask);
+
+const record = process.argv.includes('--record');
+const filter = process.argv.slice(2).find((a) => !a.startsWith('--'));
+const golden: Record<string, Golden> = record ? {} : read(GOLDEN);
 let failed = 0;
 for (const c of CASES) {
-  const name = c.join(' ') || '(no args)';
+  const name = mask(c.join(' ')) || '(no args)';
+  // cases share workspaces: a filter still runs the ones before it, unreported
+  const g = run(c, record);
+  if (record) {
+    golden[name] = g;
+    console.log(`rec   ${name}`);
+    continue;
+  }
   if (filter && !name.includes(filter)) continue;
-  const ts = run('npx', c, '1');
-  const rs = run(BIN, c, '2');
-  const same = ts.stdout === rs.stdout && (ts.stderr === rs.stderr || PARSER_MESSAGE.has(name)) && ts.code === rs.code && JSON.stringify(ts.files) === JSON.stringify(rs.files);
-  if (same) {
+  const want = golden[name];
+  if (!want) {
+    failed++;
+    console.log(`NEW   ${name}  (no golden output: npx tsx scripts/cli-golden.ts --record)`);
+    continue;
+  }
+  const diffs = [firstDiff('stdout', want.stdout, g.stdout), PARSER_MESSAGE.has(name) ? null : firstDiff('stderr', want.stderr, g.stderr), firstDiff('exit code', String(want.code), String(g.code)), firstDiff('files', want.files, g.files)].filter(Boolean);
+  if (!diffs.length) {
     console.log(`ok    ${name}`);
     continue;
   }
   failed++;
-  console.log(`DIFF  ${name}  (exit ${ts.code} vs ${rs.code})`);
-  for (const [k, a, b] of [['stdout', ts.stdout, rs.stdout], ['stderr', ts.stderr, rs.stderr], ['files', ts.files.join('\n---\n'), rs.files.join('\n---\n')]] as const) {
-    if (a === b) continue;
-    const la = a.split('\n');
-    const lb = b.split('\n');
-    let i = 0;
-    while (la[i] === lb[i]) i++;
-    const x = la[i] ?? '';
-    const y = lb[i] ?? '';
-    let j = 0;
-    while (j < x.length && x[j] === y[j]) j++;
-    const cut = (t: string) => (j > 120 ? '…' : '') + t.slice(Math.max(0, j - 120), j + 120);
-    console.log(`  ${k} line ${i + 1}, column ${j + 1}:\n    node: ${JSON.stringify(cut(x))}\n    rust: ${JSON.stringify(cut(y))}`);
-  }
+  console.log(`DIFF  ${name}\n${diffs.join('\n')}`);
 }
 prom.kill();
 tel.kill();
-console.log(failed ? `\n${failed} differ` : '\nall match');
+if (record) write(GOLDEN, golden);
+console.log(record ? `\nrecorded ${Object.keys(golden).length} cases in ${GOLDEN}` : failed ? `\n${failed} differ` : '\nall match');
 process.exitCode = failed ? 1 : 0;

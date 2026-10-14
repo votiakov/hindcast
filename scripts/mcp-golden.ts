@@ -1,18 +1,22 @@
-// The native MCP server (`hindcast mcp`) against the Node one (mcp/server.ts): one scripted session
-// through each; every response and notification, and every file the tools wrote, must match
-// (wall-clock timings, temp dirs and the bundle server's port masked).
-// npx tsx scripts/mcp-parity.ts [filter]
+// The native MCP server (`hindcast mcp`) against its golden session (test/golden/mcp.json), recorded
+// from the Node server it replaced (mcp/server.ts): every response and notification of one scripted
+// session, and every file the tools wrote, must match (timings, temp dirs and the port masked).
+// npx tsx scripts/mcp-golden.ts [filter] [--record]
 import { spawn, spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { handshake, session } from './mcp-session';
+import { changed, firstDiff, read, snapshot, write, type Stored } from './golden';
 
 const BIN = 'engine-rs/target/release/hindcast';
-const out = mkdtempSync(join(tmpdir(), 'mcp-parity-'));
+const out = mkdtempSync(join(tmpdir(), 'mcp-golden-'));
+const GOLDEN = 'test/golden/mcp.json';
 const TEL = 'http://127.0.0.1:19091';
-const ws = (k: string) => `${out}/OUT/ws-${k}`;
+const root = `${out}/OUT`;
+const ws = (k: string) => `${root}/ws-${k}`;
 const shop = parseYaml(readFileSync('examples/shop.yaml', 'utf8'));
 const bf = parseYaml(readFileSync('examples/black-friday.yaml', 'utf8'));
 const variants = parseYaml(readFileSync('examples/shop-variants.yaml', 'utf8'));
@@ -92,75 +96,72 @@ const CASES: Case[] = [
   call('review_capacity', { workspace: ws('n'), draws: 3 }, true),
 ];
 
-const walk = (d: string): string[] => readdirSync(d).sort().flatMap((f) => (statSync(`${d}/${f}`).isDirectory() ? walk(`${d}/${f}`) : [`${d}/${f}`]));
 const mask = (s: string) =>
   s
     .replace(/(in |· )\d+ ms/g, '$1# ms')
     .replace(/(\\*"wallMs\\*": ?)\d+(\.\d+)?/g, '$1#')
     .replace(/(\\*"measuredAt\\*": ?)\\*"[^"\\]*\\*"/g, '$1#')
-    .replace(/mcp-parity-\w+/g, 'mcp-parity-X')
-    .replace(/\/OUT[12]\//g, '/OUT/')
-    .replace(/127\.0\.0\.1(%3A|:)1910[12]/g, '127.0.0.1$1PORT');
+    .replace(/127\.0\.0\.1(%3A|:)19101/g, '127.0.0.1$1PORT')
+    .replaceAll(realpathSync(out), '$OUT')
+    .replaceAll(out, '$OUT')
+    .replaceAll(process.cwd(), '$CWD');
 
-async function run(tag: '1' | '2') {
-  const root = `${out}/OUT${tag}`;
+interface Golden {
+  /** each case: its notifications and its response, masked */
+  cases: Record<string, string[]>;
+  files: Record<string, Stored>;
+}
+
+async function run(record: boolean): Promise<Golden> {
   mkdirSync(`${root}/ws-v`, { recursive: true });
   copyFileSync('reference/hotrod/dataset.json', `${root}/ws-v/dataset.json`);
   mkdirSync(`${root}/ws-n`, { recursive: true });
   writeFileSync(`${root}/ws-n/dataset.json`, JSON.stringify(JSON.parse(readFileSync('public/reference/k8s-shop.json', 'utf8')).dataset));
   // "collected N hours ago" reads the file's mtime
   for (const k of ['v', 'n']) utimesSync(`${root}/ws-${k}/dataset.json`, 1791400000, 1791400000);
-  const msgs = [...handshake, ...CASES.map(([, method, params], i) => ({ jsonrpc: '2.0', id: 100 + i, method, ...(params ? { params: JSON.parse(JSON.stringify(params).replaceAll('/OUT/', `/OUT${tag}/`)) } : {}) }))];
-  const env = { NO_COLOR: '', HINDCAST_NOW: '1791500000', HINDCAST_KUBECTL: 'test/cli-fixtures/fake-kubectl.mjs', HINDCAST_SERVE_PORT: `1910${tag}` };
-  const lines = tag === '1' ? await session('npx', ['tsx', 'mcp/server.ts'], msgs, env) : await session(BIN, ['mcp'], msgs, env);
-  const files = existsSync(root) ? walk(root).map((x) => `${x.replace(/OUT[12]/, 'OUT')}\n${mask(readFileSync(x, 'utf8'))}`) : [];
-  // each case: its notifications and its response, in order
-  const byCase = new Map<number, string[]>();
+  const seeded = snapshot(root, mask);
+  const msgs = [...handshake, ...CASES.map(([, method, params], i) => ({ jsonrpc: '2.0', id: 100 + i, method, ...(params ? { params } : {}) }))];
+  const env = { NO_COLOR: '', HINDCAST_NOW: '1791500000', HINDCAST_KUBECTL: 'test/cli-fixtures/fake-kubectl.mjs', HINDCAST_SERVE_PORT: '19101' };
+  const lines = record ? await session('npx', ['tsx', 'mcp/server.ts'], msgs, env) : await session(BIN, ['mcp'], msgs, env);
+  // a call's name: its label, and a hash of everything it sent (labels are cut short)
+  const key = ([l, method, params]: Case) => `${mask(l)} [${createHash('sha256').update(mask(JSON.stringify([method, params ?? null]))).digest('hex').slice(0, 8)}]`;
+  const labels = new Map<number, string>([[1, 'initialize'], ...CASES.map((c, i) => [100 + i, key(c)] as [number, string])]);
+  const cases: Record<string, string[]> = {};
   let pending: string[] = [];
   for (const l of lines) {
     const s = mask(JSON.stringify(l));
     if ('id' in l) {
-      byCase.set(l.id as number, [...pending, s]);
+      cases[labels.get(l.id as number) ?? String(l.id)] = [...pending, s];
       pending = [];
     } else pending.push(s);
   }
-  return { byCase, files };
+  return { cases, files: changed(seeded, snapshot(root, mask)) };
 }
 
+const record = process.argv.includes('--record');
+const filter = process.argv.slice(2).find((a) => !a.startsWith('--'));
 const tel = spawn('node', ['test/cli-fixtures/mock-telemetry.mjs', '19091'], { stdio: 'ignore' });
 spawnSync('sleep', ['0.5']);
-const filter = process.argv[2];
-const ts = await run('1');
-const rs = await run('2');
+const got = await run(record);
 tel.kill();
-let failed = 0;
-const diff = (k: string, a: string, b: string) => {
-  let j = 0;
-  while (j < a.length && a[j] === b[j]) j++;
-  const cut = (t: string) => (j > 150 ? '…' : '') + t.slice(Math.max(0, j - 150), j + 150);
-  console.log(`  ${k} column ${j + 1}:\n    node: ${JSON.stringify(cut(a))}\n    rust: ${JSON.stringify(cut(b))}`);
-};
-for (const [id, label] of [[1, 'initialize'] as const, ...CASES.map(([l], i) => [100 + i, l] as const)]) {
-  if (filter && !label.includes(filter)) continue;
-  const a = (ts.byCase.get(id) ?? ['(no answer)']).join('\n');
-  const b = (rs.byCase.get(id) ?? ['(no answer)']).join('\n');
-  if (a === b) {
-    console.log(`ok    ${label}`);
-    continue;
+if (record) {
+  write(GOLDEN, got);
+  console.log(`recorded ${Object.keys(got.cases).length} calls in ${GOLDEN}`);
+} else {
+  const want = read<Golden>(GOLDEN);
+  let failed = 0;
+  for (const [label, w] of Object.entries(want.cases)) {
+    if (filter && !label.includes(filter)) continue;
+    const d = firstDiff('message', w.join('\n'), (got.cases[label] ?? ['(no answer)']).join('\n'));
+    if (!d) console.log(`ok    ${label}`);
+    else failed++, console.log(`DIFF  ${label}\n${d}`);
   }
-  failed++;
-  console.log(`DIFF  ${label}`);
-  diff('message', a, b);
-}
-if (!filter) {
-  const a = ts.files.join('\n---\n');
-  const b = rs.files.join('\n---\n');
-  if (a === b) console.log(`ok    files written (${ts.files.length})`);
-  else {
-    failed++;
-    console.log('DIFF  files written');
-    diff('files', a, b);
+  for (const label of Object.keys(got.cases)) if (!(label in want.cases)) failed++, console.log(`NEW   ${label}  (no golden output: --record)`);
+  if (!filter) {
+    const d = firstDiff('files', want.files, got.files);
+    if (!d) console.log(`ok    files written (${Object.keys(want.files).length})`);
+    else failed++, console.log(`DIFF  files written\n${d}`);
   }
+  console.log(failed ? `\n${failed} differ` : '\nall match');
+  process.exitCode = failed ? 1 : 0;
 }
-console.log(failed ? `\n${failed} differ` : '\nall match');
-process.exitCode = failed ? 1 : 0;
