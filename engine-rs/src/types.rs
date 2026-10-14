@@ -15,7 +15,7 @@ fn num<'de, D: serde::Deserializer<'de>>(d: D) -> Result<f64, D::Error> {
     Ok(Option::<f64>::deserialize(d)?.unwrap_or(0.0))
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct AutoscalePolicy {
     #[serde(default, deserialize_with = "num")]
@@ -30,27 +30,37 @@ pub struct AutoscalePolicy {
     pub cooldown_s: f64,
     #[serde(default, deserialize_with = "num")]
     pub interval_s: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub metric_window_s: Option<f64>,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Fault {
     #[serde(default, deserialize_with = "num")]
     pub at: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub until: Option<f64>,
     pub service: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub capacity: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub down: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub extra_ms: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub error_rate: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub no_scale_out: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub warmup_factor: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub replicas_lost: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Cpu {
     #[serde(default, deserialize_with = "num")]
@@ -59,7 +69,7 @@ pub struct Cpu {
     pub per_req: f64,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Memory {
     #[serde(default, deserialize_with = "num")]
@@ -74,7 +84,7 @@ pub struct Memory {
     pub seen_to: Option<f64>,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Requests {
     #[serde(default, deserialize_with = "num")]
@@ -83,7 +93,7 @@ pub struct Requests {
     pub memory_gb: f64,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Cache {
     #[serde(default, deserialize_with = "num")]
@@ -94,16 +104,20 @@ pub struct Cache {
     pub cost_per_hour: f64,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ServicePlan {
     pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub hosted_by: Option<String>,
     pub replicas: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub observed_replicas: Option<Vec<Num>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub autoscale: Option<AutoscalePolicy>,
     #[serde(default, deserialize_with = "num")]
     pub per_replica_rps: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub overloaded_rps: Option<f64>,
     #[serde(default, deserialize_with = "num")]
     pub servers: f64,
@@ -113,22 +127,29 @@ pub struct ServicePlan {
     pub self_p99: f64,
     #[serde(default, deserialize_with = "num")]
     pub tail: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub variability: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub load_exponent: Option<f64>,
     pub cpu: Option<Cpu>,
     pub cpu_limit: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub memory: Option<Memory>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub requests: Option<Requests>,
     #[serde(default, deserialize_with = "num")]
     pub replica_hour: f64,
     #[serde(default, deserialize_with = "num")]
     pub per_request: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cache: Option<Cache>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub zone: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub region: Option<String>,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Stall {
     pub service: String,
@@ -136,7 +157,7 @@ pub struct Stall {
     pub limit: f64,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Retries {
     #[serde(default, deserialize_with = "num")]
@@ -145,7 +166,7 @@ pub struct Retries {
     pub budget: f64,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct EndpointPlan {
     pub id: String,
@@ -157,24 +178,30 @@ pub struct EndpointPlan {
     pub overhead_ms: f64,
     #[serde(default, deserialize_with = "num")]
     pub base_excess_ms: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub base_p50_ms: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub base_p90_ms: Option<f64>,
     #[serde(default, deserialize_with = "num")]
     pub tail: f64,
     #[serde(default, deserialize_with = "num")]
     pub error_rate: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub error_slope: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub stalls: Option<Vec<Stall>>,
     pub bytes: Map<f64>,
     #[serde(default, deserialize_with = "num")]
     pub egress_bytes: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub retries: Option<Retries>,
     #[serde(default, deserialize_with = "num")]
     pub timeout_ms: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub slo: Option<crate::model::Slo>,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Node {
     #[serde(default, deserialize_with = "num")]
@@ -185,7 +212,7 @@ pub struct Node {
     pub per_hour: f64,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Others {
     #[serde(default, deserialize_with = "num")]
@@ -194,7 +221,7 @@ pub struct Others {
     pub memory_gb: f64,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ClusterPlan {
     pub node: Node,
@@ -214,7 +241,7 @@ pub struct ClusterPlan {
     pub provision_s: f64,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Transfer {
     #[serde(default, deserialize_with = "num")]
@@ -223,21 +250,25 @@ pub struct Transfer {
     pub cross_region_gb: f64,
     #[serde(default, deserialize_with = "num")]
     pub internet_gb: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Plan {
     pub services: Map<ServicePlan>,
     pub endpoints: Map<EndpointPlan>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cluster: Option<ClusterPlan>,
     pub transfer: Transfer,
     #[serde(default, deserialize_with = "num")]
     pub unattributed_per_hour: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub slo: Option<crate::model::Slo>,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Traffic {
     #[serde(default, deserialize_with = "num")]
@@ -249,10 +280,12 @@ pub struct Traffic {
     pub endpoints: Map<Vec<Num>>,
 }
 
-#[derive(Deserialize, Clone, Debug, Default)]
+#[derive(Deserialize, Serialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Opts {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub substep_s: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub faults: Option<Vec<Fault>>,
 }
 

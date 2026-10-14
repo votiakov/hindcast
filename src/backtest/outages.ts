@@ -3,6 +3,13 @@ import type { Model } from './model';
 import type { Fault } from './engine';
 import { backtest, type BacktestResult } from './backtest';
 
+/** compiled implementations (src/backtest/native.ts sets them) */
+const native: { outageScenario?: typeof outageScenarioTs } = {};
+export function setNativeOutages(n: typeof native | null) {
+  for (const k of Object.keys(native) as (keyof typeof native)[]) delete native[k];
+  if (n) Object.assign(native, n);
+}
+
 /**
  * Famous public outages as replayable datasets: "would your design have survived it?"
  *
@@ -203,7 +210,12 @@ export interface OutageReplay {
 }
 
 /** the outage as a dataset + faults for a given model */
+/** compiled (engine-rs) once loaded; the TypeScript one below is the reference */
 export function outageScenario(model: Model, outage: Outage, opts: { baseRps?: number; roles?: Partial<Record<Role, string[]>> } = {}): OutageReplay {
+  return native.outageScenario ? native.outageScenario(model, outage, opts) : outageScenarioTs(model, outage, opts);
+}
+
+export function outageScenarioTs(model: Model, outage: Outage, opts: { baseRps?: number; roles?: Partial<Record<Role, string[]>> } = {}): OutageReplay {
   const base = opts.baseRps ?? model.traffic?.p90 ?? 10;
   const n = Math.round((outage.minutes * 60) / outage.stepS);
   const start = Math.floor(Date.parse(outage.start) / 1000);

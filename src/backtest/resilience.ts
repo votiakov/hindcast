@@ -6,6 +6,13 @@ import { scaleTraffic, trafficOf } from './calibrate';
 import { applyStrategy, StrategySpec } from './strategy';
 import { basePlan } from './engine';
 
+/** compiled implementations (src/backtest/native.ts sets them) */
+const native: { nodeLoss?: typeof nodeLossTs; nodeLossFaults?: typeof nodeLossFaultsTs; podsPerNode?: typeof podsPerNodeTs } = {};
+export function setNativeResilience(n: typeof native | null) {
+  for (const k of Object.keys(native) as (keyof typeof native)[]) delete native[k];
+  if (n) Object.assign(native, n);
+}
+
 /**
  * Losing a Kubernetes node at the worst moment: every pod on it goes at once. Services left with no
  * replica are down; the rest lose that share of their capacity and the survivors take the load.
@@ -48,7 +55,12 @@ export interface NodeLossResult {
 
 const RECOVER_S = 50 + 300 + 30;
 
-export function nodeLoss(model: Model, d: Dataset, o: NodeLossOptions = {}) {
+/** compiled (engine-rs) once loaded; the TypeScript one below is the reference */
+export function nodeLoss(model: Model, d: Dataset, o: NodeLossOptions = {}): ReturnType<typeof nodeLossTs> {
+  return native.nodeLoss ? native.nodeLoss(model, d, o) : nodeLossTs(model, d, o);
+}
+
+export function nodeLossTs(model: Model, d: Dataset, o: NodeLossOptions = {}) {
   let spread = o.pods ? Object.fromEntries(Object.entries(o.pods).filter(([id]) => model.services[id] && !model.services[id].hostedBy)) : podsPerNode(model, o.strategy);
   if (o.zones) {
     // a zone is one big node: every pod in it goes at once
@@ -120,7 +132,12 @@ export function nodeLoss(model: Model, d: Dataset, o: NodeLossOptions = {}) {
 
 /** the faults one node's loss puts on a history: from `atS` seconds in (default a minute before its
  *  busiest moment) until the pods are replaced (`recoverS`, null: never) */
-export function nodeLossFaults(model: Model, d: Dataset, node: string, o: { atS?: number; recoverS?: number | null; pods?: Record<string, Record<string, number>> } = {}) {
+/** compiled (engine-rs) once loaded; the TypeScript one below is the reference */
+export function nodeLossFaults(model: Model, d: Dataset, node: string, o: { atS?: number; recoverS?: number | null; pods?: Record<string, Record<string, number>> } = {}): ReturnType<typeof nodeLossFaultsTs> {
+  return native.nodeLossFaults ? native.nodeLossFaults(model, d, node, o) : nodeLossFaultsTs(model, d, node, o);
+}
+
+export function nodeLossFaultsTs(model: Model, d: Dataset, node: string, o: { atS?: number; recoverS?: number | null; pods?: Record<string, Record<string, number>> } = {}) {
   const spread = o.pods ?? podsPerNode(model);
   const traffic = trafficOf(d, model);
   let peak = 0;
@@ -142,7 +159,12 @@ export function nodeLossFaults(model: Model, d: Dataset, node: string, o: { atS?
 }
 
 /** pods per node per service: as collected, or for a strategy's new replica counts spread evenly */
+/** compiled (engine-rs) once loaded; the TypeScript one below is the reference */
 export function podsPerNode(model: Model, strategy?: unknown): Record<string, Record<string, number>> {
+  return native.podsPerNode ? native.podsPerNode(model, strategy) : podsPerNodeTs(model, strategy);
+}
+
+export function podsPerNodeTs(model: Model, strategy?: unknown): Record<string, Record<string, number>> {
   const out: Record<string, Record<string, number>> = {};
   for (const [id, s] of Object.entries(model.services)) if (s.pods && !s.hostedBy) out[id] = { ...s.pods };
   if (!strategy) return out;

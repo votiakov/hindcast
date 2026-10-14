@@ -190,7 +190,7 @@ pub fn base_plan(model: &Model, observed: Option<&Map<Option<Vec<Num>>>>) -> Pla
                 load_exponent: s.load_exponent,
                 cpu: s.cpu.as_ref().map(|c| Cpu { base: c.base, per_req: c.per_req }),
                 cpu_limit: s.cpu_limit,
-                memory: s.memory.as_ref().and_then(|m| m.limit.filter(|l| *l != 0.0 && !l.is_nan()).map(|limit| Memory { base: m.base, per_req: m.per_req, spike: m.spike, limit, peak: Some(m.peak), seen_to: m.seen_to })),
+                memory: s.memory.as_ref().and_then(|m| m.limit.filter(|l| *l != 0.0 && !l.is_nan()).map(|limit| Memory { base: m.base, per_req: m.per_req, spike: m.spike, limit, peak: m.peak, seen_to: m.seen_to })),
                 requests: s.requests.as_ref().map(|r| Requests { cpu: r.cpu, memory_gb: r.memory_gb }),
                 replica_hour: s.cost.per_replica_hour,
                 per_request: s.cost.per_request,

@@ -2,6 +2,13 @@ import type { Num } from './dataset';
 import type { Model } from './model';
 import { mmcWait } from './queueing';
 
+/** compiled implementations (src/backtest/native.ts sets them) */
+const nativePlan: { basePlan?: typeof basePlanTs } = {};
+export function setNativePlan(n: typeof nativePlan | null) {
+  for (const k of Object.keys(nativePlan) as (keyof typeof nativePlan)[]) delete nativePlan[k];
+  if (n) Object.assign(nativePlan, n);
+}
+
 /**
  * Backtest engine: replays real traffic, bucket by bucket, through a calibrated model.
  *
@@ -750,7 +757,12 @@ export function runPlanTs(plan: Plan, traffic: Traffic, opts: RunOpts = {}): Run
 export const cfsStallMs = (limit: number | null) => (limit && limit < 1 ? (1 - limit) * 100 : 0);
 
 /** a plan that reproduces the model as it was (observed replicas, no changes) */
+/** compiled (engine-rs) once loaded; the TypeScript one below is the reference */
 export function basePlan(model: Model, observed?: Record<string, Num[] | undefined>): Plan {
+  return nativePlan.basePlan ? nativePlan.basePlan(model, observed) : basePlanTs(model, observed);
+}
+
+export function basePlanTs(model: Model, observed?: Record<string, Num[] | undefined>): Plan {
   const services: Record<string, ServicePlan> = {};
   for (const [id, s] of Object.entries(model.services)) {
     services[id] = {

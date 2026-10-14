@@ -6,6 +6,13 @@ import { calibrate, observedReplicas, trafficOf, type CalibrateOptions } from '.
 import { applyStrategy } from './strategy';
 import { drawPlan, rng } from './backtest';
 
+/** compiled implementations (src/backtest/native.ts sets them) */
+const native: { modelBreakingPoint?: typeof modelBreakingPointTs; holdoutAccuracy?: typeof holdoutAccuracyTs; referenceAccuracy?: typeof referenceAccuracyTs } = {};
+export function setNativeAccuracy(n: typeof native | null) {
+  for (const k of Object.keys(native) as (keyof typeof native)[]) delete native[k];
+  if (n) Object.assign(native, n);
+}
+
 /**
  * How good is the model? Every claim is checked against something measured:
  *
@@ -216,7 +223,12 @@ export function plateauBreakingPoint(r: ReturnType<typeof runPlan>, log: Request
 const asObs = (r: ReturnType<typeof runPlan>): Obs => ({ rps: r.rps, p99Ms: r.p99Ms, errorRate: r.errorRate });
 
 /** model-only breaking point: step the traffic up with the endpoint mix until the SLO breaks */
+/** compiled (engine-rs) once loaded; the TypeScript one below is the reference */
 export function modelBreakingPoint(model: Model, plan: Plan = basePlan(model), opts: { maxRps?: number; steps?: number; holdS?: number } = {}): { rps: number; limitedBy: string | null } {
+  return native.modelBreakingPoint ? native.modelBreakingPoint(model, plan, opts) : modelBreakingPointTs(model, plan, opts);
+}
+
+export function modelBreakingPointTs(model: Model, plan: Plan = basePlan(model), opts: { maxRps?: number; steps?: number; holdS?: number } = {}): { rps: number; limitedBy: string | null } {
   const shares = Object.entries(model.endpoints).map(([id, e]) => [id, e.share] as const);
   // capacity guess to size the ramp: the smallest per-service limit given visits
   let guess = Infinity;
@@ -291,7 +303,12 @@ export function holdoutCut(d: Dataset, share: number): number {
 }
 
 /** calibrate on the first part, predict the rest */
+/** compiled (engine-rs) once loaded; the TypeScript one below is the reference */
 export function holdoutAccuracy(d: Dataset, opts: CalibrateOptions & { holdout?: number; requests?: RequestLog } = {}): AccuracyRecord {
+  return native.holdoutAccuracy ? native.holdoutAccuracy(d, opts) : holdoutAccuracyTs(d, opts);
+}
+
+export function holdoutAccuracyTs(d: Dataset, opts: CalibrateOptions & { holdout?: number; requests?: RequestLog } = {}): AccuracyRecord {
   const cut = holdoutCut(d, opts.holdout ?? 0.3);
   const train = sliceDataset(d, 0, cut);
   const test = sliceDataset(d, cut, d.n);
@@ -350,7 +367,12 @@ export interface ReferenceRun {
 }
 
 /** predict recorded runs the model never saw */
+/** compiled (engine-rs) once loaded; the TypeScript one below is the reference */
 export function referenceAccuracy(model: Model, runs: ReferenceRun[], label: string): AccuracyRecord {
+  return native.referenceAccuracy ? native.referenceAccuracy(model, runs, label) : referenceAccuracyTs(model, runs, label);
+}
+
+export function referenceAccuracyTs(model: Model, runs: ReferenceRun[], label: string): AccuracyRecord {
   const checks: AccuracyCheck[] = [];
   for (const run of runs) {
     const base = basePlan(model);

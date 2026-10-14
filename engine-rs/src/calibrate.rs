@@ -714,13 +714,13 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
             let base = if follows { fit.as_ref().unwrap().intercept.max(0.0) } else { median(&ys) };
             let per_req = if follows { fit.as_ref().unwrap().slope } else { 0.0 };
             let spike = js_max(0.0, ys.iter().zip(&xs).map(|(y, x)| y - (base + per_req * x)));
-            let m = MemoryModel { base, per_req, spike, peak: js_max(f64::NEG_INFINITY, ys.iter().copied()), limit: mem_limit, r2: fit.as_ref().map(|f| f.r2).unwrap_or(0.0), seen_to: Some(js_max(f64::NEG_INFINITY, xs.iter().copied())) };
+            let m = MemoryModel { base, per_req, spike, peak: Some(js_max(f64::NEG_INFINITY, ys.iter().copied())), limit: mem_limit, r2: fit.as_ref().map(|f| f.r2).unwrap_or(0.0), seen_to: Some(js_max(f64::NEG_INFINITY, xs.iter().copied())) };
             if let Some(ml) = truthy(mem_limit) {
                 notes.push(format!(
                     "memory: peaks at {} MiB per container against a {} MiB limit ({}%){}",
-                    js_num(js_round(m.peak * 1024.0)),
+                    js_num(js_round(m.peak.unwrap() * 1024.0)),
                     js_num(js_round(ml * 1024.0)),
-                    js_num(js_round((m.peak / ml) * 100.0)),
+                    js_num(js_round((m.peak.unwrap() / ml) * 100.0)),
                     if follows { format!(", +{} MiB per 100 req/s per replica", js_to_fixed(per_req * 1024.0 * 100.0, 1)) } else { ", flat with load".into() }
                 ));
             }

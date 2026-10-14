@@ -505,14 +505,15 @@ pub fn apply_strategy(model: &Model, base: &Plan, spec: &StrategySpec) -> Result
             }
             if let Some(mem_gb) = ch.memory_gb {
                 if let Some(mm) = &m.memory {
-                    s.memory = Some(Memory { base: mm.base, per_req: mm.per_req, spike: mm.spike, limit: mem_gb, peak: Some(mm.peak), seen_to: mm.seen_to });
-                    let head = mem_gb - mm.peak;
+                    s.memory = Some(Memory { base: mm.base, per_req: mm.per_req, spike: mm.spike, limit: mem_gb, peak: mm.peak, seen_to: mm.seen_to });
+                    let peak = mm.peak.unwrap_or(0.0);
+                    let head = mem_gb - peak;
                     notes.push(format!(
                         "{}: memory limit {}{} MiB; the history's peak working set was {} MiB per container ({})",
                         id,
                         mm.limit.filter(|l| *l != 0.0 && !l.is_nan()).map(|l| format!("{} → ", js_num(js_round(l * 1024.0)))).unwrap_or_default(),
                         js_num(js_round(mem_gb * 1024.0)),
-                        js_num(js_round(mm.peak * 1024.0)),
+                        js_num(js_round(peak * 1024.0)),
                         if head >= 0.0 { format!("{} MiB of headroom", js_num(js_round(head * 1024.0))) } else { format!("{} MiB over: it would be OOM-killed", js_num(js_round(-head * 1024.0))) }
                     ));
                 } else {

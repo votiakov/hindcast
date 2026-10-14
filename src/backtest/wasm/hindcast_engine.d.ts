@@ -13,6 +13,42 @@ export function backtest(model: any, dataset: any, strategies: any, opts: any): 
  */
 export function calibrate(dataset: any, options: any): any;
 /**
+ * basePlan(model, observed?) → Plan
+ */
+export function basePlan(model: any, observed: any): any;
+/**
+ * applyStrategy(model, plan, spec) → { plan, notes }
+ */
+export function applyStrategy(model: any, plan: any, spec: any): any;
+/**
+ * modelBreakingPoint(model, plan?, opts?) → { rps, limitedBy }
+ */
+export function modelBreakingPoint(model: any, plan: any, opts: any): any;
+/**
+ * holdoutAccuracy(dataset, opts) → AccuracyRecord
+ */
+export function holdoutAccuracy(dataset: any, opts: any, holdout: number | null | undefined, requests: any): any;
+/**
+ * referenceAccuracy(model, runs, label) → AccuracyRecord
+ */
+export function referenceAccuracy(model: any, runs: any, label: string): any;
+/**
+ * nodeLoss(model, dataset, opts) → the node-loss report
+ */
+export function nodeLoss(model: any, dataset: any, opts: any): any;
+/**
+ * nodeLossFaults(model, dataset, node, atS?, recoverS (undefined: default, null: never), pods?)
+ */
+export function nodeLossFaults(model: any, dataset: any, node: string, at_s: number | null | undefined, recover_s: any, pods: any): any;
+/**
+ * podsPerNode(model, strategy?)
+ */
+export function podsPerNode(model: any, strategy: any): any;
+/**
+ * outageScenario(model, outage, baseRps?, roles?) → { dataset, faults, roles, warnings, baseRps }
+ */
+export function outageScenario(model: any, outage: any, base_rps: number | null | undefined, roles: any): any;
+/**
  * the same replay with the long series packed: the plan without its observed replicas, the
  * traffic without its series; `series` holds each endpoint's n values (null as 0), then each
  * service's observed replicas (null as NaN) at the offsets in `observed`. Returns
@@ -27,6 +63,15 @@ export interface InitOutput {
   readonly runPlan: (a: any, b: any, c: any) => [number, number, number];
   readonly backtest: (a: any, b: any, c: any, d: any) => [number, number, number];
   readonly calibrate: (a: any, b: any) => [number, number, number];
+  readonly basePlan: (a: any, b: any) => [number, number, number];
+  readonly applyStrategy: (a: any, b: any, c: any) => [number, number, number];
+  readonly modelBreakingPoint: (a: any, b: any, c: any) => [number, number, number];
+  readonly holdoutAccuracy: (a: any, b: any, c: number, d: number, e: any) => [number, number, number];
+  readonly referenceAccuracy: (a: any, b: any, c: number, d: number) => [number, number, number];
+  readonly nodeLoss: (a: any, b: any, c: any) => [number, number, number];
+  readonly nodeLossFaults: (a: any, b: any, c: number, d: number, e: number, f: number, g: any, h: any) => [number, number, number];
+  readonly podsPerNode: (a: any, b: any) => [number, number, number];
+  readonly outageScenario: (a: any, b: any, c: number, d: number, e: any) => [number, number, number];
   readonly runPlanPacked: (a: any, b: any, c: number, d: number, e: any, f: number, g: number, h: any) => [number, number, number];
   readonly __wbindgen_exn_store: (a: number) => void;
   readonly __externref_table_alloc: () => number;

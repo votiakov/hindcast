@@ -2,6 +2,13 @@ import { z } from 'zod';
 import type { Model } from './model';
 import type { Plan } from './engine';
 
+/** compiled implementations (src/backtest/native.ts sets them) */
+const native: { applyStrategy?: typeof applyStrategyTs } = {};
+export function setNativeStrategy(n: typeof native | null) {
+  for (const k of Object.keys(native) as (keyof typeof native)[]) delete native[k];
+  if (n) Object.assign(native, n);
+}
+
 /**
  * A strategy: an infrastructure change, written as a readable YAML file, that the backtest replays
  * over real history. Each change targets one service (or endpoint) and says what would be different.
@@ -89,7 +96,12 @@ export interface Applied {
   notes: string[];
 }
 
+/** compiled (engine-rs) once loaded; the TypeScript one below is the reference */
 export function applyStrategy(model: Model, base: Plan, input: unknown): Applied {
+  return native.applyStrategy ? native.applyStrategy(model, base, input) : applyStrategyTs(model, base, input);
+}
+
+export function applyStrategyTs(model: Model, base: Plan, input: unknown): Applied {
   const spec = StrategySpec.parse(input);
   const plan: Plan = { ...base, services: Object.fromEntries(Object.entries(base.services).map(([k, v]) => [k, { ...v }])), endpoints: Object.fromEntries(Object.entries(base.endpoints).map(([k, v]) => [k, { ...v }])) };
   const notes: string[] = [];

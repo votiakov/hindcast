@@ -2,12 +2,14 @@
 //! WebAssembly for the browser, the CLI and the MCP server. The TypeScript engine stays as the
 //! reference: test/engine-parity.test.ts runs both on the same plans and compares every series.
 
+pub mod accuracy;
 pub mod backtest;
 pub mod calibrate;
 pub mod dataset;
 pub mod engine;
 pub mod math;
 pub mod model;
+pub mod resilience;
 pub mod strategy;
 pub mod types;
 
@@ -78,6 +80,115 @@ mod wasm {
         let model = crate::calibrate::calibrate(&dataset, &options);
         let ser = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true).serialize_missing_as_null(true);
         Ok(model.serialize(&ser)?)
+    }
+
+    fn ser() -> serde_wasm_bindgen::Serializer {
+        serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true).serialize_missing_as_null(true)
+    }
+    fn from<T: serde::de::DeserializeOwned>(v: JsValue) -> Result<T, JsValue> {
+        Ok(serde_wasm_bindgen::from_value(v)?)
+    }
+    fn opt<T: serde::de::DeserializeOwned + Default>(v: JsValue) -> Result<T, JsValue> {
+        if v.is_undefined() || v.is_null() {
+            Ok(T::default())
+        } else {
+            from(v)
+        }
+    }
+    fn err(e: String) -> JsValue {
+        JsValue::from(js_sys::Error::new(&e))
+    }
+
+    /// basePlan(model, observed?) → Plan
+    #[wasm_bindgen(js_name = basePlan)]
+    pub fn base_plan(model: JsValue, observed: JsValue) -> Result<JsValue, JsValue> {
+        let model: crate::model::Model = from(model)?;
+        let observed: Option<crate::types::Map<Option<Vec<crate::types::Num>>>> = if observed.is_undefined() || observed.is_null() { None } else { Some(from(observed)?) };
+        Ok(crate::backtest::base_plan(&model, observed.as_ref()).serialize(&ser())?)
+    }
+
+    /// applyStrategy(model, plan, spec) → { plan, notes }
+    #[wasm_bindgen(js_name = applyStrategy)]
+    pub fn apply_strategy(model: JsValue, plan: JsValue, spec: JsValue) -> Result<JsValue, JsValue> {
+        let model: crate::model::Model = from(model)?;
+        let plan: crate::types::Plan = from(plan)?;
+        let spec: serde_json::Value = from(spec)?;
+        let a = crate::strategy::apply_strategy(&model, &plan, &crate::strategy::parse_strategy(&spec).map_err(err)?).map_err(err)?;
+        #[derive(Serialize)]
+        struct Out {
+            plan: crate::types::Plan,
+            notes: Vec<String>,
+        }
+        Ok(Out { plan: a.plan, notes: a.notes }.serialize(&ser())?)
+    }
+
+    /// modelBreakingPoint(model, plan?, opts?) → { rps, limitedBy }
+    #[wasm_bindgen(js_name = modelBreakingPoint)]
+    pub fn model_breaking_point(model: JsValue, plan: JsValue, opts: JsValue) -> Result<JsValue, JsValue> {
+        #[derive(serde::Deserialize, Default)]
+        #[serde(rename_all = "camelCase")]
+        struct O {
+            max_rps: Option<f64>,
+            steps: Option<f64>,
+            hold_s: Option<f64>,
+        }
+        let model: crate::model::Model = from(model)?;
+        let plan: Option<crate::types::Plan> = if plan.is_undefined() || plan.is_null() { None } else { Some(from(plan)?) };
+        let o: O = opt(opts)?;
+        Ok(crate::accuracy::model_breaking_point(&model, plan.as_ref(), o.max_rps, o.steps, o.hold_s).serialize(&ser())?)
+    }
+
+    /// holdoutAccuracy(dataset, opts) → AccuracyRecord
+    #[wasm_bindgen(js_name = holdoutAccuracy)]
+    pub fn holdout_accuracy(dataset: JsValue, opts: JsValue, holdout: Option<f64>, requests: JsValue) -> Result<JsValue, JsValue> {
+        let d: crate::dataset::Dataset = from(dataset)?;
+        let o: crate::calibrate::CalibrateOptions = opt(opts)?;
+        let log: Option<crate::accuracy::RequestLog> = if requests.is_undefined() || requests.is_null() { None } else { Some(from(requests)?) };
+        Ok(crate::accuracy::holdout_accuracy(&d, &o, holdout, log.as_ref()).serialize(&ser())?)
+    }
+
+    /// referenceAccuracy(model, runs, label) → AccuracyRecord
+    #[wasm_bindgen(js_name = referenceAccuracy)]
+    pub fn reference_accuracy(model: JsValue, runs: JsValue, label: String) -> Result<JsValue, JsValue> {
+        let model: crate::model::Model = from(model)?;
+        let runs: Vec<crate::accuracy::ReferenceRun> = from(runs)?;
+        Ok(crate::accuracy::reference_accuracy(&model, &runs, &label).map_err(err)?.serialize(&ser())?)
+    }
+
+    /// nodeLoss(model, dataset, opts) → the node-loss report
+    #[wasm_bindgen(js_name = nodeLoss)]
+    pub fn node_loss(model: JsValue, dataset: JsValue, opts: JsValue) -> Result<JsValue, JsValue> {
+        let model: crate::model::Model = from(model)?;
+        let d: crate::dataset::Dataset = from(dataset)?;
+        let o: crate::resilience::NodeLossOptions = opt(opts)?;
+        Ok(crate::resilience::node_loss(&model, &d, &o).map_err(err)?.serialize(&ser())?)
+    }
+
+    /// nodeLossFaults(model, dataset, node, atS?, recoverS (undefined: default, null: never), pods?)
+    #[wasm_bindgen(js_name = nodeLossFaults)]
+    pub fn node_loss_faults(model: JsValue, dataset: JsValue, node: String, at_s: Option<f64>, recover_s: JsValue, pods: JsValue) -> Result<JsValue, JsValue> {
+        let model: crate::model::Model = from(model)?;
+        let d: crate::dataset::Dataset = from(dataset)?;
+        let recover: Option<Option<f64>> = if recover_s.is_undefined() { None } else if recover_s.is_null() { Some(None) } else { Some(recover_s.as_f64()) };
+        let pods: Option<crate::types::Map<crate::types::Map<f64>>> = if pods.is_undefined() || pods.is_null() { None } else { Some(from(pods)?) };
+        Ok(crate::resilience::node_loss_faults(&model, &d, &node, at_s, recover, pods.as_ref()).map_err(err)?.serialize(&ser())?)
+    }
+
+    /// podsPerNode(model, strategy?)
+    #[wasm_bindgen(js_name = podsPerNode)]
+    pub fn pods_per_node(model: JsValue, strategy: JsValue) -> Result<JsValue, JsValue> {
+        let model: crate::model::Model = from(model)?;
+        let s: Option<serde_json::Value> = if strategy.is_undefined() || strategy.is_null() { None } else { Some(from(strategy)?) };
+        Ok(crate::resilience::pods_per_node(&model, s.as_ref()).map_err(err)?.serialize(&ser())?)
+    }
+
+    /// outageScenario(model, outage, baseRps?, roles?) → { dataset, faults, roles, warnings, baseRps }
+    #[wasm_bindgen(js_name = outageScenario)]
+    pub fn outage_scenario(model: JsValue, outage: JsValue, base_rps: Option<f64>, roles: JsValue) -> Result<JsValue, JsValue> {
+        let model: crate::model::Model = from(model)?;
+        let outage: crate::resilience::Outage = from(outage)?;
+        let roles: crate::types::Map<Vec<String>> = opt(roles)?;
+        Ok(crate::resilience::outage_scenario(&model, &outage, base_rps, &roles).serialize(&ser())?)
     }
 
     /// the same replay with the long series packed: the plan without its observed replicas, the

@@ -1,4 +1,12 @@
-import init, { initSync, runPlanPacked, backtest as wasmBacktest, calibrate as wasmCalibrate } from './wasm/hindcast_engine.js';
+import init, * as wasm from './wasm/hindcast_engine.js';
+import { initSync, runPlanPacked, backtest as wasmBacktest, calibrate as wasmCalibrate } from './wasm/hindcast_engine.js';
+import { setNativeAccuracy, type ReferenceRun, type RequestLog } from './accuracy';
+import { setNativeResilience, type NodeLossOptions } from './resilience';
+import { setNativeOutages, type Outage, type OutageReplay, type Role } from './outages';
+import { setNativeStrategy, type Applied } from './strategy';
+import { setNativePlan } from './engine';
+import type { AccuracyRecord } from './model';
+import type { Num } from './dataset';
 import { setNativeCalibrate, type CalibrateOptions } from './calibrate';
 import { setNativeEngine, type Plan, type RunOpts, type RunResult, type Traffic } from './engine';
 import { setNativeBacktest, type BacktestOptions, type BacktestResult } from './backtest';
@@ -58,10 +66,33 @@ export function calibrateNative(d: Dataset, options: CalibrateOptions = {}): Mod
   return wasmCalibrate(d, options) as Model;
 }
 
+export const basePlanNative = (model: Model, observed?: Record<string, Num[] | undefined>): Plan => wasm.basePlan(model, observed) as Plan;
+export const applyStrategyNative = (model: Model, base: Plan, input: unknown): Applied => wasm.applyStrategy(model, base, input) as Applied;
+export const modelBreakingPointNative = (model: Model, plan?: Plan, opts: { maxRps?: number; steps?: number; holdS?: number } = {}): { rps: number; limitedBy: string | null } => wasm.modelBreakingPoint(model, plan, opts);
+export const holdoutAccuracyNative = (d: Dataset, opts: CalibrateOptions & { holdout?: number; requests?: RequestLog } = {}): AccuracyRecord => {
+  const { holdout, requests, ...rest } = opts;
+  return wasm.holdoutAccuracy(d, rest, holdout, requests) as AccuracyRecord;
+};
+export const referenceAccuracyNative = (model: Model, runs: ReferenceRun[], label: string): AccuracyRecord => wasm.referenceAccuracy(model, runs, label) as AccuracyRecord;
+export const nodeLossNative = (model: Model, d: Dataset, o: NodeLossOptions = {}) => wasm.nodeLoss(model, d, o);
+export const nodeLossFaultsNative = (model: Model, d: Dataset, node: string, o: { atS?: number; recoverS?: number | null; pods?: Record<string, Record<string, number>> } = {}) => wasm.nodeLossFaults(model, d, node, o.atS, o.recoverS, o.pods);
+export const podsPerNodeNative = (model: Model, strategy?: unknown): Record<string, Record<string, number>> => wasm.podsPerNode(model, strategy);
+export const outageScenarioNative = (model: Model, outage: Outage, opts: { baseRps?: number; roles?: Partial<Record<Role, string[]>> } = {}): OutageReplay => {
+  const r = wasm.outageScenario(model, outage, opts.baseRps, opts.roles) as OutageReplay;
+  // the catalogue entry itself (timeline, sources, assumptions) stays the JavaScript one
+  r.outage = outage;
+  return r;
+};
+
 const use = () => {
   setNativeEngine(runPlanNative);
   setNativeBacktest(backtestNative);
   setNativeCalibrate(calibrateNative);
+  setNativePlan({ basePlan: basePlanNative });
+  setNativeStrategy({ applyStrategy: applyStrategyNative });
+  setNativeAccuracy({ modelBreakingPoint: modelBreakingPointNative, holdoutAccuracy: holdoutAccuracyNative, referenceAccuracy: referenceAccuracyNative });
+  setNativeResilience({ nodeLoss: nodeLossNative as never, nodeLossFaults: nodeLossFaultsNative as never, podsPerNode: podsPerNodeNative });
+  setNativeOutages({ outageScenario: outageScenarioNative });
 };
 
 const wanted = () => typeof process === 'undefined' || process.env?.HINDCAST_ENGINE !== 'ts';
@@ -76,6 +107,7 @@ export async function loadNativeEngine(): Promise<boolean> {
         initSync({ module: readFileSync(new URL('./wasm/hindcast_engine_bg.wasm', import.meta.url)) });
       } else {
         await init();
+        void wasm;
       }
       use();
       return true;

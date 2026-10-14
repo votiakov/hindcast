@@ -217,6 +217,148 @@ export function calibrate(dataset, options) {
     return takeFromExternrefTable0(ret[0]);
 }
 
+/**
+ * basePlan(model, observed?) → Plan
+ * @param {any} model
+ * @param {any} observed
+ * @returns {any}
+ */
+export function basePlan(model, observed) {
+    const ret = wasm.basePlan(model, observed);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * applyStrategy(model, plan, spec) → { plan, notes }
+ * @param {any} model
+ * @param {any} plan
+ * @param {any} spec
+ * @returns {any}
+ */
+export function applyStrategy(model, plan, spec) {
+    const ret = wasm.applyStrategy(model, plan, spec);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * modelBreakingPoint(model, plan?, opts?) → { rps, limitedBy }
+ * @param {any} model
+ * @param {any} plan
+ * @param {any} opts
+ * @returns {any}
+ */
+export function modelBreakingPoint(model, plan, opts) {
+    const ret = wasm.modelBreakingPoint(model, plan, opts);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * holdoutAccuracy(dataset, opts) → AccuracyRecord
+ * @param {any} dataset
+ * @param {any} opts
+ * @param {number | null | undefined} holdout
+ * @param {any} requests
+ * @returns {any}
+ */
+export function holdoutAccuracy(dataset, opts, holdout, requests) {
+    const ret = wasm.holdoutAccuracy(dataset, opts, !isLikeNone(holdout), isLikeNone(holdout) ? 0 : holdout, requests);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * referenceAccuracy(model, runs, label) → AccuracyRecord
+ * @param {any} model
+ * @param {any} runs
+ * @param {string} label
+ * @returns {any}
+ */
+export function referenceAccuracy(model, runs, label) {
+    const ptr0 = passStringToWasm0(label, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.referenceAccuracy(model, runs, ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * nodeLoss(model, dataset, opts) → the node-loss report
+ * @param {any} model
+ * @param {any} dataset
+ * @param {any} opts
+ * @returns {any}
+ */
+export function nodeLoss(model, dataset, opts) {
+    const ret = wasm.nodeLoss(model, dataset, opts);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * nodeLossFaults(model, dataset, node, atS?, recoverS (undefined: default, null: never), pods?)
+ * @param {any} model
+ * @param {any} dataset
+ * @param {string} node
+ * @param {number | null | undefined} at_s
+ * @param {any} recover_s
+ * @param {any} pods
+ * @returns {any}
+ */
+export function nodeLossFaults(model, dataset, node, at_s, recover_s, pods) {
+    const ptr0 = passStringToWasm0(node, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.nodeLossFaults(model, dataset, ptr0, len0, !isLikeNone(at_s), isLikeNone(at_s) ? 0 : at_s, recover_s, pods);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * podsPerNode(model, strategy?)
+ * @param {any} model
+ * @param {any} strategy
+ * @returns {any}
+ */
+export function podsPerNode(model, strategy) {
+    const ret = wasm.podsPerNode(model, strategy);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * outageScenario(model, outage, baseRps?, roles?) → { dataset, faults, roles, warnings, baseRps }
+ * @param {any} model
+ * @param {any} outage
+ * @param {number | null | undefined} base_rps
+ * @param {any} roles
+ * @returns {any}
+ */
+export function outageScenario(model, outage, base_rps, roles) {
+    const ret = wasm.outageScenario(model, outage, !isLikeNone(base_rps), isLikeNone(base_rps) ? 0 : base_rps, roles);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
 function passArrayJsValueToWasm0(array, malloc) {
     const ptr = malloc(array.length * 4, 4) >>> 0;
     for (let i = 0; i < array.length; i++) {
@@ -379,6 +521,10 @@ function __wbg_get_imports() {
         const ret = arg0.length;
         return ret;
     };
+    imports.wbg.__wbg_new0_f788a2397c7ca929 = function() {
+        const ret = new Date();
+        return ret;
+    };
     imports.wbg.__wbg_new_405e22f390576ce2 = function() {
         const ret = new Object();
         return ret;
@@ -430,6 +576,10 @@ function __wbg_get_imports() {
     };
     imports.wbg.__wbg_set_8fc6bf8a5b1071d1 = function(arg0, arg1, arg2) {
         const ret = arg0.set(arg1, arg2);
+        return ret;
+    };
+    imports.wbg.__wbg_toISOString_b015155a5a6fe219 = function(arg0) {
+        const ret = arg0.toISOString();
         return ret;
     };
     imports.wbg.__wbg_value_cd1ffa7b1ab794f1 = function(arg0) {

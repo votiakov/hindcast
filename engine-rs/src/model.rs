@@ -77,12 +77,13 @@ pub struct MemoryModel {
     pub per_req: f64,
     #[serde(deserialize_with = "num", default)]
     pub spike: f64,
-    #[serde(deserialize_with = "num", default)]
-    pub peak: f64,
+    /// null where NaN was written out
+    #[serde(default)]
+    pub peak: Option<f64>,
     pub limit: Option<f64>,
     #[serde(deserialize_with = "num", default)]
     pub r2: f64,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub seen_to: Option<f64>,
 }
 
@@ -312,7 +313,7 @@ impl TransferPrices {
         }
     }
     pub fn plan(&self) -> crate::types::Transfer {
-        crate::types::Transfer { cross_zone_gb: self.cross_zone_gb, cross_region_gb: self.cross_region_gb, internet_gb: self.internet_gb }
+        crate::types::Transfer { cross_zone_gb: self.cross_zone_gb, cross_region_gb: self.cross_region_gb, internet_gb: self.internet_gb, source: Some(self.source.clone()) }
     }
 }
 

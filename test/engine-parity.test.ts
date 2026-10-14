@@ -2,7 +2,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { parse } from 'yaml';
 import { initSync } from '../src/backtest/wasm/hindcast_engine.js';
+import * as N from '../src/backtest/native';
 import { runPlanNative, backtestNative, calibrateNative } from '../src/backtest/native';
+import { basePlanTs } from '../src/backtest/engine';
+import { applyStrategyTs } from '../src/backtest/strategy';
+import { holdoutAccuracyTs, modelBreakingPointTs } from '../src/backtest/accuracy';
+import { nodeLossTs, nodeLossFaultsTs, podsPerNodeTs } from '../src/backtest/resilience';
+import { outageScenarioTs } from '../src/backtest/outages';
 import { calibrateTs } from '../src/backtest/calibrate';
 import { runPlanTs, setNativeEngine, type Plan, type RunOpts, type Traffic } from '../src/backtest/engine';
 import { backtest, backtestTs } from '../src/backtest/backtest';
@@ -21,6 +27,8 @@ type Diff = { where: string; ts: unknown; rs: unknown };
 
 function compare(a: unknown, b: unknown, where: string, out: Diff[], anyOrder = false) {
   if (out.length > 20) return;
+  // a NaN written to JSON comes back null; JavaScript arithmetic reads null as 0, and so does Rust
+  if ((a === null && b === 0) || (a === 0 && b === null)) return;
   if (typeof a === 'number' && typeof b === 'number') {
     if (Number.isNaN(a) && Number.isNaN(b)) return;
     if (a === b) return;
@@ -114,6 +122,46 @@ describe.each(bundles)('Rust engine matches TypeScript on %s', (file) => {
       const out: Diff[] = [];
       compare(calibrateTs(w.dataset, o), calibrateNative(w.dataset, o), 'model', out, true);
       expect(out, JSON.stringify(out.slice(0, 6), null, 1)).toEqual([]);
+    }
+  });
+
+  it('plans, strategies, breaking points and the holdout check in Rust', () => {
+    const same = (a: unknown, b: unknown, where: string) => {
+      const out: Diff[] = [];
+      compare(a, b, where, out, true);
+      expect(out, JSON.stringify(out.slice(0, 6), null, 1)).toEqual([]);
+    };
+    const base = basePlanTs(model);
+    same(base, N.basePlanNative(model), 'basePlan');
+    same(basePlanTs(model, Object.fromEntries(Object.keys(model.services).map((id) => [id, w.dataset.services[id]?.replicas]))), N.basePlanNative(model, Object.fromEntries(Object.keys(model.services).map((id) => [id, w.dataset.services[id]?.replicas]))), 'basePlan observed');
+    same(modelBreakingPointTs(model, base), N.modelBreakingPointNative(model, base), 'breakingPoint');
+    for (const s of w.strategies.map((x) => parse(x))) {
+      const a = applyStrategyTs(model, base, s);
+      same(a, N.applyStrategyNative(model, base, s), `applyStrategy ${s.name}`);
+      same(modelBreakingPointTs(model, a.plan), N.modelBreakingPointNative(model, a.plan), `breakingPoint ${s.name}`);
+    }
+    if (w.dataset.n >= 40) {
+      const strip = (r: { measuredAt?: string }) => ({ ...r, measuredAt: '' });
+      same(strip(holdoutAccuracyTs(w.dataset, { holdout: 0.3 })), strip(N.holdoutAccuracyNative(w.dataset, { holdout: 0.3 })), 'holdout');
+    }
+    for (const o of OUTAGES) same(outageScenarioTs(model, o), N.outageScenarioNative(model, o), `outage ${o.id}`);
+  });
+
+  it('node loss in Rust', () => {
+    if (!Object.values(model.services).some((s) => s.pods)) return;
+    const same = (a: unknown, b: unknown, where: string) => {
+      const out: Diff[] = [];
+      compare(a, b, where, out, true);
+      expect(out, JSON.stringify(out.slice(0, 6), null, 1)).toEqual([]);
+    };
+    same(nodeLossTs(model, w.dataset, { draws: 3 }), N.nodeLossNative(model, w.dataset, { draws: 3 }), 'nodeLoss');
+    const first = Object.keys(model.services).find((id) => model.services[id].pods)!;
+    const strategy = { name: 'spread', changes: [{ service: first, replicas: 4, spread: 'even' }] };
+    same(podsPerNodeTs(model, strategy), N.podsPerNodeNative(model, strategy), 'podsPerNode');
+    same(nodeLossTs(model, w.dataset, { draws: 2, strategy, load: { scale: 1.5 } }), N.nodeLossNative(model, w.dataset, { draws: 2, strategy, load: { scale: 1.5 } }), 'nodeLoss strategy');
+    for (const node of Object.keys(podsPerNodeTs(model)[first])) {
+      same(nodeLossFaultsTs(model, w.dataset, node), N.nodeLossFaultsNative(model, w.dataset, node), `faults ${node}`);
+      same(nodeLossFaultsTs(model, w.dataset, node, { recoverS: null, atS: 100 }), N.nodeLossFaultsNative(model, w.dataset, node, { recoverS: null, atS: 100 }), `faults ${node} never`);
     }
   });
 
