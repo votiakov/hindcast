@@ -46,6 +46,8 @@ export interface Fault {
   noScaleOut?: boolean;
   /** launches take this many times longer (provisioning throttled) */
   warmupFactor?: number;
+  /** replicas gone (a node failure took them) until the fault ends */
+  replicasLost?: number;
   note?: string;
 }
 
@@ -283,9 +285,9 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
   const CS = { nodes: cl ? (cl.autoscaled ? -1 : cl.nodes) : 0, unneededSince: -Infinity, pendingSaid: false };
   const faults = (opts.faults ?? []).filter((f) => plan.services[f.service]);
   const faultOn = new Set<Fault>();
-  type Effect = { capacity: number; down: boolean; extraMs: number; errorRate: number; noScaleOut: boolean; warmupFactor: number };
+  type Effect = { capacity: number; down: boolean; extraMs: number; errorRate: number; noScaleOut: boolean; warmupFactor: number; lost: number };
   const effect = (id: string): Effect => {
-    const e: Effect = { capacity: 1, down: false, extraMs: 0, errorRate: 0, noScaleOut: false, warmupFactor: 1 };
+    const e: Effect = { capacity: 1, down: false, extraMs: 0, errorRate: 0, noScaleOut: false, warmupFactor: 1, lost: 0 };
     for (const f of faultOn) {
       if (f.service !== id) continue;
       if (f.capacity !== undefined) e.capacity *= f.capacity;
@@ -294,6 +296,7 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
       e.errorRate = 1 - (1 - e.errorRate) * (1 - (f.errorRate ?? 0));
       if (f.noScaleOut) e.noScaleOut = true;
       if (f.warmupFactor) e.warmupFactor *= f.warmupFactor;
+      e.lost += f.replicasLost ?? 0;
     }
     return e;
   };
@@ -401,7 +404,7 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
         const s = plan.services[id];
         const S = st[id];
         const f = fx[s.hostedBy && fx[s.hostedBy]?.down ? s.hostedBy : id];
-        const live = liveOf(id);
+        const live = Math.max(0, liveOf(id) - fx[s.hostedBy ?? id].lost);
         const perRep = live > 0 ? svcLam[id] / live : svcLam[id] > 0 ? Infinity : 0;
         const K = s.perReplicaRps * fx[id].capacity * (s.hostedBy ? fx[s.hostedBy]?.capacity ?? 1 : 1);
         // OOM: every replica carries the same load, so the working set passes the limit on all of them;

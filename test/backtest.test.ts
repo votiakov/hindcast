@@ -495,6 +495,32 @@ describe('Kubernetes nodes', () => {
   });
 });
 
+describe('losing a node', () => {
+  it('takes every pod on the node at the busiest moment; a lone replica is a single point of failure', async () => {
+    const { nodeLoss } = await import('../src/backtest/resilience');
+    const d = synthetic({ K: 40, c: 4, S: 20 }, 0.8);
+    d.podsByNode = { api: { a: 1, b: 1 } };
+    const m = calibrate(d, { bootstrap: 0 });
+    expect(m.services.api.pods).toEqual({ a: 1, b: 1 });
+    const two = nodeLoss(m, d, { draws: 2 });
+    expect(two.nodes).toBe(2);
+    expect(two.singlePointsOfFailure).toEqual([]);
+    // half the replicas at 80% of capacity: the survivor overloads until the pods come back
+    expect(two.results[0].lost[0]).toMatchObject({ service: 'api', pods: 1, of: 2, down: false });
+    expect(two.results[0].minutesOutOfSlo).toBeGreaterThan(0);
+    // one replica: losing its node takes the service down; six spread evenly survive
+    // (on a quieter day, so one replica alone keeps the SLO until its node goes)
+    const quiet = synthetic({ K: 40, c: 4, S: 20 }, 0.3);
+    quiet.podsByNode = { api: { a: 1, b: 1 } };
+    const one = nodeLoss(calibrate(quiet, { bootstrap: 0 }), quiet, { draws: 2, strategy: { name: 'one', changes: [{ service: 'api', replicas: 1 }] } });
+    expect(one.singlePointsOfFailure.map((x) => x.service)).toEqual(['api']);
+    expect(one.results[0]).toMatchObject({ verdict: 'fails' });
+    expect(one.results[0].lost[0].down).toBe(true);
+    const six = nodeLoss(m, d, { draws: 2, strategy: { name: 'six', changes: [{ service: 'api', replicas: 6 }] } });
+    expect(six.survives).toBe(true);
+  });
+});
+
 describe('strategy from a config diff', () => {
   const dep = (name: string, replicas: number, cpu: string, arch?: string) => `apiVersion: apps/v1
 kind: Deployment

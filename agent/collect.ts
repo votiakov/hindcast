@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { stringify as toYaml } from 'yaml';
 import { importBundle } from '../src/backtest/import/manifest';
-import { exportPlan, manifestMetrics, runExport } from '../src/backtest/import/promExport';
+import { exportPlan, manifestMetrics, podsByNodeQuery, runExport } from '../src/backtest/import/promExport';
 import { parseTraceFile, parseTraceLines, templatePath, type Span } from '../src/backtest/import/traces';
 import type { Dataset } from '../src/backtest/dataset';
 import { fileAccess, glob, readLines } from '../cli/files';
@@ -194,6 +194,22 @@ export async function collect(ws: Workspace, o: CollectOptions = {}, progress?: 
     delete dataset.services[id];
     if (dataset.bill) delete dataset.bill.components[id];
     for (const [eid, e] of Object.entries(dataset.endpoints)) if (e.service === id) delete dataset.endpoints[eid];
+  }
+  // Kubernetes: which node each replica ran on at the end of the window
+  if (presets.includes('kubernetes')) {
+    try {
+      const u = `${src.prometheus.url.replace(/\/$/, '')}/api/v1/query?query=${encodeURIComponent(podsByNodeQuery(src.prometheus.namespaces))}&time=${end}`;
+      const j = (await (await fetch(u, { headers: authHeaders(src.prometheus) })).json()) as { data?: { result?: { metric: Record<string, string>; value: [number, string] }[] } };
+      const by: Record<string, Record<string, number>> = {};
+      for (const r of j.data?.result ?? []) {
+        const id = src.system.rename?.[r.metric.workload] ?? r.metric.workload;
+        if (!dataset.services[id]) continue;
+        (by[id] ??= {})[r.metric.node] = Number(r.value[1]);
+      }
+      if (Object.keys(by).length) dataset.podsByNode = by;
+    } catch {
+      warnings.push('could not read which node each pod runs on (kube_pod_info): node-loss checks are unavailable');
+    }
   }
   // services the metrics name but no trace touches: another system on the same Prometheus, or a
   // component nothing traces (a load balancer, a database seen only through its container)

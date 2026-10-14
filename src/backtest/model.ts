@@ -57,6 +57,8 @@ export interface ServiceModel {
   memory?: { base: number; perReq: number; spike: number; peak: number; limit: number | null; r2: number };
   /** what each replica asks the scheduler for (Kubernetes requests): cores, GiB */
   requests?: { cpu: number; memoryGb: number };
+  /** pods per node at the end of the history (Kubernetes) */
+  pods?: Record<string, number>;
   /** cores per replica = base + perReq × (req/s per replica) */
   cpu: { base: number; perReq: number; r2: number } | null;
   capacity: Capacity;

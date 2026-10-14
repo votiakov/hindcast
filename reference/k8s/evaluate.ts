@@ -29,7 +29,7 @@ import { applyStrategy } from '../../src/backtest/strategy';
 import { observedReplicas, trafficOf } from '../../src/backtest/calibrate';
 import { accuracyLines, parseRequestLog, referenceAccuracy, type ReferenceRun, type RequestLog } from '../../src/backtest/accuracy';
 import { importBundle } from '../../src/backtest/import/manifest';
-import { PRESETS } from '../../src/backtest/import/promExport';
+import { PRESETS, podsByNodeQuery } from '../../src/backtest/import/promExport';
 import { fileAccess } from '../../cli/files';
 import type { K8sReference } from './record';
 
@@ -81,10 +81,22 @@ async function fillLater(d: Dataset, out: string): Promise<Dataset> {
   const want = PRESETS.kubernetes.queries({ window: `${STEP}s`, selector: '', namespaces: [] } as never).filter((q) => LATER_SERIES.includes(q.file));
   const isCluster = (m: string) => m.startsWith('cluster');
   const missing = want.filter((q) => (isCluster(q.mapping.metric) ? !(d.cluster as Record<string, unknown> | undefined)?.[q.mapping.metric] : !Object.values(d.services).some((sv) => (sv as Record<string, unknown>)[q.mapping.metric])));
+  const prom = (JSON.parse(readFileSync(join(out, 'sources.json'), 'utf8')) as { prometheus: { url: string; namespaces?: string[] } }).prometheus;
+  if (!d.podsByNode) {
+    const t = d.start + (d.n - 1) * d.stepS;
+    const j = (await (await fetch(`${prom.url}/api/v1/query?query=${encodeURIComponent(podsByNodeQuery(prom.namespaces ?? ['shop']))}&time=${t}`)).json()) as { data: { result: { metric: Record<string, string>; value: [number, string] }[] } };
+    const by: Record<string, Record<string, number>> = {};
+    for (const r of j.data.result) if (d.services[r.metric.workload]) (by[r.metric.workload] ??= {})[r.metric.node] = Number(r.value[1]);
+    if (Object.keys(by).length) {
+      d.podsByNode = by;
+      writeFileSync(join(out, 'dataset.json'), JSON.stringify(d));
+      console.warn(`(${out}: filled podsByNode from Prometheus)`);
+    }
+  }
   if (!missing.length) return d;
-  const prom = (JSON.parse(readFileSync(join(out, 'sources.json'), 'utf8')) as { prometheus: { url: string } }).prometheus.url;
+  const promUrl = prom.url;
   for (const q of missing) {
-    const u = `${prom}/api/v1/query_range?query=${encodeURIComponent(q.query)}&start=${d.start}&end=${d.start + (d.n - 1) * d.stepS}&step=${d.stepS}`;
+    const u = `${promUrl}/api/v1/query_range?query=${encodeURIComponent(q.query)}&start=${d.start}&end=${d.start + (d.n - 1) * d.stepS}&step=${d.stepS}`;
     const j = (await (await fetch(u)).json()) as { data: { result: { metric: Record<string, string>; values: [number, string][] }[] } };
     for (const r of j.data.result) {
       const sv = (isCluster(q.mapping.metric) ? (d.cluster ??= {}) : d.services[r.metric.workload]) as Record<string, unknown> | undefined;

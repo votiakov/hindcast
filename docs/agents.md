@@ -296,6 +296,23 @@ The req/s the system sustains within SLO with today's endpoint mix, as built and
 and what binds first. That can be a service saturating, or errors that grow with load crossing
 the error SLO.
 
+### `check_node_loss`
+
+Kubernetes only. It replays the history's busiest moment with each node gone. Every pod on the node
+disappears at once, using placement from `kube_pod_info` at the end of the history. A service with
+no replica left is down; the rest serve on what's left. Kubernetes replaces the pods after
+NotReady (~50 s), the default 300 s eviction toleration and a start: about 6 minutes. A fixed
+pool with no room for them leaves them Pending. It returns, per node:
+
+- what the node takes down;
+- the minutes out of SLO and failed requests it adds.
+
+It also lists the services one node failure takes out entirely. With a `strategy`, the strategy's
+new replica counts are spread evenly over the nodes, as the default scheduler does.
+
+On the Kubernetes reference, the as-built shop fails either way. Losing a worker at the peak adds
+6.5–7.3 minutes out of SLO and about 50,000 failed requests: 14 services run a single replica.
+
 ### `read_cluster`
 
 ```json
@@ -392,6 +409,7 @@ or dropped on the app's Backtest screen.
 | `verify_change` | `changes[]`, `last?`, `traffic?{scale \| peakRps}`, `gateMinutes?`, `draws?` (30, fewer on long histories to fit ~40 s) | per change: verdict, confidence, cost, reliability, headroom, reasons; reports and `app.open` |
 | `suggest_changes` | `goal?` (reliability \| cost \| both), `last?`, `draws?`, `gateMinutes?`, `idleBelow?` | saturated services; fixes and savings that pass, each judged; the savings combined; rejected candidates |
 | `find_headroom` | `strategy?` | req/s within SLO, what binds, history peak |
+| `check_node_loss` | `strategy?`, `traffic?{scale \| peakRps}`, `recoverS?` | per node: services lost or degraded, minutes out of SLO and failed requests added; single points of failure |
 | `verify_design` | `spec`, `rps?`, `slo?`, `budgetMonthly?`, `incidentCostPerMinute?` | verdict, problems, findings with fixes as spec changes, app link |
 | `read_cluster` | `context`, `namespace?`, `selector?` | workloads, snapshot path, the exact command run |
 

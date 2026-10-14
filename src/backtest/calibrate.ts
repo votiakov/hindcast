@@ -826,6 +826,7 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
       memoryGb: memLimit ?? (memVals.length ? median(memVals) : null),
       ...(memory ? { memory } : {}),
       ...(requestsOfService(host) ? { requests: requestsOfService(host)! } : {}),
+      ...(d.podsByNode?.[id] ? { pods: d.podsByNode[id] } : {}),
       cpu,
       capacity,
       self: { mean: selfMean, p99: Math.max(selfMean, selfP99) },

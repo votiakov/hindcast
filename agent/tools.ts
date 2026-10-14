@@ -9,6 +9,8 @@ import { reviveModel, type Model } from '../src/backtest/model';
 import { basePlan } from '../src/backtest/engine';
 import { applyStrategy } from '../src/backtest/strategy';
 import { modelBreakingPoint } from '../src/backtest/accuracy';
+import { nodeLoss } from '../src/backtest/resilience';
+import type { Dataset } from '../src/backtest/dataset';
 
 /**
  * The agent tools, defined once: the MCP server registers them, and `bottleneck agent <tool>`
@@ -164,6 +166,24 @@ export const TOOLS: AgentTool[] = [
         out.withStrategy = { rps: Math.round(after.rps * 10) / 10, limitedBy: after.limitedBy };
       }
       return out;
+    },
+  },
+  {
+    name: 'check_node_loss',
+    title: 'Does it survive losing a Kubernetes node at its busiest?',
+    description:
+      'Replays the history\'s busiest moment with each node gone: every pod on it disappears at once (from kube_pod_info placement at the end of the history), services left with no replica are down, the rest serve on what is left, and Kubernetes brings the pods back after NotReady plus the default 300 s eviction toleration and a start (or never, when a fixed node pool has no room). Returns per node what it takes down, the minutes out of SLO and failed requests it adds, and the services one node failure takes out entirely. With a strategy, its replica changes are spread evenly over the nodes. Use it for "can we lose a node?", "is 2 replicas enough?", "where are our single points of failure?".',
+    input: {
+      workspace,
+      strategy: z.union([z.string(), z.record(z.string(), z.unknown())]).optional().describe('check under this strategy instead of as built'),
+      traffic: z.object({ scale: z.number().positive().optional(), peakRps: z.number().positive().optional() }).optional().describe('at another load (launch day: scale 2)'),
+      recoverS: z.number().positive().optional().describe('seconds until replacement pods serve (default 380)'),
+    },
+    run: (a, ws) => {
+      const m = reviveModel(ws.readJson<Model>('model.json'));
+      const d = ws.readJson<Dataset>('dataset.json');
+      const strategy = typeof a.strategy === 'string' ? parseYaml(a.strategy) : a.strategy;
+      return nodeLoss(m, d, { strategy, load: a.traffic as { scale?: number; peakRps?: number } | undefined, recoverS: a.recoverS as number | undefined });
     },
   },
   {

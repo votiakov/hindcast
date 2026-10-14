@@ -171,6 +171,9 @@ export const PRESETS: Record<string, Preset> = {
   },
 };
 
+/** pods per node per workload, at one instant: which replicas a node failure takes with it */
+export const podsByNodeQuery = (namespaces?: string[]) => `count by (workload, node) (${workload(`kube_pod_info{${[`pod!=""`, `node!=""`, nsMatcher(namespaces)].filter(Boolean).join(',')}}`)})`;
+
 /** service_name=~"a|b" for the services requests enter through */
 const entryMatcher = (entry: string[]) => `service_name=~"${entry.map((e) => e.replace(/[.*+?^${}()|[\]\\"]/g, '\\\\$&')).join('|')}"`;
 
