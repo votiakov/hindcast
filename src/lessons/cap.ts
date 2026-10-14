@@ -1,4 +1,4 @@
-import type { Lesson } from './types';
+import { PRIMER_CREDIT, type Lesson } from './types';
 import { graph, link, X } from '../scenarios/build';
 
 /**
@@ -33,6 +33,7 @@ export const cap: Lesson = {
   id: 'cap',
   title: 'CAP, Live',
   subtitle: 'When the network splits, you lose writes or you lose availability. Unless you have three.',
+  credit: PRIMER_CREDIT,
   stars: { three: 3.6, two: 4.5 },
   readRatio: 0.8,
   outro: 'You saw both sides of CAP — writes lost, then writes refused — and ended with a quorum that keeps writing and loses nothing.',

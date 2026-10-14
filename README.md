@@ -69,16 +69,18 @@ app), [use cases](docs/use-cases.md), the [capability list](docs/capabilities.md
 - **Backtest** – real history as a chart, strategies drawn over it, ranked; open any
   moment on the board; Studio card of the result.
 - **Live** – a running system that fails on arrival, with the next move pinned to the component under stress.
-- **Lessons** – seven lessons, 22 levels: scaling basics, retry storms, elasticity (autoscaling lag,
-  cold-cache stampedes), AI serving, language runtimes, queues, zone failures. Every level has a
-  reference solution ("show me"), a debrief and saved progress; each is proven solvable in the tests.
+- **Lessons** – a study path of 14 lessons, 44 levels, in four tracks: scaling a web service (Scale
+  101/201, Pastebin, Mint, sizing a cache), asynchrony and failure (queues, retry storms, elasticity,
+  zones), data at scale (CAP with sync/async replication and partitions, sharding and hot keys, a web
+  crawler), and AI serving and runtimes. Every level has a reference solution ("show me"), a debrief
+  and saved progress; each is proven solvable in the tests.
 - **Sandbox** – build anything. Autoscaling, retries, timeouts, breakers, failover, fan-out, gray
   failures, cross-region links. Every run is recorded; drag the timeline to rewind the whole board.
 - **Failure audit** – risk register with blast radius, recovery time and $ at risk; replay any incident
   on the board; apply a verified fix with one click (undoable); copy the report as Markdown.
 - **Architecture as code** – a YAML editor that stays in sync with the board in both directions.
 - **Compare** – two designs, same traffic and failures, side by side, with a measured scoreboard and a
-  takeaway computed by the engine. Nineteen built-in comparisons, each proven to show a difference.
+  takeaway computed by the engine. Twenty-three built-in comparisons, each proven to show a difference.
 - **Present** – press P: no chrome, large numbers, captions; ←/→ walks through the audit's incidents live.
 - **Studio** – scripted episodes rendered in the browser to MP4, GIF and a PDF carousel for posts
   (or frame-perfect from the command line with `npm run record`).
@@ -177,3 +179,10 @@ Agents working on a live system: `connect_telemetry` → `collect_telemetry` →
 | `list_components` / `validate_architecture` | catalogue / schema + lint |
 
 Details: [docs/tools.md](docs/tools.md).
+
+## Credits
+
+Several lessons, comparisons and the back-of-the-envelope presets are built on the problems and topics
+of [The System Design Primer](https://github.com/donnemartin/system-design-primer) by Donne Martin,
+licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The wording and the simulations
+are our own; each lesson based on it says so under its picker.

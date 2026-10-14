@@ -668,6 +668,7 @@ select { background: #0a1122; color: var(--text); border: 1px solid var(--border
 .an-error { color: var(--red); font-size: 12px; }
 
 .lesson-picker { width: 100%; margin-bottom: 10px; font-weight: 600; }
+.lesson-credit { margin-top: 10px; font-size: 10.5px; line-height: 1.4; color: var(--muted); }
 
 /* ---------- scripted playback strip (audit replays) ---------- */
 .pb-strip { display: flex; flex-direction: column; gap: 5px; width: 420px; }

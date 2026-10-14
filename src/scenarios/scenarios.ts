@@ -592,4 +592,82 @@ BASIC_SCENARIOS.push({
   },
 });
 
+/** a viral post: more shards vs a cache (after The System Design Primer's sharding section) */
+const postsBoard = (shards: number, cache: boolean) =>
+  graph(
+    [
+      ['users', 'client', X[0], 200],
+      ['lb', 'lb', X[1], 200],
+      ['api', 'server', X[2], 200, { instances: 48 }],
+      ...(cache ? [['cache', 'cache', X[3], 200] as const] : []),
+      ['db', 'db', X[cache ? 4 : 3], 200, { tier: 'L', shards, name: 'posts db' }],
+    ] as Parameters<typeof graph>[0],
+    cache ? [['users', 'lb'], ['lb', 'api'], ['api', 'cache'], ['cache', 'db']] : [['users', 'lb'], ['lb', 'api'], ['api', 'db']],
+  );
+
+BASIC_SCENARIOS.push({
+  id: 'hot-key-shards-vs-cache',
+  title: 'A Viral Post: More Shards or a Cache?',
+  tagline: 'One post takes 40% of the traffic. Shard harder, or cache it?',
+  watch: 'The database on the left: twice the shards, and the one holding the post is still red.',
+  readRatio: 0.5,
+  a: { title: 'Six shards', graph: postsBoard(6, false) },
+  b: { title: 'Three shards and a cache', graph: postsBoard(3, true) },
+  timeline: [
+    { at: 0, rps: 9000, caption: '9,000 req/s, half of them writes, spread evenly over the shards. Both keep up.' },
+    { at: 30, rps: 9000 },
+  ],
+  events: [{ at: 8, message: '🔥 A post goes viral: 40% of traffic on one key', a: { type: 'hot-key', id: 'db', share: 0.4 }, b: { type: 'hot-key', id: 'db', share: 0.4 } }],
+  takeaway: {
+    a: 'Six shards split the other posts six ways, but the viral one lives on one shard — and half of everything landed there. Twice the database bill bought nothing for the post that mattered.',
+    b: 'The cache answered most reads, the viral post’s included, before they reached a shard: the hot shard took a fraction of the load, for the price of one cache.',
+    lesson: 'Sharding splits keys, not a key. For a hot key, take the load off the shard — cache its reads, or give it a home of its own.',
+  },
+});
+
+/** async vs sync replication through a partition and a failover (after the primer's CAP section) */
+const regionsBoard = (sync: boolean) =>
+  link(
+    graph(
+      [
+        ['users', 'client', X[0], 330],
+        ['lb', 'lb', X[1], 330],
+        ['api', 'server', X[2], 330, { instances: 4 }],
+        ['db', 'db', X[3] + 40, 110, { name: 'primary' }],
+        ['rep', 'replica', X[3] + 40, 560, { name: 'replica' }],
+      ],
+      [['users', 'lb'], ['lb', 'api'], ['api', 'db'], ['db', 'rep']],
+      [
+        ['east', 'us-east (primary)', X[3], 40, 330, 210],
+        ['west', 'us-west', X[3], 490, 330, 210],
+      ],
+    ),
+    'db',
+    'rep',
+    sync ? { latencyMs: 70, replication: 'sync' } : { latencyMs: 70 },
+  );
+
+BASIC_SCENARIOS.push({
+  id: 'async-vs-sync-replication',
+  title: 'CAP, Live: Async vs Sync Replication',
+  tagline: 'The regions lose each other. Keep writing, or keep every write?',
+  watch: 'The right side refuses writes while the regions cannot talk. The left keeps writing — and loses those writes when us-east dies.',
+  readRatio: 0.8,
+  a: { title: 'Asynchronous replica', graph: regionsBoard(false) },
+  b: { title: 'Synchronous replica', graph: regionsBoard(true) },
+  timeline: [
+    { at: 0, rps: 400, caption: '400 req/s, one in five a write. The replica in us-west is 70 ms away.' },
+    { at: 30, rps: 400 },
+  ],
+  events: [
+    { at: 5, message: '✂ The link between us-east and us-west is down', a: { type: 'partition', a: 'east', b: 'west' }, b: { type: 'partition', a: 'east', b: 'west' } },
+    { at: 14, message: '⚡ us-east lost power', a: { type: 'fail-zone', id: 'east' }, b: { type: 'fail-zone', id: 'east' } },
+  ],
+  takeaway: {
+    a: 'Writes never stopped — and every write acknowledged during the partition was gone when the replica was promoted: it had never received them.',
+    b: 'Every write the primary could not copy to us-west was refused for as long as the regions were apart. None was lost.',
+    lesson: 'During a partition you choose: availability (keep writing, maybe lose it) or consistency (refuse until you can copy it). A third region for the synchronous copy buys both.',
+  },
+});
+
 export const SCENARIOS: Scenario[] = [...BASIC_SCENARIOS, ...ADVANCED];

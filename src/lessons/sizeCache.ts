@@ -1,4 +1,4 @@
-import type { Lesson } from './types';
+import { PRIMER_CREDIT, type Lesson } from './types';
 import { graph, X } from '../scenarios/build';
 
 /**
@@ -10,6 +10,7 @@ export const sizeCache: Lesson = {
   id: 'size-cache',
   title: 'Size the Cache',
   subtitle: 'A hit rate is not a setting. It is how much of the hot data fits.',
+  credit: PRIMER_CREDIT,
   stars: { three: 4.5, two: 5.2 },
   readRatio: 0.95,
   outro: 'You sized the cache from the data it fronts, and saw how little a doubling buys once the hot keys already fit.',

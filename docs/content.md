@@ -21,8 +21,9 @@ extra-data object.
 
 ## Lessons (`src/lessons/`)
 
-A lesson is a starting graph plus steps. Register it in `src/lessons/index.ts` (`LESSONS`); the
-Lesson panel shows a picker.
+A lesson is a starting graph plus steps. Register it in a track in `src/lessons/index.ts` (`TRACKS`,
+the study path; `LESSONS` is the tracks in order); the Lesson panel's picker groups lessons by track,
+and "Next" on the completion card follows the path.
 
 ```ts
 export const myLesson: Lesson = {
@@ -31,6 +32,7 @@ export const myLesson: Lesson = {
   readRatio: 0.8,                        // optional
   stars: { three: 2.5, two: 3.2 },       // final cost thresholds ($/h); 3★ if cost model is off
   outro: 'Shown on the completion card.',
+  credit: PRIMER_CREDIT,                 // optional: attribution shown under the lesson (CC BY sources)
   steps: [{
     id, title, story, objective,
     traffic: { from: 400, to: 700, rampSeconds: 3 },           // or { keyframes: [{ at, rps }, …] }

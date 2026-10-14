@@ -4,6 +4,9 @@ import type { ChangeSpec } from '../spec/schema';
 
 export type ChaosAction = SimAction;
 
+/** attribution for lessons built on The System Design Primer's problems and topics (CC BY 4.0) */
+export const PRIMER_CREDIT = 'After The System Design Primer by Donne Martin (CC BY 4.0) — github.com/donnemartin/system-design-primer';
+
 export interface StepGoal {
   maxErrorRate: number;
   maxP99: number;
@@ -56,6 +59,8 @@ export interface Lesson {
   /** shown on the completion card */
   outro?: string;
   steps: LessonStep[];
+  /** where the lesson's problem comes from, shown under it (a licence's attribution) */
+  credit?: string;
   /** cost thresholds ($/hr) for 3 and 2 stars at the end */
   stars: { three: number; two: number };
 }

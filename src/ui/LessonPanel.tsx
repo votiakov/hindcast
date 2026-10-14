@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { CheckCircle2, ChevronRight, Eye, Lightbulb, RotateCcw, Star, Target } from 'lucide-react';
 import { useSim } from '../sim/store';
-import { LESSONS } from '../lessons';
+import { LESSONS, TRACKS } from '../lessons';
 import { finalRps, goalStart } from '../lessons/types';
 import { progressOf, recordFinish, recordLevel } from '../lessons/progress';
 
@@ -11,16 +11,20 @@ function LessonPicker() {
   // re-read on every render: finishing a lesson updates its stars
   return (
     <select className="lesson-picker" value={id} onChange={(e) => pick(e.target.value)} title="Choose a lesson">
-      {LESSONS.map((l, i) => {
-        const p = progressOf(l.id);
-        const mark = p.stars ? ` ${'★'.repeat(p.stars)}${'☆'.repeat(3 - p.stars)}` : p.reached >= 0 ? ` · ${p.reached + 1}/${l.steps.length}` : '';
-        return (
-          <option key={l.id} value={l.id}>
-            {i + 1}. {l.title}
-            {mark}
-          </option>
-        );
-      })}
+      {TRACKS.map((t, ti) => (
+        <optgroup key={t.id} label={`${ti + 1} · ${t.label}`}>
+          {t.lessons.map((l) => {
+            const p = progressOf(l.id);
+            const mark = p.stars ? ` ${'★'.repeat(p.stars)}${'☆'.repeat(3 - p.stars)}` : p.reached >= 0 ? ` · ${p.reached + 1}/${l.steps.length}` : '';
+            return (
+              <option key={l.id} value={l.id}>
+                {LESSONS.indexOf(l) + 1}. {l.title}
+                {mark}
+              </option>
+            );
+          })}
+        </optgroup>
+      ))}
     </select>
   );
 }
@@ -206,6 +210,7 @@ export function LessonPanel() {
           </>
         )}
       </div>
+      {lesson.credit && <div className="lesson-credit">{lesson.credit}</div>}
     </div>
   );
 }

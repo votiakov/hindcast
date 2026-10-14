@@ -1,4 +1,4 @@
-import type { Lesson } from './types';
+import { PRIMER_CREDIT, type Lesson } from './types';
 import { graph, link, X } from '../scenarios/build';
 
 /**
@@ -28,6 +28,7 @@ export const crawler: Lesson = {
   id: 'crawler',
   title: 'Crawl the Web',
   subtitle: 'A frontier, a fleet, an index — and servers that are not yours.',
+  credit: PRIMER_CREDIT,
   stars: { three: 12, two: 14 },
   readRatio: 0,
   outro: 'You sized a crawl from its rate, sharded the index for the words every page writes, and made the crawlers patient with a web that fails.',

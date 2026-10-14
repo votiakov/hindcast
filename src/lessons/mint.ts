@@ -1,4 +1,4 @@
-import type { Lesson } from './types';
+import { PRIMER_CREDIT, type Lesson } from './types';
 import { graph, X } from '../scenarios/build';
 
 /**
@@ -10,6 +10,7 @@ export const mint: Lesson = {
   id: 'mint',
   title: 'Design Mint: Ten Writes for Every Read',
   subtitle: 'When the cache saves nothing, what does?',
+  credit: PRIMER_CREDIT,
   stars: { three: 8, two: 10 },
   readRatio: 0.1,
   outro: 'You sized for writes, not reads, and turned the midnight bank sync into a backlog the workers clear instead of an outage.',

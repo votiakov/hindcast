@@ -1,4 +1,4 @@
-import type { Lesson } from './types';
+import { PRIMER_CREDIT, type Lesson } from './types';
 import { graph, X } from '../scenarios/build';
 
 /**
@@ -11,6 +11,7 @@ export const scale201: Lesson = {
   id: 'scale-201',
   title: 'Scale 201: To 40,000 req/s',
   subtitle: 'The edge, the write path, and the off-peak bill.',
+  credit: PRIMER_CREDIT,
   stars: { three: 3.6, two: 4.5 },
   readRatio: 0.99,
   outro: 'You moved the reads to the edge, sized the origin for what reaches it, and stopped paying for the peak at 4 a.m.',

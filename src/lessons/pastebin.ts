@@ -1,4 +1,4 @@
-import type { Lesson } from './types';
+import { PRIMER_CREDIT, type Lesson } from './types';
 import { graph, X } from '../scenarios/build';
 
 /**
@@ -11,6 +11,7 @@ export const pastebin: Lesson = {
   id: 'pastebin',
   title: 'Design Pastebin',
   subtitle: '40 req/s on average. The average is not what takes you down.',
+  credit: PRIMER_CREDIT,
   stars: { three: 1.3, two: 1.8 },
   readRatio: 0.9,
   outro: 'You built for the traffic you have, absorbed a viral paste at the edge, and kept reads serving through a database failure.',

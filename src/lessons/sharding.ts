@@ -1,4 +1,4 @@
-import type { Lesson } from './types';
+import { PRIMER_CREDIT, type Lesson } from './types';
 import { graph, X } from '../scenarios/build';
 
 /**
@@ -11,6 +11,7 @@ export const sharding: Lesson = {
   id: 'sharding',
   title: 'Shard the Database',
   subtitle: 'Past the biggest box, data has to split. Then one key gets famous.',
+  credit: PRIMER_CREDIT,
   stars: { three: 11.5, two: 13 },
   readRatio: 0.5,
   outro: 'You scaled the database up until there was no bigger box, then out across shards — and kept a famous key from taking down the shard that holds it.',
