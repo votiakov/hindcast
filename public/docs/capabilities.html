@@ -49,10 +49,20 @@
 <tr><td>Cost from the bill per replica-hour, per request and per GB; unattributed spend shown</td><td>A C</td></tr>
 <tr><td>Fit status and notes per component and endpoint; holdout accuracy and accuracy against recorded runs</td><td>A C M</td></tr>
 </table></div>
+<h2>Kubernetes</h2>
+<div class="table-wrap"><table>
+<tr><th>capability</th><th>where</th></tr>
+<tr><td>CPU quota throttling: the share of throttled CFS periods fitted against CPU use; capacity stops where it reaches 25%, not at the limit</td><td>A C M</td></tr>
+<tr><td>Memory: each container's peak working set against load; a lower limit OOM-kills pods in the replay, with CrashLoopBackOff</td><td>A C M</td></tr>
+<tr><td>Nodes: compute priced by the nodes; a fixed pool saves nothing on a request cut, an autoscaled one saves whole nodes; scale-outs wait for a node or stay Pending</td><td>A C M</td></tr>
+<tr><td>Requests apart from limits, in strategies and manifest diffs; topology spread read from manifests</td><td>A C M</td></tr>
+<tr><td>Losing a node at the busiest moment: what it takes down, minutes out of SLO and failed requests, single points of failure, and the replicas and spreading that survive it</td><td>A C M</td></tr>
+<tr><td>Rightsizing: memory and CPU cuts proposed and backtested; replicas for what one node takes down</td><td>C M</td></tr>
+</table></div>
 <h2>Backtest</h2>
 <div class="table-wrap"><table>
 <tr><th>capability</th><th>where</th></tr>
-<tr><td>Strategies: replicas, autoscaling, resize, Graviton, performance factor, capacity override, cache, read replicas, placement, retries with budget, client timeout</td><td>A C M</td></tr>
+<tr><td>Strategies: replicas, autoscaling, resize, requests, spread over nodes, Graviton, performance factor, capacity override, cache, read replicas, placement, retries with budget, client timeout</td><td>A C M</td></tr>
 <tr><td>Strategies from the board, from audit fixes, from Kubernetes manifest diffs</td><td>A C</td></tr>
 <tr><td>30 paired draws with bands: $/month, minutes out of SLO, failed requests, error budget, worst moment and why, incidents, per-endpoint results, ranking</td><td>A C M</td></tr>
 <tr><td>Data transfer priced across zones, regions and to the internet</td><td>A C M</td></tr>
@@ -61,7 +71,8 @@
 <tr><td>Reports: terminal, Markdown, self-contained HTML, PR comment; the PR check with a gate</td><td>C M</td></tr>
 <tr><td>Public-outage replays: Cloudflare 2019, GitHub 2018, Slack 2021, AWS us-east-1 2025</td><td>A C M</td></tr>
 <tr><td>Cards and clips of results</td><td>A C</td></tr>
-<tr><td>Three reference systems with recorded telemetry and measured accuracy</td><td>A</td></tr>
+<tr><td>Four reference systems with recorded telemetry and measured accuracy: three in Docker, the Astronomy Shop on Kubernetes</td><td>A</td></tr>
+<tr><td>Replays on every core (CLI and MCP server)</td><td>C M</td></tr>
 </table></div>
 <h2>Design simulator</h2>
 <div class="table-wrap"><table>
