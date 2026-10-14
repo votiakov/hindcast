@@ -33,6 +33,8 @@ const ServiceChange = z
       .optional(),
     cpu: z.number().positive().optional().describe('cores per replica (resize)'),
     memoryGb: z.number().positive().optional(),
+    cpuRequest: z.number().positive().optional().describe('Kubernetes CPU request per replica, cores (what it takes of a node)'),
+    memoryRequestGb: z.number().positive().optional().describe('Kubernetes memory request per replica, GiB'),
     // the spellings agents and manifests use: arm64, aarch64, graviton; amd64, x86_64
     arch: z
       .preprocess((v) => (typeof v === 'string' ? ({ arm64: 'arm', aarch64: 'arm', graviton: 'arm', amd64: 'x86', x86_64: 'x86', 'x86-64': 'x86', intel: 'x86', amd: 'x86' } as Record<string, string>)[v.toLowerCase()] ?? v.toLowerCase() : v), z.enum(['x86', 'arm']))
@@ -71,7 +73,7 @@ export const StrategySpec = z.object({
         const schema = 'endpoint' in o && !('service' in o) ? EndpointChange : ServiceChange;
         const r = schema.safeParse(c);
         if (r.success) return r.data;
-        for (const i of r.error.issues) ctx.addIssue({ code: 'custom', message: `${schema === EndpointChange ? 'endpoint change' : 'service change'}: ${i.message}${schema === EndpointChange ? ' — an endpoint change takes endpoint, retries { attempts, budget? }, timeoutMs' : ' — a service change takes service plus replicas, autoscale, cpu, memoryGb, arch, perf, capacityRps, cache, readReplicas, readShare, zone, region'}`, path: i.path });
+        for (const i of r.error.issues) ctx.addIssue({ code: 'custom', message: `${schema === EndpointChange ? 'endpoint change' : 'service change'}: ${i.message}${schema === EndpointChange ? ' — an endpoint change takes endpoint, retries { attempts, budget? }, timeoutMs' : ' — a service change takes service plus replicas, autoscale, cpu, memoryGb, cpuRequest, memoryRequestGb, arch, perf, capacityRps, cache, readReplicas, readShare, zone, region'}`, path: i.path });
         return z.NEVER;
       }),
     )
@@ -157,6 +159,20 @@ export function applyStrategy(model: Model, base: Plan, input: unknown): Applied
       const memPart = m0 && m1 ? ((1 - m.cost.cpuShare) * m1) / m0 : 1 - m.cost.cpuShare;
       s.replicaHour *= cpuPart + memPart;
       notes.push(`${ch.service}: $${s.replicaHour.toFixed(4)} per replica-hour (price scales with vCPU and memory)`);
+    }
+    // requests: what a replica takes of a node. A limit change carries the request with it where
+    // the two were equal (Guaranteed QoS, or a request that tracked the limit)
+    if (m.requests && (ch.cpu !== undefined || ch.memoryGb !== undefined || ch.cpuRequest !== undefined || ch.memoryRequestGb !== undefined)) {
+      const r0 = m.requests;
+      const close = (a: number, b: number | null) => b !== null && Math.abs(a - b) <= 0.01 * Math.max(a, b);
+      const cpuR = ch.cpuRequest ?? (ch.cpu !== undefined && close(r0.cpu, m.cpuLimit) ? ch.cpu : r0.cpu);
+      const memR = ch.memoryRequestGb ?? (ch.memoryGb !== undefined && close(r0.memoryGb, m.memoryGb) ? ch.memoryGb : r0.memoryGb);
+      s.requests = { cpu: cpuR, memoryGb: memR };
+      if (cpuR !== r0.cpu || memR !== r0.memoryGb) notes.push(`${ch.service}: requests ${r0.cpu} → ${+cpuR.toFixed(3)} cores, ${Math.round(r0.memoryGb * 1024)} → ${Math.round(memR * 1024)} MiB per replica`);
+      if (m.cost.source === 'nodes' && base.cluster) {
+        const n = base.cluster.node;
+        s.replicaHour = n.perHour * Math.max(cpuR / n.cpu, memR / n.memoryGb);
+      }
     }
     if (ch.arch && ch.arch !== m.cost.arch) {
       s.replicaHour *= ch.arch === 'arm' ? ARM_PRICE_FACTOR : 1 / ARM_PRICE_FACTOR;

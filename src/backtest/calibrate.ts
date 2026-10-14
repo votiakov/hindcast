@@ -1,5 +1,5 @@
 import { meanOf, quantile, type Dataset, type EndpointSeries, type Num } from './dataset';
-import { AWS_TRANSFER, type Capacity, type EndpointModel, type FitStatus, type Model, type ServiceModel } from './model';
+import { AWS_TRANSFER, type Capacity, type ClusterModel, type EndpointModel, type FitStatus, type Model, type ServiceModel } from './model';
 import { basePlan, runPlan, type Traffic } from './engine';
 import { mmcWait } from './queueing';
 
@@ -52,6 +52,61 @@ export const FARGATE_PRICES: ListPrices = {
 const SERVER_GRID = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 128, 256];
 
 const vals = (a: Num[] | undefined, i: number) => (a && a[i] !== null && a[i] !== undefined && isFinite(a[i] as number) ? (a[i] as number) : null);
+/** EC2 on-demand, us-east-1, general purpose (m6i/m7i): $0.192/h for 4 vCPU + 16 GiB, split in
+ *  Fargate's vCPU : GiB proportion. A node's price when nothing better is known */
+export const NODE_PRICES = { perVcpuHour: 0.03334, perGbHour: 0.003664, source: 'EC2 m6i on-demand, us-east-1 ($0.192/h for 4 vCPU + 16 GiB), by allocatable size' };
+
+function requestsOfService(s: Dataset['services'][string] | undefined): { cpu: number; memoryGb: number } | null {
+  const cpu = (s?.cpuRequestCores ?? []).filter((x): x is number => x !== null && x > 0);
+  const mem = (s?.memoryRequestBytes ?? []).filter((x): x is number => x !== null && x > 0);
+  if (!cpu.length && !mem.length) return null;
+  return { cpu: cpu.length ? median(cpu) : 0, memoryGb: mem.length ? median(mem) / 2 ** 30 : 0 };
+}
+
+/** the node pool, from kube-state-metrics: how big the nodes are, whether their count followed demand,
+ *  how tightly requests filled them, and what everyone else's pods asked for */
+function clusterOf(d: Dataset, services: Record<string, ServiceModel>, replicasOf: (id: string) => Num[]): ClusterModel | undefined {
+  const c = d.cluster;
+  const nodesV = (c?.clusterNodes ?? []).filter((x): x is number => x !== null && x > 0);
+  const cpuV = (c?.clusterNodeCpu ?? []).filter((x): x is number => x !== null && x > 0);
+  const memV = (c?.clusterNodeMemoryBytes ?? []).filter((x): x is number => x !== null && x > 0);
+  if (!nodesV.length || !cpuV.length || !memV.length) return undefined;
+  const node = { cpu: median(cpuV), memoryGb: median(memV) / 2 ** 30 };
+  const hint = d.hints?.cluster;
+  const perHour = hint?.nodePriceHour ?? node.cpu * NODE_PRICES.perVcpuHour + node.memoryGb * NODE_PRICES.perGbHour;
+  const notes: string[] = [];
+  // the modelled services' requests in each bucket, and what's left for everyone else
+  const otherCpu: number[] = [];
+  const otherMem: number[] = [];
+  const packing: number[] = [];
+  for (let i = 0; i < d.n; i++) {
+    const n = c!.clusterNodes?.[i];
+    const rc = c!.clusterRequestedCpu?.[i];
+    const rm = c!.clusterRequestedMemoryBytes?.[i];
+    if (n == null || rc == null || rm == null) continue;
+    let sc = 0;
+    let sm = 0;
+    for (const [id, s] of Object.entries(services)) {
+      if (!s.requests || s.hostedBy) continue;
+      const r = replicasOf(id)[i] ?? s.replicas;
+      sc += r * s.requests.cpu;
+      sm += r * s.requests.memoryGb;
+    }
+    otherCpu.push(Math.max(0, rc - sc));
+    otherMem.push(Math.max(0, rm / 2 ** 30 - sm));
+    const ideal = Math.max(rc / node.cpu, rm / 2 ** 30 / node.memoryGb);
+    if (ideal > 0) packing.push(n / ideal);
+  }
+  const nodes = Math.round(median(nodesV));
+  const minNodes = Math.min(...nodesV);
+  const maxNodes = Math.max(...nodesV);
+  const autoscaled = hint?.autoscaled ?? maxNodes > minNodes;
+  const pk = packing.length ? Math.max(1, median(packing)) : 1;
+  notes.push(`${nodes} node${nodes === 1 ? '' : 's'} of ${+node.cpu.toFixed(2)} cores + ${node.memoryGb.toFixed(1)} GiB allocatable, $${perHour.toFixed(3)}/node-hour (${hint?.nodePriceHour ? 'given' : NODE_PRICES.source})`);
+  notes.push(autoscaled ? `the node count followed demand (${minNodes}–${maxNodes}): requests that need fewer nodes save money, at ${pk.toFixed(2)}× the nodes requests would fill exactly` : `a fixed pool: ${nodes} nodes the whole history. Smaller requests leave room on them but save nothing until the pool shrinks`);
+  return { node: { ...node, perHour, source: hint?.nodePriceHour ? 'hint' : 'pricing' }, nodes, minNodes, maxNodes, autoscaled, packing: pk, other: { cpu: otherCpu.length ? median(otherCpu) : 0, memoryGb: otherMem.length ? median(otherMem) : 0 }, notes };
+}
+
 /** share of CFS periods throttled at which a service stops keeping up under sustained load: the
  *  threshold of kube-prometheus's CPUThrottlingHigh alert. (The Kubernetes reference's single-threaded
  *  frontend read 44% at the top of a 60-second load-test step, but collapsed under hours of real traffic
@@ -770,6 +825,7 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
       cpuLimit,
       memoryGb: memLimit ?? (memVals.length ? median(memVals) : null),
       ...(memory ? { memory } : {}),
+      ...(requestsOfService(host) ? { requests: requestsOfService(host)! } : {}),
       cpu,
       capacity,
       self: { mean: selfMean, p99: Math.max(selfMean, selfP99) },
@@ -805,6 +861,19 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
       sm.cost.source = 'bill';
     }
   }
+
+  // ---- Kubernetes nodes: on a cluster, compute is what the nodes cost ----
+  const cluster = clusterOf(d, services, replicasOf);
+  if (cluster)
+    for (const sm of Object.values(services)) {
+      if (sm.cost.source !== 'none' || sm.hostedBy || !sm.requests) continue;
+      const { cpu, memoryGb } = sm.requests;
+      // a replica's share of a node is the larger of its CPU and memory shares
+      sm.cost.perReplicaHour = cluster.node.perHour * Math.max(cpu / cluster.node.cpu, memoryGb / cluster.node.memoryGb);
+      sm.cost.cpuShare = cpu / cluster.node.cpu >= memoryGb / cluster.node.memoryGb ? 1 : 0;
+      sm.cost.source = 'nodes';
+      sm.fit.notes.push(`requests ${cpu} cores + ${Math.round(memoryGb * 1024)} MiB = ${(Math.max(cpu / cluster.node.cpu, memoryGb / cluster.node.memoryGb) * 100).toFixed(1)}% of a node, $${sm.cost.perReplicaHour.toFixed(4)}/replica-hour`);
+    }
 
   // ---- list prices where the bill says nothing ----
   if (opts.listPrices) {
@@ -927,6 +996,7 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
     unattributedPerHour: fixedPerHour,
     accuracy: [],
     fittedOn: { start: d.start, end: d.start + d.n * d.stepS, stepS: d.stepS, buckets: d.n },
+    ...(cluster ? { cluster } : {}),
   };
 
   // ---- endpoint tail + fit quality: replay the whole history through the full model ----

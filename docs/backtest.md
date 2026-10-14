@@ -106,6 +106,14 @@ A summary; every rule, and the recording that taught it, is in [calibration.md](
   history. A strategy that lowers a memory limit below it gets its pods OOM-killed in the replay. They
   restart with CrashLoopBackOff (10 s doubling to 5 min, plus a start), failing every request routed
   to them meanwhile. The explanation names the kill. Cost uses the limit per replica, not the usage.
+- **Nodes** (Kubernetes, from kube-state-metrics): node size, node count, every pod's requests. On a
+  cluster compute is what the nodes cost, priced from their allocatable size at EC2 m6i on-demand
+  rates unless `hints.cluster.nodePriceHour` says otherwise. The services pay that less the share
+  other teams' pods request, spread by their own requests. A pool whose node count followed demand
+  is *autoscaled*: the replay adds nodes as requests need them and removes them after 10 unneeded
+  minutes. A pool that never changed is *fixed*: a change that frees requests saves nothing until
+  the pool shrinks, and the verdict says so. A request that outgrows a fixed pool leaves pods
+  Pending.
 - **Latency** — self time at low load (mean, p99) plus queueing; a tail multiplier fitted on the p99s.
 - **Endpoints** — critical-path weight per service, network/proxy overhead (measured minus the
   path), baseline errors, its own SLO, a tail multiplier fitted on its measured p99.

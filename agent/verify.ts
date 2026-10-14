@@ -325,7 +325,8 @@ export function sliceLast(d: Dataset, buckets: number): Partial<Dataset> {
   const cut = <T>(a: T[] | undefined) => (a ? a.slice(k) : a);
   const services = Object.fromEntries(Object.entries(d.services).map(([id, s]) => [id, Object.fromEntries(Object.entries(s).map(([mm, v]) => [mm, Array.isArray(v) ? cut(v) : v]))]));
   const endpoints = Object.fromEntries(Object.entries(d.endpoints).map(([id, s]) => [id, Object.fromEntries(Object.entries(s).map(([mm, v]) => [mm, Array.isArray(v) ? cut(v) : v]))]));
-  return { start: d.start + k * d.stepS, n: buckets, services: services as Dataset['services'], endpoints: endpoints as Dataset['endpoints'] };
+  const cluster = d.cluster ? (Object.fromEntries(Object.entries(d.cluster).map(([mm, v]) => [mm, cut(v)])) as Dataset['cluster']) : undefined;
+  return { start: d.start + k * d.stepS, n: buckets, services: services as Dataset['services'], endpoints: endpoints as Dataset['endpoints'], ...(cluster ? { cluster } : {}) };
 }
 
 export function judge(m: Model, r: BacktestResult, s: StrategyResult, spec: StrategySpec, cal: Calibration | null, gate: number, before: { rps: number; limitedBy: string | null }, after: { rps: number; limitedBy: string | null }) {
@@ -388,6 +389,22 @@ export function judge(m: Model, r: BacktestResult, s: StrategyResult, spec: Stra
     .filter(([id, e]) => e.minutesOutOfSlo > (r.baseline.endpoints[id]?.minutesOutOfSlo ?? 0) + gate)
     .map(([id, e]) => ({ endpoint: id, minutesOutOfSlo: r1(e.minutesOutOfSlo), asBuilt: r1(r.baseline.endpoints[id]?.minutesOutOfSlo ?? 0), slo: e.slo }));
   if (worse.length) reasons.push(`worse for ${worse.map((w) => w.endpoint).join(', ')} against their own SLOs`);
+  // the nodes: what the change does to the pool, and whether the money is real
+  const cb = r.baseline.cluster;
+  const ca = s.cluster;
+  if (cb && ca) {
+    const fill = (c: NonNullable<typeof ca>, nodes: number) => Math.max(c.peakRequestedCpu / (nodes * c.nodeCpu), c.peakRequestedMemoryGb / (nodes * c.nodeMemoryGb));
+    const freed = cb.peakRequestedCpu - ca.peakRequestedCpu;
+    const freedMem = cb.peakRequestedMemoryGb - ca.peakRequestedMemoryGb;
+    if (ca.autoscaled && Math.abs(ca.meanNodes - cb.meanNodes) >= 0.05) reasons.push(`nodes: ${r1(cb.meanNodes)} → ${r1(ca.meanNodes)} on average (peak ${cb.peakNodes} → ${ca.peakNodes}), $${Math.round(Math.abs((ca.meanNodes - cb.meanNodes) * ca.nodeHour * 730))}/month ${ca.meanNodes < cb.meanNodes ? 'less' : 'more'} in node spend`);
+    else if (!ca.autoscaled && (freed > 0.01 || freedMem > 0.01)) {
+      reasons.push(`frees ${r2(Math.max(0, freed))} cores and ${Math.round(Math.max(0, freedMem) * 1024)} MiB of requests, but the node pool is fixed at ${ca.peakNodes}: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill ${Math.round(fill(ca, ca.peakNodes) * 100)}% of it (${Math.round(fill(cb, cb.peakNodes) * 100)}% before)`);
+    } else if (!ca.autoscaled && fill(ca, ca.peakNodes) > 1) {
+      reasons.push(`pods would request ${r1(ca.peakRequestedCpu)} cores and ${r1(ca.peakRequestedMemoryGb)} GiB at the peak, more than the ${ca.peakNodes} fixed nodes hold: some would stay Pending`);
+      if (verdict === 'pass') verdict = 'inconclusive';
+    }
+  }
+
   // the traffic this verdict is about: the replayed window at its load — not a load test elsewhere in
   // the history, which pushed past the limit on purpose
   const peak = r.peakRps ?? m.traffic?.peak ?? 0;

@@ -37,7 +37,7 @@ const slo = z.object({ p99Ms: z.number().positive(), errorRate: z.number().min(0
 const workspace = z.string().optional().describe('workspace directory (default ./.bottleneck, or $BOTTLENECK_WORKSPACE)');
 
 const change = z.union([
-  z.object({ strategy: z.union([z.string(), z.record(z.string(), z.unknown())]).describe('a strategy object or YAML: { name, changes: [{ service, replicas | autoscale | cpu | memoryGb | arch | perf | capacityRps | cache | readReplicas | zone | region } | { endpoint, retries, timeoutMs }] }') }),
+  z.object({ strategy: z.union([z.string(), z.record(z.string(), z.unknown())]).describe('a strategy object or YAML: { name, changes: [{ service, replicas | autoscale | cpu | memoryGb | cpuRequest | memoryRequestGb | arch | perf | capacityRps | cache | readReplicas | zone | region } | { endpoint, retries, timeoutMs }] }') }),
   z.object({ kubernetes: z.object({ base: z.string().describe('manifests before: a directory, a file, or YAML text'), head: z.string().describe('manifests after') }) }),
   z.object({ terraformPlan: z.union([z.string(), z.record(z.string(), z.unknown())]).describe('path to `terraform show -json plan.out` output, or the JSON itself') }),
   z.object({ cluster: z.object({ head: z.string().describe('the edited manifests (directory, file or YAML text)'), snapshot: z.string().optional().describe('a read_cluster snapshot (default: the latest)') }) }),

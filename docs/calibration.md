@@ -223,6 +223,28 @@ its own. **Learned from** HotROD: its "mysql" and "redis" are simulated inside c
 
 ## 4. Cost from the bill
 
+### Kubernetes nodes
+
+From the kubernetes preset: `clusterNodes` (`count(kube_node_info)`), allocatable CPU and memory per
+node, every running pod's requests (`clusterRequestedCpu`, `clusterRequestedMemoryBytes`) and each
+workload's requests per replica (`cpuRequestCores`, `memoryRequestBytes`).
+
+- **Node price:** `hints.cluster.nodePriceHour`, else the allocatable size at EC2 m6i on-demand
+  rates ($0.0333 per vCPU-hour, $0.00366 per GiB-hour).
+- **Autoscaled:** when the node count varied in the history (`hints.cluster.autoscaled` overrides).
+- **Packing:** the median of nodes ÷ the nodes the requests would fill exactly, at least 1.
+- **Others:** what pods outside the modelled services requested (the median of total requests
+  minus the services').
+
+A service with requests and no bill line is priced at its share of a node,
+`perHour × max(cpu request / node cpu, memory request / node memory)`. In the replay those shares
+only split the node spend that belongs to the services: the nodes running, less the others' share.
+A fixed pool's spend never moves. An autoscaled pool runs `ceil(ideal × packing)` nodes and keeps a
+node 10 minutes after it stops being needed. A strategy's `cpuRequest` / `memoryRequestGb` change
+requests. A `cpu` / `memoryGb` change moves a request that was equal to its limit along with it.
+
+### The bill
+
 From the AWS Cost and Usage Report (legacy or 2.0 columns) or the GCP billing export, line items are
 attributed to components by a cost-allocation tag (`tag: user:service`), by resource id
 (`resources: { "db-7XK2": orders-db }`), or by name. Then, per component:

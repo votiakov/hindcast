@@ -76,17 +76,18 @@ const recorded = (r: string) => existsSync(join(runDir(r), 'run.json'));
 
 /** series added to the kubernetes preset after a collection: filled into a cached dataset from
  *  Prometheus alone (Jaeger doesn't keep traces as long), so the traces it was built on stay */
-const LATER_SERIES = ['memory-max.json', 'memory-limit.json'];
+const LATER_SERIES = ['memory-max.json', 'memory-limit.json', 'cpu-request.json', 'memory-request.json', 'cluster-nodes.json', 'cluster-node-cpu.json', 'cluster-node-memory.json', 'cluster-requested-cpu.json', 'cluster-requested-memory.json'];
 async function fillLater(d: Dataset, out: string): Promise<Dataset> {
   const want = PRESETS.kubernetes.queries({ window: `${STEP}s`, selector: '', namespaces: [] } as never).filter((q) => LATER_SERIES.includes(q.file));
-  const missing = want.filter((q) => !Object.values(d.services).some((sv) => (sv as Record<string, unknown>)[q.mapping.metric]));
+  const isCluster = (m: string) => m.startsWith('cluster');
+  const missing = want.filter((q) => (isCluster(q.mapping.metric) ? !(d.cluster as Record<string, unknown> | undefined)?.[q.mapping.metric] : !Object.values(d.services).some((sv) => (sv as Record<string, unknown>)[q.mapping.metric])));
   if (!missing.length) return d;
   const prom = (JSON.parse(readFileSync(join(out, 'sources.json'), 'utf8')) as { prometheus: { url: string } }).prometheus.url;
   for (const q of missing) {
     const u = `${prom}/api/v1/query_range?query=${encodeURIComponent(q.query)}&start=${d.start}&end=${d.start + (d.n - 1) * d.stepS}&step=${d.stepS}`;
     const j = (await (await fetch(u)).json()) as { data: { result: { metric: Record<string, string>; values: [number, string][] }[] } };
     for (const r of j.data.result) {
-      const sv = d.services[r.metric.workload] as Record<string, unknown> | undefined;
+      const sv = (isCluster(q.mapping.metric) ? (d.cluster ??= {}) : d.services[r.metric.workload]) as Record<string, unknown> | undefined;
       if (!sv) continue;
       const xs: (number | null)[] = new Array(d.n).fill(null);
       for (const [t, v] of r.values) {

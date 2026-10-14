@@ -55,6 +55,8 @@ export interface ServiceModel {
   /** the largest container's peak working set = base + perReq × req/s per replica, + up to spike
    *  above that line (the worst the history showed); GiB. An OOM kill compares it with the limit */
   memory?: { base: number; perReq: number; spike: number; peak: number; limit: number | null; r2: number };
+  /** what each replica asks the scheduler for (Kubernetes requests): cores, GiB */
+  requests?: { cpu: number; memoryGb: number };
   /** cores per replica = base + perReq × (req/s per replica) */
   cpu: { base: number; perReq: number; r2: number } | null;
   capacity: Capacity;
@@ -75,7 +77,7 @@ export interface ServiceModel {
     /** share of perReplicaHour that is CPU (rest memory) — for resizing */
     cpuShare: number;
     arch: 'x86' | 'arm';
-    source: 'bill' | 'pricing' | 'none';
+    source: 'bill' | 'pricing' | 'nodes' | 'none';
   };
   placement?: Placement;
   fit: FitQuality;
@@ -109,6 +111,23 @@ export interface EndpointModel {
   egressBytes: number;
   slo: { p99Ms: number; errorRate: number };
   fit: FitQuality;
+}
+
+/** the Kubernetes nodes the services run on: on a cluster, compute is paid for by the node */
+export interface ClusterModel {
+  /** allocatable per node: cores, GiB */
+  node: { cpu: number; memoryGb: number; perHour: number; source: 'pricing' | 'hint' };
+  /** nodes in the history: typical, fewest, most */
+  nodes: number;
+  minNodes: number;
+  maxNodes: number;
+  /** the node count followed demand (cluster autoscaler, Karpenter) — else it is a fixed pool */
+  autoscaled: boolean;
+  /** nodes ÷ the nodes the requests would fill exactly, typically (fragmentation, headroom) */
+  packing: number;
+  /** requests of every pod on the cluster that isn't one of the modelled services: cores, GiB */
+  other: { cpu: number; memoryGb: number };
+  notes: string[];
 }
 
 export interface TransferPrices {
@@ -154,6 +173,7 @@ export interface Model {
   fittedOn: { start: number; end: number; stepS: number; buckets: number };
   /** traffic seen in that history, req/s (all endpoints) */
   traffic?: { mean: number; p90: number; peak: number };
+  cluster?: ClusterModel;
 }
 
 export const AWS_TRANSFER: TransferPrices = {

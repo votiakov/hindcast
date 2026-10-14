@@ -18,7 +18,7 @@ const duration = z.union([z.number().positive(), z.string().regex(/^\d+(\.\d+)?(
 });
 
 const Mapping = z.object({
-  metric: z.enum(['rps', 'doneRps', 'errorRate', 'p50Ms', 'p95Ms', 'p99Ms', 'meanMs', 'selfMeanMs', 'selfP99Ms', 'cpuCores', 'cpuPercent', 'cpuLimitCores', 'replicas', 'netTxBps', 'netRxBps', 'memoryBytes', 'memoryMaxBytes', 'memoryLimitBytes', 'cpuThrottled']),
+  metric: z.enum(['rps', 'doneRps', 'errorRate', 'p50Ms', 'p95Ms', 'p99Ms', 'meanMs', 'selfMeanMs', 'selfP99Ms', 'cpuCores', 'cpuPercent', 'cpuLimitCores', 'replicas', 'netTxBps', 'netRxBps', 'memoryBytes', 'memoryMaxBytes', 'memoryLimitBytes', 'cpuRequestCores', 'memoryRequestBytes', 'cpuThrottled', 'clusterNodes', 'clusterNodeCpu', 'clusterNodeMemoryBytes', 'clusterRequestedCpu', 'clusterRequestedMemoryBytes']),
   service: z.string().optional(),
   endpoint: z.string().optional(),
   by: z.string().optional(),

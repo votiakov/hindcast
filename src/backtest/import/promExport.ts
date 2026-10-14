@@ -144,7 +144,8 @@ export const PRESETS: Record<string, Preset> = {
     queries: ({ window: w, selector: sel, namespaces }) => {
       const pod = [`pod!=""`, nsMatcher(namespaces), sel].filter(Boolean).join(',');
       const ctr = [`container!=""`, `container!="POD"`, pod].join(',');
-      const perPod = (m: string) => `sum by (namespace, pod, workload) (${workload(`${m}{resource="cpu",${pod}}`)})`;
+      const podSum = (m: string, resource: string) => `sum by (namespace, pod, workload) (${workload(`${m}{resource="${resource}",${pod}}`)})`;
+      const perPod = (m: string) => podSum(m, 'cpu');
       return [
         { file: 'cpu.json', query: `sum by (workload) (${workload(`rate(container_cpu_usage_seconds_total{${ctr}}[${w}])`)})`, mapping: { metric: 'cpuCores', by: 'workload' } },
         // many clusters set CPU requests but no limits: then the request is the best size there is
@@ -155,6 +156,15 @@ export const PRESETS: Record<string, Preset> = {
         // OOM kills compare one container's working set with its limit, at its peak — not the average
         { file: 'memory-max.json', query: `max by (workload) (${workload(`max_over_time(container_memory_working_set_bytes{${ctr}}[${w}])`)})`, mapping: { metric: 'memoryMaxBytes', by: 'workload' } },
         { file: 'memory-limit.json', query: `max by (workload) (${workload(`kube_pod_container_resource_limits{resource="memory",${pod}}`)})`, mapping: { metric: 'memoryLimitBytes', by: 'workload' } },
+        // what each replica asks the scheduler for: node capacity is spent on requests, not on use
+        { file: 'cpu-request.json', query: `max by (workload) (${podSum('kube_pod_container_resource_requests', 'cpu')})`, mapping: { metric: 'cpuRequestCores', by: 'workload' } },
+        { file: 'memory-request.json', query: `max by (workload) (${podSum('kube_pod_container_resource_requests', 'memory')})`, mapping: { metric: 'memoryRequestBytes', by: 'workload' } },
+        // the nodes, and everything running on them (whatever the namespace: they share the nodes)
+        { file: 'cluster-nodes.json', query: `count(kube_node_info)`, mapping: { metric: 'clusterNodes' } },
+        { file: 'cluster-node-cpu.json', query: `avg(kube_node_status_allocatable{resource="cpu"})`, mapping: { metric: 'clusterNodeCpu' } },
+        { file: 'cluster-node-memory.json', query: `avg(kube_node_status_allocatable{resource="memory"})`, mapping: { metric: 'clusterNodeMemoryBytes' } },
+        { file: 'cluster-requested-cpu.json', query: `sum(kube_pod_container_resource_requests{resource="cpu"} and on (namespace, pod) (kube_pod_status_phase{phase="Running"} == 1))`, mapping: { metric: 'clusterRequestedCpu' } },
+        { file: 'cluster-requested-memory.json', query: `sum(kube_pod_container_resource_requests{resource="memory"} and on (namespace, pod) (kube_pod_status_phase{phase="Running"} == 1))`, mapping: { metric: 'clusterRequestedMemoryBytes' } },
         { file: 'throttled.json', query: `sum by (workload) (${workload(`rate(container_cpu_cfs_throttled_periods_total{${ctr}}[${w}])`)}) / sum by (workload) (${workload(`rate(container_cpu_cfs_periods_total{${ctr}}[${w}])`)})`, mapping: { metric: 'cpuThrottled', by: 'workload', unit: 'ratio' } },
       ];
     },

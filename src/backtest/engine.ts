@@ -72,6 +72,8 @@ export interface ServicePlan {
   /** peak working set per container = base + perReq × req/s per replica + spike, against limit (GiB):
    *  past it the pods are OOM-killed and restart with CrashLoopBackOff */
   memory?: { base: number; perReq: number; spike: number; limit: number };
+  /** Kubernetes requests per replica (cores, GiB): what it takes of a node */
+  requests?: { cpu: number; memoryGb: number };
   /** $ per replica-hour and per request */
   replicaHour: number;
   perRequest: number;
@@ -102,9 +104,25 @@ export interface EndpointPlan {
   slo: { p99Ms: number; errorRate: number };
 }
 
+/** the node pool: compute is what its nodes cost, less what other teams' pods take of them */
+export interface ClusterPlan {
+  node: { cpu: number; memoryGb: number; perHour: number };
+  /** fixed pool size, or the autoscaler's bounds */
+  nodes: number;
+  autoscaled: boolean;
+  minNodes: number;
+  maxNodes: number;
+  packing: number;
+  other: { cpu: number; memoryGb: number };
+  /** an autoscaler removes a node this long after it stops being needed (cluster-autoscaler's
+   *  scale-down-unneeded-time) */
+  scaleDownS: number;
+}
+
 export interface Plan {
   services: Record<string, ServicePlan>;
   endpoints: Record<string, EndpointPlan>;
+  cluster?: ClusterPlan;
   transfer: Model['transfer'];
   unattributedPerHour: number;
   slo: { p99Ms: number; errorRate: number };
@@ -154,6 +172,8 @@ export interface RunResult {
   services: Record<string, ServiceTrace>;
   endpoints: Record<string, EndpointTrace>;
   events: { t: number; what: string }[];
+  /** the node pool per bucket: nodes running, and what all pods requested (cores) */
+  cluster?: { nodes: number[]; requestedCpu: number[]; requestedMemoryGb: number[] };
 }
 
 const RHO_MAX = 0.97;
@@ -258,6 +278,9 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
     }),
   );
   const epFail = Object.fromEntries(epIds.map((id) => [id, 0]));
+  const cl = plan.cluster;
+  // an autoscaled pool starts at what the first moment needs
+  const CS = { nodes: cl ? (cl.autoscaled ? -1 : cl.nodes) : 0, unneededSince: -Infinity, pendingSaid: false };
   const faults = (opts.faults ?? []).filter((f) => plan.services[f.service]);
   const faultOn = new Set<Fault>();
   type Effect = { capacity: number; down: boolean; extraMs: number; errorRate: number; noScaleOut: boolean; warmupFactor: number };
@@ -286,6 +309,7 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
     services: Object.fromEntries(svcIds.map((id) => [id, { rps: z(), util: z(), replicas: z(), waitMs: z(), selfMeanMs: z(), selfP99Ms: z(), backlog: z(), cpuCores: z() }])),
     endpoints: Object.fromEntries(epIds.map((id) => [id, { rps: z(), errorRate: z(), meanMs: z(), p99Ms: z(), p50Ms: z(), cost: z() }])),
     events: [],
+    ...(cl ? { cluster: { nodes: z(), requestedCpu: z(), requestedMemoryGb: z() } } : {}),
   };
 
   // transfer $ per request per endpoint (static)
@@ -483,9 +507,56 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
         if (load > 0) return host.reduce((a, x) => a + lam[e] * (visits[e][x] ?? 0), 0) / load;
         return lamTot > 0 ? lam[e] / lamTot : 1 / Math.max(1, epIds.length);
       };
+      // on a cluster, the nodes are the bill: as many as the requests need (autoscaled, removed only
+      // after they've been unneeded a while) or the fixed pool. The services' share of them is the
+      // node spend less what other teams' pods take; it is spread over the services by their requests
+      let nodeScale = 1;
+      if (cl) {
+        let rc = cl.other.cpu;
+        let rm = cl.other.memoryGb;
+        let allocated = 0;
+        for (const id of svcIds) {
+          const s = plan.services[id];
+          if (s.hostedBy || !s.requests) continue;
+          const pods = st[id].live + st[id].pending.reduce((a, p) => a + p.n, 0);
+          rc += pods * s.requests.cpu;
+          rm += pods * s.requests.memoryGb;
+          allocated += pods * s.replicaHour;
+        }
+        const ideal = Math.max(rc / cl.node.cpu, rm / cl.node.memoryGb);
+        if (cl.autoscaled) {
+          const want = Math.min(cl.maxNodes, Math.max(cl.minNodes, Math.ceil(ideal * cl.packing - 1e-9)));
+          if (CS.nodes < 0) CS.nodes = want;
+          else if (want > CS.nodes) {
+            out.events.push({ t: traffic.start + now, what: `cluster: ${CS.nodes} → ${want} nodes (pods request ${rc.toFixed(1)} cores, ${rm.toFixed(1)} GiB)` });
+            CS.nodes = want;
+            CS.unneededSince = -Infinity;
+          } else if (want < CS.nodes) {
+            if (!isFinite(CS.unneededSince)) CS.unneededSince = now;
+            else if (now - CS.unneededSince >= cl.scaleDownS) {
+              out.events.push({ t: traffic.start + now, what: `cluster: ${CS.nodes} → ${want} nodes (unneeded for ${Math.round(cl.scaleDownS / 60)} min)` });
+              CS.nodes = want;
+              CS.unneededSince = -Infinity;
+            }
+          } else CS.unneededSince = -Infinity;
+        }
+        if (ideal > CS.nodes && !CS.pendingSaid) {
+          out.events.push({ t: traffic.start + now, what: `cluster: pods request ${rc.toFixed(1)} cores and ${rm.toFixed(1)} GiB, more than ${CS.nodes} nodes hold — some would stay Pending` });
+          CS.pendingSaid = true;
+        }
+        const others = cl.node.perHour * Math.max(cl.other.cpu / cl.node.cpu, cl.other.memoryGb / cl.node.memoryGb) * cl.packing;
+        const ours = Math.max(0, CS.nodes * cl.node.perHour - others);
+        nodeScale = allocated > 0 ? ours / allocated : 0;
+        if (!(allocated > 0)) compute += ours;
+        const oc = out.cluster!;
+        oc.nodes[i] += CS.nodes / sub;
+        oc.requestedCpu[i] += rc / sub;
+        oc.requestedMemoryGb[i] += rm / sub;
+      }
       for (const id of svcIds) {
         const s = plan.services[id];
-        const own = (s.hostedBy ? 0 : (st[id].live + st[id].pending.reduce((a, p) => a + p.n, 0)) * s.replicaHour) + (s.cache ? s.cache.costPerHour : 0);
+        const onNodes = !!cl && !!s.requests && !s.hostedBy;
+        const own = (s.hostedBy ? 0 : (st[id].live + st[id].pending.reduce((a, p) => a + p.n, 0)) * s.replicaHour * (onNodes ? nodeScale : 1)) + (s.cache ? s.cache.costPerHour : 0);
         const req = svcLam[id] * 3600 * s.perRequest;
         compute += own;
         requests += req;
@@ -568,6 +639,7 @@ export function basePlan(model: Model, observed?: Record<string, Num[] | undefin
       cpu: s.cpu ? { base: s.cpu.base, perReq: s.cpu.perReq } : null,
       cpuLimit: s.cpuLimit,
       ...(s.memory?.limit ? { memory: { base: s.memory.base, perReq: s.memory.perReq, spike: s.memory.spike, limit: s.memory.limit } } : {}),
+      ...(s.requests ? { requests: { ...s.requests } } : {}),
       replicaHour: s.cost.perReplicaHour,
       perRequest: s.cost.perRequest,
       zone: s.placement?.zone,
@@ -577,5 +649,7 @@ export function basePlan(model: Model, observed?: Record<string, Num[] | undefin
   const endpoints: Record<string, EndpointPlan> = {};
   for (const [id, e] of Object.entries(model.endpoints))
     endpoints[id] = { id, service: e.service, visits: e.visits, calls: e.calls, weights: e.weights, overheadMs: e.overheadMs, baseExcessMs: e.baseExcessMs, baseP50Ms: e.baseP50Ms, tail: e.tail, errorRate: e.errorRate, errorSlope: e.errorSlope, bytes: e.bytes, egressBytes: e.egressBytes, timeoutMs: model.timeoutMs, slo: e.slo };
-  return { services, endpoints, transfer: model.transfer, unattributedPerHour: model.unattributedPerHour, slo: model.slo };
+  const c = model.cluster;
+  const cluster: ClusterPlan | undefined = c ? { node: { cpu: c.node.cpu, memoryGb: c.node.memoryGb, perHour: c.node.perHour }, nodes: c.nodes, autoscaled: c.autoscaled, minNodes: c.autoscaled ? 1 : c.nodes, maxNodes: c.autoscaled ? Math.max(c.maxNodes * 4, c.maxNodes + 10) : c.nodes, packing: c.packing, other: { ...c.other }, scaleDownS: 600 } : undefined;
+  return { services, endpoints, transfer: model.transfer, unattributedPerHour: model.unattributedPerHour, slo: model.slo, ...(cluster ? { cluster } : {}) };
 }

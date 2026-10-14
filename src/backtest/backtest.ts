@@ -60,6 +60,9 @@ export interface StrategyResult {
   events: { t: number; what: string }[];
   /** per service: the highest share of capacity it ran at (point estimate), and the plan's req/s per replica */
   peakUtil: Record<string, number>;
+  /** the node pool (point estimate): nodes at the busiest moment and on average, and the most every
+   *  pod requested against what those nodes hold */
+  cluster?: { peakNodes: number; meanNodes: number; autoscaled: boolean; peakRequestedCpu: number; peakRequestedMemoryGb: number; nodeCpu: number; nodeMemoryGb: number; nodeHour: number };
 }
 
 export interface BacktestResult {
@@ -337,6 +340,20 @@ export function backtest(model: Model, d: Dataset, strategies: unknown[], opts: 
         errorBudget: band(runs.map(budget)),
         replicas: Object.fromEntries(Object.entries(point.services).filter(([id]) => !plan.services[id].hostedBy).map(([id, s]) => [id, s.replicas])),
       },
+      ...(point.cluster && plan.cluster
+        ? {
+            cluster: {
+              peakNodes: Math.max(...point.cluster.nodes),
+              meanNodes: point.cluster.nodes.reduce((a, x) => a + x, 0) / Math.max(1, point.cluster.nodes.length),
+              autoscaled: plan.cluster.autoscaled,
+              peakRequestedCpu: Math.max(...point.cluster.requestedCpu),
+              peakRequestedMemoryGb: Math.max(...point.cluster.requestedMemoryGb),
+              nodeCpu: plan.cluster.node.cpu,
+              nodeMemoryGb: plan.cluster.node.memoryGb,
+              nodeHour: plan.cluster.node.perHour,
+            },
+          }
+        : {}),
       summary: Object.fromEntries(keys.map((k) => [k, rangeOf(sums.map((s) => s[k]))])) as Record<keyof Summary, Ranged>,
       delta: {
         cost: rangeOf(sums.map((s, k) => s.cost - baseSums[k].cost)),

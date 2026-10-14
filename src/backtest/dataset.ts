@@ -39,13 +39,30 @@ export interface ServiceSeries {
   memoryMaxBytes?: Num[];
   /** memory limit per container, bytes */
   memoryLimitBytes?: Num[];
+  /** what each replica asks the scheduler for (Kubernetes requests): what node capacity is spent on */
+  cpuRequestCores?: Num[];
+  memoryRequestBytes?: Num[];
   /** share of CFS periods in which the CPU limit throttled the containers (0–1): the limit binds
    *  in bursts even when average CPU sits below it */
   cpuThrottled?: Num[];
 }
 
 export type ServiceMetric = keyof ServiceSeries;
-export const SERVICE_METRICS: ServiceMetric[] = ['rps', 'doneRps', 'errorRate', 'p50Ms', 'p95Ms', 'p99Ms', 'meanMs', 'selfMeanMs', 'selfP99Ms', 'cpuCores', 'cpuLimitCores', 'replicas', 'netTxBps', 'netRxBps', 'memoryBytes', 'memoryMaxBytes', 'memoryLimitBytes', 'cpuThrottled'];
+export const SERVICE_METRICS: ServiceMetric[] = ['rps', 'doneRps', 'errorRate', 'p50Ms', 'p95Ms', 'p99Ms', 'meanMs', 'selfMeanMs', 'selfP99Ms', 'cpuCores', 'cpuLimitCores', 'replicas', 'netTxBps', 'netRxBps', 'memoryBytes', 'memoryMaxBytes', 'memoryLimitBytes', 'cpuRequestCores', 'memoryRequestBytes', 'cpuThrottled'];
+
+/** the nodes a Kubernetes cluster ran on, and what every pod on them asked for */
+export interface ClusterSeries {
+  /** nodes */
+  clusterNodes?: Num[];
+  /** allocatable CPU (cores) and memory (bytes) per node, on average */
+  clusterNodeCpu?: Num[];
+  clusterNodeMemoryBytes?: Num[];
+  /** requests of every running pod on the cluster, the system's own and everyone else's */
+  clusterRequestedCpu?: Num[];
+  clusterRequestedMemoryBytes?: Num[];
+}
+export type ClusterMetric = keyof ClusterSeries;
+export const CLUSTER_METRICS: ClusterMetric[] = ['clusterNodes', 'clusterNodeCpu', 'clusterNodeMemoryBytes', 'clusterRequestedCpu', 'clusterRequestedMemoryBytes'];
 
 /** an endpoint as users see it: a route on the entry service */
 export interface EndpointSeries {
@@ -167,6 +184,7 @@ export interface Dataset {
   topology?: Topology;
   bill?: Bill;
   placement?: Record<string, Placement>;
+  cluster?: ClusterSeries;
   /** where each piece came from, for the report */
   sources: string[];
   /** modelling hints from the import manifest (SLO, client deadline, in-process dependencies…) */
@@ -175,6 +193,8 @@ export interface Dataset {
     timeoutMs?: number;
     hostedBy?: Record<string, string>;
     services?: Record<string, { kind?: 'server' | 'db' | 'cache' | 'queue' | 'external' | 'lb'; servers?: number; perReplicaRps?: number; arch?: 'x86' | 'arm' }>;
+    /** the node pool, where the metrics can't tell: its node price, and whether it autoscales */
+    cluster?: { nodePriceHour?: number; autoscaled?: boolean };
     /** endpoints with their own SLO */
     endpoints?: Record<string, { slo?: { p99Ms: number; errorRate: number } }>;
   };
@@ -240,6 +260,17 @@ export class DatasetBuilder {
     this.maxT = Math.max(this.maxT, t);
   }
 
+  private cl = new Map<ClusterMetric, Map<number, { s: number; k: number }>>();
+  addCluster(metric: ClusterMetric, t: number, v: number) {
+    if (!isFinite(v) || !isFinite(t)) return;
+    let s = this.cl.get(metric);
+    if (!s) this.cl.set(metric, (s = new Map()));
+    const p = s.get(t) ?? { s: 0, k: 0 };
+    p.s += v;
+    p.k += 1;
+    s.set(t, p);
+  }
+
   addEndpoint(endpoint: string, service: string, metric: 'rps' | 'errorRate' | 'p50Ms' | 'p99Ms' | 'meanMs', t: number, v: number) {
     if (!isFinite(v) || !isFinite(t)) return;
     let e = this.ep.get(endpoint);
@@ -301,7 +332,9 @@ export class DatasetBuilder {
       for (const [metric, pts] of e.m) (s as unknown as Record<string, Num[]>)[metric] = grid(pts);
       endpoints[id] = s;
     }
-    return { version: 1, name: opts.name, start, stepS, n, services, endpoints, sources: this.sources };
+    const cluster: ClusterSeries = {};
+    for (const [metric, pts] of this.cl) cluster[metric] = grid(pts);
+    return { version: 1, name: opts.name, start, stepS, n, services, endpoints, ...(this.cl.size ? { cluster } : {}), sources: this.sources };
   }
 }
 
@@ -330,7 +363,8 @@ export function regrid(d: Dataset, stepS: number): Dataset {
   const endpoints: Record<string, EndpointSeries> = {};
   for (const [id, e] of Object.entries(d.endpoints)) endpoints[id] = { service: e.service, rps: coarse(e.rps), errorRate: coarse(e.errorRate), p50Ms: coarse(e.p50Ms), p99Ms: coarse(e.p99Ms), meanMs: coarse(e.meanMs) };
   const bill = d.bill ? { ...d.bill, components: Object.fromEntries(Object.entries(d.bill.components).map(([k, c]) => [k, { ...c, series: c.series ? coarse(c.series)!.map((v) => (v === null ? null : v * f)) : undefined }])) } : undefined;
-  return { ...d, stepS: d.stepS * f, n, services, endpoints, bill };
+  const cluster = d.cluster ? (Object.fromEntries(Object.entries(d.cluster).map(([k, v]) => [k, coarse(v)])) as ClusterSeries) : undefined;
+  return { ...d, stepS: d.stepS * f, n, services, endpoints, bill, ...(cluster ? { cluster } : {}) };
 }
 
 /** slice a dataset to buckets [from, to) */
@@ -362,5 +396,6 @@ export function sliceDataset(d: Dataset, from: number, to: number): Dataset {
     }
     bill = { ...d.bill, start: Math.max(start, d.bill.start), end: Math.min(end, d.bill.end), components, unattributed: d.bill.unattributed * frac, total: total + d.bill.unattributed * frac };
   }
-  return { ...d, start: d.start + from * d.stepS, n: Math.max(0, Math.min(d.n, to) - from), services, endpoints, bill };
+  const cluster = d.cluster ? (Object.fromEntries(Object.entries(d.cluster).map(([k, v]) => [k, cut(v)])) as ClusterSeries) : undefined;
+  return { ...d, start: d.start + from * d.stepS, n: Math.max(0, Math.min(d.n, to) - from), services, endpoints, bill, ...(cluster ? { cluster } : {}) };
 }

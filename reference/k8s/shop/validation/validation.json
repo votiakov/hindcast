@@ -923,18 +923,18 @@
       "minutesOutOfSlo": 0,
       "peakP99Ms": 109,
       "monthlyDelta": {
-       "p50": -16.4,
-       "lo": -16.4,
-       "hi": -16.4
+       "p50": 0,
+       "lo": 0,
+       "hi": 0
       },
       "reasons": [
-       "saves $16/month, with no change in time out of SLO",
+       "costs the same, with no change in time out of SLO",
+       "frees 0.5 cores and 512 MiB of requests, but the node pool is fixed at 3: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 21% of it (23% before)",
        "headroom drops from 405.4 to 270.5 req/s (the history peaked at 164.5)"
       ],
       "warnings": [
        "frontend would run at 61% of capacity, past the history's 41%: its capacity there is extrapolated",
-       "only 0.6 h of history: daily and weekly peaks may be missing",
-       "costs are AWS Fargate list prices, not your bill: discounts and Savings Plans are not in them"
+       "only 0.6 h of history: daily and weekly peaks may be missing"
       ]
      },
      "exPost": {
@@ -1797,23 +1797,23 @@
       "minutesOutOfSlo": 19.3,
       "peakP99Ms": 5000,
       "monthlyDelta": {
-       "p50": -16.4,
-       "lo": -16.4,
-       "hi": -16.4
+       "p50": 0,
+       "lo": 0,
+       "hi": 0
       },
       "reasons": [
-       "saves $16/month; on Oct 13 at 17:00 UTC it would have caused 19 minutes out of SLO (frontend at 111% of capacity (297.3 req/s on 2 × 134.1 req/s), 2.0 s queue)",
+       "costs the same; on Oct 13 at 17:00 UTC it would have caused 19 minutes out of SLO (frontend at 111% of capacity (297.3 req/s on 2 × 134.1 req/s), 2.0 s queue)",
        "adds 15.8 min out of SLO (10–90%: 0 … 22.6)",
        "worst at 2026-10-13T17:04:00Z: frontend at 136% of capacity (365.1 req/s on 2 × 134.1 req/s), 27.4 s queue",
        "worse for frontend GET /, frontend GET /api/cart, frontend GET /api/data, frontend GET /api/products/{id}, frontend GET /api/recommendations, frontend POST /api/cart, frontend POST /api/checkout against their own SLOs",
+       "frees 0.5 cores and 512 MiB of requests, but the node pool is fixed at 3: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 21% of it (23% before)",
        "headroom drops from 405.4 to 270.5 req/s (the replayed traffic peaks at 365.1)"
       ],
       "warnings": [
        "frontend would run at 136% of a capacity the history never tested (peak 41%): the outcome rests on an extrapolated limit",
        "product-catalog would run at 51% of capacity, past the history's 23%: its capacity there is extrapolated",
        "recommendation: the model fits it poorly, and this change pushes it harder than the history did",
-       "only 0.6 h of history: daily and weekly peaks may be missing",
-       "costs are AWS Fargate list prices, not your bill: discounts and Savings Plans are not in them"
+       "only 0.6 h of history: daily and weekly peaks may be missing"
       ]
      },
      "exPost": {
@@ -2676,21 +2676,21 @@
       "minutesOutOfSlo": 10.5,
       "peakP99Ms": 5000,
       "monthlyDelta": {
-       "p50": -32.8,
-       "lo": -32.8,
-       "hi": -32.8
+       "p50": 0,
+       "lo": 0,
+       "hi": 0
       },
       "reasons": [
-       "saves $33/month; on Oct 13 at 17:02 UTC it would have caused 11 minutes out of SLO (frontend at 107% of capacity (142.9 req/s on 1 × 134.1 req/s), 1.2 s queue)",
+       "costs the same; on Oct 13 at 17:02 UTC it would have caused 11 minutes out of SLO (frontend at 107% of capacity (142.9 req/s on 1 × 134.1 req/s), 1.2 s queue)",
        "adds 10.5 min out of SLO (10–90%: 7.4 … 15.5)",
        "worst at 2026-10-13T17:07:00Z: frontend at 94% of capacity (126.3 req/s on 1 × 134.1 req/s), 16.2 s queue",
        "worse for frontend GET /, frontend GET /api/cart, frontend GET /api/data, frontend GET /api/products/{id}, frontend GET /api/recommendations, frontend POST /api/cart, frontend POST /api/checkout against their own SLOs",
+       "frees 1 cores and 1024 MiB of requests, but the node pool is fixed at 3: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 19% of it (23% before)",
        "headroom drops from 405.4 to 135.3 req/s (the history peaked at 164.5)"
       ],
       "warnings": [
        "frontend would run at 123% of a capacity the history never tested (peak 41%): the outcome rests on an extrapolated limit",
-       "only 0.6 h of history: daily and weekly peaks may be missing",
-       "costs are AWS Fargate list prices, not your bill: discounts and Savings Plans are not in them"
+       "only 0.6 h of history: daily and weekly peaks may be missing"
       ]
      },
      "exPost": {
@@ -3553,12 +3553,12 @@
       "minutesOutOfSlo": 1.5,
       "peakP99Ms": 5000,
       "monthlyDelta": {
-       "p50": -14.71,
-       "lo": -15.3,
-       "hi": -14.13
+       "p50": 0,
+       "lo": 0,
+       "hi": 0
       },
       "reasons": [
-       "saves $15/month; on Oct 13 at 16:56 UTC it would have caused 1 minute out of SLO (frontend at 113% of capacity (152.1 req/s on 1 × 134.1 req/s), 2.4 s queue)",
+       "costs the same; on Oct 13 at 16:56 UTC it would have caused 1 minute out of SLO (frontend at 113% of capacity (152.1 req/s on 1 × 134.1 req/s), 2.4 s queue)",
        "adds 1 min out of SLO (10–90%: 1 … 1.5)",
        "worst at 2026-10-13T16:56:30Z: frontend at 113% of capacity (152.1 req/s on 1 × 134.1 req/s), 2.4 s queue",
        "worse for frontend GET /, frontend GET /api/cart, frontend GET /api/data, frontend GET /api/products/{id}, frontend GET /api/recommendations, frontend POST /api/cart, frontend POST /api/checkout against their own SLOs"
@@ -3567,8 +3567,7 @@
        "frontend would run at 113% of a capacity the history never tested (peak 41%): the outcome rests on an extrapolated limit",
        "product-catalog would run at 51% of capacity, past the history's 23%: its capacity there is extrapolated",
        "recommendation: the model fits it poorly, and this change pushes it harder than the history did",
-       "only 0.6 h of history: daily and weekly peaks may be missing",
-       "costs are AWS Fargate list prices, not your bill: discounts and Savings Plans are not in them"
+       "only 0.6 h of history: daily and weekly peaks may be missing"
       ]
      },
      "exPost": {
@@ -4452,13 +4451,13 @@
       "replicas": 3,
       "historyPeakUtil": 0.41,
       "basis": "extrapolated",
-      "cost": "$0.0225/replica-hour at list price",
+      "cost": "no price",
       "notes": [
        "memory: peaks at 115 MiB per container against a 512 MiB limit (22%), +11.8 MiB per 100 req/s per replica",
        "CPU quota throttling: 7% of periods throttled at 38% of the limit, rising ×1.56 per 10 points (R² 0.63); it reaches 25% at 66% of the limit, so that is the CPU it can use (extrapolated)",
        "load never approached capacity; the CPU limit is extrapolated",
        "replaying the history reproduces its self time within 25% (mean abs. error)",
-       "priced at list price: 0.5 vCPU + 0.50 GB = $0.0225/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+       "requests 0.5 cores + 512 MiB = 6.5% of a node, $0.0258/replica-hour"
       ]
      },
      {
@@ -4470,12 +4469,12 @@
       "replicas": 1,
       "historyPeakUtil": 0,
       "basis": "no limit seen",
-      "cost": "$0.0220/replica-hour at list price",
+      "cost": "no price",
       "notes": [
        "CPU barely follows load (R² 0.00) — capacity is not CPU-bound or CPU data is noisy",
        "memory: peaks at 210 MiB per container against a 400 MiB limit (52%), +21.1 MiB per 100 req/s per replica",
        "replaying the history reproduces its self time within 7% (mean abs. error)",
-       "priced at list price: 0.5 vCPU + 0.39 GB = $0.0220/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+       "requests 0.5 cores + 400 MiB = 5.1% of a node, $0.0202/replica-hour"
       ]
      },
      {
@@ -4490,11 +4489,11 @@
       "replicas": 1,
       "historyPeakUtil": 0.07,
       "basis": "extrapolated",
-      "cost": "$0.0107/replica-hour at list price",
+      "cost": "no price",
       "notes": [
        "memory: peaks at 26 MiB per container against a 128 MiB limit (20%), flat with load",
        "replaying the history reproduces its self time within 30% (mean abs. error)",
-       "priced at list price: 0.25 vCPU + 0.13 GB = $0.0107/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+       "requests 0.25 cores + 128 MiB = 2.3% of a node, $0.0090/replica-hour"
       ]
      },
      {
@@ -4509,12 +4508,12 @@
       "replicas": 1,
       "historyPeakUtil": 0.01,
       "basis": "extrapolated",
-      "cost": "$0.0108/replica-hour at list price",
+      "cost": "no price",
       "notes": [
        "CPU barely follows load (R² 0.03) — capacity is not CPU-bound or CPU data is noisy",
        "memory: peaks at 72 MiB per container against a 150 MiB limit (48%), flat with load",
        "replaying the history reproduces its self time within 2% (mean abs. error)",
-       "priced at list price: 0.25 vCPU + 0.15 GB = $0.0108/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+       "requests 0.25 cores + 150 MiB = 2.3% of a node, $0.0090/replica-hour"
       ]
      },
      {
@@ -4529,14 +4528,14 @@
       "replicas": 1,
       "historyPeakUtil": 0.13,
       "basis": "extrapolated",
-      "cost": "$0.0108/replica-hour at list price",
+      "cost": "no price",
       "notes": [
        "CPU barely follows load (R² 0.27) — capacity is not CPU-bound or CPU data is noisy",
        "memory: peaks at 143 MiB per container against a 150 MiB limit (95%), flat with load",
        "CPU quota throttling: 6% of periods throttled at 10% of the limit, rising ×21.93 per 10 points (R² 0.43); it reaches 25% at 30% of the limit, so that is the CPU it can use",
        "load never approached capacity; the CPU limit is extrapolated",
        "replaying the history reproduces its self time within 20% (mean abs. error)",
-       "priced at list price: 0.25 vCPU + 0.15 GB = $0.0108/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+       "requests 0.25 cores + 150 MiB = 2.3% of a node, $0.0090/replica-hour"
       ]
      },
      {
@@ -4551,11 +4550,11 @@
       "replicas": 1,
       "historyPeakUtil": 0.02,
       "basis": "extrapolated",
-      "cost": "$0.0107/replica-hour at list price",
+      "cost": "no price",
       "notes": [
        "memory: peaks at 3 MiB per container against a 128 MiB limit (2%), +2.8 MiB per 100 req/s per replica",
        "replaying the history reproduces its self time within 4% (mean abs. error)",
-       "priced at list price: 0.25 vCPU + 0.13 GB = $0.0107/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+       "requests 0.25 cores + 128 MiB = 2.3% of a node, $0.0090/replica-hour"
       ]
      },
      {
@@ -4570,12 +4569,12 @@
       "replicas": 1,
       "historyPeakUtil": 0.01,
       "basis": "extrapolated",
-      "cost": "$0.0107/replica-hour at list price",
+      "cost": "no price",
       "notes": [
        "CPU barely follows load (R² 0.08) — capacity is not CPU-bound or CPU data is noisy",
        "memory: peaks at 22 MiB per container against a 128 MiB limit (17%), flat with load",
        "replaying the history reproduces its self time within 2% (mean abs. error)",
-       "priced at list price: 0.25 vCPU + 0.13 GB = $0.0107/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+       "requests 0.25 cores + 128 MiB = 2.3% of a node, $0.0090/replica-hour"
       ]
      },
      {
@@ -4590,11 +4589,11 @@
       "replicas": 1,
       "historyPeakUtil": 0.11,
       "basis": "extrapolated",
-      "cost": "$0.0211/replica-hour at list price",
+      "cost": "no price",
       "notes": [
        "memory: peaks at 67 MiB per container against a 200 MiB limit (33%), flat with load",
        "replaying the history reproduces its self time within 5% (mean abs. error)",
-       "priced at list price: 0.5 vCPU + 0.20 GB = $0.0211/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+       "requests 0.5 cores + 200 MiB = 4.5% of a node, $0.0179/replica-hour"
       ]
      },
      {
@@ -4609,12 +4608,12 @@
       "replicas": 1,
       "historyPeakUtil": 0,
       "basis": "extrapolated",
-      "cost": "$0.0107/replica-hour at list price",
+      "cost": "no price",
       "notes": [
        "CPU barely follows load (R² 0.01) — capacity is not CPU-bound or CPU data is noisy",
        "memory: peaks at 12 MiB per container against a 128 MiB limit (10%), flat with load",
        "replaying the history reproduces its self time within 1% (mean abs. error)",
-       "priced at list price: 0.25 vCPU + 0.13 GB = $0.0107/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+       "requests 0.25 cores + 128 MiB = 2.3% of a node, $0.0090/replica-hour"
       ]
      },
      {
@@ -4629,11 +4628,11 @@
       "replicas": 1,
       "historyPeakUtil": 0.06,
       "basis": "extrapolated",
-      "cost": "$0.0107/replica-hour at list price",
+      "cost": "no price",
       "notes": [
        "memory: peaks at 3 MiB per container against a 128 MiB limit (2%), flat with load",
        "replaying the history reproduces its self time within 3% (mean abs. error)",
-       "priced at list price: 0.25 vCPU + 0.13 GB = $0.0107/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+       "requests 0.25 cores + 128 MiB = 2.3% of a node, $0.0090/replica-hour"
       ]
      },
      {
@@ -4652,7 +4651,8 @@
       "notes": [
        "CPU barely follows load (R² 0.00) — capacity is not CPU-bound or CPU data is noisy",
        "memory: peaks at 46 MiB per container against a 96 MiB limit (47%), flat with load",
-       "replaying the history reproduces its self time within 3% (mean abs. error)"
+       "replaying the history reproduces its self time within 3% (mean abs. error)",
+       "requests 0.25 cores + 96 MiB = 2.3% of a node, $0.0090/replica-hour"
       ]
      },
      {
@@ -4667,12 +4667,12 @@
       "replicas": 1,
       "historyPeakUtil": 0.23,
       "basis": "extrapolated",
-      "cost": "$0.0112/replica-hour at list price",
+      "cost": "no price",
       "notes": [
        "memory: peaks at 20 MiB per container against a 256 MiB limit (8%), flat with load",
        "load never approached capacity; the CPU limit is extrapolated",
        "replaying the history reproduces its self time within 1% (mean abs. error)",
-       "priced at list price: 0.25 vCPU + 0.25 GB = $0.0112/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+       "requests 0.25 cores + 256 MiB = 3.3% of a node, $0.0129/replica-hour"
       ]
      },
      {
@@ -4687,13 +4687,13 @@
       "replicas": 1,
       "historyPeakUtil": 0.4,
       "basis": "extrapolated",
-      "cost": "$0.0107/replica-hour at list price",
+      "cost": "no price",
       "notes": [
        "memory: peaks at 55 MiB per container against a 128 MiB limit (43%), flat with load",
        "CPU quota throttling: 25% of periods throttled at 31% of the limit, rising ×3.18 per 10 points (R² 0.70); it reaches 25% at 31% of the limit, so that is the CPU it can use",
        "never loaded past 29% of capacity: CPU (33) and latency (71) read the limit differently, the band spans both",
        "replaying the history reproduces its self time within 32% (mean abs. error)",
-       "priced at list price: 0.25 vCPU + 0.13 GB = $0.0107/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+       "requests 0.25 cores + 128 MiB = 2.3% of a node, $0.0090/replica-hour"
       ]
      },
      {
@@ -4705,12 +4705,12 @@
       "replicas": 1,
       "historyPeakUtil": 0,
       "basis": "no limit seen",
-      "cost": "$0.0170/replica-hour at list price",
+      "cost": "no price",
       "notes": [
        "CPU barely follows load (R² 0.00) — capacity is not CPU-bound or CPU data is noisy",
        "memory: peaks at 1471 MiB per container against a 2048 MiB limit (72%), flat with load",
        "no per-bucket latency to check the model against",
-       "priced at list price: 0.2 vCPU + 2.00 GB = $0.0170/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+       "requests 0.2 cores + 512 MiB = 6.5% of a node, $0.0258/replica-hour"
       ]
      },
      {
@@ -4722,11 +4722,11 @@
       "replicas": 1,
       "historyPeakUtil": 0,
       "basis": "no limit seen",
-      "cost": "$0.0247/replica-hour at list price",
+      "cost": "no price",
       "notes": [
        "memory: peaks at -Infinity MiB per container against a 1024 MiB limit (-Infinity%), flat with load",
        "not seen in traces or request metrics — modelled for cost only",
-       "priced at list price: 0.5 vCPU + 1.00 GB = $0.0247/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+       "requests 0.5 cores + 256 MiB = 4.5% of a node, $0.0179/replica-hour"
       ]
      }
     ],
@@ -5752,20 +5752,20 @@
       "minutesOutOfSlo": 0,
       "peakP99Ms": 278,
       "monthlyDelta": {
-       "p50": -16.4,
-       "lo": -16.4,
-       "hi": -16.4
+       "p50": 0,
+       "lo": 0,
+       "hi": 0
       },
       "reasons": [
-       "saves $16/month, with no change in time out of SLO",
+       "costs the same, with no change in time out of SLO",
        "the backtest passes, but confidence is low (frontend: the model fits it poorly, and this change changes it) — load-test before trusting it",
+       "frees 0.5 cores and 512 MiB of requests, but the node pool is fixed at 3: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 19% of it (21% before)",
        "headroom drops from 492.6 to 329.1 req/s (the history peaked at 164.5)"
       ],
       "warnings": [
        "frontend: the model fits it poorly, and this change changes it",
        "the model's accuracy was never measured",
-       "only 0.6 h of history: daily and weekly peaks may be missing",
-       "costs are AWS Fargate list prices, not your bill: discounts and Savings Plans are not in them"
+       "only 0.6 h of history: daily and weekly peaks may be missing"
       ]
      },
      "exPost": {
@@ -6628,23 +6628,23 @@
       "minutesOutOfSlo": 4.5,
       "peakP99Ms": 5000,
       "monthlyDelta": {
-       "p50": -16.4,
-       "lo": -16.4,
-       "hi": -16.4
+       "p50": 0,
+       "lo": 0,
+       "hi": 0
       },
       "reasons": [
-       "saves $16/month; it would have caused 5 minutes out of SLO, the worst on Oct 13 at 17:05 UTC (frontend at 107% of capacity (361.2 req/s on 2 × 168.7 req/s), 1.3 s queue)",
+       "costs the same; it would have caused 5 minutes out of SLO, the worst on Oct 13 at 17:05 UTC (frontend at 107% of capacity (361.2 req/s on 2 × 168.7 req/s), 1.3 s queue)",
        "adds 4.5 min out of SLO (10–90%: 4 … 4.7)",
        "worst at 2026-10-13T17:04:00Z: frontend at 108% of capacity (365.1 req/s on 2 × 168.7 req/s), 1.5 s queue",
        "worse for frontend GET, frontend GET /, frontend GET /api/cart, frontend GET /api/recommendations, frontend POST, frontend POST /api/cart, frontend POST /api/checkout against their own SLOs",
+       "frees 0.5 cores and 512 MiB of requests, but the node pool is fixed at 3: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 19% of it (21% before)",
        "headroom drops from 492.6 to 329.1 req/s (the replayed traffic peaks at 365.1)"
       ],
       "warnings": [
        "frontend: the model fits it poorly, and this change changes it",
        "recommendation fits poorly and runs near its limit; the change leaves it as it was, so the comparison holds better than the absolute numbers",
        "the model's accuracy was never measured",
-       "only 0.6 h of history: daily and weekly peaks may be missing",
-       "costs are AWS Fargate list prices, not your bill: discounts and Savings Plans are not in them"
+       "only 0.6 h of history: daily and weekly peaks may be missing"
       ]
      },
      "exPost": {
@@ -7507,22 +7507,22 @@
       "minutesOutOfSlo": 1,
       "peakP99Ms": 1348,
       "monthlyDelta": {
-       "p50": -32.8,
-       "lo": -32.8,
-       "hi": -32.8
+       "p50": 0,
+       "lo": 0,
+       "hi": 0
       },
       "reasons": [
-       "saves $33/month; it would have caused 1 minute out of SLO, the worst on Oct 13 at 17:04 UTC (frontend at 98% of capacity (164.5 req/s on 1 × 168.7 req/s), 58 ms wait)",
+       "costs the same; it would have caused 1 minute out of SLO, the worst on Oct 13 at 17:04 UTC (frontend at 98% of capacity (164.5 req/s on 1 × 168.7 req/s), 58 ms wait)",
        "adds 1 min out of SLO (10–90%: 0.5 … 1)",
        "worst at 2026-10-13T17:04:00Z: frontend at 98% of capacity (164.5 req/s on 1 × 168.7 req/s), 58 ms wait",
        "worse for frontend GET /api/recommendations against their own SLOs",
+       "frees 1 cores and 1024 MiB of requests, but the node pool is fixed at 3: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 17% of it (21% before)",
        "headroom drops from 492.6 to 164.7 req/s (the history peaked at 164.5)"
       ],
       "warnings": [
        "frontend: the model fits it poorly, and this change changes it",
        "the model's accuracy was never measured",
-       "only 0.6 h of history: daily and weekly peaks may be missing",
-       "costs are AWS Fargate list prices, not your bill: discounts and Savings Plans are not in them"
+       "only 0.6 h of history: daily and weekly peaks may be missing"
       ]
      },
      "exPost": {
@@ -8385,12 +8385,12 @@
       "minutesOutOfSlo": 0.5,
       "peakP99Ms": 2833,
       "monthlyDelta": {
-       "p50": -15.72,
-       "lo": -15.72,
-       "hi": -15.72
+       "p50": 0,
+       "lo": 0,
+       "hi": 0
       },
       "reasons": [
-       "saves $16/month; on Oct 13 at 16:57 UTC it would have caused 1 minute out of SLO (frontend at 85% of capacity (172.5 req/s on 1.3 × 151.8 req/s (normally 168.7)), 0.2 s queue)",
+       "costs the same; on Oct 13 at 16:57 UTC it would have caused 1 minute out of SLO (frontend at 85% of capacity (172.5 req/s on 1.3 × 151.8 req/s (normally 168.7)), 0.2 s queue)",
        "the backtest passes, but confidence is low (frontend: the model fits it poorly, and this change changes it) — load-test before trusting it",
        "worst at 2026-10-13T16:57:00Z: frontend at 85% of capacity (172.5 req/s on 1.3 × 151.8 req/s (normally 168.7)), 0.2 s queue"
       ],
@@ -8398,8 +8398,7 @@
        "frontend: the model fits it poorly, and this change changes it",
        "recommendation fits poorly and runs near its limit; the change leaves it as it was, so the comparison holds better than the absolute numbers",
        "the model's accuracy was never measured",
-       "only 0.6 h of history: daily and weekly peaks may be missing",
-       "costs are AWS Fargate list prices, not your bill: discounts and Savings Plans are not in them"
+       "only 0.6 h of history: daily and weekly peaks may be missing"
       ]
      },
      "exPost": {
@@ -9283,14 +9282,14 @@
       "replicas": 3,
       "historyPeakUtil": 1.18,
       "basis": "limit seen in history",
-      "cost": "$0.0225/replica-hour at list price",
+      "cost": "no price",
       "notes": [
        "memory: peaks at 125 MiB per container against a 512 MiB limit (24%), +6.7 MiB per 100 req/s per replica",
        "CPU quota throttling: 36% of periods throttled at 81% of the limit, rising ×1.49 per 10 points (R² 0.91); it reaches 25% at 72% of the limit, so that is the CPU it can use",
        "the latency history reads 224 req/s per replica, but the CPU quota throttles it at 169: capped there",
        "latency fit scored on the 80 buckets at or below that capacity: above it the history only held for load-test steps",
        "replaying the history reproduces its self time within 36% (mean abs. error)",
-       "priced at list price: 0.5 vCPU + 0.50 GB = $0.0225/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+       "requests 0.5 cores + 512 MiB = 6.5% of a node, $0.0258/replica-hour"
       ]
      },
      {
@@ -9305,12 +9304,12 @@
       "replicas": 1,
       "historyPeakUtil": 0.19,
       "basis": "extrapolated",
-      "cost": "$0.0220/replica-hour at list price",
+      "cost": "no price",
       "notes": [
        "memory: peaks at 246 MiB per container against a 400 MiB limit (61%), flat with load",
        "never loaded past 18% of capacity: CPU (1166) and latency (410) read the limit differently, the band spans both",
        "replaying the history reproduces its self time within 10% (mean abs. error)",
-       "priced at list price: 0.5 vCPU + 0.39 GB = $0.0220/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+       "requests 0.5 cores + 400 MiB = 5.1% of a node, $0.0202/replica-hour"
       ]
      },
      {
@@ -9325,11 +9324,11 @@
       "replicas": 1,
       "historyPeakUtil": 0.18,
       "basis": "extrapolated",
-      "cost": "$0.0107/replica-hour at list price",
+      "cost": "no price",
       "notes": [
        "memory: peaks at 27 MiB per container against a 128 MiB limit (21%), flat with load",
        "replaying the history reproduces its self time within 29% (mean abs. error)",
-       "priced at list price: 0.25 vCPU + 0.13 GB = $0.0107/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+       "requests 0.25 cores + 128 MiB = 2.3% of a node, $0.0090/replica-hour"
       ]
      },
      {
@@ -9344,11 +9343,11 @@
       "replicas": 1,
       "historyPeakUtil": 0.31,
       "basis": "extrapolated",
-      "cost": "$0.0211/replica-hour at list price",
+      "cost": "no price",
       "notes": [
        "memory: peaks at 89 MiB per container against a 200 MiB limit (44%), +4.8 MiB per 100 req/s per replica",
        "replaying the history reproduces its self time within 7% (mean abs. error)",
-       "priced at list price: 0.5 vCPU + 0.20 GB = $0.0211/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+       "requests 0.5 cores + 200 MiB = 4.5% of a node, $0.0179/replica-hour"
       ]
      },
      {
@@ -9363,12 +9362,12 @@
       "replicas": 1,
       "historyPeakUtil": 0,
       "basis": "extrapolated",
-      "cost": "$0.0107/replica-hour at list price",
+      "cost": "no price",
       "notes": [
        "CPU barely follows load (R² 0.00) — capacity is not CPU-bound or CPU data is noisy",
        "memory: peaks at 12 MiB per container against a 128 MiB limit (10%), flat with load",
        "replaying the history reproduces its self time within 2% (mean abs. error)",
-       "priced at list price: 0.25 vCPU + 0.13 GB = $0.0107/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+       "requests 0.25 cores + 128 MiB = 2.3% of a node, $0.0090/replica-hour"
       ]
      },
      {
@@ -9383,11 +9382,11 @@
       "replicas": 1,
       "historyPeakUtil": 0.05,
       "basis": "extrapolated",
-      "cost": "$0.0107/replica-hour at list price",
+      "cost": "no price",
       "notes": [
        "memory: peaks at 5 MiB per container against a 128 MiB limit (4%), +6.2 MiB per 100 req/s per replica",
        "replaying the history reproduces its self time within 3% (mean abs. error)",
-       "priced at list price: 0.25 vCPU + 0.13 GB = $0.0107/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+       "requests 0.25 cores + 128 MiB = 2.3% of a node, $0.0090/replica-hour"
       ]
      },
      {
@@ -9402,11 +9401,11 @@
       "replicas": 1,
       "historyPeakUtil": 0.04,
       "basis": "extrapolated",
-      "cost": "$0.0107/replica-hour at list price",
+      "cost": "no price",
       "notes": [
        "memory: peaks at 44 MiB per container against a 128 MiB limit (34%), flat with load",
        "replaying the history reproduces its self time within 2% (mean abs. error)",
-       "priced at list price: 0.25 vCPU + 0.13 GB = $0.0107/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+       "requests 0.25 cores + 128 MiB = 2.3% of a node, $0.0090/replica-hour"
       ]
      },
      {
@@ -9421,12 +9420,12 @@
       "replicas": 1,
       "historyPeakUtil": 0.13,
       "basis": "extrapolated",
-      "cost": "$0.0107/replica-hour at list price",
+      "cost": "no price",
       "notes": [
        "memory: peaks at 9 MiB per container against a 128 MiB limit (7%), flat with load",
        "load never approached capacity; the CPU limit is extrapolated",
        "replaying the history reproduces its self time within 3% (mean abs. error)",
-       "priced at list price: 0.25 vCPU + 0.13 GB = $0.0107/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+       "requests 0.25 cores + 128 MiB = 2.3% of a node, $0.0090/replica-hour"
       ]
      },
      {
@@ -9445,7 +9444,8 @@
       "notes": [
        "CPU barely follows load (R² 0.02) — capacity is not CPU-bound or CPU data is noisy",
        "memory: peaks at 60 MiB per container against a 96 MiB limit (62%), flat with load",
-       "replaying the history reproduces its self time within 2% (mean abs. error)"
+       "replaying the history reproduces its self time within 2% (mean abs. error)",
+       "requests 0.25 cores + 96 MiB = 2.3% of a node, $0.0090/replica-hour"
       ]
      },
      {
@@ -9460,11 +9460,11 @@
       "replicas": 1,
       "historyPeakUtil": 0.13,
       "basis": "extrapolated",
-      "cost": "$0.0108/replica-hour at list price",
+      "cost": "no price",
       "notes": [
        "memory: peaks at 143 MiB per container against a 150 MiB limit (95%), flat with load",
        "replaying the history reproduces its self time within 17% (mean abs. error)",
-       "priced at list price: 0.25 vCPU + 0.15 GB = $0.0108/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+       "requests 0.25 cores + 150 MiB = 2.3% of a node, $0.0090/replica-hour"
       ]
      },
      {
@@ -9479,12 +9479,12 @@
       "replicas": 1,
       "historyPeakUtil": 0.06,
       "basis": "extrapolated",
-      "cost": "$0.0108/replica-hour at list price",
+      "cost": "no price",
       "notes": [
        "memory: peaks at 108 MiB per container against a 150 MiB limit (72%), flat with load",
        "load never approached capacity; the CPU limit is extrapolated",
        "replaying the history reproduces its self time within 2% (mean abs. error)",
-       "priced at list price: 0.25 vCPU + 0.15 GB = $0.0108/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+       "requests 0.25 cores + 150 MiB = 2.3% of a node, $0.0090/replica-hour"
       ]
      },
      {
@@ -9499,11 +9499,11 @@
       "replicas": 1,
       "historyPeakUtil": 0.47,
       "basis": "extrapolated",
-      "cost": "$0.0112/replica-hour at list price",
+      "cost": "no price",
       "notes": [
        "memory: peaks at 31 MiB per container against a 256 MiB limit (12%), +1.9 MiB per 100 req/s per replica",
        "replaying the history reproduces its self time within 4% (mean abs. error)",
-       "priced at list price: 0.25 vCPU + 0.25 GB = $0.0112/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+       "requests 0.25 cores + 256 MiB = 3.3% of a node, $0.0129/replica-hour"
       ]
      },
      {
@@ -9518,12 +9518,12 @@
       "replicas": 1,
       "historyPeakUtil": 0.9,
       "basis": "limit seen in history",
-      "cost": "$0.0107/replica-hour at list price",
+      "cost": "no price",
       "notes": [
        "memory: peaks at 81 MiB per container against a 128 MiB limit (63%), flat with load",
        "CPU quota throttling: 118% of periods throttled at 75% of the limit, rising ×1.75 per 10 points (R² 0.77); it reaches 25% at 48% of the limit, so that is the CPU it can use",
        "replaying the history reproduces its self time within 36% (mean abs. error)",
-       "priced at list price: 0.25 vCPU + 0.13 GB = $0.0107/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+       "requests 0.25 cores + 128 MiB = 2.3% of a node, $0.0090/replica-hour"
       ]
      },
      {
@@ -9535,12 +9535,12 @@
       "replicas": 1,
       "historyPeakUtil": 0,
       "basis": "no limit seen",
-      "cost": "$0.0170/replica-hour at list price",
+      "cost": "no price",
       "notes": [
        "CPU barely follows load (R² 0.00) — capacity is not CPU-bound or CPU data is noisy",
        "memory: peaks at 1999 MiB per container against a 2048 MiB limit (98%), flat with load",
        "no per-bucket latency to check the model against",
-       "priced at list price: 0.2 vCPU + 2.00 GB = $0.0170/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+       "requests 0.2 cores + 512 MiB = 6.5% of a node, $0.0258/replica-hour"
       ]
      },
      {
@@ -9552,11 +9552,11 @@
       "replicas": 1,
       "historyPeakUtil": 0,
       "basis": "no limit seen",
-      "cost": "$0.0247/replica-hour at list price",
+      "cost": "no price",
       "notes": [
        "memory: peaks at -Infinity MiB per container against a 1024 MiB limit (-Infinity%), flat with load",
        "not seen in traces or request metrics — modelled for cost only",
-       "priced at list price: 0.5 vCPU + 1.00 GB = $0.0247/replica-hour (AWS Fargate on-demand, us-east-1 (aws.amazon.com/fargate/pricing)); no bill"
+       "requests 0.5 cores + 256 MiB = 4.5% of a node, $0.0179/replica-hour"
       ]
      }
     ],
@@ -9678,5 +9678,5 @@
    }
   }
  ],
- "evaluatedAt": "2026-10-14T05:34:55.030Z"
+ "evaluatedAt": "2026-10-14T05:45:17.039Z"
 }

@@ -445,6 +445,56 @@ describe('memory limits and CPU quota throttling', () => {
   });
 });
 
+describe('Kubernetes nodes', () => {
+  const GiB = 2 ** 30;
+  /** the synthetic service on a node pool: 2-core / 8 GiB nodes, 1 core + 2 GiB requested per replica,
+   *  others' pods asking for 1 core */
+  const onNodes = (autoscaled: boolean) => {
+    const d = synthetic({ K: 40, c: 4, S: 20 }, 0.6);
+    const api = d.services.api;
+    api.cpuRequestCores = new Array(d.n).fill(1);
+    api.memoryRequestBytes = new Array(d.n).fill(2 * GiB);
+    const reps = api.replicas!.map((r) => r ?? 2);
+    const reqCpu = reps.map((r) => r * 1 + 1);
+    d.cluster = {
+      clusterNodes: reqCpu.map((c, i) => (autoscaled ? Math.ceil(c / 2) + (i % 7 === 0 ? 1 : 0) : 3)),
+      clusterNodeCpu: new Array(d.n).fill(2),
+      clusterNodeMemoryBytes: new Array(d.n).fill(8 * GiB),
+      clusterRequestedCpu: reqCpu,
+      clusterRequestedMemoryBytes: reps.map((r) => r * 2 * GiB + GiB),
+    };
+    return d;
+  };
+
+  it('prices compute by the nodes, and a fixed pool saves nothing when requests shrink', () => {
+    const d = onNodes(false);
+    const m = calibrate(d, { bootstrap: 0 });
+    expect(m.cluster?.autoscaled).toBe(false);
+    expect(m.cluster?.other.cpu).toBeCloseTo(1, 6);
+    expect(m.services.api.cost.source).toBe('bill'); // the bill wins where there is one
+    delete d.bill;
+    const m2 = calibrate(d, { bootstrap: 0 });
+    expect(m2.services.api.cost.source).toBe('nodes');
+    const r = backtest(m2, d, [{ name: 'half', changes: [{ service: 'api', cpuRequest: 0.5 }] }], { draws: 1 });
+    expect(r.strategies[0].delta.monthly.p50).toBeCloseTo(0, 6);
+    expect(r.baseline.cluster?.peakNodes).toBe(3);
+  });
+
+  it('on an autoscaled pool, requests that need fewer nodes save the nodes', () => {
+    const d = onNodes(true);
+    delete d.bill;
+    const m = calibrate(d, { bootstrap: 0 });
+    expect(m.cluster?.autoscaled).toBe(true);
+    // 2 replicas × 1 core + 1 core of others' pods fill 1.5 nodes (2 running); at 0.25 cores, 0.75 (1)
+    const r = backtest(m, d, [{ name: 'half', changes: [{ service: 'api', cpuRequest: 0.25 }] }, { name: 'more', changes: [{ service: 'api', replicas: 4 }] }], { draws: 1 });
+    const half = r.strategies.find((x) => x.name === 'half')!;
+    const more = r.strategies.find((x) => x.name === 'more')!;
+    expect(half.delta.monthly.p50).toBeLessThan(0);
+    expect(half.cluster!.meanNodes).toBeLessThan(r.baseline.cluster!.meanNodes);
+    expect(more.cluster!.peakNodes).toBeGreaterThan(r.baseline.cluster!.peakNodes);
+  });
+});
+
 describe('strategy from a config diff', () => {
   const dep = (name: string, replicas: number, cpu: string, arch?: string) => `apiVersion: apps/v1
 kind: Deployment
@@ -479,6 +529,26 @@ spec:
       { service: 'db', cpu: 4 },
     ]);
     expect(strategyFromDiff(before, before).strategy).toBeNull();
+  });
+
+  it('reads requests apart from limits: a request cut alone, and a limit change that carries its request', async () => {
+    const { readWorkloads, strategyFromDiff } = await import('../src/backtest/configDiff');
+    const w = (req: string, lim: string) => `apiVersion: apps/v1
+kind: Deployment
+metadata: { name: api }
+spec:
+  replicas: 2
+  template:
+    spec:
+      containers:
+        - name: app
+          resources: { requests: { cpu: "${req}", memory: 256Mi }, limits: { cpu: "${lim}", memory: 512Mi } }
+`;
+    const before = readWorkloads([w('500m', '1')]);
+    expect(strategyFromDiff(before, readWorkloads([w('250m', '1')])).strategy!.changes).toEqual([{ service: 'api', cpuRequest: 0.25 }]);
+    // limits only: requests default to them, and move with them
+    const lim = (cpu: string) => w(cpu, cpu).replace(/requests: \{[^}]*\}, /, '');
+    expect(strategyFromDiff(readWorkloads([lim('1')]), readWorkloads([lim('2')])).strategy!.changes).toEqual([{ service: 'api', cpu: 2 }]);
   });
 });
 

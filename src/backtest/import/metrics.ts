@@ -1,4 +1,4 @@
-import type { DatasetBuilder, ServiceMetric } from '../dataset';
+import { CLUSTER_METRICS, type ClusterMetric, type DatasetBuilder, type ServiceMetric } from '../dataset';
 import { csvObjects, parseCsv, parseTimestamp } from './csv';
 import { templatePath } from './traces';
 
@@ -14,7 +14,7 @@ import { templatePath } from './traces';
  * and how to convert units.
  */
 
-export type MetricName = ServiceMetric | 'cpuPercent';
+export type MetricName = ServiceMetric | ClusterMetric | 'cpuPercent';
 export type Unit = 'ms' | 's' | 'us' | 'percent' | 'ratio' | 'cores' | 'millicores' | 'bytes' | 'rps' | 'rpm' | 'count-per-period';
 
 export interface SeriesMapping {
@@ -53,7 +53,7 @@ const ENDPOINT_METRICS = new Set(['rps', 'errorRate', 'p50Ms', 'p99Ms', 'meanMs'
 
 /** convert a raw value to Bottleneck's units (ms for latency, cores for CPU, req/s for rates) */
 export function convert(metric: MetricName, v: number, unit: Unit | undefined, periodS: number, scale = 1): { metric: ServiceMetric; v: number } {
-  const m: ServiceMetric = metric === 'cpuPercent' ? 'cpuCores' : metric;
+  const m = (metric === 'cpuPercent' ? 'cpuCores' : metric) as ServiceMetric;
   let x = v;
   const latency = m.endsWith('Ms');
   if (latency) x = unit === 's' ? v * 1000 : unit === 'us' ? v / 1000 : v;
@@ -66,6 +66,8 @@ export function convert(metric: MetricName, v: number, unit: Unit | undefined, p
 }
 
 function emit(b: DatasetBuilder, map: SeriesMapping, labels: Record<string, string>, t: number, raw: number, periodS: number) {
+  // cluster-wide series (nodes, everything requested on them) belong to no service
+  if ((CLUSTER_METRICS as string[]).includes(map.metric)) return b.addCluster(map.metric as ClusterMetric, t, raw * (map.scale ?? 1));
   const rawSvc = map.service ?? labels[map.by ?? 'service'] ?? labels.service_name ?? labels.application ?? labels.job ?? labels.container ?? labels.app;
   if (!rawSvc) return;
   const service = map.rename?.[rawSvc] ?? rawSvc;

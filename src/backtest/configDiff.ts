@@ -15,6 +15,9 @@ export interface WorkloadConfig {
   replicas?: number;
   cpu?: number;
   memoryGb?: number;
+  /** requests (Kubernetes defaults them to the limits when only limits are set) */
+  cpuRequest?: number;
+  memoryRequestGb?: number;
   arch?: 'x86' | 'arm';
   autoscale?: { min: number; max: number; targetCpu?: number; scaleDownS?: number };
 }
@@ -67,6 +70,8 @@ export function readWorkloads(yamlTexts: string[]): Map<string, WorkloadConfig> 
       replicas: spec.replicas === undefined ? 1 : Number(spec.replicas),
       cpu: cpuQuantity(limits.cpu ?? requests.cpu),
       memoryGb: memQuantity(limits.memory ?? requests.memory),
+      cpuRequest: cpuQuantity(requests.cpu ?? limits.cpu),
+      memoryRequestGb: memQuantity(requests.memory ?? limits.memory),
       arch: archLabel === 'arm64' ? 'arm' : 'x86',
     });
     byName.set(name, service);
@@ -118,6 +123,15 @@ export function strategyFromDiff(before: Map<string, WorkloadConfig>, after: Map
     if (b.memoryGb !== undefined && b.memoryGb !== a.memoryGb) {
       ch.memoryGb = Math.round(b.memoryGb * 1000) / 1000;
       said.push(`${svc} memory ${a.memoryGb?.toFixed(2) ?? '?'} → ${b.memoryGb.toFixed(2)} GiB`);
+    }
+    // a request that moved on its own (a limit change carries an equal request with it)
+    if (b.cpuRequest !== undefined && b.cpuRequest !== a.cpuRequest && !(b.cpu !== a.cpu && b.cpuRequest === b.cpu)) {
+      ch.cpuRequest = b.cpuRequest;
+      said.push(`${svc} CPU request ${a.cpuRequest ?? '?'} → ${b.cpuRequest}`);
+    }
+    if (b.memoryRequestGb !== undefined && b.memoryRequestGb !== a.memoryRequestGb && !(b.memoryGb !== a.memoryGb && b.memoryRequestGb === b.memoryGb)) {
+      ch.memoryRequestGb = Math.round(b.memoryRequestGb * 1000) / 1000;
+      said.push(`${svc} memory request ${a.memoryRequestGb?.toFixed(2) ?? '?'} → ${b.memoryRequestGb.toFixed(2)} GiB`);
     }
     if (b.arch !== a.arch) {
       ch.arch = b.arch;
