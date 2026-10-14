@@ -7,7 +7,7 @@ import type { GlobalStats } from '../sim/engine';
 import { Sparkline } from '../canvas/Sparkline';
 import { SettingsButton } from './SettingsPanel';
 import { DesignMenu } from './DesignMenu';
-import { BookOpen, FileCode2, FlaskConical, ShieldAlert } from 'lucide-react';
+import { BookOpen, Calculator, FileCode2, FlaskConical, ShieldAlert } from 'lucide-react';
 
 const fmtRps = (r: number) => (r >= 1000 ? `${(r / 1000).toFixed(2)}k` : r.toFixed(0));
 
@@ -110,6 +110,8 @@ export function TopBar() {
   const setAuditOpen = useSim((s) => s.setAuditOpen);
   const specOpen = useSim((s) => s.specOpen);
   const setSpecOpen = useSim((s) => s.setSpecOpen);
+  const envelopeOpen = useSim((s) => s.envelopeOpen);
+  const setEnvelopeOpen = useSim((s) => s.setEnvelopeOpen);
 
   return (
     <div className="topbar">
@@ -134,6 +136,11 @@ export function TopBar() {
       {mode === 'sandbox' && (
         <button className={`icon-btn ${specOpen ? 'on' : ''}`} title="Architecture as code: edit the YAML spec, two-way synced with the board" onClick={() => setSpecOpen(!specOpen)}>
           <FileCode2 size={15} />
+        </button>
+      )}
+      {mode === 'sandbox' && (
+        <button className={`icon-btn ${envelopeOpen ? 'on' : ''}`} title="Back of the envelope: users → req/s, storage and bandwidth, then run the peak" onClick={() => setEnvelopeOpen(!envelopeOpen)}>
+          <Calculator size={15} />
         </button>
       )}
       {mode === 'sandbox' && (

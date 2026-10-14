@@ -57,7 +57,7 @@ export function ControlBar() {
           <div className="divider" />
           <div className="traffic">
             <span className="tl">Traffic</span>
-            <input type="range" min={0} max={5000} step={10} value={traffic} onChange={(e) => setTraffic(+e.target.value)} />
+            <input type="range" min={0} max={Math.max(5000, Math.ceil(traffic / 1000) * 1000)} step={10} value={traffic} onChange={(e) => setTraffic(+e.target.value)} />
             <span className="tv">{traffic.toLocaleString()}/s</span>
           </div>
           <div className="traffic">

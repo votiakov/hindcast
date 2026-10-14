@@ -12,6 +12,7 @@ import { AnalysisPanel } from './ui/AnalysisPanel';
 import { AuditPanel } from './ui/AuditPanel';
 import { CommandPalette } from './ui/CommandPalette';
 import { SpecEditor } from './ui/SpecEditor';
+import { EnvelopePanel } from './ui/EnvelopePanel';
 import { PresentHUD, presentStep } from './ui/PresentHUD';
 import { Shortcuts } from './ui/Shortcuts';
 import { Embed } from './ui/Embed';
@@ -171,6 +172,7 @@ export default function App() {
   const analysisOpen = useSim((s) => s.analysisOpen);
   const auditOpen = useSim((s) => s.auditOpen);
   const specOpen = useSim((s) => s.specOpen);
+  const envelopeOpen = useSim((s) => s.envelopeOpen);
   const present = useSim((s) => s.present);
   useSimLoop();
   const [dropping, setDropping] = useState(false);
@@ -218,7 +220,7 @@ export default function App() {
           <CompareView />
         ) : (
           <ReactFlowProvider>
-            <BoardCanvas id="main" padding={present ? { top: '150px', left: '60px', right: '60px', bottom: '140px' } : { top: '60px', left: '270px', right: mode === 'lesson' ? '380px' : mode === 'sandbox' && (auditOpen || analysisOpen || specOpen) ? '450px' : '60px', bottom: '110px' }} />
+            <BoardCanvas id="main" padding={present ? { top: '150px', left: '60px', right: '60px', bottom: '140px' } : { top: '60px', left: '270px', right: mode === 'lesson' ? '380px' : mode === 'sandbox' && (auditOpen || analysisOpen || specOpen || envelopeOpen) ? '450px' : '60px', bottom: '110px' }} />
           </ReactFlowProvider>
         )}
         {mode !== 'studio' && mode !== 'home' && <Palette key={mode} compact={mode === 'compare'} />}
@@ -226,6 +228,7 @@ export default function App() {
         {analysisOpen && (mode === 'sandbox' || mode === 'compare') && <AnalysisPanel />}
         {auditOpen && mode === 'sandbox' && <AuditPanel />}
         {specOpen && mode === 'sandbox' && <SpecEditor />}
+        {envelopeOpen && mode === 'sandbox' && <EnvelopePanel />}
         {mode !== 'studio' && mode !== 'home' && <ControlBar />}
         {mode === 'sandbox' && !present && <BoardReturn />}
         <Toasts />

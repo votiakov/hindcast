@@ -1,0 +1,16 @@
+/* Back of the envelope — the audit panel's ruled look: inputs, then the numbers that matter. */
+.env { position: absolute; top: 16px; right: 16px; bottom: 128px; width: 412px; z-index: 9; display: flex; flex-direction: column; padding: 0; overflow: hidden; background: var(--panel-solid); }
+.env-presets { display: flex; flex-wrap: wrap; gap: 6px; padding: 9px 14px; border-bottom: 1px solid var(--border); }
+.env-presets button { font-size: 11.5px; padding: 3px 8px; border-radius: 5px; border: 1px solid var(--border-strong); background: transparent; color: var(--muted); }
+.env-presets button.on { color: var(--text); border-color: var(--cyan); }
+.env-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 11.5px; color: var(--muted); }
+.env-inputs label { display: flex; flex-direction: column; gap: 3px; }
+.env-inputs input { font-family: var(--mono); font-size: 12px; padding: 3px 6px; border-radius: 5px; border: 1px solid var(--border-strong); background: transparent; color: var(--text); }
+.env-out { flex: 1; overflow: auto; padding: 4px 0; }
+.env-row { display: flex; justify-content: space-between; gap: 12px; padding: 7px 14px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+.env-row b { color: var(--text); font-family: var(--mono); font-weight: 600; text-align: right; }
+.env-row.big b { font-size: 16px; }
+.env-note { margin: 0; padding: 10px 14px; font-size: 11.5px; line-height: 1.5; color: var(--muted); }
+.env-foot { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--border); }
+.env-foot .btn { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.env-credit { font-size: 10.5px; color: var(--dim); margin-left: auto; }

@@ -184,6 +184,8 @@ interface State {
   setAuditOpen: (open: boolean) => void;
   specOpen: boolean;
   setSpecOpen: (open: boolean) => void;
+  envelopeOpen: boolean;
+  setEnvelopeOpen: (open: boolean) => void;
   /** presentation mode: chrome-free board, big numbers, captions; ←/→ walks the audit's incidents */
   present: boolean;
   presentIdx: number;
@@ -377,15 +379,17 @@ export const useSim = create<State>()((set, get) => {
     compare: init.compare,
     settings: DEFAULT_SETTINGS,
     analysisOpen: false,
-    setAnalysisOpen: (analysisOpen) => set(analysisOpen ? { analysisOpen, auditOpen: false, specOpen: false } : { analysisOpen }),
+    setAnalysisOpen: (analysisOpen) => set(analysisOpen ? { analysisOpen, auditOpen: false, specOpen: false, envelopeOpen: false } : { analysisOpen }),
     auditOpen: false,
-    setAuditOpen: (auditOpen) => set(auditOpen ? { auditOpen, analysisOpen: false, specOpen: false } : { auditOpen, audit: { ...get().audit, selected: null } }),
+    setAuditOpen: (auditOpen) => set(auditOpen ? { auditOpen, analysisOpen: false, specOpen: false, envelopeOpen: false } : { auditOpen, audit: { ...get().audit, selected: null } }),
     present: false,
     presentIdx: -1,
     setPresent: (present) => set({ present, presentIdx: -1 }),
     setPresentIdx: (presentIdx) => set({ presentIdx }),
     specOpen: false,
-    setSpecOpen: (specOpen) => set(specOpen ? { specOpen, analysisOpen: false, auditOpen: false } : { specOpen }),
+    setSpecOpen: (specOpen) => set(specOpen ? { specOpen, analysisOpen: false, auditOpen: false, envelopeOpen: false } : { specOpen }),
+    envelopeOpen: false,
+    setEnvelopeOpen: (envelopeOpen) => set(envelopeOpen ? { envelopeOpen, analysisOpen: false, auditOpen: false, specOpen: false } : { envelopeOpen }),
     audit: { status: 'idle', progress: null, result: null, specKey: null, selected: null, error: null, costPerMinute: 0 },
     setAudit: (p) => set({ audit: { ...get().audit, ...p } }),
     applyFix: (findingId, fixIndex) => {
@@ -603,7 +607,7 @@ export const useSim = create<State>()((set, get) => {
     setMode: (mode) => {
       if (get().scrub) get().setScrub(null);
       if (get().playback) set({ playback: null });
-      if (mode !== 'sandbox' && (get().auditOpen || get().specOpen)) set({ auditOpen: false, specOpen: false });
+      if (mode !== 'sandbox' && (get().auditOpen || get().specOpen || get().envelopeOpen)) set({ auditOpen: false, specOpen: false, envelopeOpen: false });
       const focus = mode === 'compare' ? 'A' : 'main';
       if (mode === 'backtest') {
         set({ mode, focus, running: false });

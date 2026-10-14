@@ -3,8 +3,9 @@ import { useBoardId } from './BoardContext';
 
 /** network round trip presets for a connection */
 export const LINK_PRESETS: { ms: number; label: string }[] = [
-  { ms: 0, label: 'same host / AZ' },
-  { ms: 1, label: 'cross-AZ ~1 ms' },
+  { ms: 0, label: 'same host' },
+  { ms: 0.5, label: 'same data centre ~0.5 ms' },
+  { ms: 1.5, label: 'cross-AZ ~1–2 ms' },
   { ms: 15, label: 'nearby region ~15 ms' },
   { ms: 70, label: 'cross-continent ~70 ms' },
   { ms: 150, label: 'intercontinental ~150 ms' },
