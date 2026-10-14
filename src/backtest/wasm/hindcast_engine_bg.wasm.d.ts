@@ -35,6 +35,10 @@ export const strategyFromTerraformPlan: (a: any, b: number, c: number, d: number
 export const instanceType: (a: number, b: number) => [number, number, number];
 export const importKubernetes: (a: any, b: number, c: number) => [number, number, number];
 export const importTerraform: (a: any, b: number, c: number) => [number, number, number];
+export const exportPlan: (a: number, b: number, c: any) => [number, number, number];
+export const podsByNodeQuery: (a: number, b: number) => [number, number];
+export const zoneOfProviderId: (a: number, b: number) => [number, number];
+export const workloadRe: () => [number, number];
 export const specToYaml: (a: any) => [number, number, number, number];
 export const toYaml: (a: any) => [number, number, number, number];
 export const __wbindgen_exn_store: (a: number) => void;

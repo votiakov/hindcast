@@ -13,11 +13,15 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
-import { exportPlan, runExport } from '../src/backtest/import/promExport';
+import { exportPlan } from '../src/backtest/import/promql';
+import { runExport } from './promExport';
+import { loadEngine } from '../src/backtest/native';
 import { clientCsv, readK6, requestsCsv } from './k6';
 import { synthesiseCur } from './bill';
 import { autoscaleLoop } from './autoscaler';
 import { writeManifest } from './manifest';
+
+await loadEngine();
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const PROM = process.env.PROM_URL ?? 'http://localhost:9090';

@@ -1,12 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { DatasetBuilder, regrid, sliceDataset, type Dataset } from '../src/backtest/dataset';
-import { bucketQuantile, importCloudWatch, importLongCsv, importPrometheus, importWideCsv } from '../src/backtest/import/metrics';
-import { buildTopology, parseTraceFile, type Span } from '../src/backtest/import/traces';
-import { parseCur, parseGcpBilling, summariseBill } from '../src/backtest/import/billing';
-import { parseCsv } from '../src/backtest/import/csv';
+import { sliceDataset, type Dataset } from '../src/backtest/dataset';
 import { importBundle } from '../src/backtest/import/manifest';
-import { exportPlan } from '../src/backtest/import/promExport';
-import { erlangC, mmcWait } from '../src/backtest/queueing';
+import { exportPlan } from '../src/backtest/import/promql';
 import { calibrate, trafficOf } from '../src/backtest/calibrate';
 import { basePlan, cfsStallMs, mixtureQuantile, runPlan, survival } from '../src/backtest/engine';
 import { applyStrategy } from '../src/backtest/strategy';
@@ -15,43 +10,42 @@ import type { Model } from '../src/backtest/model';
 
 const T0 = 1_790_000_000;
 
+/** import in-memory files through the engine's importer, as a manifest names them */
+const imp = (manifest: Record<string, unknown>, files: Record<string, string>) => importBundle({ name: 't', ...manifest }, { read: (p) => files[p], glob: (p) => (files[p] !== undefined ? [p] : []) });
+const promJson = (result: unknown[]) => JSON.stringify({ status: 'success', data: { resultType: 'matrix', result } });
+
 describe('importers', () => {
-  it('parses quoted CSV', () => {
-    expect(parseCsv('a,b\n"x, y","he said ""hi"""\n')).toEqual([
-      ['a', 'b'],
-      ['x, y', 'he said "hi"'],
-    ]);
+  it('reads quoted CSV', () => {
+    const { dataset } = imp({ step: '1m', metrics: [{ csv: 'm.csv' }] }, { 'm.csv': 'timestamp,service,metric,value\n2026-09-14T12:00:00Z,"api, v2",rps,12\n' });
+    expect(dataset.services['api, v2'].rps).toEqual([12]);
   });
 
   it('reads a Prometheus query_range matrix with unit conversion', () => {
-    const b = new DatasetBuilder();
-    const json = { status: 'success', data: { resultType: 'matrix', result: [{ metric: { service_name: 'api' }, values: [[T0, '0.120'], [T0 + 60, '0.240'], [T0 + 120, 'NaN']] }] } };
-    expect(importPrometheus(b, json, { metric: 'p99Ms', by: 'service_name', unit: 's' })).toBe(2);
-    const d = b.build({ name: 't' });
+    const { dataset: d } = imp({ metrics: [{ prometheus: 'p.json', metric: 'p99Ms', by: 'service_name', unit: 's' }] }, { 'p.json': promJson([{ metric: { service_name: 'api' }, values: [[T0, '0.120'], [T0 + 60, '0.240'], [T0 + 120, 'NaN']] }]) });
     expect(d.stepS).toBe(60);
-    expect(d.services.api.p99Ms).toEqual([120, 240]);
+    expect(d.services.api.p99Ms?.slice(0, 2)).toEqual([120, 240]);
   });
 
   it('reads endpoint series from Prometheus labels', () => {
-    const b = new DatasetBuilder();
-    importPrometheus(b, { data: { result: [{ metric: { service_name: 'api', http_route: '/orders', http_request_method: 'POST' }, values: [[T0, '5']] }] } }, { metric: 'rps', by: 'service_name', endpointBy: 'http_route', methodBy: 'http_request_method' });
-    expect(b.build({ name: 't' }).endpoints['POST /orders']).toMatchObject({ service: 'api', rps: [5] });
+    const { dataset } = imp({ step: '1m', metrics: [{ prometheus: 'p.json', metric: 'rps', by: 'service_name', endpointBy: 'http_route', methodBy: 'http_request_method' }] }, { 'p.json': promJson([{ metric: { service_name: 'api', http_route: '/orders', http_request_method: 'POST' }, values: [[T0, '5']] }]) });
+    const [ep] = Object.values(dataset.endpoints);
+    expect(Object.keys(dataset.endpoints)[0]).toMatch(/POST \/orders$/);
+    expect(ep).toMatchObject({ service: 'api', rps: [5] });
   });
 
   it('reads CloudWatch GetMetricData (sum per period → req/s)', () => {
-    const b = new DatasetBuilder();
     const json = { MetricDataResults: [{ Id: 'req', Label: 'api RequestCount', Timestamps: ['2026-09-14T12:01:00Z', '2026-09-14T12:00:00Z'], Values: [1200, 600], StatusCode: 'Complete' }, { Id: 'api__cpuPercent', Timestamps: ['2026-09-14T12:00:00Z'], Values: [50] }] };
-    importCloudWatch(b, json, { req: { service: 'api', metric: 'rps', unit: 'count-per-period' } });
-    const d = b.build({ name: 't' });
+    const { dataset: d } = imp({ step: '1m', metrics: [{ cloudwatch: 'cw.json', map: { req: { service: 'api', metric: 'rps', unit: 'count-per-period' } } }] }, { 'cw.json': JSON.stringify(json) });
     expect(d.services.api.rps).toEqual([10, 20]);
     expect(d.services.api.cpuCores?.[0]).toBe(0.5);
   });
 
   it('reads long and wide CSV', () => {
-    const b = new DatasetBuilder();
-    importLongCsv(b, 'timestamp,service,metric,value\n2026-09-14T12:00:00Z,api,rps,12\n2026-09-14T12:01:00Z,api,rps,14\n');
-    importWideCsv(b, 'time,api p99,db cpu\n2026-09-14T12:00:00Z,0.2,40\n2026-09-14T12:01:00Z,0.3,60\n', { 'api p99': { metric: 'p99Ms', service: 'api', unit: 's' }, 'db cpu': { metric: 'cpuPercent', service: 'db', scale: 2 } });
-    const d = b.build({ name: 't' });
+    const files = {
+      'long.csv': 'timestamp,service,metric,value\n2026-09-14T12:00:00Z,api,rps,12\n2026-09-14T12:01:00Z,api,rps,14\n',
+      'wide.csv': 'time,api p99,db cpu\n2026-09-14T12:00:00Z,0.2,40\n2026-09-14T12:01:00Z,0.3,60\n',
+    };
+    const { dataset: d } = imp({ step: '1m', metrics: [{ csv: 'long.csv' }, { wide: 'wide.csv', columns: { 'api p99': { metric: 'p99Ms', service: 'api', unit: 's' }, 'db cpu': { metric: 'cpuPercent', service: 'db', scale: 2 } } }] }, files);
     expect(d.services.api.rps).toEqual([12, 14]);
     expect(d.services.api.p99Ms).toEqual([200, 300]);
     expect(d.services.db.cpuCores).toEqual([0.8, 1.2]);
@@ -82,11 +76,12 @@ describe('importers', () => {
         ]),
       ],
     });
+  /** the topology and dataset traces alone give */
+  const fromTraces = (lines: string, stepS = 60) => imp({ step: `${stepS}s`, traces: [{ file: 't.jsonl' }] }, { 't.jsonl': lines }).dataset;
 
   it('builds topology, critical path and payloads from OTLP traces', () => {
-    const spans = parseTraceFile([traceDoc('t1', ms), traceDoc('t2', ms + 30_000)].join('\n'));
-    const b = new DatasetBuilder();
-    const topo = buildTopology(spans, b, { stepS: 60 });
+    const d = fromTraces([traceDoc('t1', ms), traceDoc('t2', ms + 30_000)].join('\n'));
+    const topo = d.topology!;
     expect(Object.keys(topo.services).sort()).toEqual(['api', 'orders-db', 'redis', 'web']);
     expect(topo.services['orders-db'].kind).toBe('db');
     expect(topo.services.redis.kind).toBe('cache');
@@ -101,7 +96,6 @@ describe('importers', () => {
     expect(ep.criticalMs['orders-db']).toBeCloseTo(40, 5);
     expect(topo.services.api.selfMeanMs).toBeCloseTo(80 - 40 - 10, 5);
     expect(ep.bytes['web>api']).toBe(300);
-    const d = b.build({ name: 't', stepS: 60 });
     expect(d.endpoints['web GET /checkout'].rps?.[0]).toBeCloseTo(2 / 60, 6);
   });
 
@@ -117,9 +111,14 @@ describe('importers', () => {
   });
 
   it('hangs a span whose parent was dropped under its caller instead of counting a request of its own', () => {
-    const sp = (id: string, parent: string | null, service: string, kind: Span['kind'], start: number, end: number, name = 'op'): Span => ({ traceId: 't1', spanId: id, parentId: parent, service, name, kind, start, end, error: false, attrs: {} });
-    const spans = [sp('1', null, 'frontend', 'server', 0, 100, 'GET /checkout'), sp('2', '1', 'frontend', 'client', 5, 90), sp('3', '2', 'checkout', 'server', 6, 89), sp('4', 'dropped', 'cart', 'server', 20, 30, 'GetCart')];
-    const topo = buildTopology(spans, null, { stepS: 60 });
+    const doc = JSON.stringify({
+      resourceSpans: [
+        rs('frontend', [span('t1', '1', null, 'GET /checkout', 2, ms, ms + 100), span('t1', '2', '1', 'op', 3, ms + 5, ms + 90)]),
+        rs('checkout', [span('t1', '3', '2', 'op', 2, ms + 6, ms + 89)]),
+        rs('cart', [span('t1', '4', 'dropped', 'GetCart', 2, ms + 20, ms + 30)]),
+      ],
+    });
+    const topo = fromTraces(doc).topology!;
     expect(Object.keys(topo.endpoints)).toHaveLength(1);
     expect(topo.edges.map((e) => `${e.from}>${e.to}`)).toContain('checkout>cart');
   });
@@ -137,7 +136,7 @@ describe('importers', () => {
         ]),
       ],
     });
-    const topo = buildTopology(parseTraceFile(doc), null, { stepS: 60 });
+    const topo = fromTraces(doc).topology!;
     expect(Object.keys(topo.endpoints).sort()).toEqual(['frontend GET /api/orders/{id}', 'frontend GET /api/products/[productId]']);
     // the framework's own SERVER span is part of the same visit
     expect(topo.endpoints['frontend GET /api/products/[productId]'].visits.frontend).toBe(1);
@@ -145,7 +144,7 @@ describe('importers', () => {
 
   it('reads Jaeger JSON', () => {
     const doc = { data: [{ traceID: 'x', spans: [{ traceID: 'x', spanID: '1', operationName: 'HTTP GET /dispatch', startTime: T0 * 1e6, duration: 50_000, tags: [{ key: 'span.kind', value: 'server' }], processID: 'p1' }, { traceID: 'x', spanID: '2', operationName: 'SQL SELECT', references: [{ refType: 'CHILD_OF', spanID: '1' }], startTime: T0 * 1e6 + 1000, duration: 30_000, tags: [], processID: 'p2' }], processes: { p1: { serviceName: 'frontend' }, p2: { serviceName: 'mysql' } } }] };
-    const topo = buildTopology(parseTraceFile(JSON.stringify(doc)), null, { stepS: 10 });
+    const topo = fromTraces(JSON.stringify(doc), 10).topology!;
     expect(topo.endpoints['frontend GET /dispatch'].visits.mysql).toBe(1);
     expect(topo.services.frontend.selfMeanMs).toBeCloseTo(20, 5);
   });
@@ -157,23 +156,24 @@ Usage,2026-09-14T12:00:00Z,2026-09-14T13:00:00Z,AWSDataTransfer,USE1-DataTransfe
 Usage,2026-09-14T12:00:00Z,2026-09-14T13:00:00Z,AmazonRDS,InstanceUsage:db.r7g.large,db-1,1,0.239,db.r7g.large,
 Tax,2026-09-14T12:00:00Z,2026-09-14T13:00:00Z,AmazonEC2,,,,5,,
 `;
-    const lines = parseCur(legacy, { tag: 'user:service', resources: { 'db-1': 'db' } });
-    expect(lines).toHaveLength(3);
-    const bill = summariseBill(lines, 'aws-cur');
+    const rps = { 'p.json': promJson([{ metric: { service_name: 'api' }, values: [[Date.parse('2026-09-14T12:00:00Z') / 1000, '1']] }]) };
+    const bill = imp({ step: '1h', metrics: [{ prometheus: 'p.json', metric: 'rps', by: 'service_name' }], billing: [{ cur: 'cur.csv', tag: 'user:service', resources: { 'db-1': 'db' } }] }, { ...rps, 'cur.csv': legacy }).dataset.bill!;
     expect(bill.components.api.byCategory).toEqual({ compute: 0.0816, transfer: 0.9 });
     expect(bill.components.db.total).toBeCloseTo(0.239);
     const v2 = `line_item_line_item_type,line_item_usage_start_date,line_item_usage_end_date,line_item_usage_type,line_item_resource_id,line_item_usage_amount,line_item_unblended_cost,resource_tags
 Usage,2026-09-14T12:00:00Z,2026-09-14T13:00:00Z,BoxUsage:m7g.large,i-2,1,0.0816,"{""user_service"":""web""}"
 `;
-    expect(parseCur(v2, { tag: 'user:service' })[0].component).toBe('web');
+    expect(Object.keys(imp({ step: '1h', metrics: [{ prometheus: 'p.json', metric: 'rps', by: 'service_name' }], billing: [{ cur: 'cur.csv', tag: 'user:service' }] }, { ...rps, 'cur.csv': v2 }).dataset.bill!.components)).toContain('web');
   });
 
   it('reads the GCP billing export (CSV and JSON lines)', () => {
+    const rps = { 'p.json': promJson([{ metric: { service_name: 'api' }, values: [[Date.parse('2026-09-14T12:00:00Z') / 1000, '1']] }]) };
     const csv = `service.description,sku.description,usage_start_time,usage_end_time,cost,usage.amount,labels\nCompute Engine,C4A Instance Core running in Americas,2026-09-14 12:00:00 UTC,2026-09-14 13:00:00 UTC,0.04,3600,"[{""key"":""app"",""value"":""api""}]"\n`;
-    const l = parseGcpBilling(csv, { tag: 'app' });
-    expect(l[0]).toMatchObject({ component: 'api', category: 'compute', cost: 0.04 });
+    const a = imp({ step: '1h', metrics: [{ prometheus: 'p.json', metric: 'rps', by: 'service_name' }], billing: [{ gcp: 'g.csv', tag: 'app' }] }, { ...rps, 'g.csv': csv }).dataset.bill!;
+    expect(a.components.api.byCategory).toEqual({ compute: 0.04 });
     const jl = JSON.stringify({ service: { description: 'Networking' }, sku: { description: 'Network Inter Zone Data Transfer Out' }, usage_start_time: '2026-09-14T12:00:00Z', cost: 0.01, labels: [{ key: 'app', value: 'api' }] });
-    expect(parseGcpBilling(jl, { tag: 'app' })[0].category).toBe('transfer');
+    const b = imp({ step: '1h', metrics: [{ prometheus: 'p.json', metric: 'rps', by: 'service_name' }], billing: [{ gcp: 'g.jsonl', tag: 'app' }] }, { ...rps, 'g.jsonl': jl }).dataset.bill!;
+    expect(b.components.api.byCategory).toEqual({ transfer: 0.01 });
   });
 
   it('imports a bundle from a manifest', () => {
@@ -186,11 +186,8 @@ Usage,2026-09-14T12:00:00Z,2026-09-14T13:00:00Z,BoxUsage:m7g.large,i-2,1,0.0816,
     expect(dataset.services.api.cpuCores).toEqual([0.2, 0.4]);
   });
 
-  it('regrids and slices', () => {
-    const b = new DatasetBuilder();
-    for (let i = 0; i < 6; i++) b.addService('a', 'rps', T0 + i * 10, i);
-    const d = b.build({ name: 't' });
-    expect(regrid(d, 30).services.a.rps).toEqual([1, 4]);
+  it('slices', () => {
+    const { dataset: d } = imp({ step: '10s', metrics: [{ csv: 'a.csv' }] }, { 'a.csv': 'timestamp,service,metric,value\n' + Array.from({ length: 6 }, (_, i) => `${T0 + i * 10},a,rps,${i}`).join('\n') + '\n' });
     expect(sliceDataset(d, 2, 4).services.a.rps).toEqual([2, 3]);
   });
 });
@@ -249,26 +246,18 @@ describe('templated endpoint series merged from their parts', () => {
   it('computes p99 from summed buckets, not the worst series, and ratios as Σnum/Σden', () => {
     // 100 fast requests on one session's series, 1 slow one on another: the endpoint's p99 is fast
     const bucket = (span: string, le: string, v: number) => ({ metric: { service_name: 'shop', span_name: span, le }, values: [[0, String(v)]] });
-    const hist = { status: 'success', data: { result: [bucket('GET /cart?s=1', '10', 100), bucket('GET /cart?s=1', '1000', 100), bucket('GET /cart?s=1', '+Inf', 100), bucket('GET /cart?s=2', '10', 0), bucket('GET /cart?s=2', '1000', 1), bucket('GET /cart?s=2', '+Inf', 1)] } };
-    const b = new DatasetBuilder();
-    importPrometheus(b, hist, { metric: 'p99Ms', unit: 'ms', by: 'service_name', endpointBy: 'span_name', template: true, combine: 'histogram' });
-    const ratio = { status: 'success', data: { result: [{ metric: { service_name: 'shop', span_name: 'GET /cart?s=1', part: 'num' }, values: [[0, '1']] }, { metric: { service_name: 'shop', span_name: 'GET /cart?s=1', part: 'den' }, values: [[0, '99']] }, { metric: { service_name: 'shop', span_name: 'GET /cart?s=2', part: 'den' }, values: [[0, '1']] }] } };
-    importPrometheus(b, ratio, { metric: 'errorRate', unit: 'ratio', by: 'service_name', endpointBy: 'span_name', template: true, combine: 'ratio' });
-    const d = b.build({ name: 'x', stepS: 60 });
+    const hist = promJson([bucket('GET /cart?s=1', '10', 100), bucket('GET /cart?s=1', '1000', 100), bucket('GET /cart?s=1', '+Inf', 100), bucket('GET /cart?s=2', '10', 0), bucket('GET /cart?s=2', '1000', 1), bucket('GET /cart?s=2', '+Inf', 1)]);
+    const ratio = promJson([{ metric: { service_name: 'shop', span_name: 'GET /cart?s=1', part: 'num' }, values: [[0, '1']] }, { metric: { service_name: 'shop', span_name: 'GET /cart?s=1', part: 'den' }, values: [[0, '99']] }, { metric: { service_name: 'shop', span_name: 'GET /cart?s=2', part: 'den' }, values: [[0, '1']] }]);
+    const { dataset: d } = imp({ step: '60s', metrics: [{ prometheus: 'h.json', metric: 'p99Ms', unit: 'ms', by: 'service_name', endpointBy: 'span_name', template: true, combine: 'histogram' }, { prometheus: 'r.json', metric: 'errorRate', unit: 'ratio', by: 'service_name', endpointBy: 'span_name', template: true, combine: 'ratio' }] }, { 'h.json': hist, 'r.json': ratio });
     const ep = Object.values(d.endpoints)[0];
     expect(ep.p99Ms![0]).toBeLessThan(10);
     expect(ep.errorRate![0]).toBeCloseTo(0.01, 6);
-  });
-  it('repairs non-monotonic buckets and refuses a p99 with too few requests behind it', () => {
-    const m = new Map([['50', 10], ['75', 8], ['100', 10], ['+Inf', 10]]);
-    expect(bucketQuantile(0.99, m)).toBeLessThanOrEqual(75);
-    expect(bucketQuantile(0.99, m, 100)).toBeNull();
   });
 });
 
 describe('frameworks with two server spans per request', () => {
   it('drops the method-only span-metric series when routed ones exist and traces show two server spans per visit', () => {
-    const sp = (tr: string, id: string, parent: string | null, name: string, kind: Span['kind'], route?: string) => ({ traceId: tr, spanId: id, parentId: parent, service: 'frontend', name, kind, start: 0, end: 10, error: false, attrs: route ? { 'http.route': route } : {} });
+    const sp = (tr: string, id: string, parent: string | null, name: string, kind: 'server', route?: string) => ({ traceId: tr, spanId: id, parentId: parent, service: 'frontend', name, kind, start: 0, end: 10, error: false, attrs: route ? { 'http.route': route } : {} });
     const traces = [sp('a', '1', null, 'GET', 'server'), sp('a', '2', '1', 'GET /api/cart', 'server', '/api/cart'), sp('b', '3', null, 'GET', 'server'), sp('b', '4', '3', 'GET /api/x', 'server', '/api/x')];
     const files: Record<string, string> = {
       'ep.json': JSON.stringify({ status: 'success', data: { result: [{ metric: { service_name: 'frontend', span_name: 'GET' }, values: [[0, '20']] }, { metric: { service_name: 'frontend', span_name: 'GET /api/cart' }, values: [[0, '10']] }, { metric: { service_name: 'frontend', span_name: 'GET /api/x' }, values: [[0, '10']] }] } }),
@@ -277,17 +266,6 @@ describe('frameworks with two server spans per request', () => {
     const fs = { read: (f: string) => files[f], glob: (p: string) => [p] };
     const { dataset } = importBundle({ name: 'x', step: '60s', metrics: [{ prometheus: 'ep.json', metric: 'rps', by: 'service_name', endpointBy: 'span_name', template: true }], traces: [{ file: 't.jsonl', series: { endpoints: false } }] }, fs);
     expect(Object.keys(dataset.endpoints).sort()).toEqual(['frontend GET /api/cart', 'frontend GET /api/x']);
-  });
-});
-
-describe('queueing', () => {
-  it('Erlang C matches M/M/1', () => {
-    expect(erlangC(1, 0.5)).toBeCloseTo(0.5);
-    // M/M/1, K=10, λ=5: mean wait ρ/(μ−λ) = 0.5/5 s = 100 ms
-    expect(mmcWait(5, 1, 10).meanMs).toBeCloseTo(100, 6);
-    expect(mmcWait(10, 1, 10).meanMs).toBe(Infinity);
-    // more servers at the same total capacity wait less
-    expect(mmcWait(8, 8, 10).meanMs).toBeLessThan(mmcWait(8, 1, 10).meanMs);
   });
 });
 
@@ -506,7 +484,7 @@ describe('Kubernetes nodes', () => {
   });
 
   it('loses a whole zone: two nodes in it go at once', async () => {
-    const { zoneOfProviderId } = await import('../src/backtest/import/promExport');
+    const { zoneOfProviderId } = await import('../src/backtest/import/promql');
     const { nodeLoss } = await import('../src/backtest/resilience');
     expect(zoneOfProviderId('aws:///us-east-1a/i-0abc')).toBe('us-east-1a');
     expect(zoneOfProviderId('gce://proj/us-central1-b/gke-node-1')).toBe('us-central1-b');

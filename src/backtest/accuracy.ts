@@ -1,17 +1,9 @@
-import type { Dataset, Num } from './dataset';
-import { quantile, sliceDataset } from './dataset';
+import type { Dataset } from './dataset';
+import { quantile } from './dataset';
 import type { AccuracyCheck, AccuracyRecord, Model } from './model';
-import { basePlan, mixtureQuantile, runPlan, type Plan, type Traffic } from './engine';
-import { calibrate, observedReplicas, trafficOf, type CalibrateOptions } from './calibrate';
-import { applyStrategy } from './strategy';
-import { drawPlan, rng } from './backtest';
-
-/** compiled implementations (src/backtest/native.ts sets them) */
-const native: { modelBreakingPoint?: typeof modelBreakingPointTs; holdoutAccuracy?: typeof holdoutAccuracyTs; referenceAccuracy?: typeof referenceAccuracyTs } = {};
-export function setNativeAccuracy(n: typeof native | null) {
-  for (const k of Object.keys(native) as (keyof typeof native)[]) delete native[k];
-  if (n) Object.assign(native, n);
-}
+import { basePlan, mixtureQuantile, runPlan, type Plan } from './engine';
+import {  type CalibrateOptions } from './calibrate';
+import * as wasm from './wasm/hindcast_engine.js';
 
 /**
  * How good is the model? Every claim is checked against something measured:
@@ -22,96 +14,6 @@ export function setNativeAccuracy(n: typeof native | null) {
  *
  * The same definitions are used for predicted and measured series, so they compare like for like.
  */
-
-export const TOLERANCE = { p99: 0.2, breakingPoint: 0.15, cost: 0.1 };
-
-interface Obs {
-  rps: Num[];
-  p99Ms: Num[];
-  errorRate: Num[];
-}
-
-/** total measured client series of a dataset (sum of endpoints) */
-export function clientSeries(d: Dataset): Obs {
-  const ids = Object.keys(d.endpoints);
-  const rps: Num[] = [];
-  const p99: Num[] = [];
-  const err: Num[] = [];
-  for (let i = 0; i < d.n; i++) {
-    let r = 0;
-    let e = 0;
-    let p = 0;
-    let w = 0;
-    let any = false;
-    for (const id of ids) {
-      const s = d.endpoints[id];
-      const v = s.rps?.[i];
-      if (v === null || v === undefined) continue;
-      any = true;
-      r += v;
-      e += v * (s.errorRate?.[i] ?? 0);
-      // traffic-weighted p99 across endpoints (exact for one endpoint)
-      p += v * (s.p99Ms?.[i] ?? 0);
-      w += v;
-    }
-    rps.push(any ? r : null);
-    err.push(any ? (r > 0 ? e / r : 0) : null);
-    p99.push(any && w > 0 ? p / w : null);
-  }
-  return { rps, p99Ms: p99, errorRate: err };
-}
-
-/** typical per-bucket error: median of |pred − obs| / obs over buckets with traffic */
-export function medianApe(pred: number[], obs: Num[], minObs = 1): number {
-  const e: number[] = [];
-  for (let i = 0; i < obs.length; i++) {
-    const o = obs[i];
-    if (o === null || o < minObs || !isFinite(pred[i])) continue;
-    e.push(Math.abs(pred[i] - o) / o);
-  }
-  e.sort((a, b) => a - b);
-  return e.length ? e[Math.floor(e.length / 2)] : NaN;
-}
-
-/** mean of a series over buckets that have data */
-const avg = (xs: Num[]) => {
-  let s = 0;
-  let k = 0;
-  for (const x of xs) if (x !== null && isFinite(x)) (s += x), k++;
-  return k ? s / k : NaN;
-};
-
-/**
- * Breaking point from a step load test: group buckets into plateaus of steady load, score each
- * plateau by how far it is past the SLO (max of p99/SLO and errors/SLO, last half of the plateau),
- * and interpolate where the score crosses 1. Returns req/s.
- */
-export function breakingPointOf(s: Obs, slo: { p99Ms: number; errorRate: number }): { rps: number; plateaus: { rps: number; score: number }[] } {
-  const plateaus: { rps: number; score: number }[] = [];
-  let cur: number[] = [];
-  const flush = () => {
-    if (cur.length >= 3) {
-      const tail = cur.slice(Math.floor(cur.length / 2));
-      const rps = avg(tail.map((i) => s.rps[i]));
-      const p99 = avg(tail.map((i) => s.p99Ms[i]));
-      const err = avg(tail.map((i) => s.errorRate[i]));
-      plateaus.push({ rps, score: Math.max(p99 / slo.p99Ms, err / slo.errorRate) });
-    }
-    cur = [];
-  };
-  // a new plateau starts when the offered load moves more than 8% from the plateau's start
-  for (let i = 0; i < s.rps.length; i++) {
-    const r = s.rps[i];
-    if (r === null || r <= 0) continue;
-    if (cur.length && Math.abs(r - (s.rps[cur[0]] as number)) / (s.rps[cur[0]] as number) > 0.08) {
-      // ramp buckets between steps belong to the next plateau
-      flush();
-    }
-    cur.push(i);
-  }
-  flush();
-  return { rps: crossing(plateaus), plateaus };
-}
 
 /** where the SLO score (≤ 1 = within SLO) crosses 1, interpolated log-linearly between plateaus */
 export function crossing(plateausIn: { rps: number; score: number }[]): number {
@@ -176,13 +78,6 @@ function measuredIn(log: RequestLog, a: number, b: number) {
   return { n: ms.length, p99: ms.length ? quantile(ms, 0.99) : NaN, err: ms.length ? failed / ms.length : NaN, dur: b - a };
 }
 
-/** p99 over every request of the whole run, predicted (mixture over all its buckets) vs measured */
-export function pooledP99(r: ReturnType<typeof runPlan>, log: RequestLog, start: number, stepS: number) {
-  const end = start + r.t.length * stepS;
-  const m = measuredIn(log, start, end);
-  return { measured: m.p99, predicted: predictedP99(r, 0, r.t.length), n: m.n };
-}
-
 /** p99 over every request in each window (pooled, so a window holds hundreds of requests), predicted vs measured */
 export function windowP99(r: ReturnType<typeof runPlan>, log: RequestLog, start: number, stepS: number, windowS = 300) {
   const per = Math.max(1, Math.round(windowS / stepS));
@@ -219,136 +114,15 @@ export function plateauBreakingPoint(r: ReturnType<typeof runPlan>, log: Request
   return { measured: crossing(measured), predicted: crossing(predicted), plateaus: measured.map((m, k) => ({ rps: m.rps, measured: m.score, predicted: predicted[k].score })) };
 }
 
-/** predicted series → Obs */
-const asObs = (r: ReturnType<typeof runPlan>): Obs => ({ rps: r.rps, p99Ms: r.p99Ms, errorRate: r.errorRate });
-
 /** model-only breaking point: step the traffic up with the endpoint mix until the SLO breaks */
-/** compiled (engine-rs) once loaded; the TypeScript one below is the reference */
 export function modelBreakingPoint(model: Model, plan: Plan = basePlan(model), opts: { maxRps?: number; steps?: number; holdS?: number } = {}): { rps: number; limitedBy: string | null } {
-  return native.modelBreakingPoint ? native.modelBreakingPoint(model, plan, opts) : modelBreakingPointTs(model, plan, opts);
-}
-
-export function modelBreakingPointTs(model: Model, plan: Plan = basePlan(model), opts: { maxRps?: number; steps?: number; holdS?: number } = {}): { rps: number; limitedBy: string | null } {
-  const shares = Object.entries(model.endpoints).map(([id, e]) => [id, e.share] as const);
-  // capacity guess to size the ramp: the smallest per-service limit given visits
-  let guess = Infinity;
-  for (const [id, s] of Object.entries(plan.services)) {
-    if (!isFinite(s.perReplicaRps)) continue;
-    const visits = shares.reduce((a, [ep, sh]) => a + sh * (model.endpoints[ep].visits[id] ?? 0), 0);
-    const reps = s.replicas ?? model.services[s.hostedBy ?? id]?.replicas ?? 1;
-    if (visits > 0) guess = Math.min(guess, (s.perReplicaRps * reps) / visits);
-  }
-  const top = opts.maxRps ?? (isFinite(guess) ? guess * 2 : 10_000);
-  const steps = opts.steps ?? 40;
-  const hold = opts.holdS ?? 60;
-  const stepS = 10;
-  const per = Math.round(hold / stepS);
-  const n = steps * per;
-  const rpsAt = (i: number) => (top * (Math.floor(i / per) + 1)) / steps;
-  const traffic: Traffic = { start: 0, stepS, n, endpoints: Object.fromEntries(shares.map(([id, sh]) => [id, Array.from({ length: n }, (_, i) => rpsAt(i) * sh)])) };
-  // fixed replica counts for the ramp; an in-process dependency runs in its host's replicas
-  const repsOf = (id: string): number | null => {
-    const s = plan.services[id];
-    if (s.hostedBy && plan.services[s.hostedBy]) return repsOf(s.hostedBy);
-    return s.replicas ?? (s.autoscale ? null : model.services[id]?.replicas ?? 1);
-  };
-  const fixed: Plan = { ...plan, services: Object.fromEntries(Object.entries(plan.services).map(([id, s]) => [id, { ...s, observedReplicas: undefined, replicas: repsOf(id) }])) };
-  const r = runPlan(fixed, traffic);
-  const bp = breakingPointOf(asObs(r), model.slo);
-  // which service was saturated just past the breaking point
-  const i = r.rps.findIndex((x) => x > bp.rps * 1.02);
-  let limitedBy: string | null = null;
-  if (i >= 0) {
-    let best = 0;
-    for (const [id, s] of Object.entries(r.services)) if (s.util[i] > best) [best, limitedBy] = [s.util[i], id];
-    // nothing saturated yet, but errors that grow with traffic crossed the error SLO
-    if (best < 0.85 && r.errorRate[i] > model.slo.errorRate && r.p99Ms[i] <= model.slo.p99Ms) {
-      const worst = Object.values(model.endpoints).sort((a, b) => (b.errorSlope ?? 0) * b.share - (a.errorSlope ?? 0) * a.share)[0];
-      limitedBy = `errors that grow with load${worst?.errorSlope ? ` (${worst.id}: +${(worst.errorSlope * 100).toFixed(2)}% per req/s)` : ''}`;
-    }
-  }
-  return { rps: bp.rps, limitedBy };
-}
-
-const check = (metric: AccuracyCheck['metric'], predicted: number, measured: number, tolerance: number, note: string): AccuracyCheck => {
-  const error = measured !== 0 ? Math.abs(predicted - measured) / Math.abs(measured) : predicted === 0 ? 0 : 1;
-  return { metric, predicted, measured, error, tolerance, pass: error <= tolerance, note };
-};
-
-/** total $ in a dataset's bill (within the dataset window) */
-export function billTotal(d: Dataset): number | null {
-  if (!d.bill) return null;
-  let total = 0;
-  for (const c of Object.values(d.bill.components)) for (const v of c.series ?? []) if (v !== null) total += v;
-  return total + d.bill.unattributed;
-}
-
-/**
- * Where to split: the last `share` of the *requests*, not of the buckets. A day that was idle but
- * for one busy hour would otherwise hold back hours of nothing; on a steadily busy history the two
- * are the same.
- */
-export function holdoutCut(d: Dataset, share: number): number {
-  const byBuckets = Math.floor(d.n * (1 - share));
-  const per = new Array(d.n).fill(0);
-  for (const e of Object.values(d.endpoints)) e.rps?.forEach((v, i) => (per[i] += v ?? 0));
-  const total = per.reduce((a, x) => a + x, 0);
-  if (!(total > 0)) return byBuckets;
-  let cum = 0;
-  for (let i = 0; i < d.n; i++) {
-    cum += per[i];
-    if (cum >= total * (1 - share)) return Math.max(1, Math.min(d.n - 1, i + 1));
-  }
-  return byBuckets;
+  return wasm.modelBreakingPoint(model, plan, opts);
 }
 
 /** calibrate on the first part, predict the rest */
-/** compiled (engine-rs) once loaded; the TypeScript one below is the reference */
 export function holdoutAccuracy(d: Dataset, opts: CalibrateOptions & { holdout?: number; requests?: RequestLog } = {}): AccuracyRecord {
-  return native.holdoutAccuracy ? native.holdoutAccuracy(d, opts) : holdoutAccuracyTs(d, opts);
-}
-
-export function holdoutAccuracyTs(d: Dataset, opts: CalibrateOptions & { holdout?: number; requests?: RequestLog } = {}): AccuracyRecord {
-  const cut = holdoutCut(d, opts.holdout ?? 0.3);
-  const train = sliceDataset(d, 0, cut);
-  const test = sliceDataset(d, cut, d.n);
-  const model = calibrate(train, opts);
-  const r = runPlan(basePlan(model, observedReplicas(test, model)), trafficOf(test, model));
-  const obs = clientSeries(test);
-  const checks: AccuracyCheck[] = [];
-  const span = `on the last ${Math.round((test.n * test.stepS) / 60)} min, calibrated on the ${Math.round((train.n * train.stepS) / 60)} min before`;
-  const log = opts.requests;
-  const w = log ? windowP99(r, log, test.start, test.stepS) : null;
-  if (log && w && w.rows.length) {
-    const pm = w.rows.reduce((a, x) => a + x.predicted, 0) / w.rows.length;
-    const mm = w.rows.reduce((a, x) => a + x.measured, 0) / w.rows.length;
-    // the point estimate can miss where the training part never saw the load; does the band hold it?
-    const rnd = rng(11);
-    const plan = basePlan(model, observedReplicas(test, model));
-    const per: number[][] = w.rows.map(() => []);
-    for (let k = 1; k <= 20; k++) {
-      const rk = runPlan(drawPlan(plan, model, k, rnd), trafficOf(test, model));
-      windowP99(rk, log, test.start, test.stepS).rows.forEach((x, j) => per[j]?.push(x.predicted));
-    }
-    const inside = w.rows.filter((x, j) => {
-      const v = [...per[j], x.predicted].sort((a, b) => a - b);
-      return x.measured >= quantile(v, 0.1) * 0.95 && x.measured <= quantile(v, 0.9) * 1.05;
-    }).length;
-    void pm;
-    void mm;
-    const pool = pooledP99(r, log, test.start, test.stepS);
-    checks.push({ ...check('p99', pool.predicted, pool.measured, TOLERANCE.p99, `p99 of all ${pool.n.toLocaleString('en-US')} requests ${span}; per 5-minute window the typical error is ${(w.median * 100).toFixed(0)}%, and the measurement fell inside the model's 10–90% band in ${inside} of ${w.rows.length} windows`) });
-  } else {
-    // per-bucket p99s decide pass/fail
-    const ape = medianApe(r.p99Ms, obs.p99Ms);
-    if (isFinite(ape)) checks.push({ ...check('p99', avg(r.p99Ms.map((x, i) => (obs.p99Ms[i] === null ? null : x))), avg(obs.p99Ms), TOLERANCE.p99, `typical error per ${test.stepS}s bucket ${(ape * 100).toFixed(0)}% ${span}`), error: ape, pass: ape <= TOLERANCE.p99 });
-  }
-  const bill = billTotal(test);
-  if (bill !== null) {
-    const pred = r.cost.compute.reduce((a, x, i) => a + x + r.cost.requests[i] + r.cost.transfer[i] + r.cost.other[i], 0);
-    checks.push(check('cost', pred, bill, TOLERANCE.cost, 'model cost vs the bill over the held-out window'));
-  }
-  return { method: 'holdout', label: `the last ${Math.round((opts.holdout ?? 0.3) * 100)}% of the requests`, checks, measuredAt: new Date().toISOString() };
+  const { holdout, requests, ...rest } = opts;
+  return wasm.holdoutAccuracy(d, rest, holdout, requests) as AccuracyRecord;
 }
 
 export interface ReferenceRun {
@@ -367,55 +141,8 @@ export interface ReferenceRun {
 }
 
 /** predict recorded runs the model never saw */
-/** compiled (engine-rs) once loaded; the TypeScript one below is the reference */
 export function referenceAccuracy(model: Model, runs: ReferenceRun[], label: string): AccuracyRecord {
-  return native.referenceAccuracy ? native.referenceAccuracy(model, runs, label) : referenceAccuracyTs(model, runs, label);
-}
-
-export function referenceAccuracyTs(model: Model, runs: ReferenceRun[], label: string): AccuracyRecord {
-  const checks: AccuracyCheck[] = [];
-  for (const run of runs) {
-    const base = basePlan(model);
-    const plan = run.strategy ? applyStrategy(model, base, run.strategy).plan : base;
-    // fixed replica counts were applied for real: use the counts the run actually had (containers
-    // start a few seconds apart); autoscaling is predicted, never copied from the run
-    const obsReps = observedReplicas(run.dataset, model);
-    for (const [id, s] of Object.entries(plan.services)) if (!s.autoscale && obsReps[id]) {
-      s.replicas = null;
-      s.observedReplicas = obsReps[id];
-    }
-    const r = runPlan(plan, trafficOf(run.dataset, model));
-    const obs = clientSeries(run.dataset);
-    if (run.stress && run.requests && run.shape) {
-      const bp = plateauBreakingPoint(r, run.requests, run.start ?? run.dataset.start, run.dataset.stepS, run.shape, model.slo);
-      // the shape's t is relative to the recording start, the dataset grid to its first bucket
-      checks.push(check('breaking-point', bp.predicted, bp.measured, TOLERANCE.breakingPoint, `${run.label}: step load test, p99 and errors over every request of each plateau (SLO p99 ≤ ${model.slo.p99Ms} ms, errors ≤ ${(model.slo.errorRate * 100).toFixed(0)}%)`));
-    } else if (!run.stress && run.requests) {
-      const pool = pooledP99(r, run.requests, run.dataset.start, run.dataset.stepS);
-      const w = windowP99(r, run.requests, run.dataset.start, run.dataset.stepS);
-      checks.push({ ...check('p99', pool.predicted, pool.measured, TOLERANCE.p99, `${run.label}: p99 of all ${pool.n.toLocaleString('en-US')} requests of the run; per 5-minute window the typical error is ${(w.median * 100).toFixed(0)}%, worst ${(w.max * 100).toFixed(0)}%`) });
-      const failedPred = r.rps.reduce((a, x, i) => a + x * r.errorRate[i] * run.dataset.stepS, 0);
-      const failedObs = run.requests.failed.filter(Boolean).length;
-      checks.push({ metric: 'errors', predicted: failedPred, measured: failedObs, error: failedObs > 0 ? Math.abs(failedPred - failedObs) / failedObs : failedPred > 0 ? 1 : 0, tolerance: Infinity, pass: true, note: `${run.label}: failed requests (informational)` });
-    } else if (run.stress) {
-      const m = breakingPointOf(obs, model.slo);
-      const p = breakingPointOf(asObs(r), model.slo);
-      checks.push(check('breaking-point', p.rps, m.rps, TOLERANCE.breakingPoint, `${run.label}: step load test, SLO p99 ≤ ${model.slo.p99Ms} ms and errors ≤ ${(model.slo.errorRate * 100).toFixed(0)}%`));
-    } else {
-      const ape = medianApe(r.p99Ms, obs.p99Ms);
-      const c = check('p99', avg(r.p99Ms.map((x, i) => (obs.p99Ms[i] === null ? null : x))), avg(obs.p99Ms), TOLERANCE.p99, `${run.label}: typical error per ${run.dataset.stepS}s bucket ${(ape * 100).toFixed(0)}%`);
-      checks.push({ ...c, error: ape, pass: ape <= TOLERANCE.p99 });
-      const failedPred = r.rps.reduce((a, x, i) => a + x * r.errorRate[i] * run.dataset.stepS, 0);
-      const failedObs = obs.rps.reduce<number>((a, x, i) => a + (x ?? 0) * (obs.errorRate[i] ?? 0) * run.dataset.stepS, 0);
-      checks.push({ metric: 'errors', predicted: failedPred, measured: failedObs, error: failedObs > 0 ? Math.abs(failedPred - failedObs) / failedObs : failedPred > 0 ? 1 : 0, tolerance: Infinity, pass: true, note: `${run.label}: failed requests (informational)` });
-    }
-    const bill = billTotal(run.dataset);
-    if (bill !== null && !run.stress) {
-      const pred = r.cost.compute.reduce((a, x, i) => a + x + r.cost.requests[i] + r.cost.transfer[i] + r.cost.other[i], 0);
-      checks.push(check('cost', pred, bill, TOLERANCE.cost, `${run.label}: predicted cost vs the run's bill`));
-    }
-  }
-  return { method: 'reference', label, checks, measuredAt: new Date().toISOString() };
+  return wasm.referenceAccuracy(model, runs, label) as AccuracyRecord;
 }
 
 /** one line per check, for terminals and reports */

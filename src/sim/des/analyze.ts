@@ -1,4 +1,5 @@
-import { simulateDes, type DesConfig, type DesResult } from './des';
+import {  type DesConfig, type DesResult } from './des';
+import * as wasm from '../../backtest/wasm/hindcast_engine.js';
 
 /**
  * Monte Carlo analysis: the same architecture + scenario under N seeds, aggregated into
@@ -90,18 +91,6 @@ export function aggregate(runs: RunSummary[], wallMs: number): Analysis {
 
 export const seedsFor = (runs: number, seed0 = 1) => Array.from({ length: runs }, (_, i) => seed0 + i * 7919);
 
-/** sequential Monte Carlo (works everywhere) */
-let nativeAnalyze: typeof analyzeTs | null = null;
-export function setNativeAnalyze(f: typeof analyzeTs | null) {
-  nativeAnalyze = f;
-}
-
 export function analyze(spec: unknown, scenario: unknown, opts: { runs?: number; seed?: number; des?: Partial<DesConfig> } = {}): Analysis {
-  return nativeAnalyze ? nativeAnalyze(spec, scenario, opts) : analyzeTs(spec, scenario, opts);
-}
-
-export function analyzeTs(spec: unknown, scenario: unknown, opts: { runs?: number; seed?: number; des?: Partial<DesConfig> } = {}): Analysis {
-  const t0 = performance.now();
-  const runs = seedsFor(opts.runs ?? 20, opts.seed).map((seed) => slim(simulateDes(spec, scenario, { ...opts.des, seed })));
-  return aggregate(runs, Math.round(performance.now() - t0));
+  return wasm.analyze(spec, scenario, opts) as Analysis;
 }

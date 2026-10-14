@@ -1,13 +1,6 @@
 import type { Num } from './dataset';
 import type { Model } from './model';
-import { mmcWait } from './queueing';
-
-/** compiled implementations (src/backtest/native.ts sets them) */
-const nativePlan: { basePlan?: typeof basePlanTs } = {};
-export function setNativePlan(n: typeof nativePlan | null) {
-  for (const k of Object.keys(nativePlan) as (keyof typeof nativePlan)[]) delete nativePlan[k];
-  if (n) Object.assign(nativePlan, n);
-}
+import * as wasm from './wasm/hindcast_engine.js';
 
 /**
  * Backtest engine: replays real traffic, bucket by bucket, through a calibrated model.
@@ -190,32 +183,6 @@ export interface RunResult {
   cluster?: { nodes: number[]; requestedCpu: number[]; requestedMemoryGb: number[] };
 }
 
-const RHO_MAX = 0.97;
-
-/** effective visits per request with caches in front of services (a hit skips the whole subtree) */
-export function effectiveVisits(ep: EndpointPlan, services: Record<string, ServicePlan>): Record<string, number> {
-  const ratio = new Map<string, { to: string; r: number }[]>();
-  for (const [k, n] of Object.entries(ep.calls)) {
-    const [from, to] = k.split('>');
-    const v = ep.visits[from] ?? 0;
-    if (!v) continue;
-    (ratio.get(from) ?? ratio.set(from, []).get(from)!).push({ to, r: n / v });
-  }
-  const out: Record<string, number> = { [ep.service]: 1 };
-  // breadth-first over the call DAG (cycles are cut after a few passes)
-  const order: string[] = [ep.service];
-  const seen = new Set(order);
-  for (let i = 0; i < order.length; i++) for (const { to } of ratio.get(order[i]) ?? []) if (!seen.has(to)) seen.add(to), order.push(to);
-  for (const s of order) {
-    if (s === ep.service) continue;
-    let v = 0;
-    for (const [from, kids] of ratio) for (const k of kids) if (k.to === s) v += (out[from] ?? 0) * k.r;
-    const hit = services[s]?.cache?.hitRate ?? 0;
-    out[s] = v * (1 - hit);
-  }
-  return out;
-}
-
 /** P(latency > t) for a latency summarised by (mean, p99) with an exponential tail */
 export function exceed(mean: number, p99: number, t: number): number {
   if (!isFinite(mean)) return 1;
@@ -288,468 +255,39 @@ export function mixtureQuantile(input: { w: number; mean: number; p99: number; p
   return (lo + hi) / 2;
 }
 
-const GB = 2 ** 30;
-
-/** $ per GB moved between two services, from their placement */
-export function linkPrice(a: ServicePlan | undefined, b: ServicePlan | undefined, tp: Model['transfer']): number {
-  if (!a || !b) return 0;
-  if (a.region && b.region && a.region !== b.region) return tp.crossRegionGb;
-  if (a.zone && b.zone && a.zone !== b.zone) return 2 * tp.crossZoneGb; // billed on both sides
-  return 0;
-}
-
-/** seconds an OOM-killed container takes to start serving again, on top of the backoff */
-const OOM_RESTART_S = 10;
-
 export type RunOpts = { substepS?: number; faults?: Fault[] };
-type Runner = (plan: Plan, traffic: Traffic, opts: RunOpts) => RunResult;
-/** the compiled engine (engine-rs, WebAssembly) once loaded; the TypeScript one below until then */
-let native: Runner | null = null;
-export function setNativeEngine(run: Runner | null) {
-  native = run;
-}
-export const nativeEngineLoaded = () => native !== null;
 
+/** the replay (engine-rs, WebAssembly): the long series cross as one Float64Array each way */
 export function runPlan(plan: Plan, traffic: Traffic, opts: RunOpts = {}): RunResult {
-  return native ? native(plan, traffic, opts) : runPlanTs(plan, traffic, opts);
-}
-
-/** the replay in TypeScript: the reference the Rust engine is checked against */
-export function runPlanTs(plan: Plan, traffic: Traffic, opts: RunOpts = {}): RunResult {
-  const { n, stepS } = traffic;
-  const sub = Math.max(1, Math.ceil(stepS / (opts.substepS ?? 5)));
-  const dt = stepS / sub;
-  const svcIds = Object.keys(plan.services);
+  const n = traffic.n;
   const epIds = Object.keys(plan.endpoints).filter((id) => traffic.endpoints[id]);
-  const visits = Object.fromEntries(epIds.map((id) => [id, effectiveVisits(plan.endpoints[id], plan.services)]));
-  const baseVisits = Object.fromEntries(epIds.map((id) => [id, plan.endpoints[id].visits]));
-
-  const st = Object.fromEntries(
-    svcIds.map((id) => {
-      const s = plan.services[id];
-      const first = s.observedReplicas?.find((x) => x !== null) ?? null;
-      const live = s.replicas ?? first ?? 1;
-      return [id, { backlog: 0, live: s.autoscale ? Math.max(s.autoscale.min, Math.min(s.autoscale.max, live)) : live, pending: [] as { at: number; n: number }[], lastScale: -Infinity, nextEval: 0, blockedSaid: false, util: 0, collapsed: false, oomUntil: -Infinity, ooms: 0, pendingSaid: false }];
-    }),
-  );
-  const epFail = Object.fromEntries(epIds.map((id) => [id, 0]));
-  const cl = plan.cluster;
-  // an autoscaled pool starts at what the first moment needs
-  const CS = { nodes: cl ? (cl.autoscaled ? -1 : cl.nodes) : 0, unneededSince: -Infinity, pendingSaid: false, adds: [] as number[], wantMax: 0 };
-  const faults = (opts.faults ?? []).filter((f) => plan.services[f.service]);
-  const faultOn = new Set<Fault>();
-  type Effect = { capacity: number; down: boolean; extraMs: number; errorRate: number; noScaleOut: boolean; warmupFactor: number; lost: number };
-  const effect = (id: string): Effect => {
-    const e: Effect = { capacity: 1, down: false, extraMs: 0, errorRate: 0, noScaleOut: false, warmupFactor: 1, lost: 0 };
-    for (const f of faultOn) {
-      if (f.service !== id) continue;
-      if (f.capacity !== undefined) e.capacity *= f.capacity;
-      if (f.down) e.down = true;
-      e.extraMs += f.extraMs ?? 0;
-      e.errorRate = 1 - (1 - e.errorRate) * (1 - (f.errorRate ?? 0));
-      if (f.noScaleOut) e.noScaleOut = true;
-      if (f.warmupFactor) e.warmupFactor *= f.warmupFactor;
-      e.lost += f.replicasLost ?? 0;
-    }
-    return e;
-  };
-
-  const z = () => new Array<number>(n).fill(0);
-  const out: RunResult = {
-    t: Array.from({ length: n }, (_, i) => traffic.start + i * stepS),
-    rps: z(),
-    errorRate: z(),
-    p99Ms: z(),
-    costPerHour: z(),
-    cost: { compute: z(), requests: z(), transfer: z(), other: z() },
-    services: Object.fromEntries(svcIds.map((id) => [id, { rps: z(), util: z(), replicas: z(), waitMs: z(), selfMeanMs: z(), selfP99Ms: z(), backlog: z(), cpuCores: z() }])),
-    endpoints: Object.fromEntries(epIds.map((id) => [id, { rps: z(), errorRate: z(), meanMs: z(), p99Ms: z(), p50Ms: z(), cost: z() }])),
-    events: [],
-    ...(cl ? { cluster: { nodes: z(), requestedCpu: z(), requestedMemoryGb: z() } } : {}),
-  };
-
-  // transfer $ per request per endpoint (static)
-  const transferPerReq = Object.fromEntries(
-    epIds.map((id) => {
-      const ep = plan.endpoints[id];
-      let dollars = (ep.egressBytes / GB) * plan.transfer.internetGb;
-      for (const [k, bytes] of Object.entries(ep.bytes)) {
-        const [from, to] = k.split('>');
-        const keep = (visits[id][to] ?? 0) / Math.max(1e-9, baseVisits[id][to] ?? 1);
-        const host = (x: string) => plan.services[plan.services[x]?.hostedBy ?? x] ?? plan.services[x];
-        dollars += ((bytes * keep) / GB) * linkPrice(host(from), host(to), plan.transfer);
-      }
-      return [id, dollars];
-    }),
-  );
-
-  // each endpoint's mean latency with no queueing anywhere (anchors the median's shift)
-  const zeroMean = Object.fromEntries(
-    epIds.map((e) => {
-      const ep = plan.endpoints[e];
-      let m = ep.overheadMs;
-      for (const [s, w] of Object.entries(ep.weights)) {
-        const ps = plan.services[s];
-        if (!ps) continue;
-        const keep = (visits[e][s] ?? 0) / Math.max(1e-9, ep.visits[s] ?? 1);
-        m += w * keep * ps.selfMean + (ps.cache ? w * (1 - keep) * ps.cache.latencyMs : 0);
-      }
-      return [e, m];
-    }),
-  );
-
-  // fixed per run: what runs inside each host, and each endpoint's path as arrays
-  const hostGroup = Object.fromEntries(svcIds.map((id) => [id, svcIds.filter((x) => plan.services[x].hostedBy === id || x === id)]));
-  const weightsOf = Object.fromEntries(epIds.map((e) => [e, Object.entries(plan.endpoints[e].weights)]));
-  const visitsOf = Object.fromEntries(epIds.map((e) => [e, Object.entries(visits[e])]));
-  const noFaults = Object.fromEntries(svcIds.map((id) => [id, effect(id)]));
-  // per service, per endpoint (in epIds order): its own visits, and its host group's
-  const epShare = new Float64Array(epIds.length);
-  const epCost = epIds.map((e) => out.endpoints[e].cost);
-  const ownVisits = Object.fromEntries(svcIds.map((id) => [id, Float64Array.from(epIds, (e) => visits[e][id] ?? 0)]));
-  const hostVisits = Object.fromEntries(svcIds.map((id) => [id, Float64Array.from(epIds, (e) => hostGroup[id].reduce((a, x) => a + (visits[e][x] ?? 0), 0))]));
-
-  const liveOf = (id: string): number => {
-    const s = plan.services[id];
-    if (s.hostedBy && plan.services[s.hostedBy]) return liveOf(s.hostedBy);
-    return st[id].live;
-  };
-
-  for (let i = 0; i < n; i++) {
-    const acc = {
-      rps: 0,
-      fail: 0,
-      parts: [] as { w: number; mean: number; p99: number }[],
-      timeout: 0,
-      late: 0,
-    };
-    for (const id of svcIds) {
-      const s = plan.services[id];
-      if (!s.autoscale && s.replicas === null && s.observedReplicas) {
-        const o = s.observedReplicas[i];
-        if (o !== null && o !== undefined) st[id].live = Math.max(0, o);
-      }
-    }
-    for (let k = 0; k < sub; k++) {
-      const now = i * stepS + k * dt;
-      for (const f of faults) {
-        const active = now >= f.at && now < (f.until ?? Infinity);
-        if (active && !faultOn.has(f)) {
-          faultOn.add(f);
-          out.events.push({ t: traffic.start + now, what: f.note ?? `${f.service}: fault starts` });
-        } else if (!active && faultOn.has(f)) {
-          faultOn.delete(f);
-          out.events.push({ t: traffic.start + now, what: `${f.service}: ${f.note ? `ends — ${f.note}` : 'fault ends'}` });
-        }
-      }
-      const fx = faultOn.size ? Object.fromEntries(svcIds.map((id) => [id, effect(id)])) : noFaults;
-      // offered load per endpoint, including client retries of last substep's failures
-      const lam: Record<string, number> = {};
-      for (const id of epIds) {
-        const base = traffic.endpoints[id][i] ?? 0;
-        const r = plan.endpoints[id].retries;
-        const f = epFail[id];
-        let amp = 1;
-        if (r && r.attempts > 0) {
-          let extra = 0;
-          for (let a = 1; a <= r.attempts; a++) extra += f ** a;
-          amp = 1 + Math.min(extra, r.budget);
-        }
-        lam[id] = base * amp;
-      }
-      // per-service demand
-      const svcLam: Record<string, number> = {};
-      for (const id of svcIds) svcLam[id] = 0;
-      for (const e of epIds) for (const [s, v] of visitsOf[e]) if (s in svcLam) svcLam[s] += lam[e] * v;
-
-      // queues
-      const lat: Record<string, { mean: number; p99: number; wait: number; err: number }> = {};
-      for (const id of svcIds) {
-        const s = plan.services[id];
-        const S = st[id];
-        const f = fx[s.hostedBy && fx[s.hostedBy]?.down ? s.hostedBy : id];
-        const live = Math.max(0, liveOf(id) - fx[s.hostedBy ?? id].lost);
-        const perRep = live > 0 ? svcLam[id] / live : svcLam[id] > 0 ? Infinity : 0;
-        const K = s.perReplicaRps * fx[id].capacity * (s.hostedBy ? fx[s.hostedBy]?.capacity ?? 1 : 1);
-        // OOM: every replica carries the same load, so the working set passes the limit on all of them;
-        // they are killed and come back after CrashLoopBackOff (10 s, doubling to 5 min) and a start
-        if (s.memory && now >= S.oomUntil && live > 0) {
-          // within the loads the history saw, never above the peak it measured (the worst spike sat
-          // at some load, not at every one)
-          const load = Math.min(perRep, isFinite(K) ? K * 1.5 : perRep);
-          const line = s.memory.base + s.memory.perReq * load + s.memory.spike;
-          const ws = s.memory.peak !== undefined && s.memory.seenTo !== undefined && load <= s.memory.seenTo ? Math.min(line, s.memory.peak) : line;
-          if (ws > s.memory.limit) {
-            S.ooms++;
-            S.oomUntil = now + Math.min(300, 10 * 2 ** (S.ooms - 1)) + OOM_RESTART_S;
-            out.events.push({ t: traffic.start + now, what: `${id}: OOM-killed — working set ${Math.round(ws * 1024)} MiB per container at ${Math.round(perRep)} req/s per replica, limit ${Math.round(s.memory.limit * 1024)} MiB` });
-          } else if (now >= S.oomUntil + 600) S.ooms = 0; // ten minutes up: the backoff resets
-        }
-        const down = f.down || now < S.oomUntil;
-        let waitMean = 0;
-        let waitP99 = 0;
-        if (down) {
-          // refused at once: nothing queues
-          S.backlog = 0;
-        } else if (live <= 0 && svcLam[id] > 0) {
-          waitMean = waitP99 = Infinity;
-        } else if (isFinite(K)) {
-          // a metastable service, once more than a second of work is queued, only finishes its
-          // overloaded rate until the queue is empty again
-          if (s.overloadedRps && S.backlog > K) S.collapsed = true;
-          if (S.collapsed && S.backlog <= 0) S.collapsed = false;
-          const Keff = S.collapsed && s.overloadedRps ? Math.min(K, s.overloadedRps * fx[id].capacity) : K;
-          const served = Math.min(Keff, perRep + S.backlog / dt);
-          S.backlog = Math.max(0, S.backlog + (perRep - served) * dt);
-          const w = mmcWait(Math.min(perRep, K * RHO_MAX), s.servers, K);
-          const drain = (S.backlog / K) * 1000;
-          const v = (s.variability ?? 1) * Math.min(1, w.rho) ** ((s.loadExponent ?? 1) - 1);
-          waitMean = v * w.meanMs + drain;
-          waitP99 = v * w.p99Ms + drain;
-        }
-        const ex0 = Math.max(0, s.selfP99 - s.selfMean);
-        const extra = fx[id].extraMs;
-        const mean = s.selfMean + waitMean + extra;
-        const p99 = mean + Math.sqrt(ex0 ** 2 + (s.tail * Math.max(0, waitP99 - waitMean)) ** 2);
-        lat[id] = { mean, p99, wait: waitMean, err: down ? 1 : fx[id].errorRate };
-        const o = out.services[id];
-        o.rps[i] += svcLam[id] / sub;
-        o.util[i] += (isFinite(K) && live > 0 ? Math.min(1.5, perRep / K) : 0) / sub;
-        o.replicas[i] += live / sub;
-        o.waitMs[i] += (isFinite(waitMean) ? waitMean : 1e6) / sub;
-        o.selfMeanMs[i] += (isFinite(mean) ? mean : 1e6) / sub;
-        o.selfP99Ms[i] += (isFinite(p99) ? p99 : 1e6) / sub;
-        o.backlog[i] += S.backlog / sub;
-        o.cpuCores[i] += (s.cpu ? live * (s.cpu.base + s.cpu.perReq * Math.min(perRep, K)) : 0) / sub;
-        if (s.memory) (o.oomDown ??= z())[i] += (now < S.oomUntil ? 1 : 0) / sub;
-      }
-
-      // endpoints: latency along the critical path, failures past the deadline
-      for (const e of epIds) {
-        const ep = plan.endpoints[e];
-        let mean = ep.overheadMs;
-        let ex2 = 0;
-        for (const [s, w] of weightsOf[e]) {
-          const l = lat[s];
-          if (!l) continue;
-          const keep = (visits[e][s] ?? 0) / Math.max(1e-9, ep.visits[s] ?? 1);
-          const ps = plan.services[s];
-          mean += w * keep * l.mean + (ps.cache ? w * (1 - keep) * ps.cache.latencyMs : 0);
-          const ex0 = Math.max(0, ps.selfP99 - ps.selfMean);
-          ex2 += (w * keep * Math.max(0, l.p99 - l.mean - ex0)) ** 2;
-        }
-        // one CFS stall at the plan's limits: the longest on the path (they rarely coincide)
-        let stall = 0;
-        if (ep.stalls) for (const x of ep.stalls) if (!lat[x.service] || lat[x.service].err < 1) stall = Math.max(stall, cfsStallMs(plan.services[x.service]?.cpuLimit ?? x.limit));
-        const p99 = mean + stall + Math.sqrt(ep.baseExcessMs ** 2 + ep.tail ** 2 * ex2);
-        const late = exceed(mean, p99, ep.timeoutMs);
-        // a failed call to any service on the request's path fails the request
-        let ok = 1;
-        for (const [s, v] of visitsOf[e]) if (lat[s]?.err) ok *= (1 - lat[s].err) ** Math.max(1, v);
-        const base0 = Math.min(1, Math.max(0, ep.errorRate + (ep.errorSlope ?? 0) * (traffic.endpoints[e][i] ?? 0)));
-        const fail = 1 - (1 - base0) * (1 - late) * ok;
-        epFail[e] = fail;
-        const base = traffic.endpoints[e][i] ?? 0;
-        // what the client sees: answers capped at its deadline
-        // fast failures answer quickly; only requests that ran into the deadline sit at the timeout
-        const seenP99 = late > 0.01 ? ep.timeoutMs : Math.min(p99, ep.timeoutMs);
-        const seenMean = isFinite(mean) ? Math.min(mean, ep.timeoutMs) : ep.timeoutMs;
-        const o = out.endpoints[e];
-        o.rps[i] += base / sub;
-        o.errorRate[i] += fail / sub;
-        // the median moves with the mean: everything that waits, waits for everyone
-        const shift = Math.max(0, seenMean - zeroMean[e]);
-        const p50 = ep.baseP50Ms ? Math.min(ep.timeoutMs, ep.baseP50Ms + shift) : 0;
-        const p90 = ep.baseP90Ms && p50 > 0 ? Math.min(ep.timeoutMs, ep.baseP90Ms + shift) : 0;
-        o.meanMs[i] += seenMean / sub;
-        o.p99Ms[i] += seenP99 / sub;
-        o.p50Ms[i] += p50 / sub;
-        acc.rps += base / sub;
-        acc.fail += (base * fail) / sub;
-        acc.late += (base * late) / sub;
-        acc.parts.push({ w: base / sub, mean: seenMean, p99: seenP99, ...(p50 > 0 && late <= 0.01 ? { p50, ...(p90 > p50 && p90 < seenP99 ? { p90 } : {}) } : {}) });
-        acc.timeout = Math.max(acc.timeout, ep.timeoutMs);
-      }
-
-      // cost of this substep, $/h
-      let compute = 0;
-      let requests = 0;
-      const lamTot = epIds.reduce((a, e) => a + lam[e], 0);
-      // each component's $/h is shared by the endpoints in proportion to the load they put on it
-      // (idle or untraced components by traffic share)
-      // the load on a host (with what runs inside it): Σ endpoints λ × visits, from the fixed vectors
-      const hostLoad = (id: string) => {
-        const hv = hostVisits[id];
-        let a = 0;
-        for (let j = 0; j < epIds.length; j++) a += lam[epIds[j]] * hv[j];
-        return a;
-      };
-      // on a cluster, the nodes are the bill: as many as the requests need (autoscaled, removed only
-      // after they've been unneeded a while) or the fixed pool. The services' share of them is the
-      // node spend less what other teams' pods take; it is spread over the services by their requests
-      let nodeScale = 1;
-      if (cl) {
-        let rc = cl.other.cpu;
-        let rm = cl.other.memoryGb;
-        let allocated = 0;
-        for (const id of svcIds) {
-          const s = plan.services[id];
-          if (s.hostedBy || !s.requests) continue;
-          const pods = st[id].live + st[id].pending.reduce((a, p) => a + p.n, 0);
-          rc += pods * s.requests.cpu;
-          rm += pods * s.requests.memoryGb;
-          allocated += pods * s.replicaHour;
-        }
-        const ideal = Math.max(rc / cl.node.cpu, rm / cl.node.memoryGb);
-        if (cl.autoscaled) {
-          const want = Math.min(cl.maxNodes, Math.max(cl.minNodes, Math.ceil(ideal * cl.packing - 1e-9)));
-          if (CS.nodes < 0) CS.nodes = want;
-          else if (want > CS.nodes) {
-            out.events.push({ t: traffic.start + now, what: `cluster: ${CS.nodes} → ${want} nodes (pods request ${rc.toFixed(1)} cores, ${rm.toFixed(1)} GiB)` });
-            for (let k = CS.nodes; k < want; k++) CS.adds.push(now);
-            CS.nodes = want;
-            CS.unneededSince = -Infinity;
-          } else if (want < CS.nodes) {
-            // removed only down to the most the window needed
-            if (!isFinite(CS.unneededSince)) (CS.unneededSince = now), (CS.wantMax = want);
-            CS.wantMax = Math.max(CS.wantMax, want);
-            if (now - CS.unneededSince >= cl.scaleDownS) {
-              out.events.push({ t: traffic.start + now, what: `cluster: ${CS.nodes} → ${CS.wantMax} nodes (unneeded for ${Math.round(cl.scaleDownS / 60)} min)` });
-              CS.nodes = CS.wantMax;
-              CS.unneededSince = -Infinity;
-            }
-          } else CS.unneededSince = -Infinity;
-          CS.adds = CS.adds.filter((at) => at > now - cl.provisionS);
-        }
-        if (ideal > CS.nodes && !CS.pendingSaid) {
-          out.events.push({ t: traffic.start + now, what: `cluster: pods request ${rc.toFixed(1)} cores and ${rm.toFixed(1)} GiB, more than ${CS.nodes} nodes hold — some would stay Pending` });
-          CS.pendingSaid = true;
-        }
-        const others = cl.node.perHour * Math.max(cl.other.cpu / cl.node.cpu, cl.other.memoryGb / cl.node.memoryGb) * cl.packing;
-        const ours = Math.max(0, CS.nodes * cl.node.perHour - others);
-        nodeScale = allocated > 0 ? ours / allocated : 0;
-        if (!(allocated > 0)) compute += ours;
-        const oc = out.cluster!;
-        oc.nodes[i] += CS.nodes / sub;
-        oc.requestedCpu[i] += rc / sub;
-        oc.requestedMemoryGb[i] += rm / sub;
-      }
-      epShare.fill(0);
-      let idleOwn = 0;
-      for (const id of svcIds) {
-        const s = plan.services[id];
-        const onNodes = !!cl && !!s.requests && !s.hostedBy;
-        const own = (s.hostedBy ? 0 : (st[id].live + st[id].pending.reduce((a, p) => a + p.n, 0)) * s.replicaHour * (onNodes ? nodeScale : 1)) + (s.cache ? s.cache.costPerHour : 0);
-        const req = svcLam[id] * 3600 * s.perRequest;
-        compute += own;
-        requests += req;
-        // an endpoint's share of it is λ_e × (own × hostVisits / load + req × visits / λ_service): the
-        // per-service factors are summed per endpoint here and multiplied by λ_e once, below
-        if (own > 0) {
-          const load = hostLoad(id);
-          if (load > 0) {
-            const c = own / load;
-            const hv = hostVisits[id];
-            for (let j = 0; j < epIds.length; j++) epShare[j] += c * hv[j];
-          } else idleOwn += own; // idle or untraced: by traffic share
-        }
-        if (req > 0 && svcLam[id] > 0) {
-          const c = req / svcLam[id];
-          const sv = ownVisits[id];
-          for (let j = 0; j < epIds.length; j++) epShare[j] += c * sv[j];
-        }
-      }
-      for (let j = 0; j < epIds.length; j++) {
-        const e = epIds[j];
-        const idle = idleOwn > 0 ? idleOwn * (lamTot > 0 ? lam[e] / lamTot : 1 / epIds.length) : 0;
-        epCost[j][i] += ((lam[e] * epShare[j] + idle) * dt) / 3600;
-      }
-      let transfer = 0;
-      for (const e of epIds) {
-        transfer += lam[e] * 3600 * transferPerReq[e];
-        out.endpoints[e].cost[i] += ((lam[e] * 3600 * transferPerReq[e] + (lamTot > 0 ? (plan.unattributedPerHour * lam[e]) / lamTot : 0)) * dt) / 3600;
-      }
-      out.cost.compute[i] += (compute * dt) / 3600;
-      out.cost.requests[i] += (requests * dt) / 3600;
-      out.cost.transfer[i] += (transfer * dt) / 3600;
-      out.cost.other[i] += (plan.unattributedPerHour * dt) / 3600;
-
-      // autoscalers
-      for (const id of svcIds) {
-        const s = plan.services[id];
-        const a = s.autoscale;
-        if (!a) continue;
-        const S = st[id];
-        const t = now + dt;
-        for (const p of S.pending.filter((p) => p.at <= t)) {
-          S.live += p.n;
-          out.events.push({ t: traffic.start + t, what: `${id}: ${p.n} new replica${p.n > 1 ? 's' : ''} serving (${S.live})` });
-        }
-        S.pending = S.pending.filter((p) => p.at > t);
-        // what the metric shows: utilisation averaged over its window
-        // the HPA sees ready pods: replicas a node failure took aren't there until they're replaced
-        const lost = Math.min(S.live, fx[id].lost);
-        const ready = S.live - lost;
-        const perRepNow = ready > 0 ? svcLam[id] / ready : 0;
-        const utilNow = s.cpu && s.cpuLimit ? (s.cpu.base + s.cpu.perReq * Math.min(perRepNow, s.perReplicaRps)) / s.cpuLimit : isFinite(s.perReplicaRps) ? Math.min(perRepNow, s.perReplicaRps) / s.perReplicaRps : 0;
-        S.util += (utilNow - S.util) * (1 - Math.exp(-dt / Math.max(dt, (a.metricWindowS ?? 30) / 2)));
-        if (t + 1e-9 < S.nextEval) continue;
-        S.nextEval = t + a.intervalS;
-        const util = S.util;
-        const booting = S.pending.reduce((x, p) => x + p.n, 0);
-        const desired = Math.min(a.max, Math.max(a.min, Math.ceil((Math.max(ready, 1) * util) / a.target - 1e-9)));
-        if (desired > ready + booting && fx[id].noScaleOut) {
-          if (!S.blockedSaid) out.events.push({ t: traffic.start + t, what: `${id}: wants ${desired} replicas but cannot launch any` });
-          S.blockedSaid = true;
-        } else if (desired > ready + booting) {
-          S.blockedSaid = false;
-          let add = desired - ready - booting;
-          let wait = 0;
-          // on a cluster the new pods need room: on an autoscaled pool, a node that isn't there yet is
-          // waited for; on a fixed pool, pods that don't fit stay Pending
-          if (cl && s.requests && !s.hostedBy) {
-            let rc = cl.other.cpu;
-            let rm = cl.other.memoryGb;
-            for (const x of svcIds) {
-              const q = plan.services[x];
-              if (q.hostedBy || !q.requests) continue;
-              const pods = st[x].live + st[x].pending.reduce((acc, p) => acc + p.n, 0);
-              rc += pods * q.requests.cpu;
-              rm += pods * q.requests.memoryGb;
-            }
-            // a node added in the last provisionS isn't up yet: pods for it wait like the first ones did
-            const usable = CS.nodes - CS.adds.filter((at) => at > t - cl.provisionS).length;
-            const fits = (k: number) => Math.max((rc + k * s.requests!.cpu) / cl.node.cpu, (rm + k * s.requests!.memoryGb) / cl.node.memoryGb) * (cl.autoscaled ? cl.packing : 1) <= usable + 1e-9;
-            if (cl.autoscaled) {
-              if (!fits(add)) wait = cl.provisionS;
-            } else {
-              let room = add;
-              while (room > 0 && !fits(room)) room--;
-              // said once per episode, not at every evaluation
-              if (room < add && !S.pendingSaid) out.events.push({ t: traffic.start + t, what: `${id}: ${add - room} of ${add} new replicas stay Pending — the ${CS.nodes} fixed nodes have no room for their requests` });
-              S.pendingSaid = room < add;
-              add = room;
-            }
-          }
-          if (add > 0) {
-            S.pending.push({ at: t + a.warmupS * fx[id].warmupFactor + wait, n: add });
-            S.lastScale = t;
-            out.events.push({ t: traffic.start + t, what: `${id}: scale out ${S.live + booting} → ${S.live + booting + add} (load ${(util * 100).toFixed(0)}% of target ${(a.target * 100).toFixed(0)}%)${wait ? `, waiting ${wait} s for a new node` : ''}` });
-          }
-        } else if (desired < ready && !booting && t - S.lastScale >= a.cooldownS) {
-          out.events.push({ t: traffic.start + t, what: `${id}: scale in ${ready} → ${desired}` });
-          S.live = desired + lost;
-          S.lastScale = t;
-        }
-      }
-    }
-    out.rps[i] = acc.rps;
-    out.errorRate[i] = acc.rps > 0 ? acc.fail / acc.rps : 0;
-    // with more than 1% of requests running into the deadline, the 99th percentile is the timeout
-    out.p99Ms[i] = acc.rps > 0 && acc.late / acc.rps > 0.01 ? acc.timeout : Math.min(acc.timeout || Infinity, mixtureQuantile(acc.parts));
-    const total = out.cost.compute[i] + out.cost.requests[i] + out.cost.transfer[i] + out.cost.other[i];
-    out.costPerHour[i] = (total * 3600) / stepS;
+  const svcIds = Object.keys(plan.services);
+  let size = epIds.length * n;
+  const observed: [string, number, number][] = [];
+  for (const id of svcIds) {
+    const o = plan.services[id].observedReplicas;
+    if (o) observed.push([id, size, o.length]), (size += o.length);
   }
+  const series = new Float64Array(size);
+  epIds.forEach((id, k) => {
+    const v = traffic.endpoints[id];
+    for (let i = 0; i < n; i++) series[k * n + i] = v[i] ?? 0;
+  });
+  for (const [id, off, len] of observed) {
+    const o = plan.services[id].observedReplicas!;
+    for (let i = 0; i < len; i++) series[off + i] = o[i] ?? NaN;
+  }
+  const services = Object.fromEntries(svcIds.map((id) => [id, plan.services[id].observedReplicas ? { ...plan.services[id], observedReplicas: undefined } : plan.services[id]]));
+  const [data, events] = wasm.runPlanPacked({ ...plan, services }, { start: traffic.start, stepS: traffic.stepS, n }, epIds, observed, series, opts) as [Float64Array, RunResult['events']];
+  let c = 0;
+  const take = () => Array.from(data.subarray(c, (c += n)));
+  const out: RunResult = { t: take(), rps: take(), errorRate: take(), p99Ms: take(), costPerHour: take(), cost: { compute: take(), requests: take(), transfer: take(), other: take() }, services: {}, endpoints: {}, events };
+  for (const id of svcIds) {
+    out.services[id] = { rps: take(), util: take(), replicas: take(), waitMs: take(), selfMeanMs: take(), selfP99Ms: take(), backlog: take(), cpuCores: take() };
+    if (plan.services[id].memory && n > 0) out.services[id].oomDown = take();
+  }
+  for (const id of epIds) out.endpoints[id] = { rps: take(), errorRate: take(), meanMs: take(), p99Ms: take(), p50Ms: take(), cost: take() };
+  if (plan.cluster) out.cluster = { nodes: take(), requestedCpu: take(), requestedMemoryGb: take() };
   return out;
 }
 
@@ -757,41 +295,6 @@ export function runPlanTs(plan: Plan, traffic: Traffic, opts: RunOpts = {}): Run
 export const cfsStallMs = (limit: number | null) => (limit && limit < 1 ? (1 - limit) * 100 : 0);
 
 /** a plan that reproduces the model as it was (observed replicas, no changes) */
-/** compiled (engine-rs) once loaded; the TypeScript one below is the reference */
 export function basePlan(model: Model, observed?: Record<string, Num[] | undefined>): Plan {
-  return nativePlan.basePlan ? nativePlan.basePlan(model, observed) : basePlanTs(model, observed);
-}
-
-export function basePlanTs(model: Model, observed?: Record<string, Num[] | undefined>): Plan {
-  const services: Record<string, ServicePlan> = {};
-  for (const [id, s] of Object.entries(model.services)) {
-    services[id] = {
-      id,
-      hostedBy: s.hostedBy,
-      replicas: observed?.[id] ? null : s.replicas,
-      observedReplicas: observed?.[id],
-      perReplicaRps: s.capacity.perReplicaRps,
-      overloadedRps: s.capacity.overloadedRps,
-      servers: s.capacity.servers,
-      selfMean: s.self.mean,
-      selfP99: s.self.p99,
-      tail: s.tail,
-      variability: s.variability,
-      loadExponent: s.loadExponent,
-      cpu: s.cpu ? { base: s.cpu.base, perReq: s.cpu.perReq } : null,
-      cpuLimit: s.cpuLimit,
-      ...(s.memory?.limit ? { memory: { base: s.memory.base, perReq: s.memory.perReq, spike: s.memory.spike, limit: s.memory.limit, peak: s.memory.peak, seenTo: s.memory.seenTo } } : {}),
-      ...(s.requests ? { requests: { ...s.requests } } : {}),
-      replicaHour: s.cost.perReplicaHour,
-      perRequest: s.cost.perRequest,
-      zone: s.placement?.zone,
-      region: s.placement?.region,
-    };
-  }
-  const endpoints: Record<string, EndpointPlan> = {};
-  for (const [id, e] of Object.entries(model.endpoints))
-    endpoints[id] = { id, service: e.service, visits: e.visits, calls: e.calls, weights: e.weights, overheadMs: e.overheadMs, baseExcessMs: e.baseExcessMs, baseP50Ms: e.baseP50Ms, baseP90Ms: e.baseP90Ms, tail: e.tail, errorRate: e.errorRate, errorSlope: e.errorSlope, ...(e.stalls ? { stalls: e.stalls.map((x) => ({ ...x })) } : {}), bytes: e.bytes, egressBytes: e.egressBytes, timeoutMs: model.timeoutMs, slo: e.slo };
-  const c = model.cluster;
-  const cluster: ClusterPlan | undefined = c ? { node: { cpu: c.node.cpu, memoryGb: c.node.memoryGb, perHour: c.node.perHour }, nodes: c.nodes, autoscaled: c.autoscaled, minNodes: c.autoscaled ? 1 : c.nodes, maxNodes: c.autoscaled ? Math.max(c.maxNodes * 4, c.maxNodes + 10) : c.nodes, packing: c.packing, other: { ...c.other }, scaleDownS: 600, provisionS: c.provisionS ?? 90 } : undefined;
-  return { services, endpoints, transfer: model.transfer, unattributedPerHour: model.unattributedPerHour, slo: model.slo, ...(cluster ? { cluster } : {}) };
+  return wasm.basePlan(model, observed) as Plan;
 }

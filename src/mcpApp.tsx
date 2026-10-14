@@ -6,6 +6,8 @@ import './styles.css';
 import App from './App';
 import { openPayload, type ComparePayload } from './spec/links';
 import { useSim } from './sim/store';
+import { loadEngine } from './backtest/native';
+import { engineFailed } from './engineFailed';
 
 /**
  * MCP Apps entry: the full Hindcast app, rendered inline by MCP hosts (Claude, ChatGPT, …).
@@ -25,8 +27,13 @@ bridge.onhostcontextchanged = (ctx) => {
 };
 bridge.connect();
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
+const root = createRoot(document.getElementById('root')!);
+loadEngine().then(
+  () =>
+    root.render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    ),
+  (e: unknown) => root.render(engineFailed(e)),
 );

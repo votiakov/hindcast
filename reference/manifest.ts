@@ -8,8 +8,11 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse, stringify } from 'yaml';
-import { exportPlan, manifestMetrics } from '../src/backtest/import/promExport';
+import { exportPlan, manifestMetrics } from '../src/backtest/import/promql';
+import { loadEngine } from '../src/backtest/native';
 import type { ReferenceConfig } from './record';
+
+await loadEngine();
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 

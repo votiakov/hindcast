@@ -16,6 +16,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { calibrate } from '../../src/backtest/calibrate';
 import type { Dataset, Num } from '../../src/backtest/dataset';
+import { loadEngine } from '../../src/backtest/native';
+
+await loadEngine();
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const dir = process.argv[2];

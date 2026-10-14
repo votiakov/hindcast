@@ -4,10 +4,10 @@ import { slim } from './analyze';
 import { optimize } from '../optimize';
 import { breakingPoint } from '../headless';
 import { audit, type AuditOptions } from '../audit';
-import { loadNativeEngine } from '../../backtest/native';
+import { loadEngine } from '../../backtest/native';
 
 // the compiled engine, loaded once per worker before the first job
-const ready = loadNativeEngine();
+const ready = loadEngine();
 
 /** Off-main-thread analysis for the app: discrete-event runs, breaking point, optimizer. */
 export type AnalysisRequest =

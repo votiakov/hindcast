@@ -64,9 +64,5 @@ export function cardData(r: BacktestResult, strategyIndex: number, points = 240)
   };
 }
 
-/** base64url (URL-safe) for passing card data to the renderer */
-export const encodeCard = (c: CardData) => {
-  const json = JSON.stringify(c);
-  return typeof Buffer !== 'undefined' ? Buffer.from(json).toString('base64url') : btoa(unescape(encodeURIComponent(json))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-};
+/** card data from the base64url the PR comment links carry */
 export const decodeCard = (s: string): CardData => JSON.parse(decodeURIComponent(escape(atob(s.replace(/-/g, '+').replace(/_/g, '/')))));

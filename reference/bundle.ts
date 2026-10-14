@@ -18,6 +18,9 @@ import { accuracyLines, holdoutAccuracy, parseRequestLog, referenceAccuracy, typ
 import type { Dataset } from '../src/backtest/dataset';
 import { fileAccess } from '../scripts/files';
 import { MANIFEST, MANIFESTS, writeManifest } from './manifest';
+import { loadEngine } from '../src/backtest/native';
+
+await loadEngine();
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 

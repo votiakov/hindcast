@@ -643,6 +643,77 @@ export function importTerraform(doc, name) {
 }
 
 /**
+ * exportPlan(presets, { window?, selector?, entry?, namespaces? }) → [{ preset, query: { file, query, mapping } }]:
+ * the Prometheus queries `export-prometheus` and collect_telemetry run, for scripts that fetch them
+ * @param {string[]} presets
+ * @param {any} opts
+ * @returns {any}
+ */
+export function exportPlan(presets, opts) {
+    const ptr0 = passArrayJsValueToWasm0(presets, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.exportPlan(ptr0, len0, opts);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * podsByNodeQuery(namespaces) → the PromQL for pods per node per workload
+ * @param {string[]} namespaces
+ * @returns {string}
+ */
+export function podsByNodeQuery(namespaces) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passArrayJsValueToWasm0(namespaces, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.podsByNodeQuery(ptr0, len0);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * zoneOfProviderId("aws:///us-east-1a/i-…") → "us-east-1a" (AWS, GCP), else null
+ * @param {string | null} [id]
+ * @returns {string | undefined}
+ */
+export function zoneOfProviderId(id) {
+    var ptr0 = isLikeNone(id) ? 0 : passStringToWasm0(id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len0 = WASM_VECTOR_LEN;
+    const ret = wasm.zoneOfProviderId(ptr0, len0);
+    let v2;
+    if (ret[0] !== 0) {
+        v2 = getStringFromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    }
+    return v2;
+}
+
+/**
+ * workloadRe() → the pattern that takes a pod name back to its workload
+ * @returns {string}
+ */
+export function workloadRe() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.workloadRe();
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+}
+
+/**
  * specToYaml(spec) → YAML as src/spec/yaml.ts writes it
  * @param {any} spec
  * @returns {string}

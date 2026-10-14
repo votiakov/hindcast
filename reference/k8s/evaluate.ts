@@ -27,13 +27,13 @@ import { applyStrategy } from '../../src/backtest/strategy';
 import { observedReplicas, trafficOf } from '../../src/backtest/calibrate';
 import { accuracyLines, parseRequestLog, referenceAccuracy, type ReferenceRun, type RequestLog } from '../../src/backtest/accuracy';
 import { importBundle } from '../../src/backtest/import/manifest';
-import { PRESETS, podsByNodeQuery, WORKLOAD_RE } from '../../src/backtest/import/promExport';
+import { exportPlan, podsByNodeQuery, workloadRe } from '../../src/backtest/import/promql';
 import { nodeLoss } from '../../src/backtest/resilience';
 import { fileAccess } from '../../scripts/files';
 import type { K8sReference } from './record';
-import { loadNativeEngine } from '../../src/backtest/native';
+import { loadEngine } from '../../src/backtest/native';
 
-await loadNativeEngine();
+await loadEngine();
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const STEP = 30;
@@ -80,7 +80,7 @@ const recorded = (r: string) => existsSync(join(runDir(r), 'run.json'));
  *  Prometheus alone (Jaeger doesn't keep traces as long), so the traces it was built on stay */
 const LATER_SERIES = ['memory-max.json', 'memory-limit.json', 'cpu-request.json', 'memory-request.json', 'cluster-nodes.json', 'cluster-node-cpu.json', 'cluster-node-memory.json', 'cluster-requested-cpu.json', 'cluster-requested-memory.json'];
 async function fillLater(d: Dataset, out: string): Promise<Dataset> {
-  const want = PRESETS.kubernetes.queries({ window: `${STEP}s`, selector: '', namespaces: [] } as never).filter((q) => LATER_SERIES.includes(q.file));
+  const want = exportPlan(['kubernetes'], { window: `${STEP}s` }).map((p) => ({ ...p.query, file: p.query.file.replace(/^kubernetes-/, '') })).filter((q) => LATER_SERIES.includes(q.file));
   const isCluster = (m: string) => m.startsWith('cluster');
   const missing = want.filter((q) => (isCluster(q.mapping.metric) ? !(d.cluster as Record<string, unknown> | undefined)?.[q.mapping.metric] : !Object.values(d.services).some((sv) => (sv as Record<string, unknown>)[q.mapping.metric])));
   const prom = (JSON.parse(readFileSync(join(out, 'sources.json'), 'utf8')) as { prometheus: { url: string; namespaces?: string[] } }).prometheus;
@@ -349,7 +349,7 @@ async function nodeLossCase(run: string, ws: Workspace, evalDir: string) {
   const m = reviveModel(ws.readJson<Model>('model.json'));
   const info = JSON.parse(readFileSync(join(runDir(run), 'run.json'), 'utf8')) as { start: number; end: number; kill: { node: string; at: number } };
   const ns = 'shop';
-  const re = new RegExp(WORKLOAD_RE);
+  const re = new RegExp(workloadRe());
   const pods: Record<string, Record<string, number>> = {};
   for (const line of readFileSync(join(runDir(run), 'placement.txt'), 'utf8').split('\n')) {
     const [nsp, pod, node, phase] = line.trim().split(/\s+/);

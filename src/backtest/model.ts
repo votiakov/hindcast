@@ -191,13 +191,6 @@ export interface Model {
   cluster?: ClusterModel;
 }
 
-export const AWS_TRANSFER: TransferPrices = {
-  crossZoneGb: 0.01,
-  crossRegionGb: 0.02,
-  internetGb: 0.09,
-  source: 'https://aws.amazon.com/ec2/pricing/on-demand/#Data_Transfer (us-east-1: $0.01/GB each way between AZs, $0.02/GB between regions, $0.09/GB out to the internet, first 10 TB)',
-};
-
 /** JSON has no Infinity: unbounded capacities come back as null — restore them after parsing */
 export function reviveModel(m: Model): Model {
   for (const s of Object.values(m.services)) {

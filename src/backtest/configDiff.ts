@@ -1,5 +1,6 @@
 import { parseAllDocuments } from 'yaml';
 import type { StrategySpec } from './strategy';
+import * as wasm from './wasm/hindcast_engine.js';
 
 /**
  * A pull request changes deployment config; the backtest needs a strategy. This reads the
@@ -25,10 +26,6 @@ export interface WorkloadConfig {
   autoscale?: { min: number; max: number; targetCpu?: number; scaleDownS?: number };
 }
 
-type Obj = Record<string, unknown>;
-const o = (x: unknown): Obj => (x && typeof x === 'object' && !Array.isArray(x) ? (x as Obj) : {});
-const arr = (x: unknown): unknown[] => (Array.isArray(x) ? x : []);
-
 /** "500m" → 0.5, "2" → 2 */
 export function cpuQuantity(q: unknown): number | undefined {
   if (q === undefined || q === null) return undefined;
@@ -47,16 +44,6 @@ export function memQuantity(q: unknown): number | undefined {
   return (parseFloat(m[1]) * (m[2] ? mult[m[2]] : 1)) / 2 ** 30;
 }
 
-type NativeConfigDiff = {
-  readWorkloads: (documents: unknown[]) => [string, WorkloadConfig][];
-  strategyFromDiff: (before: [string, WorkloadConfig][], after: [string, WorkloadConfig][], name?: string, known?: string[]) => { strategy: StrategySpec | null; ignored: string[] };
-};
-let native: NativeConfigDiff | null = null;
-/** the compiled engine's config diff (src/backtest/native.ts) */
-export function setNativeConfigDiff(n: NativeConfigDiff | null) {
-  native = n;
-}
-
 /** every YAML document in the texts, as plain values */
 export function yamlDocuments(yamlTexts: string[]): unknown[] {
   const docs: unknown[] = [];
@@ -65,115 +52,10 @@ export function yamlDocuments(yamlTexts: string[]): unknown[] {
 }
 
 export function readWorkloads(yamlTexts: string[]): Map<string, WorkloadConfig> {
-  return native ? new Map(native.readWorkloads(yamlDocuments(yamlTexts))) : readWorkloadsTs(yamlTexts);
-}
-
-export function readWorkloadsTs(yamlTexts: string[]): Map<string, WorkloadConfig> {
-  const docs: Obj[] = [];
-  for (const x0 of yamlDocuments(yamlTexts)) {
-    const x = o(x0);
-    if (x.kind === 'List') docs.push(...arr(x.items).map(o));
-    else if (x.kind) docs.push(x);
-  }
-  const out = new Map<string, WorkloadConfig>();
-  const byName = new Map<string, string>();
-  for (const d of docs) {
-    if (!['Deployment', 'StatefulSet', 'ReplicaSet'].includes(String(d.kind))) continue;
-    const meta = o(d.metadata);
-    const name = String(meta.name);
-    const ann = o(meta.annotations);
-    const service = String(ann['hindcast.dev/service'] ?? ann['bottleneck.dev/service'] ?? name);
-    const spec = o(d.spec);
-    const pod = o(o(spec.template).spec);
-    const c = o(arr(pod.containers)[0]);
-    const limits = o(o(c.resources).limits);
-    const requests = o(o(c.resources).requests);
-    const sel = o(pod.nodeSelector);
-    const archLabel = sel['kubernetes.io/arch'] ?? sel['beta.kubernetes.io/arch'] ?? (JSON.stringify(pod.affinity ?? {}).includes('arm64') ? 'arm64' : undefined);
-    out.set(service, {
-      service,
-      replicas: spec.replicas === undefined ? 1 : Number(spec.replicas),
-      cpu: cpuQuantity(limits.cpu ?? requests.cpu),
-      memoryGb: memQuantity(limits.memory ?? requests.memory),
-      spread: arr(pod.topologySpreadConstraints).some((t) => o(t).topologyKey === 'kubernetes.io/hostname') || JSON.stringify(o(o(pod.affinity).podAntiAffinity)).includes('kubernetes.io/hostname'),
-      cpuRequest: cpuQuantity(requests.cpu ?? limits.cpu),
-      memoryRequestGb: memQuantity(requests.memory ?? limits.memory),
-      arch: archLabel === 'arm64' ? 'arm' : 'x86',
-    });
-    byName.set(name, service);
-  }
-  for (const d of docs) {
-    if (d.kind !== 'HorizontalPodAutoscaler') continue;
-    const spec = o(d.spec);
-    const target = byName.get(String(o(spec.scaleTargetRef).name));
-    if (!target) continue;
-    const metric = arr(spec.metrics).map(o).find((m) => o(o(m.resource)).name === 'cpu');
-    const util = metric ? Number(o(o(o(metric.resource).target)).averageUtilization ?? o(metric.resource).targetAverageUtilization) : Number(spec.targetCPUUtilizationPercentage ?? 80);
-    const down = o(o(o(spec.behavior).scaleDown)).stabilizationWindowSeconds;
-    const w = out.get(target)!;
-    w.autoscale = { min: Number(spec.minReplicas ?? 1), max: Number(spec.maxReplicas), targetCpu: isFinite(util) ? util / 100 : 0.8, ...(down !== undefined ? { scaleDownS: Number(down) } : {}) };
-  }
-  return out;
+  return new Map(wasm.readWorkloads(yamlDocuments(yamlTexts)) as [string, WorkloadConfig][]);
 }
 
 /** the strategy that turns `before` into `after`, or null when nothing the model knows changed */
 export function strategyFromDiff(before: Map<string, WorkloadConfig>, after: Map<string, WorkloadConfig>, opts: { name?: string; known?: Set<string> } = {}): { strategy: StrategySpec | null; ignored: string[] } {
-  return native ? native.strategyFromDiff([...before], [...after], opts.name, opts.known ? [...opts.known] : undefined) : strategyFromDiffTs(before, after, opts);
-}
-
-export function strategyFromDiffTs(before: Map<string, WorkloadConfig>, after: Map<string, WorkloadConfig>, opts: { name?: string; known?: Set<string> } = {}): { strategy: StrategySpec | null; ignored: string[] } {
-  const changes: StrategySpec['changes'] = [];
-  const ignored: string[] = [];
-  const said: string[] = [];
-  for (const [svc, b] of after) {
-    const a = before.get(svc);
-    if (!a) {
-      ignored.push(`${svc}: new workload — not in the model yet`);
-      continue;
-    }
-    if (opts.known && !opts.known.has(svc)) {
-      ignored.push(`${svc}: no service of that name in the model (annotate it with hindcast.dev/service)`);
-      continue;
-    }
-    const ch: Record<string, unknown> = { service: svc };
-    if (b.autoscale && JSON.stringify(b.autoscale) !== JSON.stringify(a.autoscale)) {
-      ch.autoscale = { min: b.autoscale.min, max: b.autoscale.max, targetCpu: b.autoscale.targetCpu, ...(b.autoscale.scaleDownS !== undefined ? { cooldownS: b.autoscale.scaleDownS } : { cooldownS: 300 }), warmupS: 30 };
-      said.push(`${svc} autoscale ${b.autoscale.min}–${b.autoscale.max} @ ${Math.round((b.autoscale.targetCpu ?? 0.8) * 100)}% CPU`);
-    } else if (!b.autoscale && a.autoscale) {
-      ch.replicas = b.replicas ?? 1;
-      said.push(`${svc} fixed at ${b.replicas} replicas (autoscaler removed)`);
-    } else if (!b.autoscale && b.replicas !== a.replicas) {
-      ch.replicas = b.replicas;
-      said.push(`${svc} ${a.replicas} → ${b.replicas} replicas`);
-    }
-    if (b.cpu !== undefined && b.cpu !== a.cpu) {
-      ch.cpu = b.cpu;
-      said.push(`${svc} CPU ${a.cpu ?? '?'} → ${b.cpu}`);
-    }
-    if (b.memoryGb !== undefined && b.memoryGb !== a.memoryGb) {
-      ch.memoryGb = Math.round(b.memoryGb * 1000) / 1000;
-      said.push(`${svc} memory ${a.memoryGb?.toFixed(2) ?? '?'} → ${b.memoryGb.toFixed(2)} GiB`);
-    }
-    if (b.spread && !a.spread) {
-      ch.spread = 'even';
-      said.push(`${svc} spread over nodes`);
-    }
-    // a request that moved on its own (a limit change carries an equal request with it)
-    if (b.cpuRequest !== undefined && b.cpuRequest !== a.cpuRequest && !(b.cpu !== a.cpu && b.cpuRequest === b.cpu)) {
-      ch.cpuRequest = b.cpuRequest;
-      said.push(`${svc} CPU request ${a.cpuRequest ?? '?'} → ${b.cpuRequest}`);
-    }
-    if (b.memoryRequestGb !== undefined && b.memoryRequestGb !== a.memoryRequestGb && !(b.memoryGb !== a.memoryGb && b.memoryRequestGb === b.memoryGb)) {
-      ch.memoryRequestGb = Math.round(b.memoryRequestGb * 1000) / 1000;
-      said.push(`${svc} memory request ${a.memoryRequestGb?.toFixed(2) ?? '?'} → ${b.memoryRequestGb.toFixed(2)} GiB`);
-    }
-    if (b.arch !== a.arch) {
-      ch.arch = b.arch;
-      said.push(`${svc} → ${b.arch === 'arm' ? 'Graviton (arm64)' : 'x86'}`);
-    }
-    if (Object.keys(ch).length > 1) changes.push(ch as StrategySpec['changes'][number]);
-  }
-  for (const svc of before.keys()) if (!after.has(svc)) ignored.push(`${svc}: workload removed — not modelled`);
-  if (!changes.length) return { strategy: null, ignored };
-  return { strategy: { name: opts.name ?? said.join('; '), description: 'from the pull request diff', changes }, ignored };
+  return wasm.strategyFromDiff([...before], [...after], opts.name, opts.known ? [...opts.known] : undefined);
 }

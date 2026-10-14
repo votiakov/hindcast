@@ -363,3 +363,18 @@ mod js_num_fuzz {
         assert!(bad.is_empty(), "{} differ, e.g. {:?}", bad.len(), &bad[..bad.len().min(5)]);
     }
 }
+
+#[cfg(test)]
+mod queueing_tests {
+    use super::*;
+
+    #[test]
+    fn erlang_c_matches_mm1() {
+        assert!((erlang_c(1.0, 0.5) - 0.5).abs() < 1e-9);
+        // M/M/1, K=10, λ=5: mean wait ρ/(μ−λ) = 0.5/5 s = 100 ms
+        assert!((mmc_wait(5.0, 1.0, 10.0).mean_ms - 100.0).abs() < 1e-6);
+        assert!(mmc_wait(10.0, 1.0, 10.0).mean_ms.is_infinite());
+        // more servers at the same total capacity wait less
+        assert!(mmc_wait(8.0, 8.0, 10.0).mean_ms < mmc_wait(8.0, 1.0, 10.0).mean_ms);
+    }
+}

@@ -224,16 +224,6 @@ export const QUEUE_MAX_BACKLOG = 200_000;
 /** default cache re-warm time constant (s) */
 export const CACHE_WARMUP_S = 20;
 
-/** hit-rate multiplier of a cache that went cold at `coldAt` (null = warm) */
-export function cacheWarmth(coldAt: number | null, now: number, warmupS = CACHE_WARMUP_S): number {
-  if (coldAt === null) return 1;
-  return 1 - Math.exp(-Math.max(0, now - coldAt) / Math.max(0.1, warmupS));
-}
-
-/** capacity of one healthy instance (for autoscaling decisions) */
-export function perInstanceCapacity(d: SystemNodeData): number {
-  return capacityOf({ ...d, instances: 1, down: 0, degraded: 1 }, 1);
-}
 /** continuous batching multipliers for GPU inference */
 export const BATCHING = { capacity: 4, latencyMs: 400 };
 
@@ -299,12 +289,4 @@ export function skuOf(d: SystemNodeData): string | null {
   const p = kindPricing(d.kind);
   if (!p || d.costPerHour !== undefined) return null;
   return p.tiers ? p.tiers[KINDS[d.kind].tiered ? d.tier : 'S'].sku : p.fixed?.sku ?? null;
-}
-
-/** $ per request for usage-billed components (serverless, LLM APIs, and per-request AWS services) */
-export function requestPrice(d: SystemNodeData): number {
-  if (d.kind === 'function') return fnCostPerRequest(d);
-  const p = kindPricing(d.kind);
-  if (p?.perRequest) return p.perRequest.price;
-  return KINDS[d.kind].costPerRequest ?? 0;
 }

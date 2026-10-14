@@ -353,3 +353,15 @@ pub fn import_cloudwatch(b: &mut DatasetBuilder, json: &Value, map: &Map<SeriesM
     }
     Ok(points)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bucket_quantile_repairs_non_monotonic_buckets_and_refuses_thin_ones() {
+        let m: IndexMap<String, f64> = [("50", 10.0), ("75", 8.0), ("100", 10.0), ("+Inf", 10.0)].iter().map(|(k, v)| (k.to_string(), *v)).collect();
+        assert!(bucket_quantile(0.99, &m, 0.0).unwrap() <= 75.0);
+        assert!(bucket_quantile(0.99, &m, 100.0).is_none());
+    }
+}

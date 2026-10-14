@@ -2,10 +2,10 @@
 import { backtest, type BacktestOptions } from '../backtest/backtest';
 import type { Dataset } from '../backtest/dataset';
 import type { Model } from '../backtest/model';
-import { loadNativeEngine } from '../backtest/native';
+import { loadEngine } from '../backtest/native';
 
 // the compiled replay engine, loaded once per worker before the first share is replayed
-const ready = loadNativeEngine();
+const ready = loadEngine();
 
 /**
  * One share of a backtest off the main thread: the baseline and some of the strategies. A strategy

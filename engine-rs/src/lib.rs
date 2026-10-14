@@ -1,6 +1,6 @@
-//! Hindcast's replay engine in Rust: the same replay as src/backtest/engine.ts, compiled to
-//! WebAssembly for the browser, the CLI and the MCP server. The TypeScript engine stays as the
-//! reference: test/engine-parity.test.ts runs both on the same plans and compares every series.
+//! Hindcast's engine: the simulators, calibration, replay and backtest, importers and readers.
+//! Compiled to WebAssembly for the app (the `wasm` module below is its whole interface) and to the
+//! native `hindcast` binary (src/cli: the CLI, the agent tools, the MCP server).
 
 pub mod accuracy;
 pub mod backtest;
@@ -551,6 +551,41 @@ mod wasm {
     pub fn import_terraform(doc: JsValue, name: Option<String>) -> Result<JsValue, JsValue> {
         let doc: serde_json::Value = from(doc)?;
         Ok(crate::convert::terraform::import_terraform(&doc, name.as_deref()).map_err(err)?.serialize(&ser())?)
+    }
+
+    /// exportPlan(presets, { window?, selector?, entry?, namespaces? }) → [{ preset, query: { file, query, mapping } }]:
+    /// the Prometheus queries `export-prometheus` and collect_telemetry run, for scripts that fetch them
+    #[wasm_bindgen(js_name = exportPlan)]
+    pub fn export_plan(presets: Vec<String>, opts: JsValue) -> Result<JsValue, JsValue> {
+        let o: serde_json::Value = if opts.is_undefined() || opts.is_null() { serde_json::Value::Null } else { from(opts)? };
+        let strs = |k: &str| o.get(k).and_then(|x| x.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
+        let po = crate::prom_export::Opts {
+            window: o.get("window").and_then(|x| x.as_str()).unwrap_or("1m").to_string(),
+            selector: o.get("selector").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+            entry: strs("entry"),
+            namespaces: strs("namespaces"),
+        };
+        let plan = crate::prom_export::export_plan(&presets, &po).map_err(err)?;
+        let out: Vec<serde_json::Value> = plan.iter().map(|p| serde_json::json!({ "preset": p.preset, "query": { "file": p.query.file, "query": p.query.query, "mapping": p.query.mapping } })).collect();
+        Ok(out.serialize(&ser())?)
+    }
+
+    /// podsByNodeQuery(namespaces) → the PromQL for pods per node per workload
+    #[wasm_bindgen(js_name = podsByNodeQuery)]
+    pub fn pods_by_node_query(namespaces: Vec<String>) -> String {
+        crate::prom_export::pods_by_node_query(&namespaces)
+    }
+
+    /// zoneOfProviderId("aws:///us-east-1a/i-…") → "us-east-1a" (AWS, GCP), else null
+    #[wasm_bindgen(js_name = zoneOfProviderId)]
+    pub fn zone_of_provider_id(id: Option<String>) -> Option<String> {
+        crate::prom_export::zone_of_provider_id(id.as_deref())
+    }
+
+    /// workloadRe() → the pattern that takes a pod name back to its workload
+    #[wasm_bindgen(js_name = workloadRe)]
+    pub fn workload_re() -> String {
+        crate::prom_export::workload_re()
     }
 
     /// specToYaml(spec) → YAML as src/spec/yaml.ts writes it

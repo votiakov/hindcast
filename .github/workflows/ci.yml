@@ -13,6 +13,8 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npx vite build
+      - run: cargo test --release --lib
+        working-directory: engine-rs
       # the native CLI and MCP server against their golden outputs
       - run: npm run cli:golden
       - run: npm run mcp:golden

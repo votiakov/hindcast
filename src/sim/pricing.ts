@@ -181,16 +181,4 @@ export const setPricing = (id: PricingId) => {
   active = id;
 };
 
-/** run `fn` with a pricing profile active (headless runs carry their own) */
-export function withPricing<T>(id: PricingId | undefined, fn: () => T): T {
-  if (!id || id === active) return fn();
-  const prev = active;
-  active = id;
-  try {
-    return fn();
-  } finally {
-    active = prev;
-  }
-}
-
 export const kindPricing = (kind: Kind): KindPricing | undefined => PRICING[active].kinds[kind];

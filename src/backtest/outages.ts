@@ -1,14 +1,8 @@
-import type { Dataset, Num } from './dataset';
+import type { Dataset } from './dataset';
 import type { Model } from './model';
 import type { Fault } from './engine';
 import { backtest, type BacktestResult } from './backtest';
-
-/** compiled implementations (src/backtest/native.ts sets them) */
-const native: { outageScenario?: typeof outageScenarioTs } = {};
-export function setNativeOutages(n: typeof native | null) {
-  for (const k of Object.keys(native) as (keyof typeof native)[]) delete native[k];
-  if (n) Object.assign(native, n);
-}
+import * as wasm from './wasm/hindcast_engine.js';
 
 /**
  * Famous public outages as replayable datasets: "would your design have survived it?"
@@ -210,37 +204,11 @@ export interface OutageReplay {
 }
 
 /** the outage as a dataset + faults for a given model */
-/** compiled (engine-rs) once loaded; the TypeScript one below is the reference */
 export function outageScenario(model: Model, outage: Outage, opts: { baseRps?: number; roles?: Partial<Record<Role, string[]>> } = {}): OutageReplay {
-  return native.outageScenario ? native.outageScenario(model, outage, opts) : outageScenarioTs(model, outage, opts);
-}
-
-export function outageScenarioTs(model: Model, outage: Outage, opts: { baseRps?: number; roles?: Partial<Record<Role, string[]>> } = {}): OutageReplay {
-  const base = opts.baseRps ?? model.traffic?.p90 ?? 10;
-  const n = Math.round((outage.minutes * 60) / outage.stepS);
-  const start = Math.floor(Date.parse(outage.start) / 1000);
-  const kf = [...outage.traffic].sort((a, b) => a.at - b.at);
-  const mult = (min: number) => {
-    if (min <= kf[0].at) return kf[0].mult;
-    for (let k = 1; k < kf.length; k++) if (min <= kf[k].at) return kf[k - 1].mult + ((kf[k].mult - kf[k - 1].mult) * (min - kf[k - 1].at)) / (kf[k].at - kf[k - 1].at);
-    return kf[kf.length - 1].mult;
-  };
-  const endpoints: Dataset['endpoints'] = {};
-  for (const [id, e] of Object.entries(model.endpoints)) {
-    const rps: Num[] = Array.from({ length: n }, (_, i) => base * e.share * mult((i * outage.stepS) / 60));
-    endpoints[id] = { service: e.service, rps };
-  }
-  const faults: Fault[] = [];
-  const roles: Record<string, string[]> = {};
-  const warnings: string[] = [];
-  for (const st of outage.steps) {
-    const svcs = servicesFor(model, st.role, opts.roles);
-    roles[st.role] = svcs;
-    if (!svcs.length) warnings.push(`no service plays “${st.role}” in this model — “${st.note}” does not apply`);
-    for (const s of svcs) faults.push({ ...st.effect, service: s, at: st.from * 60, ...(st.to !== undefined ? { until: st.to * 60 } : {}), note: `${st.note} (${s})` });
-  }
-  const dataset: Dataset = { version: 1, name: `${outage.title} · ${model.name}`, start, stepS: outage.stepS, n, services: {}, endpoints, sources: outage.sources.map((x) => x.url) };
-  return { outage, dataset, faults, roles, warnings, baseRps: base };
+  const r = wasm.outageScenario(model, outage, opts.baseRps, opts.roles) as OutageReplay;
+  // the catalogue entry itself (timeline, sources, assumptions) stays the JavaScript one
+  r.outage = outage;
+  return r;
 }
 
 export function replayOutage(model: Model, outage: Outage, strategies: unknown[] = [], opts: { baseRps?: number; roles?: Partial<Record<Role, string[]>>; draws?: number } = {}): { replay: OutageReplay; result: BacktestResult } {

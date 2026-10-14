@@ -117,6 +117,23 @@ export function importKubernetes(documents: any, name?: string | null): any;
  */
 export function importTerraform(doc: any, name?: string | null): any;
 /**
+ * exportPlan(presets, { window?, selector?, entry?, namespaces? }) → [{ preset, query: { file, query, mapping } }]:
+ * the Prometheus queries `export-prometheus` and collect_telemetry run, for scripts that fetch them
+ */
+export function exportPlan(presets: string[], opts: any): any;
+/**
+ * podsByNodeQuery(namespaces) → the PromQL for pods per node per workload
+ */
+export function podsByNodeQuery(namespaces: string[]): string;
+/**
+ * zoneOfProviderId("aws:///us-east-1a/i-…") → "us-east-1a" (AWS, GCP), else null
+ */
+export function zoneOfProviderId(id?: string | null): string | undefined;
+/**
+ * workloadRe() → the pattern that takes a pod name back to its workload
+ */
+export function workloadRe(): string;
+/**
  * specToYaml(spec) → YAML as src/spec/yaml.ts writes it
  */
 export function specToYaml(spec: any): string;
@@ -180,6 +197,10 @@ export interface InitOutput {
   readonly instanceType: (a: number, b: number) => [number, number, number];
   readonly importKubernetes: (a: any, b: number, c: number) => [number, number, number];
   readonly importTerraform: (a: any, b: number, c: number) => [number, number, number];
+  readonly exportPlan: (a: number, b: number, c: any) => [number, number, number];
+  readonly podsByNodeQuery: (a: number, b: number) => [number, number];
+  readonly zoneOfProviderId: (a: number, b: number) => [number, number];
+  readonly workloadRe: () => [number, number];
   readonly specToYaml: (a: any) => [number, number, number, number];
   readonly toYaml: (a: any) => [number, number, number, number];
   readonly __wbindgen_exn_store: (a: number) => void;
