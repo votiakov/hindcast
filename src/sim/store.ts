@@ -225,7 +225,7 @@ interface State {
   removeNode: (b: BoardId, id: string) => void;
   removeEdge: (b: BoardId, id: string) => void;
   /** link properties (network latency) */
-  updateEdge: (b: BoardId, id: string, data: { latencyMs?: number }) => void;
+  updateEdge: (b: BoardId, id: string, data: { latencyMs?: number; calls?: number; carries?: 'reads' | 'writes' }) => void;
   killNode: (b: BoardId, id: string) => void;
   reviveNode: (b: BoardId, id: string) => void;
   setZoneFailed: (b: BoardId, id: string, failed: boolean) => void;

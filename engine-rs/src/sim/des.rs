@@ -423,6 +423,10 @@ struct Des<'a> {
     now: f64,
     nodes: Vec<DNode>,
     link_ms: HashMap<(usize, usize), f64>,
+    /// calls per request over a link, when more than one
+    link_calls: HashMap<(usize, usize), f64>,
+    /// links that carry only reads (1) or only writes (2)
+    link_carries: HashMap<(usize, usize), u8>,
     conts: Vec<Cont>,
     free: Vec<ContId>,
     calls: Vec<Option<Call>>,
@@ -654,6 +658,17 @@ impl<'a> Des<'a> {
     fn hop(&mut self, i: usize, read: bool, done: ContId, from: Option<usize>) {
         let link = from.and_then(|f| self.link_ms.get(&(f, i)).copied()).unwrap_or(0.0);
         let ms = self.cfg.hop_ms + link;
+        // a link that makes N calls per request: N in parallel, done when all have answered
+        let n = from.and_then(|f| self.link_calls.get(&(f, i)).copied()).unwrap_or(1.0);
+        if n > 1.0 {
+            let group = self.groups.len();
+            self.groups.push(Some(Group { pending: n as usize, all_ok: true, done }));
+            for _ in 0..(n as usize) {
+                let p = self.cont(Cont::Part { group });
+                self.at(ms, Ev::Arrive { i, read, done: p });
+            }
+            return;
+        }
         self.at(ms, Ev::Arrive { i, read, done });
     }
 
@@ -856,8 +871,9 @@ impl<'a> Des<'a> {
         let mode = self.nodes[n].mode;
         let degree = self.nodes[n].data.fanout.unwrap_or(1.0).max(1.0);
         let filter = kind == "lb" || kind == "gateway" || kind == "queue";
+        let restricted = !self.link_carries.is_empty() && self.nodes[n].children.iter().any(|&c| self.link_carries.contains_key(&(n, c)));
         // the common case: one child picked at random, no list built
-        if mode == "split" && degree <= 1.0 && !filter {
+        if mode == "split" && degree <= 1.0 && !filter && !restricted {
             let len = self.nodes[n].children.len();
             if len == 0 {
                 return self.fail(Some(n), done, 0.5);
@@ -869,6 +885,14 @@ impl<'a> Des<'a> {
         let mut kids = self.nodes[n].children.clone();
         if filter {
             kids.retain(|&c| up(&self.nodes[c]));
+        }
+        if restricted {
+            // only the links that carry this request's class
+            kids.retain(|&c| match self.link_carries.get(&(n, c)) {
+                Some(1) => read,
+                Some(2) => !read,
+                _ => true,
+            });
         }
         if kids.is_empty() {
             return self.fail(Some(n), done, 0.5);
@@ -1182,6 +1206,8 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
         })
         .collect();
     let mut link_ms = HashMap::new();
+    let mut link_calls = HashMap::new();
+    let mut link_carries = HashMap::new();
     for e in &edges {
         let (a, b) = match (index.get(&e.source), index.get(&e.target)) {
             (Some(a), Some(b)) if a != b => (*a, *b),
@@ -1189,6 +1215,18 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
         };
         if let Some(l) = e.data.as_ref().and_then(|d| d.latency_ms).filter(|l| *l != 0.0) {
             link_ms.insert((a, b), l);
+        }
+        if let Some(c) = e.data.as_ref().and_then(|d| d.calls).filter(|c| *c > 1.0) {
+            link_calls.insert((a, b), c);
+        }
+        match e.data.as_ref().and_then(|d| d.carries.as_deref()) {
+            Some("reads") => {
+                link_carries.insert((a, b), 1u8);
+            }
+            Some("writes") => {
+                link_carries.insert((a, b), 2u8);
+            }
+            _ => {}
         }
         nodes[a].children.push(b);
         let k = nodes[a].data.kind.clone();
@@ -1211,6 +1249,8 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
         now: 0.0,
         nodes,
         link_ms,
+        link_calls,
+        link_carries,
         conts: vec![],
         free: vec![],
         calls: vec![],

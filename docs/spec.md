@@ -57,13 +57,19 @@ zones:                          # optional failure domains
 ### Connections and semantics
 
 - Three ways to write one: `users -> lb`, `[users, lb]`, `{ from: users, to: lb }`. Only the object
-  form carries link properties (`latencyMs`).
+  form carries link properties (`latencyMs`, `calls`, `carries`).
 - Order matters for `routing: failover` (first child first).
 - `db → replica` connections define replicas (reads are shared, failover target).
 - `queue → worker` connections define consumers (pull model).
 - `cache → db` / `cdn → lb` define the origin for misses.
 - `latencyMs` on a connection adds that round trip to every call over the link: same AZ ≈ 0,
   cross-AZ ≈ 1, nearby region ≈ 15, cross-continent ≈ 70, intercontinental ≈ 150.
+- `calls: N` on a connection: every request that takes the link makes N calls over it, in parallel —
+  the callee sees N× the load, the caller needs all N to succeed and waits for the slowest (a tweet
+  written to 20 timelines, a page that looks up 20 items).
+- `carries: reads | writes` on a connection: the link takes only that class (CQRS — reads to a cache
+  or replica, writes to a queue). A component's reads and writes are spread over the links that
+  carry them; a class with no link to take it fails there.
 
 ### Lint rules (warnings unless noted)
 

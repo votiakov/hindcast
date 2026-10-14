@@ -73,6 +73,8 @@ export const ArchitectureSpec = z.object({
           from: z.string(),
           to: z.string(),
           latencyMs: z.number().min(0).max(1000).optional().describe('network round trip added to every call over this link (cross-AZ ≈ 1, cross-region ≈ 60–150)'),
+          carries: z.enum(['reads', 'writes']).optional().describe('the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both'),
+          calls: z.number().int().min(1).max(1000).optional().describe('calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)'),
         }),
       ]),
     )

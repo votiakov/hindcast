@@ -314,6 +314,35 @@ describe('resilience behaviours', () => {
     expect(run(b, 100).global.errorRate).toBeCloseTo(0.2, 2);
   });
 
+  it('a link that makes N calls per request multiplies the load and needs every call to succeed', () => {
+    const spec = { components: [U, { id: 'api', kind: 'server' as Kind }, { id: 'db', kind: 'db' as Kind }], connections: [['users', 'api'], { from: 'api', to: 'db', calls: 10 }] as never };
+    const b = specToGraph(spec);
+    const s = run(b, 20);
+    expect(s.nodeStats.db.inRps).toBeCloseTo(200, 0);
+    patch(b, 'db', { faultRate: 0.05 });
+    const f = run(b, 20).global.errorRate;
+    expect(f).toBeCloseTo(1 - 0.95 ** 10, 2);
+    const des = simulateDes(spec, { duration: 60, rps: 20, events: [{ at: 0, action: { type: 'inject-errors', id: 'db', rate: 0.05 } }] }, { seed: 1 }).summary.meanErrorRate;
+    expect(Math.abs(des - f)).toBeLessThan(0.05);
+  });
+
+  it('links that carry only reads or only writes split a service CQRS-style', () => {
+    const spec = {
+      components: [U, { id: 'api', kind: 'server' as Kind }, { id: 'cache', kind: 'cache' as Kind, hitRate: 0.9 }, { id: 'rdb', kind: 'db' as Kind }, { id: 'q', kind: 'queue' as Kind }, { id: 'w', kind: 'worker' as Kind }, { id: 'wdb', kind: 'db' as Kind }],
+      connections: [['users', 'api'], { from: 'api', to: 'cache', carries: 'reads' }, ['cache', 'rdb'], { from: 'api', to: 'q', carries: 'writes' }, ['q', 'w'], ['w', 'wdb']] as never,
+    };
+    const b = specToGraph(spec);
+    const s = run(b, 100, { readRatio: 0.9 });
+    expect(edgeRps(s, 'api', 'cache')).toBeCloseTo(90, 0);
+    expect(edgeRps(s, 'api', 'q')).toBeCloseTo(10, 0);
+    // the write path dies: only writes fail (10%), and the reads never notice
+    patch(b, 'q', { alive: false });
+    const f = run(b, 100, { readRatio: 0.9 }).global.errorRate;
+    expect(f).toBeCloseTo(0.1, 2);
+    const des = simulateDes(spec, { duration: 40, rps: 100, readRatio: 0.9, events: [{ at: 0, action: { type: 'kill-id', id: 'q' } }] }, { seed: 1 }).summary.meanErrorRate;
+    expect(Math.abs(des - f)).toBeLessThan(0.03);
+  });
+
   it('split routing shares a request stream evenly', () => {
     const b = board([U, { id: 'lb', kind: 'lb' }, { id: 'a', kind: 'server' }, { id: 'b', kind: 'server' }, { id: 'c', kind: 'server' }], [['users', 'lb'], ['lb', 'a'], ['lb', 'b'], ['lb', 'c']]);
     const s = run(b, 90);

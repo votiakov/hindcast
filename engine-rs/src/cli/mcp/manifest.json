@@ -319,6 +319,20 @@
              "type": "number",
              "minimum": 0,
              "maximum": 1000
+            },
+            "carries": {
+             "description": "the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both",
+             "type": "string",
+             "enum": [
+              "reads",
+              "writes"
+             ]
+            },
+            "calls": {
+             "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 1000
             }
            },
            "required": [
@@ -657,6 +671,20 @@
              "description": "network round trip added to every call over this link (cross-AZ ≈ 1, cross-region ≈ 60–150)",
              "type": "number",
              "minimum": 0,
+             "maximum": 1000
+            },
+            "carries": {
+             "description": "the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both",
+             "type": "string",
+             "enum": [
+              "reads",
+              "writes"
+             ]
+            },
+            "calls": {
+             "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
+             "type": "integer",
+             "minimum": 1,
              "maximum": 1000
             }
            },
@@ -1310,6 +1338,20 @@
              "type": "number",
              "minimum": 0,
              "maximum": 1000
+            },
+            "carries": {
+             "description": "the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both",
+             "type": "string",
+             "enum": [
+              "reads",
+              "writes"
+             ]
+            },
+            "calls": {
+             "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 1000
             }
            },
            "required": [
@@ -1637,6 +1679,20 @@
                 "description": "network round trip added to every call over this link (cross-AZ ≈ 1, cross-region ≈ 60–150)",
                 "type": "number",
                 "minimum": 0,
+                "maximum": 1000
+               },
+               "carries": {
+                "description": "the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both",
+                "type": "string",
+                "enum": [
+                 "reads",
+                 "writes"
+                ]
+               },
+               "calls": {
+                "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
+                "type": "integer",
+                "minimum": 1,
                 "maximum": 1000
                }
               },
@@ -2775,6 +2831,20 @@
              "type": "number",
              "minimum": 0,
              "maximum": 1000
+            },
+            "carries": {
+             "description": "the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both",
+             "type": "string",
+             "enum": [
+              "reads",
+              "writes"
+             ]
+            },
+            "calls": {
+             "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 1000
             }
            },
            "required": [
@@ -3129,6 +3199,20 @@
              "description": "network round trip added to every call over this link (cross-AZ ≈ 1, cross-region ≈ 60–150)",
              "type": "number",
              "minimum": 0,
+             "maximum": 1000
+            },
+            "carries": {
+             "description": "the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both",
+             "type": "string",
+             "enum": [
+              "reads",
+              "writes"
+             ]
+            },
+            "calls": {
+             "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
+             "type": "integer",
+             "minimum": 1,
              "maximum": 1000
             }
            },
@@ -3770,6 +3854,20 @@
              "description": "network round trip added to every call over this link (cross-AZ ≈ 1, cross-region ≈ 60–150)",
              "type": "number",
              "minimum": 0,
+             "maximum": 1000
+            },
+            "carries": {
+             "description": "the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both",
+             "type": "string",
+             "enum": [
+              "reads",
+              "writes"
+             ]
+            },
+            "calls": {
+             "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
+             "type": "integer",
+             "minimum": 1,
              "maximum": 1000
             }
            },
@@ -4421,6 +4519,20 @@
              "type": "number",
              "minimum": 0,
              "maximum": 1000
+            },
+            "carries": {
+             "description": "the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both",
+             "type": "string",
+             "enum": [
+              "reads",
+              "writes"
+             ]
+            },
+            "calls": {
+             "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 1000
             }
            },
            "required": [
@@ -4844,6 +4956,20 @@
              "type": "number",
              "minimum": 0,
              "maximum": 1000
+            },
+            "carries": {
+             "description": "the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both",
+             "type": "string",
+             "enum": [
+              "reads",
+              "writes"
+             ]
+            },
+            "calls": {
+             "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 1000
             }
            },
            "required": [
@@ -5168,6 +5294,20 @@
                "description": "network round trip added to every call over this link (cross-AZ ≈ 1, cross-region ≈ 60–150)",
                "type": "number",
                "minimum": 0,
+               "maximum": 1000
+              },
+              "carries": {
+               "description": "the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both",
+               "type": "string",
+               "enum": [
+                "reads",
+                "writes"
+               ]
+              },
+              "calls": {
+               "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
+               "type": "integer",
+               "minimum": 1,
                "maximum": 1000
               }
              },
@@ -6304,6 +6444,20 @@
              "type": "number",
              "minimum": 0,
              "maximum": 1000
+            },
+            "carries": {
+             "description": "the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both",
+             "type": "string",
+             "enum": [
+              "reads",
+              "writes"
+             ]
+            },
+            "calls": {
+             "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 1000
             }
            },
            "required": [
@@ -6628,6 +6782,20 @@
                "description": "network round trip added to every call over this link (cross-AZ ≈ 1, cross-region ≈ 60–150)",
                "type": "number",
                "minimum": 0,
+               "maximum": 1000
+              },
+              "carries": {
+               "description": "the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both",
+               "type": "string",
+               "enum": [
+                "reads",
+                "writes"
+               ]
+              },
+              "calls": {
+               "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
+               "type": "integer",
+               "minimum": 1,
                "maximum": 1000
               }
              },

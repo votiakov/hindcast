@@ -198,6 +198,10 @@ pub struct Architecture {
     pub components: Vec<JMap<String, Value>>,
     /// (from, to, latencyMs)
     pub connections: Vec<(String, String, Option<f64>)>,
+    /// calls per request over a link (from, to) → N, when more than one
+    pub calls: std::collections::HashMap<(String, String), f64>,
+    /// links that carry only reads or only writes (from, to) → "reads" | "writes"
+    pub carries: std::collections::HashMap<(String, String), String>,
     pub zones: Vec<(String, Option<String>, Vec<String>)>,
 }
 
@@ -228,6 +232,17 @@ fn connection_of(c: &Value) -> Option<(String, String, Option<f64>)> {
                     Some(x)
                 }
             };
+            if let Some(v) = o.get("calls") {
+                let x = v.as_f64()?;
+                if !(1.0..=1000.0).contains(&x) || x.fract() != 0.0 {
+                    return None;
+                }
+            }
+            if let Some(v) = o.get("carries") {
+                if !matches!(v.as_str(), Some("reads") | Some("writes")) {
+                    return None;
+                }
+            }
             Some((from, to, lat))
         }
         _ => None,
@@ -267,6 +282,30 @@ fn connection_issues(c: &Value, i: usize) -> Vec<Issue> {
             for k in ["from", "to"] {
                 if !matches!(o.get(k), Some(Value::String(_))) {
                     object.push(type_issue(vec![json!(k)], "string", o.get(k)));
+                    object_aborted = true;
+                }
+            }
+            match o.get("carries") {
+                None | Some(Value::Null) => {}
+                Some(Value::String(c)) if c == "reads" || c == "writes" => {}
+                Some(_) => object.push(Issue { path: vec![json!("carries")], message: "Invalid option: expected one of \"reads\"|\"writes\"".into(), code: "invalid_value", values: Some(vec![json!("reads"), json!("writes")]), head: h(&[("code", json!("invalid_value")), ("values", json!(["reads", "writes"]))]), ..Default::default() }),
+            }
+            match o.get("calls") {
+                None => {}
+                Some(Value::Number(n)) => {
+                    let x = n.as_f64().unwrap_or(f64::NAN);
+                    if x.fract() != 0.0 {
+                        object.push(Issue { path: vec![json!("calls")], message: "Invalid input: expected int, received number".into(), code: "invalid_type", head: h(&[("expected", json!("int")), ("format", json!("safeint")), ("code", json!("invalid_type"))]), ..Default::default() });
+                    }
+                    if x < 1.0 {
+                        object.push(Issue { path: vec![json!("calls")], message: "Too small: expected number to be >=1".into(), code: "too_small", minimum: Some(1.0), head: h(&[("origin", json!("number")), ("code", json!("too_small")), ("minimum", json!(1)), ("inclusive", json!(true))]), ..Default::default() });
+                    }
+                    if x > 1000.0 {
+                        object.push(Issue { path: vec![json!("calls")], message: "Too big: expected number to be <=1000".into(), code: "too_big", maximum: Some(1000.0), head: h(&[("origin", json!("number")), ("code", json!("too_big")), ("maximum", json!(1000)), ("inclusive", json!(true))]), ..Default::default() });
+                    }
+                }
+                x => {
+                    object.push(type_issue(vec![json!("calls")], "number", x));
                     object_aborted = true;
                 }
             }
@@ -344,11 +383,21 @@ pub fn check_architecture(v: &Value) -> (Option<Architecture>, Vec<Issue>) {
         x => issues.push(type_issue(vec![json!("components")], "array", x)),
     }
     let mut connections = vec![];
+    let mut calls = std::collections::HashMap::new();
+    let mut carries = std::collections::HashMap::new();
     match o.get("connections") {
         Some(Value::Array(a)) => {
             for (i, c) in a.iter().enumerate() {
                 match connection_of(c) {
-                    Some(x) => connections.push(x),
+                    Some(x) => {
+                        if let Some(n) = c.get("calls").and_then(|v| v.as_f64()).filter(|n| *n > 1.0) {
+                            calls.insert((x.0.clone(), x.1.clone()), n);
+                        }
+                        if let Some(k) = c.get("carries").and_then(|v| v.as_str()) {
+                            carries.insert((x.0.clone(), x.1.clone()), k.to_string());
+                        }
+                        connections.push(x)
+                    }
                     None => issues.extend(connection_issues(c, i)),
                 }
             }
@@ -406,6 +455,8 @@ pub fn check_architecture(v: &Value) -> (Option<Architecture>, Vec<Issue>) {
         pricing: o.get("pricing").and_then(|x| x.as_str()).map(String::from),
         components,
         connections,
+        calls,
+        carries,
         zones,
     }), issues)
 }
@@ -437,7 +488,12 @@ pub fn graph_of(a: &Architecture) -> (Vec<SimNode>, Vec<SimEdge>) {
     let edges = a
         .connections
         .iter()
-        .map(|(from, to, lat)| SimEdge { id: format!("e-{}-{}", from, to), source: from.clone(), target: to.clone(), data: lat.filter(|l| *l != 0.0).map(|l| EdgeData { latency_ms: Some(l) }) })
+        .map(|(from, to, lat)| {
+            let calls = a.calls.get(&(from.clone(), to.clone())).copied();
+            let carries = a.carries.get(&(from.clone(), to.clone())).cloned();
+            let latency_ms = lat.filter(|l| *l != 0.0);
+            SimEdge { id: format!("e-{}-{}", from, to), source: from.clone(), target: to.clone(), data: if latency_ms.is_some() || calls.is_some() || carries.is_some() { Some(EdgeData { latency_ms, calls, carries }) } else { None } }
+        })
         .collect();
     (nodes, edges)
 }
@@ -454,7 +510,31 @@ pub fn to_value(a: &Architecture) -> Value {
     o.insert("components".into(), Value::Array(a.components.iter().map(|c| Value::Object(c.clone())).collect()));
     o.insert(
         "connections".into(),
-        Value::Array(a.connections.iter().map(|(f, t, l)| match l { Some(l) => json!({ "from": f, "to": t, "latencyMs": l }), None => json!([f, t]) }).collect()),
+        Value::Array(
+            a.connections
+                .iter()
+                .map(|(f, t, l)| {
+                    let calls = a.calls.get(&(f.clone(), t.clone()));
+                    let carries = a.carries.get(&(f.clone(), t.clone()));
+                    if l.is_none() && calls.is_none() && carries.is_none() {
+                        return json!([f, t]);
+                    }
+                    let mut o = JMap::new();
+                    o.insert("from".into(), json!(f));
+                    o.insert("to".into(), json!(t));
+                    if let Some(l) = l {
+                        o.insert("latencyMs".into(), json!(l));
+                    }
+                    if let Some(c) = calls {
+                        o.insert("calls".into(), json!(c));
+                    }
+                    if let Some(c) = carries {
+                        o.insert("carries".into(), json!(c));
+                    }
+                    Value::Object(o)
+                })
+                .collect(),
+        ),
     );
     if !a.zones.is_empty() {
         o.insert("zones".into(), Value::Array(a.zones.iter().map(|(id, label, m)| { let mut z = json!({ "id": id, "members": m }); if let Some(l) = label { z["label"] = json!(l); } z }).collect()));

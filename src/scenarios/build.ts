@@ -19,5 +19,10 @@ export function graph(nodes: NodeSpec[], edges: [string, string][], zones: ZoneS
   };
 }
 
+/** a link with properties: latency, calls per request, which requests it carries */
+export function link(g: Graph, source: string, target: string, data: { latencyMs?: number; calls?: number; carries?: 'reads' | 'writes' }): Graph {
+  return { ...g, edges: g.edges.map((e) => (e.source === source && e.target === target ? { ...e, data: { ...e.data, ...data } } : e)) };
+}
+
 /** column x positions for left-to-right layouts */
 export const X = [0, 330, 660, 990, 1320, 1650];

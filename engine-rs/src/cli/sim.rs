@@ -325,7 +325,7 @@ pub fn canonical_spec(v: &Value) -> Value {
                     }
                     Value::Object(m) => {
                         let mut n = JMap::new();
-                        for k in ["from", "to", "latencyMs"] {
+                        for k in ["from", "to", "latencyMs", "calls", "carries"] {
                             if let Some(y) = m.get(k) {
                                 n.insert(k.into(), y.clone());
                             }

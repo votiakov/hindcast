@@ -54,6 +54,10 @@ pub struct SimNode {
 #[serde(rename_all = "camelCase")]
 pub struct EdgeData {
     pub latency_ms: Option<f64>,
+    /// calls per request over this link (a tweet written to N timelines, N lookups per page)
+    pub calls: Option<f64>,
+    /// "reads" or "writes": the link carries only that class (CQRS); None: both
+    pub carries: Option<String>,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -747,6 +751,8 @@ struct Local {
     routes: Vec<Route>,
     /// (edge index, volume), in the order first sent
     flows: Vec<(usize, f64)>,
+    /// (edge index, reads among that volume)
+    flows_r: Vec<(usize, f64)>,
     mode: &'static str,
     up: bool,
 }
@@ -871,6 +877,10 @@ impl Engine {
         // states by node index (every node gets one this tick, as the TypeScript engine's lookups do)
         let sidx: Vec<usize> = nodes_in.iter().map(|nd| self.state_index(&nd.id)).collect();
         let edge_lat: Vec<f64> = edges.iter().map(|e| e.data.as_ref().and_then(|d| d.latency_ms).filter(|l| *l != 0.0 && !l.is_nan()).unwrap_or(0.0)).collect();
+        // calls per request over each link: N in parallel, all must answer
+        let edge_calls: Vec<f64> = edges.iter().map(|e| e.data.as_ref().and_then(|d| d.calls).filter(|c| *c > 1.0).unwrap_or(1.0)).collect();
+        // which requests a link carries: 0 both, 1 reads only, 2 writes only
+        let edge_carries: Vec<u8> = edges.iter().map(|e| match e.data.as_ref().and_then(|d| d.carries.as_deref()) { Some("reads") => 1, Some("writes") => 2, _ => 0 }).collect();
         let mut out: Vec<Vec<Route>> = vec![vec![]; n];
         let mut indeg: Vec<i64> = vec![0; n];
         let mut pooled: Vec<bool> = vec![false; n];
@@ -992,7 +1002,68 @@ impl Engine {
                     _ => "split",
                 }
             };
-            if !targets.is_empty() && forward > 0.0 {
+            let mut flows_r: Vec<(usize, f64)> = vec![];
+            let mut unroutable = 0.0;
+            let restricted = targets.iter().any(|k| edge_carries[k.e] != 0);
+            if restricted && forward > 0.0 && r.shares.is_none() {
+                // reads and writes each go over the links that carry them, by the routing policy
+                let mut parts: Vec<(usize, f64, f64)> = vec![];
+                for (class, amount) in [(1u8, forward * fwd_r), (2u8, forward * (1.0 - fwd_r))] {
+                    if amount <= 0.0 {
+                        continue;
+                    }
+                    let allowed: Vec<Route> = targets.iter().filter(|k| edge_carries[k.e] == 0 || edge_carries[k.e] == class).cloned().collect();
+                    if allowed.is_empty() {
+                        unroutable += amount;
+                        continue;
+                    }
+                    let mut put = |e: usize, v: f64| {
+                        let (vr, vw) = if class == 1 { (v, 0.0) } else { (0.0, v) };
+                        if let Some(x) = parts.iter_mut().find(|x| x.0 == e) {
+                            x.1 += vr;
+                            x.2 += vw;
+                        } else {
+                            parts.push((e, vr, vw));
+                        }
+                    };
+                    if mode == "fanout" {
+                        for k in &allowed {
+                            put(k.e, amount);
+                        }
+                    } else if mode == "failover" {
+                        let mut remaining = amount;
+                        let mut ordered = allowed.clone();
+                        ordered.sort_by_key(|k| !k.up);
+                        for k in &ordered {
+                            put(k.e, remaining);
+                            remaining *= if k.up { 1.0 - self.nodes[sidx[k.t]].success } else { 1.0 };
+                            if remaining < 1e-9 {
+                                break;
+                            }
+                        }
+                    } else {
+                        let share = amount / allowed.len() as f64;
+                        for k in &allowed {
+                            put(k.e, share);
+                        }
+                    }
+                }
+                for (e, vr, vw) in parts {
+                    flows.push((e, vr + vw));
+                    flows_r.push((e, vr));
+                    let t = targets.iter().find(|x| x.e == e).unwrap().t;
+                    let (v, v_r) = ((vr + vw) * edge_calls[e], vr * edge_calls[e]);
+                    if done[t] {
+                        let c = self.carry.entry(nodes_in[t].id.clone()).or_insert((0.0, 0.0));
+                        c.0 += v;
+                        c.1 += v_r;
+                    } else {
+                        inflow[t] += v;
+                        inflow_r[t] += v_r;
+                    }
+                    edge_flow[e] += v;
+                }
+            } else if !targets.is_empty() && forward > 0.0 {
                 let set = |flows: &mut Vec<(usize, f64)>, e: usize, v: f64| {
                     // a Map keeps one entry per edge: a later write replaces the value in place
                     if let Some(x) = flows.iter_mut().find(|x| x.0 == e) {
@@ -1035,7 +1106,8 @@ impl Engine {
                         set(&mut flows, k.e, share);
                     }
                 }
-                for &(e, v) in &flows {
+                for &(e, v0) in &flows {
+                    let v = v0 * edge_calls[e];
                     let t = targets.iter().find(|x| x.e == e).unwrap().t;
                     if done[t] {
                         // a call back into a component that already ran this tick (a cycle): next tick
@@ -1048,6 +1120,11 @@ impl Engine {
                     }
                     edge_flow[e] += v;
                 }
+                flows_r = flows.iter().map(|&(e, v)| (e, v * fwd_r)).collect();
+            }
+            if unroutable > 0.0 {
+                // a class with no link to take it: those requests fail here
+                r.failed += unroutable;
             }
             st.in_rps = ema(st.in_rps, arrivals / dt, dt, 0.6);
             st.drop_rps = ema(st.drop_rps, r.failed / dt, dt, 0.6);
@@ -1057,7 +1134,7 @@ impl Engine {
             let own = if d.kind == "db" { arrivals * local_share } else { arrivals };
             st.drop_ratio = ema(st.drop_ratio, if own > 0.0 { r.failed / own } else { 0.0 }, dt, 0.6);
             self.nodes[sidx[i]] = st;
-            local[i] = Some(Local { local_share, local_r: r.local_r.unwrap_or(local_share), local_w: r.local_w.unwrap_or(local_share), rr: read_ratio, routes: targets, flows, mode, up: r.up });
+            local[i] = Some(Local { local_share, local_r: r.local_r.unwrap_or(local_share), local_w: r.local_w.unwrap_or(local_share), rr: read_ratio, routes: targets, flows, flows_r, mode, up: r.up });
         }
 
         // ---- backward pass ----
@@ -1075,14 +1152,24 @@ impl Engine {
             let mut late: Option<f64> = None;
             let mut kids_mix: Vec<[f64; 3]> = vec![];
             if has_kids {
+                // a link that makes N calls per request: all must succeed, the caller waits for the slowest
                 let kid = |k: &Route| {
                     let s = &self.nodes[sidx[k.t]];
                     let f = l.flows.iter().find(|x| x.0 == k.e).map(|x| x.1).unwrap_or(0.0);
-                    (s.success, s.latency_ms + edge_lat[k.e], f, s.tail_ms)
+                    let n = edge_calls[k.e];
+                    if n > 1.0 {
+                        (s.success.js_pow(n), s.latency_ms * fanout_tail(n) + edge_lat[k.e], f, s.tail_ms * fanout_tail(n))
+                    } else {
+                        (s.success, s.latency_ms + edge_lat[k.e], f, s.tail_ms)
+                    }
                 };
                 // a kid's answers as a mixture (its own one, or its mean and tail), the link's latency added
                 let kid_dist = |k: &Route| -> Vec<[f64; 3]> {
                     let s = &self.nodes[sidx[k.t]];
+                    let n = edge_calls[k.e];
+                    if n > 1.0 {
+                        return vec![[1.0, s.latency_ms * fanout_tail(n) + edge_lat[k.e], s.tail_ms * fanout_tail(n)]];
+                    }
                     if s.dist.is_empty() {
                         vec![[1.0, s.latency_ms + edge_lat[k.e], s.tail_ms]]
                     } else {
@@ -1091,12 +1178,21 @@ impl Engine {
                 };
                 let kid_rw = |k: &Route| {
                     let s = &self.nodes[sidx[k.t]];
-                    (s.success_r, s.success_w)
+                    let n = edge_calls[k.e];
+                    (s.success_r.js_pow(n), s.success_w.js_pow(n))
                 };
+                // each class's own flow over a link (links that carry only reads or only writes)
+                let restricted = l.routes.iter().any(|k| edge_carries[k.e] != 0);
+                let class_flow = |k: &Route| {
+                    let f = l.flows.iter().find(|x| x.0 == k.e).map(|x| x.1).unwrap_or(0.0);
+                    let fr = l.flows_r.iter().find(|x| x.0 == k.e).map(|x| x.1).unwrap_or(0.0);
+                    (fr, (f - fr).max(0.0))
+                };
+                let carries = |k: &Route, class: u8| edge_carries[k.e] == 0 || edge_carries[k.e] == class;
                 if l.mode == "fanout" {
                     succ = l.routes.iter().fold(1.0, |p, k| p * kid(k).0);
-                    succ_r = l.routes.iter().fold(1.0, |p, k| p * kid_rw(k).0);
-                    succ_w = l.routes.iter().fold(1.0, |p, k| p * kid_rw(k).1);
+                    succ_r = l.routes.iter().filter(|k| carries(k, 1)).fold(1.0, |p, k| p * kid_rw(k).0);
+                    succ_w = l.routes.iter().filter(|k| carries(k, 2)).fold(1.0, |p, k| p * kid_rw(k).1);
                     lat = js_max(f64::NEG_INFINITY, l.routes.iter().map(|k| kid(k).1));
                     // the slowest answer's 99th percentile
                     let p99 = js_max(f64::NEG_INFINITY, l.routes.iter().map(|k| kid(k).1 + kid(k).3));
@@ -1115,8 +1211,12 @@ impl Engine {
                             p99 += miss * (la + t);
                             miss *= 1.0 - s;
                             let (sr, sw) = kid_rw(k);
-                            miss_r *= 1.0 - sr;
-                            miss_w *= 1.0 - sw;
+                            if carries(k, 1) {
+                                miss_r *= 1.0 - sr;
+                            }
+                            if carries(k, 2) {
+                                miss_w *= 1.0 - sw;
+                            }
                         }
                     }
                     succ = 1.0 - miss;
@@ -1125,15 +1225,20 @@ impl Engine {
                     tail = (p99 - lat).max(0.0);
                 } else {
                     let (mut w, mut s, mut p99, mut lt) = (0.0, 0.0, 0.0, 0.0);
-                    let (mut sr, mut sw) = (0.0, 0.0);
+                    let (mut sr, mut sw, mut wr, mut ww) = (0.0, 0.0, 0.0, 0.0);
                     for k in &l.routes {
                         let (ks, kl, f, t) = kid(k);
                         let wk = if f > 0.0 { f } else { 1e-9 };
                         w += wk;
                         s += ks * wk;
                         let (kr, kw) = kid_rw(k);
-                        sr += kr * wk;
-                        sw += kw * wk;
+                        // by each class's own flow where links are class-specific, else by the total
+                        let (cr, cw) = if restricted { class_flow(k) } else { (wk, wk) };
+                        let (cr, cw) = (if carries(k, 1) { cr.max(1e-12) } else { 0.0 }, if carries(k, 2) { cw.max(1e-12) } else { 0.0 });
+                        sr += kr * cr;
+                        sw += kw * cw;
+                        wr += cr;
+                        ww += cw;
                         lat += kl * wk;
                         p99 += (kl + t) * wk;
                         let kd = kid_dist(k);
@@ -1143,8 +1248,8 @@ impl Engine {
                         kids_mix.extend(mix_then(&kd, 0.0, 0.0, wk));
                     }
                     succ = s / w;
-                    succ_r = sr / w;
-                    succ_w = sw / w;
+                    succ_r = if wr > 0.0 { sr / wr } else { 0.0 };
+                    succ_w = if ww > 0.0 { sw / ww } else { 0.0 };
                     lat /= w;
                     tail = (p99 / w - lat).max(0.0);
                     if tmo.is_some() {

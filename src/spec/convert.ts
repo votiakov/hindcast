@@ -12,7 +12,7 @@ const DATA_KEYS = ['tier', 'instances', 'runtime', 'hitRate', 'limit', 'batching
 
 export const pairs = (spec: ArchitectureSpec): [string, string][] => spec.connections.map((c) => (Array.isArray(c) ? [c[0], c[1]] : [c.from, c.to]));
 /** connections with their link properties */
-export const links = (spec: ArchitectureSpec): { from: string; to: string; latencyMs?: number }[] =>
+export const links = (spec: ArchitectureSpec): { from: string; to: string; latencyMs?: number; calls?: number; carries?: 'reads' | 'writes' }[] =>
   spec.connections.map((c) => (Array.isArray(c) ? { from: c[0], to: c[1] } : c));
 
 export function componentData(c: ComponentSpec): SystemNodeData {
@@ -80,7 +80,7 @@ export function specToGraph(input: unknown): Graph {
     nodes.push({ id: z.id, type: 'zone', position: { x: x0, y: y0 }, width: x1 - x0, height: y1 - y0, zIndex: -1, data: { label: z.label ?? z.id } });
   }
   for (const c of spec.components) nodes.push({ id: c.id, type: 'system', position: pos.get(c.id)!, data: componentData(c) });
-  const edges: SystemEdge[] = links(spec).map(({ from: source, to: target, latencyMs }) => ({ id: `e-${source}-${target}`, source, target, type: 'flow', ...(latencyMs ? { data: { latencyMs } } : {}) }));
+  const edges: SystemEdge[] = links(spec).map(({ from: source, to: target, latencyMs, calls, carries }) => ({ id: `e-${source}-${target}`, source, target, type: 'flow', ...(latencyMs || (calls ?? 1) > 1 || carries ? { data: { ...(latencyMs ? { latencyMs } : {}), ...((calls ?? 1) > 1 ? { calls } : {}), ...(carries ? { carries } : {}) } } : {}) }));
   return { nodes, edges };
 }
 
@@ -118,7 +118,7 @@ export function graphToSpec(nodes: AppNode[], edges: SystemEdge[], name?: string
     components,
     connections: edges
       .filter((e) => ids.has(e.source) && ids.has(e.target))
-      .map((e) => (e.data?.latencyMs ? { from: e.source, to: e.target, latencyMs: Number(e.data.latencyMs) } : ([e.source, e.target] as [string, string]))),
+      .map((e) => (e.data?.latencyMs || Number(e.data?.calls ?? 1) > 1 || e.data?.carries ? { from: e.source, to: e.target, ...(e.data?.latencyMs ? { latencyMs: Number(e.data.latencyMs) } : {}), ...(Number(e.data?.calls ?? 1) > 1 ? { calls: Number(e.data!.calls) } : {}), ...(e.data?.carries ? { carries: e.data.carries as 'reads' | 'writes' } : {}) } : ([e.source, e.target] as [string, string]))),
     ...(zones.length ? { zones } : {}),
   };
 }

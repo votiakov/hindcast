@@ -1,5 +1,5 @@
 import type { SimAction } from '../sim/actions';
-import { graph, X, type Graph } from './build';
+import { graph, link, X, type Graph } from './build';
 
 export type ScenarioAction = SimAction;
 
@@ -536,6 +536,59 @@ BASIC_SCENARIOS.push({
     a: 'The cache answered under 9% of requests — the reads that hit. Every write went through to a database that could not take them.',
     b: 'A database sized for writes carried the month-end with room to spare, for about $0.90/h more than the cache — and none of the failed requests.',
     lesson: 'Caches scale reads. Look at the read/write mix before reaching for one: a write-heavy system needs somewhere for its writes to go.',
+  },
+});
+
+/** fan-out on write vs fan-out on read (after The System Design Primer's Twitter timeline problem) */
+const timelineWrite = (() => {
+  let g = graph(
+    [
+      ['users', 'client', X[0], 220],
+      ['lb', 'lb', X[1], 220],
+      ['api', 'server', X[2], 220, { instances: 14, name: 'timeline api' }],
+      ['timelines', 'db', X[3], 80, { name: 'timelines (Redis)', capacity: 20000, latencyMs: 1 }],
+      ['fanout-q', 'queue', X[3], 360, { name: 'fan-out queue' }],
+      ['fanout', 'worker', X[4], 360, { instances: 4, name: 'fan-out workers' }],
+      ['tweets', 'db', X[5], 360, { name: 'tweets', capacity: 15000, latencyMs: 5 }],
+    ],
+    [['users', 'lb'], ['lb', 'api'], ['api', 'timelines'], ['api', 'fanout-q'], ['fanout-q', 'fanout'], ['fanout', 'timelines'], ['fanout', 'tweets']],
+  );
+  g = link(g, 'api', 'timelines', { carries: 'reads' });
+  g = link(g, 'api', 'fanout-q', { carries: 'writes' });
+  return link(g, 'fanout', 'timelines', { calls: 20 });
+})();
+const timelineRead = (() => {
+  let g = graph(
+    [
+      ['users', 'client', X[0], 220],
+      ['lb', 'lb', X[1], 220],
+      ['api', 'server', X[2], 220, { instances: 14, name: 'timeline api' }],
+      ['tweets', 'db', X[3], 220, { name: 'tweets', capacity: 15000, latencyMs: 5 }],
+    ],
+    [['users', 'lb'], ['lb', 'api'], ['api', 'tweets']],
+  );
+  return link(g, 'api', 'tweets', { calls: 20 });
+})();
+
+BASIC_SCENARIOS.push({
+  id: 'fanout-write-vs-read',
+  title: 'Timelines: Fan-out on Write vs on Read',
+  tagline: 'Build every timeline when a tweet is posted — or when it is read?',
+  watch: 'The tweets database on the right: every timeline read becomes twenty lookups.',
+  readRatio: 0.94,
+  a: { title: 'Fan-out on write', graph: timelineWrite },
+  b: { title: 'Fan-out on read', graph: timelineRead },
+  timeline: [
+    { at: 0, rps: 300, caption: '300 req/s: 94% timeline reads, 6% new tweets, 20 followers each on average. Both keep up.' },
+    { at: 10, rps: 300 },
+    { at: 18, rps: 3000, caption: 'Evening peak: 3,000 req/s.' },
+    { at: 35, rps: 3000 },
+  ],
+  events: [],
+  takeaway: {
+    a: 'A tweet costs twenty timeline writes, done later by workers; a read is one lookup in a pre-built timeline. Reads are what users wait on, and they stayed fast.',
+    b: 'A tweet is one write, but every read merges twenty followees’ tweets: 3,000 reads a second became 56,000 lookups, and the database could not keep up.',
+    lesson: 'Do the work on the side that happens less: Twitter builds timelines on write. Its exception proves it — for accounts with millions of followers it fans out on read and merges at serve time.',
   },
 });
 
