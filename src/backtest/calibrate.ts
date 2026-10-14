@@ -104,7 +104,7 @@ function clusterOf(d: Dataset, services: Record<string, ServiceModel>, replicasO
   const pk = packing.length ? Math.max(1, median(packing)) : 1;
   notes.push(`${nodes} node${nodes === 1 ? '' : 's'} of ${+node.cpu.toFixed(2)} cores + ${node.memoryGb.toFixed(1)} GiB allocatable, $${perHour.toFixed(3)}/node-hour (${hint?.nodePriceHour ? 'given' : NODE_PRICES.source})`);
   notes.push(autoscaled ? `the node count followed demand (${minNodes}–${maxNodes}): requests that need fewer nodes save money, at ${pk.toFixed(2)}× the nodes requests would fill exactly` : `a fixed pool: ${nodes} nodes the whole history. Smaller requests leave room on them but save nothing until the pool shrinks`);
-  return { node: { ...node, perHour, source: hint?.nodePriceHour ? 'hint' : 'pricing' }, nodes, minNodes, maxNodes, autoscaled, packing: pk, other: { cpu: otherCpu.length ? median(otherCpu) : 0, memoryGb: otherMem.length ? median(otherMem) : 0 }, notes };
+  return { node: { ...node, perHour, source: hint?.nodePriceHour ? 'hint' : 'pricing' }, nodes, minNodes, maxNodes, autoscaled, packing: pk, ...(hint?.provisionS ? { provisionS: hint.provisionS } : {}), other: { cpu: otherCpu.length ? median(otherCpu) : 0, memoryGb: otherMem.length ? median(otherMem) : 0 }, notes };
 }
 
 /** share of CFS periods throttled at which a service stops keeping up under sustained load: the

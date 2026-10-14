@@ -196,7 +196,7 @@ export interface Dataset {
     hostedBy?: Record<string, string>;
     services?: Record<string, { kind?: 'server' | 'db' | 'cache' | 'queue' | 'external' | 'lb'; servers?: number; perReplicaRps?: number; arch?: 'x86' | 'arm' }>;
     /** the node pool, where the metrics can't tell: its node price, and whether it autoscales */
-    cluster?: { nodePriceHour?: number; autoscaled?: boolean };
+    cluster?: { nodePriceHour?: number; autoscaled?: boolean; provisionS?: number };
     /** endpoints with their own SLO */
     endpoints?: Record<string, { slo?: { p99Ms: number; errorRate: number } }>;
   };

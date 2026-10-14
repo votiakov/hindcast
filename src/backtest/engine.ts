@@ -119,6 +119,8 @@ export interface ClusterPlan {
   /** an autoscaler removes a node this long after it stops being needed (cluster-autoscaler's
    *  scale-down-unneeded-time) */
   scaleDownS: number;
+  /** a pod that needs a new node waits this long for it (Karpenter ~60 s, cluster-autoscaler 2–3 min) */
+  provisionS: number;
 }
 
 export interface Plan {
@@ -649,10 +651,35 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
           S.blockedSaid = true;
         } else if (desired > S.live + booting) {
           S.blockedSaid = false;
-          const add = desired - S.live - booting;
-          S.pending.push({ at: t + a.warmupS * fx[id].warmupFactor, n: add });
-          S.lastScale = t;
-          out.events.push({ t: traffic.start + t, what: `${id}: scale out ${S.live + booting} → ${desired} (load ${(util * 100).toFixed(0)}% of target ${(a.target * 100).toFixed(0)}%)` });
+          let add = desired - S.live - booting;
+          let wait = 0;
+          // on a cluster the new pods need room: on an autoscaled pool, a node that isn't there yet is
+          // waited for; on a fixed pool, pods that don't fit stay Pending
+          if (cl && s.requests && !s.hostedBy) {
+            let rc = cl.other.cpu;
+            let rm = cl.other.memoryGb;
+            for (const x of svcIds) {
+              const q = plan.services[x];
+              if (q.hostedBy || !q.requests) continue;
+              const pods = st[x].live + st[x].pending.reduce((acc, p) => acc + p.n, 0);
+              rc += pods * q.requests.cpu;
+              rm += pods * q.requests.memoryGb;
+            }
+            const fits = (k: number) => Math.max((rc + k * s.requests!.cpu) / cl.node.cpu, (rm + k * s.requests!.memoryGb) / cl.node.memoryGb) * (cl.autoscaled ? cl.packing : 1) <= CS.nodes + 1e-9;
+            if (cl.autoscaled) {
+              if (!fits(add)) wait = cl.provisionS;
+            } else {
+              let room = add;
+              while (room > 0 && !fits(room)) room--;
+              if (room < add) out.events.push({ t: traffic.start + t, what: `${id}: ${add - room} of ${add} new replicas stay Pending — the ${CS.nodes} fixed nodes have no room for their requests` });
+              add = room;
+            }
+          }
+          if (add > 0) {
+            S.pending.push({ at: t + a.warmupS * fx[id].warmupFactor + wait, n: add });
+            S.lastScale = t;
+            out.events.push({ t: traffic.start + t, what: `${id}: scale out ${S.live + booting} → ${S.live + booting + add} (load ${(util * 100).toFixed(0)}% of target ${(a.target * 100).toFixed(0)}%)${wait ? `, waiting ${wait} s for a new node` : ''}` });
+          }
         } else if (desired < S.live && !booting && t - S.lastScale >= a.cooldownS) {
           out.events.push({ t: traffic.start + t, what: `${id}: scale in ${S.live} → ${desired}` });
           S.live = desired;
@@ -701,6 +728,6 @@ export function basePlan(model: Model, observed?: Record<string, Num[] | undefin
   for (const [id, e] of Object.entries(model.endpoints))
     endpoints[id] = { id, service: e.service, visits: e.visits, calls: e.calls, weights: e.weights, overheadMs: e.overheadMs, baseExcessMs: e.baseExcessMs, baseP50Ms: e.baseP50Ms, tail: e.tail, errorRate: e.errorRate, errorSlope: e.errorSlope, bytes: e.bytes, egressBytes: e.egressBytes, timeoutMs: model.timeoutMs, slo: e.slo };
   const c = model.cluster;
-  const cluster: ClusterPlan | undefined = c ? { node: { cpu: c.node.cpu, memoryGb: c.node.memoryGb, perHour: c.node.perHour }, nodes: c.nodes, autoscaled: c.autoscaled, minNodes: c.autoscaled ? 1 : c.nodes, maxNodes: c.autoscaled ? Math.max(c.maxNodes * 4, c.maxNodes + 10) : c.nodes, packing: c.packing, other: { ...c.other }, scaleDownS: 600 } : undefined;
+  const cluster: ClusterPlan | undefined = c ? { node: { cpu: c.node.cpu, memoryGb: c.node.memoryGb, perHour: c.node.perHour }, nodes: c.nodes, autoscaled: c.autoscaled, minNodes: c.autoscaled ? 1 : c.nodes, maxNodes: c.autoscaled ? Math.max(c.maxNodes * 4, c.maxNodes + 10) : c.nodes, packing: c.packing, other: { ...c.other }, scaleDownS: 600, provisionS: c.provisionS ?? 90 } : undefined;
   return { services, endpoints, transfer: model.transfer, unattributedPerHour: model.unattributedPerHour, slo: model.slo, ...(cluster ? { cluster } : {}) };
 }

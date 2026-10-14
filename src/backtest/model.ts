@@ -129,6 +129,8 @@ export interface ClusterModel {
   packing: number;
   /** requests of every pod on the cluster that isn't one of the modelled services: cores, GiB */
   other: { cpu: number; memoryGb: number };
+  /** seconds a pod waits for a new node (default 90) */
+  provisionS?: number;
   notes: string[];
 }
 

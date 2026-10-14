@@ -240,7 +240,9 @@ A service with requests and no bill line is priced at its share of a node,
 `perHour × max(cpu request / node cpu, memory request / node memory)`. In the replay those shares
 only split the node spend that belongs to the services: the nodes running, less the others' share.
 A fixed pool's spend never moves. An autoscaled pool runs `ceil(ideal × packing)` nodes and keeps a
-node 10 minutes after it stops being needed. A strategy's `cpuRequest` / `memoryRequestGb` change
+node 10 minutes after it stops being needed. An HPA scale-out whose pods don't fit on the running nodes waits for a new one on an autoscaled
+pool: `hints.cluster.provisionS`, default 90 s (Karpenter is about a minute, cluster-autoscaler
+two to three). On a fixed pool those pods stay Pending. A strategy's `cpuRequest` / `memoryRequestGb` change
 requests. A `cpu` / `memoryGb` change moves a request that was equal to its limit along with it.
 
 ### The bill

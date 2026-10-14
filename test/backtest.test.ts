@@ -493,6 +493,20 @@ describe('Kubernetes nodes', () => {
     expect(half.cluster!.meanNodes).toBeLessThan(r.baseline.cluster!.meanNodes);
     expect(more.cluster!.peakNodes).toBeGreaterThan(r.baseline.cluster!.peakNodes);
   });
+
+  it('an HPA scale-out waits for a node on an autoscaled pool, and stays Pending on a full fixed one', () => {
+    const scaleOut = { name: 'hpa', changes: [{ service: 'api', autoscale: { min: 1, max: 6, targetCpu: 0.3, warmupS: 20, cooldownS: 600 } }] };
+    const auto = onNodes(true);
+    delete auto.bill;
+    const a = backtest(calibrate(auto, { bootstrap: 0 }), auto, [scaleOut], { draws: 1 }).strategies[0];
+    expect(a.events.some((e) => /waiting 90 s for a new node/.test(e.what))).toBe(true);
+    // two fixed nodes: 4 cores, others take 1, so the fourth replica has nowhere to go
+    const fixed = onNodes(false);
+    delete fixed.bill;
+    fixed.cluster!.clusterNodes = fixed.cluster!.clusterNodes!.map(() => 2);
+    const f = backtest(calibrate(fixed, { bootstrap: 0 }), fixed, [scaleOut], { draws: 1 }).strategies[0];
+    expect(f.events.some((e) => /stay Pending — the 2 fixed nodes have no room/.test(e.what))).toBe(true);
+  });
 });
 
 describe('losing a node', () => {
