@@ -3,7 +3,9 @@
 
 pub mod collect;
 pub mod connect;
+pub mod review;
 pub mod sources;
+pub mod suggest;
 pub mod verify;
 pub mod workspace;
 
@@ -169,6 +171,18 @@ pub fn validate(schema: &Value, v: Option<&Value>, path: &[String], issues: &mut
     }
 }
 
+/// `${x}` of a JSON value in a template string
+pub fn sources_str(v: Option<&Value>) -> String {
+    match v {
+        None => "undefined".into(),
+        Some(Value::Null) => "null".into(),
+        Some(Value::String(s)) => s.clone(),
+        Some(Value::Number(n)) => crate::math::js_num(n.as_f64().unwrap_or(f64::NAN)),
+        Some(Value::Bool(b)) => b.to_string(),
+        Some(x) => crate::convert::js_stringify(x),
+    }
+}
+
 /// a schema error (the issues as JSON) as explainError writes it: "invalid input" and a "path: message" line each
 pub fn explain_schema_error(e: &str) -> String {
     match serde_json::from_str::<Value>(e) {
@@ -210,6 +224,8 @@ pub fn run_tool(name: &str, args: &Value) -> Result<Value, String> {
         "find_headroom" => verify::find_headroom(&ws, &parsed),
         "check_node_loss" => verify::check_node_loss(&ws, &parsed),
         "verify_design" => verify::verify_design(&parsed),
+        "suggest_changes" => suggest::suggest_changes(&ws, &parsed),
+        "review_capacity" => review::review_capacity(&ws, &parsed),
         _ => Err(format!("{} is not available in this build yet", name)),
     }
 }
