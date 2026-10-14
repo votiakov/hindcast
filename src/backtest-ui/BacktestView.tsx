@@ -170,6 +170,11 @@ function OutageBanner() {
         </button>
       </div>
       <div className="bt-outage-what">{o.outage.what}</div>
+      {o.measured && (
+        <div className="bt-outage-real">
+          Measured when the node was stopped for real: <b>+{o.measured.minutesOutOfSlo} min out of SLO</b>, <b>+{o.measured.failedRequests.toLocaleString('en-US')} failed requests</b> over the as-built day
+        </div>
+      )}
       <div className="bt-outage-tl">
         {o.outage.timeline.map((t, i) => (
           <span key={i}>

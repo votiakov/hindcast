@@ -33,6 +33,17 @@ export interface WorkspaceFile {
   dataset: Dataset;
   model: Model;
   strategies: string[];
+  /** node failures recorded for real on this system (Kubernetes reference) */
+  nodeLosses?: NodeLossRecord[];
+}
+
+export interface NodeLossRecord {
+  node: string;
+  /** seconds into the history the node went */
+  atS: number;
+  /** pods per node per service at that instant */
+  pods: Record<string, Record<string, number>>;
+  measured: { minutesOutOfSlo: number; failedRequests: number };
 }
 
 export async function loadReference(id: string) {
@@ -42,7 +53,7 @@ export async function loadReference(id: string) {
     const res = await fetch(`reference/${id}.json`);
     if (!res.ok) throw new Error(`reference "${id}" is not bundled (${res.status})`);
     const w = (await res.json()) as WorkspaceFile;
-    s.setWorkspace({ id, name: w.name, source: w.source, dataset: w.dataset, model: reviveModel(w.model), strategies: w.strategies.map((yaml) => ({ yaml, visible: true })) });
+    s.setWorkspace({ id, name: w.name, source: w.source, dataset: w.dataset, model: reviveModel(w.model), strategies: w.strategies.map((yaml) => ({ yaml, visible: true })), ...(w.nodeLosses?.length ? { nodeLosses: w.nodeLosses } : {}) });
   } catch (e) {
     useSim.getState().toast('bad', e instanceof Error ? e.message : String(e));
   } finally {
@@ -161,13 +172,15 @@ export function openNodeLoss(node: string) {
   const st = useBacktest.getState();
   const base = st.workspace?.outage?.parent ?? st.workspace;
   if (!base) return;
-  const r = nodeLossFaults(base.model, base.dataset, node);
+  // a failure recorded for real on this node: replay it from that instant and that placement
+  const real = base.nodeLosses?.find((x) => x.node === node);
+  const r = nodeLossFaults(base.model, base.dataset, node, real ? { atS: real.atS, pods: real.pods } : {});
   const hhmm = (t: number) => new Date(t * 1000).toISOString().slice(11, 16);
   const down = r.lost.filter((l) => l.down).map((l) => l.service);
   const thinned = r.lost.filter((l) => !l.down).map((l) => `${l.service} (${l.of - l.pods} of ${l.of} left)`);
   const outage: Outage = {
     id: `node:${node}`,
-    title: `Losing ${node} at the busiest moment`,
+    title: real ? `Losing ${node}, as it was stopped for real` : `Losing ${node} at the busiest moment`,
     what: `Every pod on ${node} goes at once. ${down.length ? `${down.join(', ')} ${down.length === 1 ? 'has' : 'have'} no replica left` : 'Every service keeps a replica'}${thinned.length ? `; ${thinned.join(', ')}` : ''}.`,
     start: new Date(base.dataset.start * 1000).toISOString(),
     minutes: Math.round((base.dataset.n * base.dataset.stepS) / 60),
@@ -179,7 +192,7 @@ export function openNodeLoss(node: string) {
       ...(r.recoverS !== null ? [{ at: hhmm(r.at + r.recoverS), text: 'pods replaced: the 300 s eviction toleration ran out, they started elsewhere' }] : []),
     ],
     sources: [],
-    assumptions: ['placement as kube_pod_info showed it at the end of the history;', 'nothing else fails.'],
+    assumptions: [real ? 'placement as it was at the instant the node was stopped;' : 'placement as kube_pod_info showed it at the end of the history;', 'nothing else fails.'],
   };
   st.setWorkspace({
     id: `${base.id}:node:${node}`,
@@ -188,7 +201,7 @@ export function openNodeLoss(node: string) {
     dataset: base.dataset,
     model: base.model,
     strategies: base.strategies.map((x) => ({ ...x })),
-    outage: { outage, faults: r.faults, roles: { 'no replica left': down, 'fewer replicas': r.lost.filter((l) => !l.down).map((l) => l.service) }, warnings: [], baseRps: r.peakRps, parent: base, ownHistory: true },
+    outage: { outage, faults: r.faults, roles: { 'no replica left': down, 'fewer replicas': r.lost.filter((l) => !l.down).map((l) => l.service) }, warnings: [], baseRps: r.peakRps, parent: base, ownHistory: true, ...(real ? { measured: real.measured } : {}) },
   });
 }
 

@@ -362,6 +362,9 @@ async function nodeLossCase(run: string, ws: Workspace, evalDir: string) {
     run,
     node: info.kill.node,
     atMinute: Math.round((into / 60) * 10) / 10,
+    /** in the ordinary day's clock (the bundled history), and the placement at that instant */
+    atS: into - SETTLE_S,
+    pods,
     lost: exAnte.lost,
     predicted: { minutesOutOfSlo: exAnte.minutesOutOfSlo, failedRequests: exAnte.failedRequests, verdict: exAnte.verdict, worst: exAnte.worst },
     onTheDay: { minutesOutOfSlo: onDay.minutesOutOfSlo, failedRequests: onDay.failedRequests },
@@ -443,14 +446,15 @@ async function main() {
   // the app replays the ordinary day; the model learned from it and the load test
   const history = calm.ws.readJson<Dataset>('dataset.json');
   const pub = join(ROOT, '..', '..', 'public', 'reference');
-  writeFileSync(join(pub, `k8s-${system}.json`), JSON.stringify({ name: cfg.name, source: `reference/k8s/${system} — a kind cluster, NASA's 12 July 1995 traffic${recorded('stress') ? ' and a load test' : ''}, recorded ${new Date(history.start * 1000).toISOString().slice(0, 10)}`, dataset: history, model: m, strategies }));
+  // the node failures recorded for real travel with the bundle: the app replays them from the
+  // placement at the instant of the kill, and shows what was measured
+  const nodeLosses = [];
+  for (const [run, r] of Object.entries(cfg.runs)) if (r.kill && recorded(run)) nodeLosses.push(await nodeLossCase(run, calm.ws, evalDir));
+  writeFileSync(join(pub, `k8s-${system}.json`), JSON.stringify({ nodeLosses: nodeLosses.map((x) => ({ node: x.node, atS: x.atS, pods: x.pods, predicted: x.predicted, measured: x.measured })), name: cfg.name, source: `reference/k8s/${system} — a kind cluster, NASA's 12 July 1995 traffic${recorded('stress') ? ' and a load test' : ''}, recorded ${new Date(history.start * 1000).toISOString().slice(0, 10)}`, dataset: history, model: m, strategies }));
   const indexPath = join(pub, 'index.json');
   const index = JSON.parse(readFileSync(indexPath, 'utf8')) as { id: string; label: string }[];
   const entry = { id: `k8s-${system}`, label: `${cfg.name} (reference)` };
   writeFileSync(indexPath, JSON.stringify([...index.filter((x) => x.id !== entry.id), entry], null, 1));
-
-  const nodeLosses = [];
-  for (const [run, r] of Object.entries(cfg.runs)) if (r.kill && recorded(run)) nodeLosses.push(await nodeLossCase(run, calm.ws, evalDir));
 
   writeFileSync(join(evalDir, 'validation.json'), JSON.stringify({ system: cfg.name, slo: cfg.slo, settleS: SETTLE_S, models, nodeLosses, evaluatedAt: new Date().toISOString() }, null, 1));
 

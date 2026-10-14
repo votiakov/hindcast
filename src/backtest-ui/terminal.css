@@ -169,3 +169,5 @@
 
 /* the app’s toasts (import errors, loads) sit above the fixed Backtest screen */
 .bt ~ .toasts { position: fixed; z-index: 40; left: 16px; bottom: 16px; }
+.bt-outage-real { font: 12.5px var(--bt-mono); color: var(--bt-text); margin: 4px 0; }
+.bt-outage-real b { color: var(--bt-amber); font-weight: 600; }

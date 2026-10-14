@@ -31,7 +31,9 @@ export interface Workspace {
   model: Model;
   strategies: StrategyFile[];
   /** a public-outage replay against this workspace's model */
-  outage?: { outage: Outage; faults: Fault[]; roles: Record<string, string[]>; warnings: string[]; baseRps: number; parent: Workspace; /** replayed over the workspace's own history (a node loss), not a synthetic day */ ownHistory?: boolean };
+  outage?: { outage: Outage; faults: Fault[]; roles: Record<string, string[]>; warnings: string[]; baseRps: number; parent: Workspace; /** replayed over the workspace's own history (a node loss), not a synthetic day */ ownHistory?: boolean; /** what happened when it was done for real, over the as-built history */ measured?: { minutesOutOfSlo: number; failedRequests: number } };
+  /** node failures recorded for real (a Kubernetes reference) */
+  nodeLosses?: { node: string; atS: number; pods: Record<string, Record<string, number>>; measured: { minutesOutOfSlo: number; failedRequests: number } }[];
 }
 
 export type Tab = 'overview' | 'incidents' | 'endpoints' | 'changes' | 'model';
