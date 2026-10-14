@@ -13,6 +13,12 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npx vite build
+      # every view of the built app, clicked through in a browser: no console or page errors
+      - run: npx playwright install --with-deps chromium
+      - run: |
+          npx vite preview --port 4173 --strictPort &
+          for i in $(seq 30); do curl -sf http://localhost:4173 >/dev/null && break; sleep 1; done
+          HINDCAST_APP_URL=http://localhost:4173 node scripts/ui-audit.mjs --themes terminal --out ui-audit
       - run: cargo test --release --lib
         working-directory: engine-rs
       # the native CLI and MCP server against their golden outputs

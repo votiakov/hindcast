@@ -21,11 +21,15 @@ export function LinkLatency({ id, selected }: { id: string; selected?: boolean }
   const calls = Number(data?.calls ?? 1);
   const carries = data?.carries as 'reads' | 'writes' | undefined;
   const edge = useSim((s) => s.boards[b].edges.find((e) => e.id === id));
-  const ends = useSim((s) => {
+  // one string, not a fresh array: a selector must return something stable between renders
+  const key = useSim((s) => {
     const nodes = s.boards[b].nodes;
     const find = (nid?: string) => nodes.find((n) => n.id === nid)?.data as { kind?: string; side?: string } | undefined;
-    return [find(edge?.source), find(edge?.target)] as const;
+    const [a, z] = [find(edge?.source), find(edge?.target)];
+    return `${a?.kind ?? ''}|${a?.side ?? ''}|${z?.kind ?? ''}|${z?.side ?? ''}`;
   });
+  const [k0, s0, k1, s1] = key.split('|');
+  const ends = [{ kind: k0, side: s0 || undefined }, { kind: k1, side: s1 || undefined }] as const;
   const replicated = ends[0]?.kind === 'db' && ends[1]?.kind === 'replica';
   const sync = data?.replication === 'sync';
   const severed = !!ends[0]?.side && !!ends[1]?.side && ends[0]?.side !== ends[1]?.side;
