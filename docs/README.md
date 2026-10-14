@@ -1,4 +1,4 @@
-# Bottleneck — documentation
+# Hindcast — documentation
 
 The user-facing guide, screen by screen, is served with the app at `/docs/` (built from
 `docs-site/pages/` by `npm run docs:build`; screenshots and pin positions by `npm run docs:shots`).
@@ -6,7 +6,7 @@ These pages are the reference behind it.
 
 | document | what's in it |
 |---|---|
-| [capabilities.md](capabilities.md) | Everything Bottleneck does, in one list, with where to find it |
+| [capabilities.md](capabilities.md) | Everything Hindcast does, in one list, with where to find it |
 | [agents.md](agents.md) | For AI agents: connect to Prometheus and Jaeger/Tempo, collect, calibrate, verify changes (strategies, Kubernetes diffs, Terraform plans) with a verdict and a confidence; setup for Claude Code, other MCP hosts and shell agents |
 | [guide.md](guide.md) | The app, view by view: Backtest, Live, Lessons, Sandbox, Compare, Studio, settings, shortcuts |
 | [use-cases.md](use-cases.md) | 21 use cases — with your real data and without — and how to do each |

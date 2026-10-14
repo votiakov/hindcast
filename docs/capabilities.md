@@ -1,6 +1,6 @@
 # Capabilities — the complete list
 
-Everything Bottleneck does, grouped, with where to find it (**A** app, **C** CLI, **M** MCP server)
+Everything Hindcast does, grouped, with where to find it (**A** app, **C** CLI, **M** MCP server)
 and where it is documented.
 
 ## Real data in
@@ -88,7 +88,7 @@ and where it is documented.
 | Agent tools: `connect_telemetry` (probes Prometheus presets, services, traffic history; Jaeger/Tempo services, entry services, load generators; renames), `collect_telemetry` (a window, traces spread over it), `calibrate_model` (trust report), `verify_change` (verdict + confidence + evidence + HTML report + a link that opens it on the backtest screen), `suggest_changes` (fixes for what saturated and savings for what idled, backtested, the safe savings tried together), `find_headroom`, `verify_design`, `read_cluster`, `model_status` | [agents.md](agents.md) |
 | Changes from Terraform plans (ECS, app autoscaling, ASG/EC2, RDS, Cloud Run, kubernetes_*), Kubernetes diffs, and edited manifests against a read-only cluster snapshot | [agents.md](agents.md#4-verify_change-the-verdict) |
 | AWS Fargate list prices from CPU and memory limits when there is no bill | [agents.md](agents.md#how-confidence-is-decided) |
-| Every agent tool from a shell (`bottleneck agent <tool> '<json>'`), MCP prompts, a Claude Code skill, a single-file MCP server (`npm run build:mcp-server`) | [agents.md](agents.md#set-up), [examples/agents](../examples/agents/README.md) |
+| Every agent tool from a shell (`hindcast agent <tool> '<json>'`), MCP prompts, a Claude Code skill, a single-file MCP server (`npm run build:mcp-server`) | [agents.md](agents.md#set-up), [examples/agents](../examples/agents/README.md) |
 | Live canvas inline in MCP Apps hosts | [tools.md](tools.md#live-canvas-mcp-apps) |
 | GitHub Actions: architecture audit and backtest PR checks | [tools.md](tools.md#in-ci), [examples/backtest-ci](../examples/backtest-ci/README.md) |
-| Standalone CLI bundle (`dist-cli/bottleneck.mjs`) | [tools.md](tools.md#backtesting-on-real-data) |
+| Standalone CLI bundle (`dist-cli/hindcast.mjs`) | [tools.md](tools.md#backtesting-on-real-data) |

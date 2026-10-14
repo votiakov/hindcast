@@ -1,11 +1,11 @@
 {
   "mcpServers": {
-    "bottleneck": {
+    "hindcast": {
       "command": "node",
-      "args": ["/path/to/bottleneck/dist-cli/bottleneck-mcp.mjs"],
+      "args": ["/path/to/hindcast/dist-cli/hindcast-mcp.mjs"],
       "env": {
-        "BOTTLENECK_WORKSPACE": "/path/to/your/project/.bottleneck",
-        "BOTTLENECK_APP_URL": "http://localhost:5173"
+        "HINDCAST_WORKSPACE": "/path/to/your/project/.hindcast",
+        "HINDCAST_APP_URL": "http://localhost:5173"
       }
     }
   }

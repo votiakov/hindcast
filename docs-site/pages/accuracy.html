@@ -49,5 +49,5 @@
 <p>On 60 of the busiest services in Alibaba's 2021 microservices trace, the calibration predicted each service's CPU from its traffic over 3.6 held-out hours. When traffic moved by 15% or more within an hour, it was off by 5.9%, against 11.0% for CPU per request held constant and 13.2% for "the same as an hour ago". Above anything the training saw, it was off by 12.9% against 30.4%. Details: <code>reference/alibaba/README.md</code>.</p>
 
 <h2>Where you see it</h2>
-<p>The accuracy record travels with the model: the backtest screen's <b>Model accuracy</b> panel, <code>bottleneck accuracy model.json</code>, the footer of every report, pull-request comment and card. For your own data, <code>bottleneck calibrate --holdout 0.3</code> adds the same holdout check.</p>
+<p>The accuracy record travels with the model: the backtest screen's <b>Model accuracy</b> panel, <code>hindcast accuracy model.json</code>, the footer of every report, pull-request comment and card. For your own data, <code>hindcast calibrate --holdout 0.3</code> adds the same holdout check.</p>
 </section>

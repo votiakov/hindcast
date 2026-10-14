@@ -1,7 +1,7 @@
 # Reference systems — how accurate is the backtest?
 
 Three open demo applications were run under load on Docker, with their telemetry recorded the way a
-production system would record it. Bottleneck imported one run of each (the "history"), calibrated
+production system would record it. Hindcast imported one run of each (the "history"), calibrated
 a model from it, and then predicted runs **the model never saw**: the system with a change actually
 applied, and step load tests up to the breaking point. The predictions are compared with what the
 load generator measured.
@@ -20,7 +20,7 @@ Docker Desktop's credential helper can hang on pulls; the recordings ran with a 
 `DOCKER_CONFIG` (no `credsStore`).
 
 Results are in each system's `model.json` (`accuracy`), in the app (watchlist → Model accuracy), in
-`bottleneck accuracy reference/<system>/model.json`, and in every report generated from these models.
+`hindcast accuracy reference/<system>/model.json`, and in every report generated from these models.
 
 ## What is recorded
 
@@ -31,7 +31,7 @@ Results are in each system's `model.json` (`accuracy`), in the app (watchlist �
   the `spanmetrics` connector.
 - **Container metrics** with cAdvisor's names (CPU used, CPU and memory limits, replicas, network),
   from the Docker Engine API — cAdvisor itself cannot read Docker Desktop's engine.
-- **Prometheus**, scraping both every 5 s. After each run, `bottleneck`'s own Prometheus presets
+- **Prometheus**, scraping both every 5 s. After each run, `hindcast`'s own Prometheus presets
   (`otel-spanmetrics`, `cadvisor`) export query_range JSON — the same path a user takes.
 - **k6** replays a traffic shape as an open workload with **Poisson arrivals** (k6's arrival-rate
   executor paces requests evenly; real users don't, and even pacing hides queueing). Every request

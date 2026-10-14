@@ -1,4 +1,4 @@
-/** Bottleneck CLI — the simulation and backtesting engine without the UI. Usage: see USAGE below. */
+/** Hindcast CLI (`hindcast`; `bottleneck` is kept as an alias) — the simulation and backtesting engine without the UI. Usage: see USAGE below. */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parse as parseYaml } from 'yaml';
 import { specToYaml } from '../src/spec/yaml';
@@ -21,38 +21,38 @@ import { backtestCommand } from './backtest';
 import { explainError, runTool, TOOLS } from '../agent/tools';
 import { HOSTS, setup, type Host } from '../agent/setup';
 
-const USAGE = `Bottleneck CLI — the simulation engine without the UI.
+const USAGE = `Hindcast CLI — the simulation engine without the UI. (In a checkout of the repository, use "npm run sim --" in place of "hindcast".)
 
-  npm run sim -- validate        <arch.yaml>
-  npm run sim -- simulate        <arch.yaml> [scenario.yaml] [--rps 800 | --traffic metrics.csv] [--duration 60] [--engine fluid|des] [--seed 1] [--json]
-  npm run sim -- analyze         <arch.yaml> [scenario.yaml] [--runs 20]       (discrete-event Monte Carlo, 95% CIs)
-  npm run sim -- optimize        <arch.yaml> [scenario.yaml] [--runtimes] [--out optimized.yaml]
-  npm run sim -- compare         <arch.yaml> <variants.yaml> [scenario.yaml] [--json]
-  npm run sim -- breaking-point  <arch.yaml> [--p99 300] [--errors 0.01]
-  npm run sim -- audit           <arch.yaml> [--rps 500] [--cost-per-min 1000] [--md report.md] [--html report.html]   (what breaks first, and what it costs)
-  npm run sim -- link            <arch.yaml> [variants.yaml]     → open in the app
-  npm run sim -- import-terraform <terraform-show.json> [--name "My system"] [--out arch.yaml]
-  npm run sim -- import-k8s      <manifests.yaml …> [--name "My system"] [--out arch.yaml]      (Deployments, HPAs, StatefulSets, Services, Ingress)
-  npm run sim -- catalog
+  hindcast validate        <arch.yaml>
+  hindcast simulate        <arch.yaml> [scenario.yaml] [--rps 800 | --traffic metrics.csv] [--duration 60] [--engine fluid|des] [--seed 1] [--json]
+  hindcast analyze         <arch.yaml> [scenario.yaml] [--runs 20]       (discrete-event Monte Carlo, 95% CIs)
+  hindcast optimize        <arch.yaml> [scenario.yaml] [--runtimes] [--out optimized.yaml]
+  hindcast compare         <arch.yaml> <variants.yaml> [scenario.yaml] [--json]
+  hindcast breaking-point  <arch.yaml> [--p99 300] [--errors 0.01]
+  hindcast audit           <arch.yaml> [--rps 500] [--cost-per-min 1000] [--md report.md] [--html report.html]   (what breaks first, and what it costs)
+  hindcast link            <arch.yaml> [variants.yaml]     → open in the app
+  hindcast import-terraform <terraform-show.json> [--name "My system"] [--out arch.yaml]
+  hindcast import-k8s      <manifests.yaml …> [--name "My system"] [--out arch.yaml]      (Deployments, HPAs, StatefulSets, Services, Ingress)
+  hindcast catalog
 
 Backtesting on real data (files only; see docs/backtest.md):
-  npm run sim -- export-prometheus --url http://prom:9090 --start 2026-09-01 --end 2026-09-15 [--step 60] [--preset otel-spanmetrics,cadvisor] --out telemetry/
-  npm run sim -- import        <bottleneck.import.yaml> [--out dataset.json]
-  npm run sim -- calibrate     <dataset.json> [--out model.json] [--p99 500] [--errors 0.01] [--timeout 5000] [--holdout 0.3]
-  npm run sim -- backtest      <model.json> <dataset.json> <strategy.yaml …> [--last 14d] [--scale 2 | --peak 400] [--draws 30] [--md r.md] [--html r.html] [--comment pr.md] [--card card.json] [--gate]
-  npm run sim -- headroom      <model.json> [strategy.yaml]
-  npm run sim -- accuracy      <model.json>
-  npm run sim -- outage        <model.json> <outage-id | list> [strategy.yaml …] [--role primary-db=orders-db] [--md r.md] [--html r.html]
-  npm run sim -- diff-strategy --base <dir> --head <dir> [--model model.json] [--out strategy.yaml]   (k8s manifests before/after → strategy)
+  hindcast export-prometheus --url http://prom:9090 --start 2026-09-01 --end 2026-09-15 [--step 60] [--preset otel-spanmetrics,cadvisor] --out telemetry/
+  hindcast import        <hindcast.import.yaml> [--out dataset.json]
+  hindcast calibrate     <dataset.json> [--out model.json] [--p99 500] [--errors 0.01] [--timeout 5000] [--holdout 0.3]
+  hindcast backtest      <model.json> <dataset.json> <strategy.yaml …> [--last 14d] [--scale 2 | --peak 400] [--draws 30] [--md r.md] [--html r.html] [--comment pr.md] [--card card.json] [--gate]
+  hindcast headroom      <model.json> [strategy.yaml]
+  hindcast accuracy      <model.json>
+  hindcast outage        <model.json> <outage-id | list> [strategy.yaml …] [--role primary-db=orders-db] [--md r.md] [--html r.html]
+  hindcast diff-strategy --base <dir> --head <dir> [--model model.json] [--out strategy.yaml]   (k8s manifests before/after → strategy)
 
 For agents (the MCP tools, from a shell; JSON in, JSON out; see docs/agents.md):
-  npm run sim -- agent list
-  npm run sim -- agent <tool> '<json args>' | @args.json | -      e.g. agent connect_telemetry '{"prometheus":{"url":"http://prom:9090"}}'
+  hindcast agent list
+  hindcast agent <tool> '<json args>' | @args.json | -      e.g. agent connect_telemetry '{"prometheus":{"url":"http://prom:9090"}}'
   tools: connect_telemetry collect_telemetry calibrate_model model_status verify_change find_headroom verify_design read_cluster
 
 Files may be YAML or JSON. A variants file is either a list of variants or { variants, scenario }.`;
 
-const APP_URL = process.env.BOTTLENECK_APP_URL ?? 'http://localhost:5173';
+const APP_URL = process.env.HINDCAST_APP_URL ?? process.env.BOTTLENECK_APP_URL ?? 'http://localhost:5173';
 
 const load = (path: string): unknown => {
   const text = readFileSync(path, 'utf8');
@@ -271,7 +271,7 @@ async function agentCommand([tool, arg, ...more]: string[]) {
     const { pos, opt } = flags([arg, ...more].filter((x): x is string => x !== undefined));
     const host = pos[0] as Host | undefined;
     if (host && !HOSTS.includes(host)) throw new Error(`unknown host "${host}": one of ${HOSTS.join(', ')}`);
-    if (opt.write && !host) throw new Error('--write needs a host: bottleneck agent setup cursor --write');
+    if (opt.write && !host) throw new Error('--write needs a host: hindcast agent setup cursor --write');
     return setup({ host, write: !!opt.write, project: opt.project as string | undefined, workspace: opt.workspace as string | undefined });
   }
   if (!tool || tool === 'list') {

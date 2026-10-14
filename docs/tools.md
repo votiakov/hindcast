@@ -22,7 +22,7 @@
 | command | what it does |
 |---|---|
 | `export-prometheus --url … --start … --end … [--step 60] [--preset otel-spanmetrics,http-server,cadvisor,kubernetes] [--selector 'namespace="shop"'] --out dir/` | runs the preset queries against a Prometheus and writes query_range JSON plus the `metrics:` block of an import manifest |
-| `import <bottleneck.import.yaml> [--out dataset.json]` | metric exports, traces and bills → one dataset on a time grid; prints what each source gave |
+| `import <hindcast.import.yaml> [--out dataset.json]` | metric exports, traces and bills → one dataset on a time grid; prints what each source gave |
 | `calibrate <dataset.json> [--out model.json] [--p99 500] [--errors 0.01] [--timeout 5000] [--holdout 0.3]` | fits the model; prints every component with its capacity, limit, fit status and notes; `--holdout` adds an accuracy record |
 | `backtest <model.json> <dataset.json> <strategy.yaml …> [--last 14d] [--draws 30] [--md r.md] [--html r.html] [--comment pr.md] [--card card.json] [--gate]` | replays the strategies over the history: $/month, minutes out of SLO, failed requests, worst moment and why, incidents, per-endpoint results, ranking; `--gate` exits 2 if a strategy adds time out of SLO |
 | `headroom <model.json> [strategy.yaml]` | req/s sustained within SLO with today's endpoint mix, and what saturates next |
@@ -31,7 +31,7 @@
 | `diff-strategy --base <dir> --head <dir> [--model model.json] [--out strategy.yaml]` | Kubernetes manifests before/after → a strategy (replicas, CPU/memory, HPAs, arch) |
 
 Guide: [backtest.md](backtest.md); the model: [calibration.md](calibration.md). A standalone build
-of the CLI (`npm run build:cli` → `dist-cli/bottleneck.mjs`, Node 20, no install) is what the PR
+of the CLI (`npm run build:cli` → `dist-cli/hindcast.mjs`, Node 20, no install) is what the PR
 workflow ships.
 
 Every command accepts `--json`. Files may be YAML or JSON. Examples live in `examples/`:
@@ -45,12 +45,14 @@ npm run sim -- link     examples/shop.yaml examples/shop-hypothesis.yaml
 npm run sim -- import-terraform examples/terraform/shop.tfstate.json --out shop.yaml
 ```
 
-`BOTTLENECK_APP_URL` (default `http://localhost:5173`) controls generated links.
+`HINDCAST_APP_URL` (default `http://localhost:5173`) controls generated links. The CLI is `hindcast`
+(`bottleneck` still works as an alias), and every `HINDCAST_*` variable falls back to the old
+`BOTTLENECK_*` name.
 
 ## MCP server — `npm run mcp`
 
 Registered for Claude Code in `.mcp.json` (restart Claude Code in this folder and approve
-`bottleneck`). Transport: stdio. The server sends usage instructions on initialise.
+`hindcast`). Transport: stdio. The server sends usage instructions on initialise.
 
 | tool | inputs | returns |
 |---|---|---|
@@ -82,7 +84,7 @@ over a live demo.
 
 `show_architecture` is an MCP Apps tool: hosts that support the extension render the full app inline
 and play the architecture or comparison immediately. The UI is a single-file build of the app
-served as `ui://bottleneck/canvas.html`:
+served as `ui://hindcast/canvas.html`:
 
 ```
 npm run build:mcp      # → dist-mcp/mcp-app.html (rebuild after app changes)

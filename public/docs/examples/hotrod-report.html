@@ -14,7 +14,7 @@ table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px
 .verdict{font-size:17px;margin:12px 0;color:var(--hi);border-left:2px solid var(--amber);padding-left:12px}
 details{margin-top:24px}pre{white-space:pre-wrap;font:12px "IBM Plex Mono",monospace;color:var(--text)}a{color:var(--amber)}
 </style></head><body><main>
-<h1><span>Bottleneck · backtest on real traffic</span>HotROD</h1>
+<h1><span>Hindcast · backtest on real traffic</span>HotROD</h1>
 <div class="sub">2026-10-07 16:20 → 2026-10-07 17:01 UTC · 30s buckets · 30 draws · bands = 10th–90th percentile · SLO p99 ≤ 1000 ms, errors ≤ 3.0%</div>
 <p class="verdict" style="border-left-color:#f2a93b"><b style="color:#f2a93b">Two customer replicas</b> costs $15/month more, with no change in time out of SLO.</p><p class="verdict" style="border-left-color:#3fc1d9"><b style="color:#3fc1d9">Everything on Graviton</b> saves $17/month, with no change in time out of SLO.</p><p class="verdict" style="border-left-color:#b48cf2"><b style="color:#b48cf2">Clients retry twice, no budget</b> costs $6/month more and adds 9 minutes out of SLO.</p>
 <figure><figcaption>p99 latency</figcaption><svg viewBox="0 0 960 200" role="img" aria-label="p99 latency">

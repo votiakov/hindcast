@@ -18,7 +18,7 @@ Source: [cell-based architecture and shuffle sharding](https://hidekazu-konishi.
 
 There's a question AWS uses for blast radius: is it better for 100% of customers to see 5% errors, or for 5% of customers to see 100%? Cell-based architecture is what you build once you pick the second answer.
 
-I built both in Bottleneck at the same traffic, 1,200 req/s, and about the same capacity. A is one shared fleet of 8 API servers on one database. B is four cells, each with 2 API servers and its own database, and a router that pins every customer to one cell.
+I built both in Hindcast at the same traffic, 1,200 req/s, and about the same capacity. A is one shared fleet of 8 API servers on one database. B is four cells, each with 2 API servers and its own database, and a router that pins every customer to one cell.
 
 Then a poison request crashes the database it lands on.
 

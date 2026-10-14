@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'public/docs/shots');
-const BASE = process.env.BOTTLENECK_APP_URL ?? 'http://localhost:5173';
+const BASE = process.env.HINDCAST_APP_URL ?? process.env.BOTTLENECK_APP_URL ?? 'http://localhost:5173';
 const W = 1280;
 const H = 800;
 
@@ -166,7 +166,7 @@ const SHOTS = {
       await backtest(p);
       const dt = await p.evaluateHandle(() => {
         const d = new DataTransfer();
-        d.items.add(new File(['name: x'], 'bottleneck.import.yaml'));
+        d.items.add(new File(['name: x'], 'hindcast.import.yaml'));
         return d;
       });
       await p.dispatchEvent('.bt', 'dragenter', { dataTransfer: dt });

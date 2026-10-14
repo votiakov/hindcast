@@ -21,7 +21,7 @@
 <tr><td><code>aws-use1-2025-10-20</code></td><td>DynamoDB's DNS record emptied; EC2 launches were impaired for hours afterwards.</td><td><code>managed-kv</code> unreachable for 2 h 37 min, <code>compute</code> unable to launch for hours, then <code>edge</code> errors while health checks flap</td></tr>
 </table></div>
 <p>Roles (<code>edge</code>, <code>primary-db</code>, <code>managed-kv</code>, <code>compute</code>, <code>all</code>) are resolved to your components automatically, or set them yourself:</p>
-<pre><code>bottleneck outage model.json list
-bottleneck outage model.json slack-2021-01-04 autoscale.yaml --role primary-db=orders-db</code></pre>
+<pre><code>hindcast outage model.json list
+hindcast outage model.json slack-2021-01-04 autoscale.yaml --role primary-db=orders-db</code></pre>
 <p>Every replay cites its source, the company's own postmortem, and lists the assumptions it makes.</p>
 </section>

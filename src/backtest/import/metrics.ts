@@ -10,7 +10,7 @@ import { templatePath } from './traces';
  *  - wide CSV:  timestamp,<column>,<column>…  (Grafana / CloudWatch console / Datadog downloads)
  *  - CloudWatch `GetMetricData` JSON (MetricDataResults)
  *
- * A mapping tells Bottleneck what each series *is*: which metric, which service (or endpoint),
+ * A mapping tells Hindcast what each series *is*: which metric, which service (or endpoint),
  * and how to convert units.
  */
 
@@ -51,7 +51,7 @@ export interface SeriesMapping {
 
 const ENDPOINT_METRICS = new Set(['rps', 'errorRate', 'p50Ms', 'p99Ms', 'meanMs']);
 
-/** convert a raw value to Bottleneck's units (ms for latency, cores for CPU, req/s for rates) */
+/** convert a raw value to Hindcast's units (ms for latency, cores for CPU, req/s for rates) */
 export function convert(metric: MetricName, v: number, unit: Unit | undefined, periodS: number, scale = 1): { metric: ServiceMetric; v: number } {
   const m = (metric === 'cpuPercent' ? 'cpuCores' : metric) as ServiceMetric;
   let x = v;

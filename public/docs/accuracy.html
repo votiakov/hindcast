@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Accuracy · Bottleneck docs</title>
+<title>Accuracy · Hindcast docs</title>
 <meta name="description" content="How well the backtest predicts reality, measured on three open demo systems run under load in Docker, with their telemetry recorded the way production records it.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
@@ -11,7 +11,7 @@
 </head>
 <body>
 <header class="bar">
-  <a class="brand" href="index.html">Bottleneck<span>docs</span></a>
+  <a class="brand" href="index.html">Hindcast<span>docs</span></a>
   <nav class="bar-links" aria-label="The app">
     <a href="../#backtest">Backtest</a><a href="../#live">Live</a><a href="../#lessons">Lessons</a><a href="../#sandbox">Sandbox</a><a href="../#compare">Compare</a><a href="../#studio">Studio</a>
   </nav>
@@ -75,7 +75,7 @@
 <p>On 60 of the busiest services in Alibaba's 2021 microservices trace, the calibration predicted each service's CPU from its traffic over 3.6 held-out hours. When traffic moved by 15% or more within an hour, it was off by 5.9%, against 11.0% for CPU per request held constant and 13.2% for "the same as an hour ago". Above anything the training saw, it was off by 12.9% against 30.4%. Details: <code>reference/alibaba/README.md</code>.</p>
 
 <h2>Where you see it</h2>
-<p>The accuracy record travels with the model: the backtest screen's <b>Model accuracy</b> panel, <code>bottleneck accuracy model.json</code>, the footer of every report, pull-request comment and card. For your own data, <code>bottleneck calibrate --holdout 0.3</code> adds the same holdout check.</p>
+<p>The accuracy record travels with the model: the backtest screen's <b>Model accuracy</b> panel, <code>hindcast accuracy model.json</code>, the footer of every report, pull-request comment and card. For your own data, <code>hindcast calibrate --holdout 0.3</code> adds the same holdout check.</p>
 </section>
 
 <nav class="pager"><a href="use-cases.html">← Use cases</a><a href="capabilities.html">Everything it does →</a></nav>

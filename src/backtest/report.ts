@@ -32,7 +32,7 @@ export function headline(s: StrategyResult, base: StrategyResult): string {
 }
 
 function accuracyBlock(acc: AccuracyRecord[]): string[] {
-  if (!acc.length) return ['_No accuracy record yet — run `bottleneck accuracy` (holdout) to measure how well the model predicts this system._'];
+  if (!acc.length) return ['_No accuracy record yet — run `hindcast accuracy` (holdout) to measure how well the model predicts this system._'];
   const out: string[] = [];
   for (const a of acc) {
     out.push(`**${a.method === 'reference' ? 'Checked against recorded runs' : 'Holdout'}** — ${a.label}`, '');

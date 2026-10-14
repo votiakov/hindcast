@@ -1,6 +1,6 @@
 # HotROD as deployed — the same footprint as the recorded reference system.
 # Change replicas, CPU/memory limits, add an HPA or an arm64 nodeSelector in a pull request
-# and the Bottleneck check backtests the change against recorded production traffic.
+# and the Hindcast check backtests the change against recorded production traffic.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

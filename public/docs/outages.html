@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Public-outage replays · Bottleneck docs</title>
+<title>Public-outage replays · Hindcast docs</title>
 <meta name="description" content="Would your design have survived it? Famous outages, turned from their published timelines into what your system would have felt, replayed against your model as built and with each strategy.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
@@ -11,7 +11,7 @@
 </head>
 <body>
 <header class="bar">
-  <a class="brand" href="index.html">Bottleneck<span>docs</span></a>
+  <a class="brand" href="index.html">Hindcast<span>docs</span></a>
   <nav class="bar-links" aria-label="The app">
     <a href="../#backtest">Backtest</a><a href="../#live">Live</a><a href="../#lessons">Lessons</a><a href="../#sandbox">Sandbox</a><a href="../#compare">Compare</a><a href="../#studio">Studio</a>
   </nav>
@@ -50,8 +50,8 @@
 <tr><td><code>aws-use1-2025-10-20</code></td><td>DynamoDB's DNS record emptied; EC2 launches were impaired for hours afterwards.</td><td><code>managed-kv</code> unreachable for 2 h 37 min, <code>compute</code> unable to launch for hours, then <code>edge</code> errors while health checks flap</td></tr>
 </table></div>
 <p>Roles (<code>edge</code>, <code>primary-db</code>, <code>managed-kv</code>, <code>compute</code>, <code>all</code>) are resolved to your components automatically, or set them yourself:</p>
-<pre><code>bottleneck outage model.json list
-bottleneck outage model.json slack-2021-01-04 autoscale.yaml --role primary-db=orders-db</code></pre>
+<pre><code>hindcast outage model.json list
+hindcast outage model.json slack-2021-01-04 autoscale.yaml --role primary-db=orders-db</code></pre>
 <p>Every replay cites its source, the company's own postmortem, and lists the assumptions it makes.</p>
 </section>
 

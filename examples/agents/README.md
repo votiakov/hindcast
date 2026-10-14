@@ -7,6 +7,6 @@
 | [`AGENTS.md`](AGENTS.md) | agents without MCP (shell, CI, Codex, Aider): paste into your project's agent instructions |
 
 Build the server and the CLI once: `npm run build:mcp-server && npm run build:cli`, which writes
-`dist-cli/bottleneck-mcp.mjs` and `dist-cli/bottleneck.mjs` (Node 20, no install).
+`dist-cli/hindcast-mcp.mjs` and `dist-cli/hindcast.mjs` (Node 20, no install).
 
 The full guide is in [docs/agents.md](../../docs/agents.md).

@@ -38,11 +38,11 @@ changes:
 
 <h2>Where strategies come from</h2>
 <ul>
-<li><b>A file</b> — written by hand, kept next to the code, passed to <code>bottleneck backtest</code> or dropped on the backtest screen.</li>
+<li><b>A file</b> — written by hand, kept next to the code, passed to <code>hindcast backtest</code> or dropped on the backtest screen.</li>
 <li><b>The Changes tab</b> — edit live; the backtest reruns as you type.</li>
 <li><b>The board</b> — open any moment, edit the system, press <b>Backtest these edits</b>.</li>
 <li><b>Audit fixes</b> — each verified fix in the failure audit has a <b>Backtest</b> button when the board came from a backtest.</li>
-<li><b>A pull request</b> — <code>bottleneck diff-strategy --base old/ --head new/</code> reads Kubernetes manifests before and after: replicas, CPU and memory limits, HPAs, <code>kubernetes.io/arch</code>.</li>
+<li><b>A pull request</b> — <code>hindcast diff-strategy --base old/ --head new/</code> reads Kubernetes manifests before and after: replicas, CPU and memory limits, HPAs, <code>kubernetes.io/arch</code>.</li>
 </ul>
 
 <h2>What you get back</h2>

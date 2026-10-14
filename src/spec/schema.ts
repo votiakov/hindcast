@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /**
- * Bottleneck architecture spec, v1 — the contract between the engine and everything else
+ * Hindcast architecture spec, v1 — the contract between the engine and everything else
  * (app, CLI, MCP server, future engines). Plain data, JSON or YAML.
  */
 

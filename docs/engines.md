@@ -1,6 +1,6 @@
 # Simulation engines
 
-Bottleneck has two engines with the same inputs (an architecture graph + traffic + scripted
+Hindcast has two engines with the same inputs (an architecture graph + traffic + scripted
 actions) and different jobs:
 
 | | **fluid** (`src/sim/engine.ts`) | **discrete-event** (`src/sim/des/des.ts`) |

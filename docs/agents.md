@@ -1,7 +1,7 @@
-# Bottleneck for AI agents
+# Hindcast for AI agents
 
 An agent that changes infrastructure (Terraform, Helm, Kubernetes manifests, autoscalers, instance
-types) can ask Bottleneck, before anything ships, *what this change would have done to the last
+types) can ask Hindcast, before anything ships, *what this change would have done to the last
 week of production*: $ per month, minutes out of SLO, the worst moment and why, and how far to
 trust the answer. The agent does the tedious part itself: it connects to Prometheus and
 Jaeger/Tempo, collects the history, calibrates the model and reads the trust report. The user asks
@@ -13,7 +13,7 @@ agent ──MCP / CLI──▶ connect_telemetry ─▶ collect_telemetry ─▶
                                                                                    verify_design (no history)
 ```
 
-Everything is read-only towards your systems. Bottleneck queries your Prometheus, your
+Everything is read-only towards your systems. Hindcast queries your Prometheus, your
 Jaeger/Tempo and (only when asked, against a named context) `kubectl get`. It writes only inside
 its workspace directory, and nothing leaves your machine.
 
@@ -22,7 +22,7 @@ its workspace directory, and nothing leaves your machine.
 One command does it for any host:
 
 ```bash
-npm run sim -- agent setup                  # in the repository; or: node dist-cli/bottleneck.mjs agent setup
+npm run sim -- agent setup                  # in the repository; or: node dist-cli/hindcast.mjs agent setup
 npm run sim -- agent setup cursor --write   # claude | cursor | vscode | desktop | windsurf
 ```
 
@@ -30,7 +30,7 @@ It builds the single-file server if needed, starts it and completes an MCP hands
 install shows up here, not in your agent), then prints the config for each host with absolute paths
 filled in. With a host and `--write` it merges the entry into that host's file (`.mcp.json`,
 `.cursor/mcp.json`, `.vscode/mcp.json`, Claude Desktop's or Windsurf's user config) and keeps every
-other server there. `--project <dir>` sets where project files and the `.bottleneck/` workspace go.
+other server there. `--project <dir>` sets where project files and the `.hindcast/` workspace go.
 The manual steps below do the same by hand.
 
 ### Claude Code
@@ -39,8 +39,8 @@ In this repository it is already registered (`.mcp.json`). Elsewhere, build the 
 server once and register it:
 
 ```bash
-npm run build:mcp-server            # → dist-cli/bottleneck-mcp.mjs (Node 20, no install)
-claude mcp add bottleneck -- node /path/to/bottleneck/dist-cli/bottleneck-mcp.mjs
+npm run build:mcp-server            # → dist-cli/hindcast-mcp.mjs (Node 20, no install)
+claude mcp add hindcast -- node /path/to/hindcast/dist-cli/hindcast-mcp.mjs
 ```
 
 ### Any MCP host (Claude Desktop, Cursor, Windsurf, VS Code, …)
@@ -48,16 +48,18 @@ claude mcp add bottleneck -- node /path/to/bottleneck/dist-cli/bottleneck-mcp.mj
 ```json
 {
   "mcpServers": {
-    "bottleneck": {
+    "hindcast": {
       "command": "node",
-      "args": ["/path/to/bottleneck/dist-cli/bottleneck-mcp.mjs"],
-      "env": { "BOTTLENECK_WORKSPACE": "/path/to/project/.bottleneck", "PROM_TOKEN": "…" }
+      "args": ["/path/to/hindcast/dist-cli/hindcast-mcp.mjs"],
+      "env": { "HINDCAST_WORKSPACE": "/path/to/project/.hindcast", "PROM_TOKEN": "…" }
     }
   }
 }
 ```
 
-`BOTTLENECK_WORKSPACE` defaults to `.bottleneck/` in the directory the server starts in. Put
+`HINDCAST_WORKSPACE` defaults to `.hindcast/` in the directory the server starts in (a
+`.bottleneck/` workspace from before the rename is used when there is no `.hindcast/`, and the old
+`BOTTLENECK_*` variables are still read). Put
 credentials in `env` and name them in the tools (`tokenEnv: "PROM_TOKEN"`); the values never go
 into the workspace.
 
@@ -66,14 +68,14 @@ into the workspace.
 Every tool is also a CLI command, with JSON in and JSON out:
 
 ```bash
-bottleneck agent list
-bottleneck agent connect_telemetry '{"prometheus":{"url":"http://prometheus:9090"},"jaeger":{"url":"http://jaeger:16686"}}'
-bottleneck agent collect_telemetry '{"last":"7d"}'
-bottleneck agent calibrate_model
-bottleneck agent verify_change @change.json          # or - to read stdin
+hindcast agent list
+hindcast agent connect_telemetry '{"prometheus":{"url":"http://prometheus:9090"},"jaeger":{"url":"http://jaeger:16686"}}'
+hindcast agent collect_telemetry '{"last":"7d"}'
+hindcast agent calibrate_model
+hindcast agent verify_change @change.json          # or - to read stdin
 ```
 
-(`npm run sim -- agent …` inside the repository; `node dist-cli/bottleneck.mjs agent …` from the
+(`npm run sim -- agent …` inside the repository; `node dist-cli/hindcast.mjs agent …` from the
 standalone build.) A ready-made instruction file for such agents is in
 [`examples/agents/AGENTS.md`](../examples/agents/AGENTS.md).
 
@@ -198,8 +200,9 @@ lowers the confidence to match.
 | a **Terraform plan** (`terraform show -json plan.out`) | `aws_ecs_service` desired_count; `aws_ecs_task_definition` cpu, memory, architecture; `aws_appautoscaling_target`/`_policy` (CPU target tracking); `aws_autoscaling_group`; `aws_launch_template`/`aws_instance` instance_type (Graviton families → arm, vCPU and memory from the size); `aws_db_instance`/`aws_rds_cluster_instance` class and read replicas; `google_cloud_run_v2_service`; `kubernetes_deployment(_v1)`/`stateful_set(_v1)` |
 | **edited manifests vs the live cluster** | `read_cluster` snapshot as the base |
 
-Resources map to model services by the `bottleneck:service` tag/label (or the
-`bottleneck.dev/service` annotation), else by name. Anything that changes and can't be modelled is
+Resources map to model services by the `hindcast:service` tag/label (or the
+`hindcast.dev/service` annotation; the pre-rename `bottleneck:service` and `bottleneck.dev/service`
+still count), else by name. Anything that changes and can't be modelled is
 listed in `notes` with the reason (a new service, an S3 bucket, an unmatched name).
 
 Each result:
@@ -233,7 +236,7 @@ And for a human:
 - **`app.open`** (MCP): a link that opens the Backtest screen with these strategies over the same
   history. It shows the chart, the ranked strategies, the worst moment, incidents, endpoints, and
   any moment on the board. The MCP server serves the bundle on `127.0.0.1` while it runs, only to
-  the app's origin (`BOTTLENECK_APP_URL`).
+  the app's origin (`HINDCAST_APP_URL`).
 - `reports.html`: the self-contained report (charts, verdicts, accuracy), plus `reports.markdown`,
   the strategies as YAML, and `reports.bundle` (the same as the app link, as a file: drop it on
   the Backtest screen when the server isn't running).
@@ -330,7 +333,7 @@ either node, at $0 a month on the reference's fixed node pool, which has room fo
 
 Runs exactly `kubectl --context prod-eu -n shop get deployments,statefulsets,horizontalpodautoscalers -o json`.
 The context is required, and the current context is never used implicitly. It saves the snapshot
-in `.bottleneck/cluster/` and returns replicas, limits, autoscalers and architecture per workload.
+in `.hindcast/cluster/` and returns replicas, limits, autoscalers and architecture per workload.
 `verify_change` with `{ "cluster": { "head": "<edited manifests>" } }` then backtests the edit
 against what is actually running.
 
@@ -360,7 +363,7 @@ the system runs, calibrate it on telemetry for real numbers.
 
 ## What your telemetry needs
 
-| signal | where Bottleneck reads it | without it |
+| signal | where Hindcast reads it | without it |
 |---|---|---|
 | request rate, errors, latency per service | Prometheus: OpenTelemetry Collector **spanmetrics** (`traces_span_metrics_*`), OpenTelemetry **HTTP server** metrics (`http_server_request_duration_seconds_*`) or **Spring Boot / Micrometer** (`http_server_requests_seconds_*`, by `application` tag or scrape job; p99 needs `percentiles-histogram`) | nothing to model |
 | the same per endpoint, on entry services | the same metrics, by `span_name` or `http_route` | endpoint rates from traces, scaled by the measured sampling share |
@@ -386,25 +389,25 @@ Authentication: `tokenEnv` (bearer), `basicAuthEnv` (`user:password`) and `heade
 - **Credentials** are env var names in the workspace, never values. A missing variable is
   reported, not sent as an empty header.
 - **Workspace contents**: telemetry exports, the dataset, the model, reports. Telemetry can
-  contain endpoint paths and service names. Keep `.bottleneck/` out of version control
+  contain endpoint paths and service names. Keep `.hindcast/` out of version control
   (`.gitignore` it) if those are sensitive.
 - **No network calls** except to the endpoints you configure.
 
 ## Workspace
 
 ```
-.bottleneck/
+.hindcast/
   sources.json        connections and system hints
-  telemetry/          the last collection: metrics/*.json, traces/*.jsonl, bottleneck.import.yaml
+  telemetry/          the last collection: metrics/*.json, traces/*.jsonl, hindcast.import.yaml
   dataset.json        the imported history
-  model.json          the calibrated model (same format as `bottleneck calibrate`)
+  model.json          the calibrated model (same format as `hindcast calibrate`)
   calibration.json    per service: history peak vs capacity, trust
   cluster/            read_cluster snapshots
-  reports/            verify_change reports: .html, .md, .strategies.yaml, .bottleneck.json (opens in the app)
+  reports/            verify_change reports: .html, .md, .strategies.yaml, .hindcast.json (opens in the app)
 ```
 
 The files are the CLI's formats, so everything an agent produced can be reopened by hand:
-`bottleneck backtest .bottleneck/model.json .bottleneck/dataset.json strategy.yaml --html r.html`,
+`hindcast backtest .hindcast/model.json .hindcast/dataset.json strategy.yaml --html r.html`,
 or dropped on the app's Backtest screen.
 
 ## Tool reference
@@ -435,7 +438,7 @@ simulated MySQL, CPU-limited containers) under a 30-minute "production day" from
 went through an OpenTelemetry Collector into Prometheus (span metrics, container metrics) and
 Jaeger (20% sampled traces). The stack is in `reference/stack/`.
 
-**Claude Code, headless, given only this** (and `--allowedTools mcp__bottleneck`):
+**Claude Code, headless, given only this** (and `--allowedTools mcp__hindcast`):
 
 > Our HotROD ride-dispatch system's Prometheus is at http://localhost:9090 and Jaeger at
 > http://localhost:16686. SLO: p99 under 1 s and under 3% errors; clients time out after 5 s. Use

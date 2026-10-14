@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>The backtest screen · Bottleneck docs</title>
+<title>The backtest screen · Hindcast docs</title>
 <meta name="description" content="Your production history as a chart, with any infrastructure change replayed over it as what would have happened. Open it from the &lt;b&gt;Backtest&lt;/b&gt; tab, or go straight to &lt;code&gt;/#backtest&lt;/code&gt;.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
@@ -11,7 +11,7 @@
 </head>
 <body>
 <header class="bar">
-  <a class="brand" href="index.html">Bottleneck<span>docs</span></a>
+  <a class="brand" href="index.html">Hindcast<span>docs</span></a>
   <nav class="bar-links" aria-label="The app">
     <a href="../#backtest">Backtest</a><a href="../#live">Live</a><a href="../#lessons">Lessons</a><a href="../#sandbox">Sandbox</a><a href="../#compare">Compare</a><a href="../#studio">Studio</a>
   </nav>
@@ -32,7 +32,7 @@
 <h2>The chart and the strategies</h2>
 <p>Everything shares one time axis, stacked like a trading terminal. The screenshot shows HotROD, one of the three built-in reference systems: 40 minutes of real traffic with a push past capacity, and four strategies replayed over it.</p>
 <ol class="pins">
-<li id="backtest-views" data-n="1"><h3>Views</h3><p>Every part of Bottleneck is one click away: the backtest, the Live board, Lessons, Sandbox, Compare and Studio.</p></li>
+<li id="backtest-views" data-n="1"><h3>Views</h3><p>Every part of Hindcast is one click away: the backtest, the Live board, Lessons, Sandbox, Compare and Studio.</p></li>
 <li id="backtest-ranges" data-n="2"><h3>Range and bucket size</h3><p>ALL, 24H, 6H, 1H, 15M. ⌘/ctrl + wheel zooms around the cursor. The bucket size is the data's own resolution: here 30 s.</p></li>
 <li id="backtest-p99" data-n="3"><h3>p99 latency</h3><p>Measured p99 as candles: open, high, low and close of each group of buckets. The dashed grey line is the model replaying the system <em>as built</em>. Each strategy has its own coloured line with a shaded 10–90% band. The dashed red line is the SLO.</p></li>
 <li id="backtest-incident" data-n="4"><h3>Incidents</h3><p>Shaded columns are stretches out of SLO. Here, the push to twice the normal load: the as-built system timed out for minutes. Click any moment to open it on the board as a replay.</p></li>

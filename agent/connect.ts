@@ -27,7 +27,7 @@ export async function connectTelemetry(ws: Workspace, input: SourcesInput) {
   if (next.prometheus) {
     try {
       report.prometheus = await probePrometheus(next.prometheus);
-      if (!report.prometheus.presets.length) problems.push('Prometheus has none of the metrics Bottleneck reads (OpenTelemetry span metrics or HTTP server metrics, plus container metrics)');
+      if (!report.prometheus.presets.length) problems.push('Prometheus has none of the metrics Hindcast reads (OpenTelemetry span metrics or HTTP server metrics, plus container metrics)');
     } catch (e) {
       report.prometheus = { url: next.prometheus.url, ok: false, error: (e as Error).message };
       problems.push(`Prometheus at ${next.prometheus.url}: ${(e as Error).message}`);
@@ -104,7 +104,7 @@ const run = promisify(execFile);
  */
 export async function readCluster(ws: Workspace, o: { context: string; namespace?: string; selector?: string }) {
   if (!o.context) throw new Error('name the kube context explicitly (read_cluster never uses the current context)');
-  const kubectl = process.env.BOTTLENECK_KUBECTL ?? 'kubectl';
+  const kubectl = process.env.HINDCAST_KUBECTL ?? process.env.BOTTLENECK_KUBECTL ?? 'kubectl';
   const args = ['--context', o.context, ...(o.namespace ? ['-n', o.namespace] : ['--all-namespaces']), 'get', 'deployments,statefulsets,horizontalpodautoscalers', ...(o.selector ? ['-l', o.selector] : []), '-o', 'json', '--request-timeout=20s'];
   const { stdout } = await run(kubectl, args, { maxBuffer: 64 * 1024 * 1024, timeout: 30_000 });
   const doc = JSON.parse(stdout) as { items?: unknown[] };

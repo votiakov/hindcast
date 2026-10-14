@@ -19,7 +19,7 @@ Sources: [FailureAtlas (2026)](https://arxiv.org/pdf/2607.17525); [ContinuityBen
 
 If your product calls one LLM API, it depends on something you can't page and can't restart. It goes down on its own schedule.
 
-I ran an outage in Bottleneck: 90 AI requests a second, provider A gone for 18 seconds.
+I ran an outage in Hindcast: 90 AI requests a second, provider A gone for 18 seconds.
 
 Version A uses one provider, and clients retry 3 times immediately. During the outage 98% of requests failed, and the retries pushed demand on provider A to about twice its rate limit while it was already down.
 

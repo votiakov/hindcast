@@ -158,7 +158,9 @@ async function telemetryOf(runs: string[], out: string, settle = false): Promise
     }
     if (runs.length > 1) throw e;
     console.warn(`(${runs[0]}: live telemetry unavailable — ${why}; using the recorded files)`);
-    const mp = join(runDir(runs[0]), 'workspace', 'telemetry', 'bottleneck.import.yaml');
+    // hindcast.import.yaml from a collection today; the recorded runs predate the rename
+    const tel = join(runDir(runs[0]), 'workspace', 'telemetry');
+    const mp = ['hindcast.import.yaml', 'bottleneck.import.yaml'].map((m) => join(tel, m)).find((p) => existsSync(p)) ?? join(tel, 'hindcast.import.yaml');
     d = importBundle(parse(readFileSync(mp, 'utf8')), fileAccess(mp)).dataset;
   }
   collected.set(key, d);

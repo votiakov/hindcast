@@ -9,7 +9,7 @@ import type { Workspace } from './workspace';
  * Read-only, loopback only, bundles only, and only to the app's origin.
  */
 
-const APP_URL = process.env.BOTTLENECK_APP_URL ?? 'http://localhost:5173';
+const APP_URL = process.env.HINDCAST_APP_URL ?? process.env.BOTTLENECK_APP_URL ?? 'http://localhost:5173';
 let server: Server | null = null;
 let base = '';
 const roots = new Set<string>();
@@ -21,7 +21,7 @@ async function ensureServer(): Promise<string> {
     const name = basename(decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname));
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
-    if (req.method !== 'GET' || !name.endsWith('.bottleneck.json')) return res.writeHead(404).end();
+    if (req.method !== 'GET' || !(name.endsWith('.hindcast.json') || name.endsWith('.bottleneck.json'))) return res.writeHead(404).end();
     for (const r of roots) {
       const f = join(r, name);
       if (existsSync(f)) {
@@ -31,7 +31,7 @@ async function ensureServer(): Promise<string> {
     }
     res.writeHead(404).end();
   });
-  const port = Number(process.env.BOTTLENECK_SERVE_PORT ?? 0);
+  const port = Number(process.env.HINDCAST_SERVE_PORT ?? process.env.BOTTLENECK_SERVE_PORT ?? 0);
   await new Promise<void>((ok, fail) => server!.once('error', fail).listen(port, '127.0.0.1', () => ok()));
   server.unref();
   base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;

@@ -1,4 +1,4 @@
-# Bottleneck — backtesting roadmap
+# Hindcast — backtesting roadmap
 
 Promise: **backtest an infrastructure change on your real production data before it ships** — a
 strategy tester for systems. Real history in (metrics, traces, bill), a calibrated model out, any

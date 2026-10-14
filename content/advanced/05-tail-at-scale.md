@@ -24,7 +24,7 @@ Now fan each search request out to 50 shards and wait for all of them.
 
 Jeff Dean and Luiz Barroso did the math in "The Tail at Scale": the chance that at least one of 50 shards stalls is 1 − (1 − 0.008)^50, about 33%. One request in three now waits on the slowest shard.
 
-I ran both versions in Bottleneck with identical shards and every request simulated, 300 req/s. One shard per request: p50 32 ms, p99 around 110 ms. Fifty shards per request: p50 60 ms, p99 276 ms. In half of the randomized runs the fan-out version couldn't keep p99 under 300 ms.
+I ran both versions in Hindcast with identical shards and every request simulated, 300 req/s. One shard per request: p50 32 ms, p99 around 110 ms. Fifty shards per request: p50 60 ms, p99 276 ms. In half of the randomized runs the fan-out version couldn't keep p99 under 300 ms.
 
 Same shards, same stall rate. The only change is how many of them each request waits on.
 

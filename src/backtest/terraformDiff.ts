@@ -13,7 +13,8 @@ import { cpuQuantity, memQuantity } from './configDiff';
  *  - google_cloud_run_v2_service / google_cloud_run_service: scaling and container limits
  *  - kubernetes_deployment(_v1) / kubernetes_stateful_set(_v1): replicas and container limits
  *
- * Resources map to model services by the `bottleneck:service` tag or label, else by name.
+ * Resources map to model services by the `hindcast:service` tag or label (`hindcast.dev/service`,
+ * `hindcast-service`, or the pre-rename `bottleneck:*` forms), else by name.
  * Anything else that changes is listed as ignored, with the reason.
  */
 
@@ -57,16 +58,21 @@ export function instanceType(t: string): { cpu?: number; memoryGb?: number; arch
   return { cpu, memoryGb, arch };
 }
 
+/** the tag/label naming a resource's model service; the pre-rename bottleneck ones still count */
+const SERVICE_TAGS = ['hindcast:service', 'hindcast.dev/service', 'hindcast-service', 'bottleneck:service', 'bottleneck.dev/service', 'bottleneck-service'];
+const SERVICE_ANNOTATIONS = ['hindcast.dev/service', 'bottleneck.dev/service'];
+
 const tagOf = (v: Obj | null): string | undefined => {
   if (!v) return undefined;
   for (const k of ['tags', 'tags_all', 'labels', 'user_labels']) {
     const t = o(v[k]);
-    const s = t['bottleneck:service'] ?? t['bottleneck.dev/service'] ?? t['bottleneck-service'];
+    const s = SERVICE_TAGS.map((k) => t[k]).find((x) => x);
     if (s) return String(s);
   }
   const meta = first(v.metadata);
   const ann = o(meta.annotations);
-  if (ann['bottleneck.dev/service']) return String(ann['bottleneck.dev/service']);
+  const a = SERVICE_ANNOTATIONS.map((k) => ann[k]).find((x) => x);
+  if (a) return String(a);
   return undefined;
 };
 
@@ -181,7 +187,7 @@ export function strategyFromTerraformPlan(plan: unknown, opts: { name?: string; 
   };
   const resolve = (r: ResourceChange, raw: string): string | undefined => {
     const svc = matchService(raw, opts.known);
-    if (!svc) ignored.push(`${r.address}: "${raw}" matches no service in the model — tag it bottleneck:service`);
+    if (!svc) ignored.push(`${r.address}: "${raw}" matches no service in the model — tag it hindcast:service`);
     return svc;
   };
   // read replicas of a database: new aws_db_instance resources pointing at a source

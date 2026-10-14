@@ -17,7 +17,7 @@ import { calibrate } from '../src/backtest/calibrate';
 import { accuracyLines, holdoutAccuracy, parseRequestLog, referenceAccuracy, type ReferenceRun } from '../src/backtest/accuracy';
 import type { Dataset } from '../src/backtest/dataset';
 import { fileAccess } from '../cli/files';
-import { writeManifest } from './manifest';
+import { MANIFEST, MANIFESTS, writeManifest } from './manifest';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 
@@ -35,8 +35,9 @@ export function importRun(system: string, run: string): Dataset {
   const dir = join(ROOT, system, 'runs', run);
   const saved = join(dir, 'dataset.json');
   if (!existsSync(join(dir, 'raw', 'traces.jsonl')) && existsSync(saved)) return JSON.parse(readFileSync(saved, 'utf8')) as Dataset;
-  if (!existsSync(join(dir, 'bottleneck.import.yaml'))) writeManifest(system, run);
-  const path = join(dir, 'bottleneck.import.yaml');
+  const found = MANIFESTS.map((m) => join(dir, m)).find((p) => existsSync(p));
+  if (!found) writeManifest(system, run);
+  const path = found ?? join(dir, MANIFEST);
   const d = importBundle(parse(readFileSync(path, 'utf8')), fileAccess(path)).dataset;
   writeFileSync(saved, JSON.stringify(d));
   return d;

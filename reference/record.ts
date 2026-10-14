@@ -1,6 +1,6 @@
 /**
  * Record a reference run: start the system, replay a traffic shape with k6, then export
- * everything Bottleneck imports — Prometheus query_range JSON (via the same presets the CLI's
+ * everything Hindcast imports — Prometheus query_range JSON (via the same presets the CLI's
  * `export-prometheus` uses), the OTLP trace file, client-side endpoint series from k6, and a
  * Fargate-priced AWS CUR built from the containers' actual runtime.
  *

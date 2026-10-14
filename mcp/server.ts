@@ -1,5 +1,5 @@
 /**
- * Bottleneck MCP server — exposes the simulation and backtesting engines to AI agents over stdio.
+ * Hindcast MCP server — exposes the simulation and backtesting engines to AI agents over stdio.
  *
  *   npm run mcp            (Claude Code picks it up from .mcp.json)
  *
@@ -37,17 +37,17 @@ import { explainError, TOOLS } from '../agent/tools';
 import { Workspace } from '../agent/workspace';
 import { appLink } from '../agent/serve';
 
-const APP_URL = process.env.BOTTLENECK_APP_URL ?? 'http://localhost:5173';
+const APP_URL = process.env.HINDCAST_APP_URL ?? process.env.BOTTLENECK_APP_URL ?? 'http://localhost:5173';
 
-const INSTRUCTIONS = `Bottleneck lets an agent check infrastructure decisions before they ship.
+const INSTRUCTIONS = `Hindcast lets an agent check infrastructure decisions before they ship.
 
-REAL SYSTEMS (production telemetry): connect_telemetry (Prometheus URL, plus Jaeger or Tempo for traces, optionally the cloud bill) → collect_telemetry (history into the workspace) → calibrate_model (read its trust report) → suggest_changes for "what should we change / where can we save", and verify_change for any change you propose or are asked about: a strategy, a Kubernetes manifest diff, a Terraform plan, or edited manifests against read_cluster's snapshot. Start a session with model_status: the workspace (./.bottleneck) may already hold a fresh model.
+REAL SYSTEMS (production telemetry): connect_telemetry (Prometheus URL, plus Jaeger or Tempo for traces, optionally the cloud bill) → collect_telemetry (history into the workspace) → calibrate_model (read its trust report) → suggest_changes for "what should we change / where can we save", and verify_change for any change you propose or are asked about: a strategy, a Kubernetes manifest diff, a Terraform plan, or edited manifests against read_cluster's snapshot. Start a session with model_status: the workspace (./.hindcast) may already hold a fresh model.
 Report verify_change results with their verdict AND confidence. "pass" with confidence "low" means the change pushes a service past anything the history showed: say so and recommend a load test instead of calling it safe. Quote the money as a range when the band is wide, and say when prices are list prices rather than the bill. Never present a backtest as a guarantee.
 Everything is read-only towards the user's systems; nothing is applied. Credentials are passed as env var names, never as values.
 
 DESIGNS ON PAPER: verify_design checks a spec you wrote (failures, headroom, cost vs budget) and returns fixes as exact spec changes; apply them and verify again until it passes.
 
-ENGINE DETAILS: Bottleneck simulates distributed-system architectures under load and failure.
+ENGINE DETAILS: Hindcast simulates distributed-system architectures under load and failure.
 Two engines: "fluid" (queueing model, milliseconds, used for quick checks and search) and "des" (discrete-event, every request simulated: real p50/p99/p99.9, emergent retry storms/timeouts/breakers, seeded). Use analyze for Monte Carlo confidence intervals and optimize_cost for the cheapest sizing that meets an SLO.
 Describe a system as an architecture spec: components (id, kind, optional knobs) + connections ([caller, callee]) + optional zones (failure domains).
 Kinds: client (traffic source), cdn, lb, gateway, server, worker, function, cache, db, replica, storage, queue, llm (self-hosted GPU), llmapi (hosted model API).
@@ -62,7 +62,7 @@ For real systems with recorded telemetry, use backtest_strategy (replays product
 const json = (v: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(v, null, 2) }] });
 const fail = (e: unknown) => ({ isError: true, content: [{ type: 'text' as const, text: e instanceof Error ? e.message : String(e) }] });
 
-const server = new McpServer({ name: 'bottleneck', version: '1.0.0' }, { instructions: INSTRUCTIONS });
+const server = new McpServer({ name: 'hindcast', version: '1.0.0' }, { instructions: INSTRUCTIONS });
 
 server.registerTool(
   'list_components',
@@ -273,7 +273,7 @@ server.registerTool(
 server.registerTool(
   'open_in_app',
   {
-    title: 'Open in the Bottleneck app',
+    title: 'Open in the Hindcast app',
     description:
       'Return a link that opens the architecture in the visual app (sandbox), or — with `compare_with` — side by side with a variant in Compare mode, optionally running a scenario. Use it to turn an analysis into a live demo. The app must be running (npm run dev).',
     inputSchema: {
@@ -295,7 +295,7 @@ server.registerTool(
 );
 
 // ---- MCP Apps: live canvas rendered inline by hosts that support it (Claude, ChatGPT, …) ----
-const CANVAS_URI = 'ui://bottleneck/canvas.html';
+const CANVAS_URI = 'ui://hindcast/canvas.html';
 const CANVAS_FILE = new URL('../dist-mcp/mcp-app.html', import.meta.url);
 
 registerAppTool(
@@ -328,10 +328,10 @@ registerAppTool(
   },
 );
 
-registerAppResource(server, 'Bottleneck live canvas', CANVAS_URI, { description: 'The Bottleneck simulator, rendering a spec or comparison live' }, async () => {
+registerAppResource(server, 'Hindcast live canvas', CANVAS_URI, { description: 'The Hindcast simulator, rendering a spec or comparison live' }, async () => {
   const html = existsSync(CANVAS_FILE)
     ? readFileSync(CANVAS_FILE, 'utf8')
-    : '<!doctype html><body style="font-family:sans-serif;padding:24px">Live canvas not built yet — run <code>npm run build:mcp</code> in the Bottleneck repo.</body>';
+    : '<!doctype html><body style="font-family:sans-serif;padding:24px">Live canvas not built yet — run <code>npm run build:mcp</code> in the Hindcast repo.</body>';
   return {
     contents: [
       {
@@ -354,7 +354,7 @@ server.registerTool(
   {
     title: 'Backtest infrastructure changes on recorded production history',
     description:
-      'Replay real traffic through a calibrated model (bottleneck calibrate → model.json, bottleneck import → dataset.json) with each strategy applied: $ saved/spent per month, minutes out of SLO, failed requests, worst moment and why, with 10th–90th percentile bands, ranked. Strategies are YAML/JSON objects: { name, changes: [{ service, replicas | autoscale | cpu | memoryGb | arch | perf | capacityRps | cache | readReplicas | zone | region } | { endpoint, retries, timeoutMs }] }. Reference models ship in reference/<system>/model.json and dataset.json.',
+      'Replay real traffic through a calibrated model (hindcast calibrate → model.json, hindcast import → dataset.json) with each strategy applied: $ saved/spent per month, minutes out of SLO, failed requests, worst moment and why, with 10th–90th percentile bands, ranked. Strategies are YAML/JSON objects: { name, changes: [{ service, replicas | autoscale | cpu | memoryGb | arch | perf | capacityRps | cache | readReplicas | zone | region } | { endpoint, retries, timeoutMs }] }. Reference models ship in reference/<system>/model.json and dataset.json.',
     inputSchema: {
       model: z.string().optional().describe('path to model.json (default: the workspace model)'),
       dataset: z.string().optional().describe('path to dataset.json (default: the workspace dataset)'),
@@ -403,7 +403,7 @@ server.registerTool(
   },
 );
 
-// ---- agent tools: real telemetry in, verdicts out (agent/tools.ts, shared with `bottleneck agent`) ----
+// ---- agent tools: real telemetry in, verdicts out (agent/tools.ts, shared with `hindcast agent`) ----
 for (const t of TOOLS) {
   server.registerTool(
     t.name,
@@ -438,7 +438,7 @@ server.registerPrompt(
         role: 'user',
         content: {
           type: 'text',
-          text: `Verify this infrastructure change with Bottleneck before it ships: ${change}
+          text: `Verify this infrastructure change with Hindcast before it ships: ${change}
 
 1. model_status. If there is no model, or the history is older than a week: connect_telemetry (ask me for the Prometheus and Jaeger/Tempo URLs if you don't know them) → collect_telemetry (7d if the data has it) → calibrate_model.
 2. Read the calibration trust report. Mention any service the change touches that is "extrapolated" or fits poorly.
@@ -459,7 +459,7 @@ server.registerPrompt(
         role: 'user',
         content: {
           type: 'text',
-          text: `Check this design with Bottleneck: ${design}${rps ? ` at ${rps} req/s` : ''}${budget ? `, budget $${budget}/month` : ''}.
+          text: `Check this design with Hindcast: ${design}${rps ? ` at ${rps} req/s` : ''}${budget ? `, budget $${budget}/month` : ''}.
 
 1. list_components, then write the architecture spec (components, connections, zones).
 2. verify_design${rps ? ` with rps ${rps}` : ''}${budget ? ` and budgetMonthly ${budget}` : ''}.

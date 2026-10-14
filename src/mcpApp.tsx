@@ -8,7 +8,7 @@ import { openPayload, type ComparePayload } from './spec/links';
 import { useSim } from './sim/store';
 
 /**
- * MCP Apps entry: the full Bottleneck app, rendered inline by MCP hosts (Claude, ChatGPT, …).
+ * MCP Apps entry: the full Hindcast app, rendered inline by MCP hosts (Claude, ChatGPT, …).
  * The `show_architecture` tool's structured result is opened as a sandbox or comparison and
  * starts playing immediately.
  */

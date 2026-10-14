@@ -35,7 +35,7 @@ function parseArgs(argv) {
     o.ep = JSON.parse(readFileSync(o['ep-file'], 'utf8')).id;
   }
   if (o.card) {
-    // a backtest card (bottleneck backtest … --card card.json)
+    // a backtest card (hindcast backtest … --card card.json)
     o.cardData = readFileSync(o.card, 'utf8');
     o.ep = `backtest-${JSON.parse(readFileSync(o.card, 'utf8')).system.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
   }

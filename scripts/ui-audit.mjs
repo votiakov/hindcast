@@ -13,7 +13,7 @@ const arg = (k, d) => {
   const i = process.argv.indexOf(`--${k}`);
   return i < 0 ? d : process.argv[i + 1];
 };
-const BASE = process.env.BOTTLENECK_APP_URL ?? 'http://localhost:5173';
+const BASE = process.env.HINDCAST_APP_URL ?? process.env.BOTTLENECK_APP_URL ?? 'http://localhost:5173';
 const OUT = arg('out', 'ui-audit');
 const ONLY = arg('only', '');
 const THEMES = ONLY === 'phone' ? [] : arg('themes', 'terminal,neon,reference,transit').split(',');

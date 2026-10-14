@@ -1,16 +1,16 @@
 # Backtesting infrastructure changes on real data
 
-Bottleneck replays your real production history through a model calibrated from that history, with
+Hindcast replays your real production history through a model calibrated from that history, with
 a change applied — "what would have happened" — before the change ships. It works from files: metric
 exports, traces and the cloud bill. Nothing connects to your systems.
 
 ```
-bottleneck export-prometheus --url http://prometheus:9090 --start 2026-09-01 --end 2026-09-15 --out telemetry
-#   …add traces (OTLP JSON) and a bill (AWS CUR or GCP export) to telemetry/bottleneck.import.yaml
-bottleneck import    telemetry/bottleneck.import.yaml --out dataset.json
-bottleneck calibrate dataset.json --holdout 0.3 --out model.json
-bottleneck backtest  model.json dataset.json graviton.yaml autoscale.yaml --last 14d --html report.html
-bottleneck backtest  model.json dataset.json fewer-replicas.yaml --scale 2.2      # …on launch day
+hindcast export-prometheus --url http://prometheus:9090 --start 2026-09-01 --end 2026-09-15 --out telemetry
+#   …add traces (OTLP JSON) and a bill (AWS CUR or GCP export) to telemetry/hindcast.import.yaml
+hindcast import    telemetry/hindcast.import.yaml --out dataset.json
+hindcast calibrate dataset.json --holdout 0.3 --out model.json
+hindcast backtest  model.json dataset.json graviton.yaml autoscale.yaml --last 14d --html report.html
+hindcast backtest  model.json dataset.json fewer-replicas.yaml --scale 2.2      # …on launch day
 ```
 
 or open the app's **Backtest** tab (or go straight to `#backtest`). Drop the files (or a `dataset.json` + `model.json`)
@@ -65,7 +65,7 @@ model:                                 # hints for calibration
     "checkout POST /orders": { slo: { p99Ms: 800, errorRate: 0.005 } }
 ```
 
-`bottleneck export-prometheus` writes the `metrics:` block for you. Presets: `otel-spanmetrics`
+`hindcast export-prometheus` writes the `metrics:` block for you. Presets: `otel-spanmetrics`
 (OpenTelemetry Collector spanmetrics connector), `http-server` (OTel HTTP semantic-convention
 histograms, with per-route series), `spring` (Spring Boot / Micrometer `http_server_requests_seconds`,
 per application, Actuator's own scrapes left out), `ingress-nginx` (requests, errors and latency at the edge, per
@@ -86,7 +86,7 @@ What each source gives the model:
 
 A summary; every rule, and the recording that taught it, is in [calibration.md](calibration.md).
 
-`bottleneck calibrate` fits, per component:
+`hindcast calibrate` fits, per component:
 
 - **CPU per request** — cores per replica = base + per-request cost × req/s per replica (least squares).
 - **Capacity per replica** — three explanations are replayed through the measured history and the one
@@ -155,7 +155,7 @@ changes:
 
 Strategies also come from **the board** (open any moment on the board, edit it, press *Backtest these
 edits*), from **audit fixes** (each verified fix has a *Backtest* button when the board came from a
-backtest), and from **pull requests** (`bottleneck diff-strategy` reads Kubernetes manifests before and
+backtest), and from **pull requests** (`hindcast diff-strategy` reads Kubernetes manifests before and
 after: replicas, CPU/memory limits, HPAs, `kubernetes.io/arch`).
 
 ## 4. The backtest
@@ -196,7 +196,7 @@ the trust report lowers the confidence to match.
   comment; `--gate` exits 2 if a strategy adds time out of SLO.
 - **PR check** — [examples/backtest-ci](../examples/backtest-ci) (workflow, manifests);
   `scripts/make-backtest-demo.sh` assembles a ready repository.
-- **Studio** — `bottleneck backtest … --card card.json`, then `npm run record -- --card card.json`
+- **Studio** — `hindcast backtest … --card card.json`, then `npm run record -- --card card.json`
   renders the clip (chart drawing itself, then the verdict) to MP4 with PNG stills.
 
 ## 6. Public-outage replays
@@ -213,8 +213,8 @@ system would have felt — traffic relative to your normal load and faults on ro
 | `aws-use1-2025-10-20` | DynamoDB's DNS record emptied; EC2 launches impaired for hours |
 
 ```
-bottleneck outage model.json list
-bottleneck outage model.json slack-2021-01-04 autoscale.yaml --role primary-db=orders-db
+hindcast outage model.json list
+hindcast outage model.json slack-2021-01-04 autoscale.yaml --role primary-db=orders-db
 ```
 
 Each replay states its assumptions (how a provider-side failure maps onto your components) and

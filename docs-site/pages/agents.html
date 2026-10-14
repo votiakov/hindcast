@@ -4,13 +4,13 @@
 <pre><code>connect_telemetry  →  collect_telemetry  →  calibrate_model  →  verify_change
 probe Prometheus,     history into the       the model, and      verdict, confidence,
 Jaeger or Tempo       workspace              how far to trust it $, SLO minutes, why</code></pre>
-<p>Your agent (Claude Code, Cursor, Claude Desktop, or anything with a shell) gets nine tools over MCP or as <code>bottleneck agent &lt;tool&gt;</code> with JSON in and out. The user asks "can we move checkout to Graviton?". The agent finds the Prometheus and Jaeger, collects a week of history, fits the model, backtests the change and answers with evidence.</p>
+<p>Your agent (Claude Code, Cursor, Claude Desktop, or anything with a shell) gets nine tools over MCP or as <code>hindcast agent &lt;tool&gt;</code> with JSON in and out. The user asks "can we move checkout to Graviton?". The agent finds the Prometheus and Jaeger, collects a week of history, fits the model, backtests the change and answers with evidence.</p>
 <p>Everything is read-only towards your systems: queries to your Prometheus and Jaeger or Tempo, and one <code>kubectl get</code> against a context you name. Credentials stay in environment variables. Nothing leaves your machine.</p>
 
 <h2>Set up</h2>
 <pre><code>npm run sim -- agent setup                 # builds the server, proves it starts, prints every host's config
 npm run sim -- agent setup cursor --write  # or claude, vscode, desktop, windsurf: merges it into that host's file</code></pre>
-<p>Setup fills in the absolute paths, keeps any other servers in the file, and completes an MCP handshake with the server before it says it worked. By hand: <code>npm run build:mcp-server</code>, then <code>claude mcp add bottleneck -- node /path/to/bottleneck/dist-cli/bottleneck-mcp.mjs</code>; other hosts take the same command in their <code>mcpServers</code> config (<code>examples/agents/mcp.json</code>). For agents without MCP: <code>npm run build:cli</code>, then <code>node dist-cli/bottleneck.mjs agent connect_telemetry '{…}'</code>; <code>examples/agents/AGENTS.md</code> is an instruction file to paste into your project. For Claude Code there is also a skill, <code>examples/agents/skills/verify-infra-change</code>.</p>
+<p>Setup fills in the absolute paths, keeps any other servers in the file, and completes an MCP handshake with the server before it says it worked. By hand: <code>npm run build:mcp-server</code>, then <code>claude mcp add hindcast -- node /path/to/hindcast/dist-cli/hindcast-mcp.mjs</code>; other hosts take the same command in their <code>mcpServers</code> config (<code>examples/agents/mcp.json</code>). For agents without MCP: <code>npm run build:cli</code>, then <code>node dist-cli/hindcast.mjs agent connect_telemetry '{…}'</code>; <code>examples/agents/AGENTS.md</code> is an instruction file to paste into your project. For Claude Code there is also a skill, <code>examples/agents/skills/verify-infra-change</code>.</p>
 
 <h2>The tools</h2>
 <div class="table-wrap"><table>
@@ -40,7 +40,7 @@ npm run sim -- agent setup cursor --write  # or claude, vscode, desktop, windsur
 <p>Cost comes with its basis: <b>your bill</b>, or <b>list price</b> (AWS Fargate on-demand, from CPU and memory limits) when there is no bill.</p>
 
 <h2>Tested end to end</h2>
-<p>Live, against the reference HotROD (four Go services and a mutex-guarded simulated MySQL) under a 30-minute "production day". Its telemetry went through an OpenTelemetry Collector into Prometheus and Jaeger. Headless Claude Code got only this, and only the Bottleneck tools:</p>
+<p>Live, against the reference HotROD (four Go services and a mutex-guarded simulated MySQL) under a 30-minute "production day". Its telemetry went through an OpenTelemetry Collector into Prometheus and Jaeger. Headless Claude Code got only this, and only the Hindcast tools:</p>
 <p class="verdict">Our Prometheus is at http://localhost:9090 and Jaeger at http://localhost:16686. SLO: p99 under 1 s, under 3% errors; clients time out after 5 s. Use the last hour. Can we move all our services to Graviton without hurting reliability, and would letting clients retry failed requests twice (no retry budget) make things better or worse?</p>
 <p>17 turns, 2.5 minutes:</p>
 <ol>

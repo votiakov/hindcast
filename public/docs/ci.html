@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CLI, pull requests, MCP · Bottleneck docs</title>
+<title>CLI, pull requests, MCP · Hindcast docs</title>
 <meta name="description" content="The same backtest runs without the app: a command-line tool, a ready-made check that backtests every infrastructure pull request, reports to attach to a review, and tools for AI assistants.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
@@ -11,7 +11,7 @@
 </head>
 <body>
 <header class="bar">
-  <a class="brand" href="index.html">Bottleneck<span>docs</span></a>
+  <a class="brand" href="index.html">Hindcast<span>docs</span></a>
   <nav class="bar-links" aria-label="The app">
     <a href="../#backtest">Backtest</a><a href="../#live">Live</a><a href="../#lessons">Lessons</a><a href="../#sandbox">Sandbox</a><a href="../#compare">Compare</a><a href="../#studio">Studio</a>
   </nav>
@@ -27,15 +27,15 @@
 </header>
 <section class="prose">
 <h2>The command line</h2>
-<pre><code>bottleneck export-prometheus --url http://prometheus:9090 --start 2026-09-01 --end 2026-09-15 --out telemetry/
-bottleneck import    telemetry/bottleneck.import.yaml --out dataset.json
-bottleneck calibrate dataset.json --holdout 0.3 --out model.json
-bottleneck backtest  model.json dataset.json graviton.yaml autoscale.yaml --last 14d --html report.html
-bottleneck headroom  model.json [strategy.yaml]
-bottleneck accuracy  model.json
-bottleneck outage    model.json slack-2021-01-04 [strategy.yaml]
-bottleneck diff-strategy --base old/deploy --head deploy --model model.json --out strategy.yaml</code></pre>
-<p>In the repository: <code>npm run sim -- &lt;command&gt;</code>. As one file with no install: <code>npm run build:cli</code> → <code>dist-cli/bottleneck.mjs</code> (Node 20). Every command takes <code>--json</code>.</p>
+<pre><code>hindcast export-prometheus --url http://prometheus:9090 --start 2026-09-01 --end 2026-09-15 --out telemetry/
+hindcast import    telemetry/hindcast.import.yaml --out dataset.json
+hindcast calibrate dataset.json --holdout 0.3 --out model.json
+hindcast backtest  model.json dataset.json graviton.yaml autoscale.yaml --last 14d --html report.html
+hindcast headroom  model.json [strategy.yaml]
+hindcast accuracy  model.json
+hindcast outage    model.json slack-2021-01-04 [strategy.yaml]
+hindcast diff-strategy --base old/deploy --head deploy --model model.json --out strategy.yaml</code></pre>
+<p>In the repository: <code>npm run sim -- &lt;command&gt;</code>. As one file with no install: <code>npm run build:cli</code> → <code>dist-cli/hindcast.mjs</code> (Node 20). Every command takes <code>--json</code>.</p>
 <p>The terminal output of a backtest, HotROD with three strategies:</p>
 <pre><code>Backtest — HotROD · 0.7 h of history · 30 draws
   As built                        $96/month   14 min out of SLO   683 failed
@@ -75,7 +75,7 @@ bottleneck diff-strategy --base old/deploy --head deploy --model model.json --ou
 <li>posts the result on the pull request and uploads the HTML report;</li>
 <li>fails the check (<code>--gate</code>) if the change would have added time out of SLO.</li>
 </ul>
-<p>The repository holds the CLI file, the calibrated model and the recent history in <code>.bottleneck/</code>. <code>scripts/make-backtest-demo.sh</code> assembles a working example repository.</p>
+<p>The repository holds the CLI file, the calibrated model and the recent history in <code>.hindcast/</code>. <code>scripts/make-backtest-demo.sh</code> assembles a working example repository.</p>
 <p>What it posted on a real pull request that trimmed a frontend to 50 millicores:</p>
 <p class="verdict"><b>frontend CPU 1 → 0.05</b> saves $23/month; it would have caused 20 minutes out of SLO, the worst on Oct 7 at 16:26 UTC (frontend at 59% of capacity (3.3 req/s on 1 × 5.5 req/s), 78 ms wait).</p>
 <p>The check failed, as it should. The comment also carries a table with $/month, minutes out of SLO, failed requests and the worst moment for each strategy, and the model's accuracy.</p>
@@ -86,7 +86,7 @@ bottleneck diff-strategy --base old/deploy --head deploy --model model.json --ou
 <div class="notes">
 <div>
 <h2>Cards and clips</h2>
-<p>Any backtest result as a post-sized card, or a clip of the chart drawing itself and then the verdict. In the app: <b>Card ↗</b>. From the CLI: <code>bottleneck backtest … --card card.json</code>, then <code>npm run record -- --card card.json</code> renders MP4 and PNG stills.</p>
+<p>Any backtest result as a post-sized card, or a clip of the chart drawing itself and then the verdict. In the app: <b>Card ↗</b>. From the CLI: <code>hindcast backtest … --card card.json</code>, then <code>npm run record -- --card card.json</code> renders MP4 and PNG stills.</p>
 <ol class="pins">
 <li id="card-verdict" data-n="1"><h3>The verdict</h3><p>The focused strategy's sentence.</p></li>
 <li id="card-chart" data-n="2"><h3>Measured, as built, what would have happened</h3><p>Measured p99 as bars (red where it broke the SLO), the model's as-built replay dashed, the strategy in amber.</p></li>

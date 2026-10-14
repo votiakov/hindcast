@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Bring your data · Bottleneck docs</title>
-<meta name="description" content="Bottleneck works from files you export: metrics, traces and the cloud bill. Nothing connects to your systems, and nothing leaves your machine.">
+<title>Bring your data · Hindcast docs</title>
+<meta name="description" content="Hindcast works from files you export: metrics, traces and the cloud bill. Nothing connects to your systems, and nothing leaves your machine.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="docs.css">
 </head>
 <body>
 <header class="bar">
-  <a class="brand" href="index.html">Bottleneck<span>docs</span></a>
+  <a class="brand" href="index.html">Hindcast<span>docs</span></a>
   <nav class="bar-links" aria-label="The app">
     <a href="../#backtest">Backtest</a><a href="../#live">Live</a><a href="../#lessons">Lessons</a><a href="../#sandbox">Sandbox</a><a href="../#compare">Compare</a><a href="../#studio">Studio</a>
   </nav>
@@ -23,7 +23,7 @@
 <header class="head">
   <div class="kicker">Backtest on real data</div>
   <h1>Bring your data</h1>
-  <p class="lede">Bottleneck works from files you export: metrics, traces and the cloud bill. Nothing connects to your systems, and nothing leaves your machine.</p>
+  <p class="lede">Hindcast works from files you export: metrics, traces and the cloud bill. Nothing connects to your systems, and nothing leaves your machine.</p>
 </header>
 <section class="screen" data-shot="bt-drop">
 <figure class="shot"><div class="shot-frame"><a class="shot-full" href="shots/bt-drop.png" target="_blank" rel="noopener" title="Open full size"><img src="shots/bt-drop.png" width="1280" height="800" alt="Drop the files on the backtest screen — screenshot" loading="lazy"></a><a class="pin" href="#bt-drop-drop" data-for="bt-drop-drop" style="left:50%;top:46.25%" aria-label="Note 1">1</a><a class="pin" href="#bt-drop-files" data-for="bt-drop-files" style="left:47.29%;top:8.25%" aria-label="Note 2">2</a></div></figure>
@@ -86,11 +86,11 @@ model:                                # hints for calibration
 
 <h2>Export from Prometheus in one command</h2>
 <p><code>export-prometheus</code> runs ready-made queries and writes both the JSON files and the <code>metrics:</code> block of the manifest. Presets: <code>otel-spanmetrics</code> (the OpenTelemetry Collector's spanmetrics connector), <code>http-server</code> (OpenTelemetry HTTP histograms, with per-route series), <code>spring</code> (Spring Boot / Micrometer), <code>ingress-nginx</code> (every request at the edge; it takes precedence over span metrics for the same service), <code>cadvisor</code>, <code>kubernetes</code> (kubelet + kube-state-metrics, grouped by the workload that owns each pod; CPU requests stand in where no limit is set). <code>--selector 'namespace="shop"'</code> scopes every query.</p>
-<pre><code>bottleneck export-prometheus --url http://prometheus:9090 \
+<pre><code>hindcast export-prometheus --url http://prometheus:9090 \
   --start 2026-09-01 --end 2026-09-15 --preset otel-spanmetrics,kubernetes --out telemetry/
-# add traces and the bill to telemetry/bottleneck.import.yaml, then:
-bottleneck import    telemetry/bottleneck.import.yaml --out dataset.json
-bottleneck calibrate dataset.json --holdout 0.3 --out model.json</code></pre>
+# add traces and the bill to telemetry/hindcast.import.yaml, then:
+hindcast import    telemetry/hindcast.import.yaml --out dataset.json
+hindcast calibrate dataset.json --holdout 0.3 --out model.json</code></pre>
 <p><code>import</code> prints what each source gave. <code>calibrate</code> prints every component with its capacity, what limits it, how well the model reproduces it and why. Next: <a href="calibration.html">how the model is fitted</a>.</p>
 </section>
 
