@@ -233,7 +233,7 @@ const services: Svc[] = [
   },
 ];
 
-function manifests(o: { frontendReplicas: number; hpa?: { min: number; max: number; cpu: number } }): string {
+function manifests(o: { frontendReplicas: number; frontendCpu?: string; hpa?: { min: number; max: number; cpu: number } }): string {
   const docs: object[] = [{ apiVersion: 'v1', kind: 'Namespace', metadata: { name: NS } }];
 
   for (const s of services) {
@@ -266,8 +266,8 @@ function manifests(o: { frontendReplicas: number; hpa?: { min: number; max: numb
                     }
                   : {}),
                 resources: {
-                  requests: { cpu: s.cpu, memory: s.mem },
-                  limits: { cpu: s.cpu, memory: s.mem },
+                  requests: { cpu: (s.name === 'frontend' && o.frontendCpu) || s.cpu, memory: s.mem },
+                  limits: { cpu: (s.name === 'frontend' && o.frontendCpu) || s.cpu, memory: s.mem },
                 },
                 ...(s.mounts
                   ? {
@@ -565,4 +565,8 @@ mkdirSync(join(HERE, 'variants'), { recursive: true });
 writeFileSync(join(HERE, 'variants', 'frontend-2.yaml'), manifests({ frontendReplicas: 2 }));
 writeFileSync(join(HERE, 'variants', 'frontend-1.yaml'), manifests({ frontendReplicas: 1 }));
 writeFileSync(join(HERE, 'variants', 'frontend-hpa.yaml'), manifests({ frontendReplicas: 1, hpa: { min: 1, max: 3, cpu: 60 } }));
-console.log('wrote shop.yaml and 3 variants');
+// out of sample: added after the throttle model was designed on the runs above, predicted before they ran
+writeFileSync(join(HERE, 'variants', 'frontend-2-1cpu.yaml'), manifests({ frontendReplicas: 2, frontendCpu: '1' }));
+writeFileSync(join(HERE, 'variants', 'frontend-1-1cpu.yaml'), manifests({ frontendReplicas: 1, frontendCpu: '1' }));
+writeFileSync(join(HERE, 'variants', 'frontend-1-750m.yaml'), manifests({ frontendReplicas: 1, frontendCpu: '750m' }));
+console.log('wrote shop.yaml and 6 variants');

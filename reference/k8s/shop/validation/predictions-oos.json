@@ -1,0 +1,156 @@
+{
+ "madeAt": "2026-10-14T05:27:14.806Z",
+ "commit": "4ccf438",
+ "models": {
+  "calm": {
+   "launch-2c": {
+    "verdict": "inconclusive",
+    "confidence": "low",
+    "minutesOutOfSlo": 0,
+    "peakP99Ms": 110,
+    "monthlyDelta": {
+     "p50": 13.7,
+     "lo": 13.7,
+     "hi": 13.7
+    },
+    "reasons": [
+     "costs $14/month more, with no change in time out of SLO",
+     "the backtest passes, but confidence is low (frontend would run at 65% of capacity, past the history's 41%: its capacity there is extrapolated) — load-test before trusting it"
+    ],
+    "warnings": [
+     "frontend would run at 65% of capacity, past the history's 41%: its capacity there is extrapolated",
+     "product-catalog would run at 51% of capacity, past the history's 23%: its capacity there is extrapolated",
+     "recommendation: the model fits it poorly, and this change pushes it harder than the history did",
+     "only 0.6 h of history: daily and weekly peaks may be missing",
+     "costs are AWS Fargate list prices, not your bill: discounts and Savings Plans are not in them"
+    ]
+   },
+   "normal-1c": {
+    "verdict": "pass",
+    "confidence": "medium",
+    "minutesOutOfSlo": 0,
+    "peakP99Ms": 102,
+    "monthlyDelta": {
+     "p50": -16.93,
+     "lo": -16.93,
+     "hi": -16.93
+    },
+    "reasons": [
+     "saves $17/month, with no change in time out of SLO",
+     "headroom drops from 405.4 to 288.1 req/s (the history peaked at 164.5)"
+    ],
+    "warnings": [
+     "frontend would run at 58% of capacity, past the history's 41%: its capacity there is extrapolated",
+     "only 0.6 h of history: daily and weekly peaks may be missing",
+     "costs are AWS Fargate list prices, not your bill: discounts and Savings Plans are not in them"
+    ]
+   },
+   "normal-1-750": {
+    "verdict": "pass",
+    "confidence": "medium",
+    "minutesOutOfSlo": 0,
+    "peakP99Ms": 114,
+    "monthlyDelta": {
+     "p50": -24.31,
+     "lo": -24.31,
+     "hi": -24.31
+    },
+    "reasons": [
+     "saves $24/month, with no change in time out of SLO",
+     "headroom drops from 405.4 to 211.6 req/s (the history peaked at 164.5)"
+    ],
+    "warnings": [
+     "frontend would run at 79% of capacity, past the history's 41%: its capacity there is extrapolated",
+     "only 0.6 h of history: daily and weekly peaks may be missing",
+     "costs are AWS Fargate list prices, not your bill: discounts and Savings Plans are not in them"
+    ]
+   },
+   "launch-x1.3": {
+    "verdict": "fail",
+    "confidence": null,
+    "minutesOutOfSlo": 9,
+    "peakP99Ms": null,
+    "monthlyDelta": null,
+    "reasons": [],
+    "warnings": []
+   }
+  },
+  "load-tested": {
+   "launch-2c": {
+    "verdict": "inconclusive",
+    "confidence": "low",
+    "minutesOutOfSlo": 0,
+    "peakP99Ms": 289,
+    "monthlyDelta": {
+     "p50": 13.7,
+     "lo": 13.7,
+     "hi": 13.7
+    },
+    "reasons": [
+     "costs $14/month more, with no change in time out of SLO",
+     "the backtest passes, but confidence is low (frontend: the model fits it poorly, and this change changes it) — load-test before trusting it"
+    ],
+    "warnings": [
+     "frontend: the model fits it poorly, and this change changes it",
+     "recommendation fits poorly and runs near its limit; the change leaves it as it was, so the comparison holds better than the absolute numbers",
+     "the model's accuracy was never measured",
+     "only 0.6 h of history: daily and weekly peaks may be missing",
+     "costs are AWS Fargate list prices, not your bill: discounts and Savings Plans are not in them"
+    ]
+   },
+   "normal-1c": {
+    "verdict": "inconclusive",
+    "confidence": "low",
+    "minutesOutOfSlo": 0,
+    "peakP99Ms": 270,
+    "monthlyDelta": {
+     "p50": -16.93,
+     "lo": -16.93,
+     "hi": -16.93
+    },
+    "reasons": [
+     "saves $17/month, with no change in time out of SLO",
+     "the backtest passes, but confidence is low (frontend: the model fits it poorly, and this change changes it) — load-test before trusting it",
+     "headroom drops from 492.6 to 362.4 req/s (the history peaked at 164.5)"
+    ],
+    "warnings": [
+     "frontend: the model fits it poorly, and this change changes it",
+     "the model's accuracy was never measured",
+     "only 0.6 h of history: daily and weekly peaks may be missing",
+     "costs are AWS Fargate list prices, not your bill: discounts and Savings Plans are not in them"
+    ]
+   },
+   "normal-1-750": {
+    "verdict": "inconclusive",
+    "confidence": "low",
+    "minutesOutOfSlo": 0,
+    "peakP99Ms": 278,
+    "monthlyDelta": {
+     "p50": -24.32,
+     "lo": -24.32,
+     "hi": -24.32
+    },
+    "reasons": [
+     "saves $24/month, with no change in time out of SLO",
+     "the backtest passes, but confidence is low (frontend: the model fits it poorly, and this change changes it) — load-test before trusting it",
+     "headroom drops from 492.6 to 264.7 req/s (the history peaked at 164.5)"
+    ],
+    "warnings": [
+     "frontend: the model fits it poorly, and this change changes it",
+     "the model's accuracy was never measured",
+     "only 0.6 h of history: daily and weekly peaks may be missing",
+     "costs are AWS Fargate list prices, not your bill: discounts and Savings Plans are not in them"
+    ]
+   },
+   "launch-x1.3": {
+    "verdict": "pass",
+    "confidence": null,
+    "minutesOutOfSlo": 0,
+    "peakP99Ms": null,
+    "monthlyDelta": null,
+    "reasons": [],
+    "warnings": []
+   }
+  }
+ }
+}

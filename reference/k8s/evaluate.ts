@@ -13,6 +13,7 @@
  *   npx tsx reference/k8s/evaluate.ts [system]     → <system>/validation/validation.json, the README's table,
  *                                                   public/reference/k8s-<system>.json for the app
  */
+import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -47,6 +48,10 @@ interface Case {
   /** the forecast an engineer would make before the day: the ordinary day ×scale */
   scale: number;
   question: string;
+  /** frontend cores per pod after the change (default: as built, half a core) */
+  cpu?: number;
+  /** added after the throttle model was designed on the other runs; predicted before it ran */
+  oos?: boolean;
 }
 
 const LAUNCH = 2.22; // 13 July's busiest 10 minutes over 12 July's, from the log itself
@@ -56,7 +61,12 @@ const CASES: Case[] = [
   { run: 'launch-2', asBuilt: 'launch', head: 'variants/frontend-2.yaml', scale: LAUNCH, question: '2 frontend replicas instead of 3, on launch day?' },
   { run: 'normal-1', asBuilt: 'history', head: 'variants/frontend-1.yaml', scale: 1, question: '1 frontend replica, on an ordinary day?' },
   { run: 'launch-hpa', asBuilt: 'launch', head: 'variants/frontend-hpa.yaml', scale: LAUNCH, question: 'An HPA (1–3 replicas at 60% CPU) instead of 3 fixed, on launch day?' },
+  { run: 'launch-2c', asBuilt: 'launch', head: 'variants/frontend-2-1cpu.yaml', scale: LAUNCH, cpu: 1, oos: true, question: '2 frontend replicas at 1 core instead of 3 at half a core, on launch day?' },
+  { run: 'normal-1c', asBuilt: 'history', head: 'variants/frontend-1-1cpu.yaml', scale: 1, cpu: 1, oos: true, question: '1 frontend replica at 1 core, on an ordinary day?' },
+  { run: 'normal-1-750', asBuilt: 'history', head: 'variants/frontend-1-750m.yaml', scale: 1, cpu: 0.75, oos: true, question: '1 frontend replica at 750m, on an ordinary day?' },
+  { run: 'launch-x1.3', asBuilt: 'launch-x1.3', scale: LAUNCH * 1.3, oos: true, question: 'As built, on a launch day with 30% more traffic?' },
 ];
+const AS_BUILT_CPU = 0.5;
 
 let SYS = '';
 const runDir = (r: string) => join(SYS, 'runs', r);
@@ -174,7 +184,7 @@ function predicted(m: Model, ws: Workspace, run: Dataset, runStart: number, head
 }
 
 /** the spreadsheet answer: the frontend's busiest CPU share in the history, scaled by the change */
-function naive(history: Dataset, replicasAfter: number | 'hpa', scale: number) {
+function naive(history: Dataset, replicasAfter: number | 'hpa', scale: number, cpuAfter = AS_BUILT_CPU) {
   const f = history.services.frontend;
   let peak = 0;
   for (let i = 0; i < history.n; i++) {
@@ -185,11 +195,44 @@ function naive(history: Dataset, replicasAfter: number | 'hpa', scale: number) {
     peak = Math.max(peak, cpu / (lim * reps));
   }
   const repsBefore = Math.max(...(f.replicas ?? []).filter((x): x is number => x !== null));
-  const util = (peak * scale * repsBefore) / (replicasAfter === 'hpa' ? 3 : replicasAfter);
+  const util = (peak * scale * repsBefore * AS_BUILT_CPU) / ((replicasAfter === 'hpa' ? 3 : replicasAfter) * cpuAfter);
   return { historyPeakUtil: peak, predictedPeakUtil: util, verdict: util < 1 ? 'pass' : 'fail' };
 }
 
-const strategyName = (head: string) => (head.includes('hpa') ? 'Frontend on an HPA, 1–3 replicas' : `Frontend at ${/frontend-(\d)/.exec(head)![1]} replica${head.includes('-1') ? '' : 's'}`);
+const strategyName = (head: string) => {
+  if (head.includes('hpa')) return 'Frontend on an HPA, 1–3 replicas';
+  const [, n, cpu] = /frontend-(\d)(?:-(\w+))?\.yaml/.exec(head)!;
+  return `Frontend at ${n} replica${n === '1' ? '' : 's'}${cpu ? `, ${cpu.replace('cpu', ' core')} each` : ''}`;
+};
+const replicasOfHead = (head: string) => Number(/frontend-(\d)/.exec(head)![1]);
+
+/** what verify_change says before the day, from the calibration history alone */
+function forecast(c: Case, ws: Workspace, base: string) {
+  const head = c.head ? resolve(SYS, c.head) : undefined;
+  const traffic = c.scale !== 1 ? { scale: c.scale } : undefined;
+  // the replay is the ordinary day, whatever else the model learned from (a load test)
+  const window = { start: meta('history').start + SETTLE_S, end: meta('history').end };
+  const exAnte = verifyChange(ws, [head ? { kubernetes: { base, head } } : { strategy: { name: 'as built', changes: [] } }], { traffic, window, report: false });
+  const res = exAnte.results[0];
+  const asBuilt = c.run === c.asBuilt;
+  const asBuiltMin = exAnte.asBuilt?.minutesOutOfSlo ?? 0;
+  return {
+    verdict: asBuilt ? (asBuiltMin > 0.5 ? 'fail' : 'pass') : res?.verdict,
+    confidence: asBuilt ? null : (res?.confidence.level ?? null),
+    minutesOutOfSlo: asBuilt ? asBuiltMin : (res?.reliability.minutesOutOfSlo ?? null),
+    peakP99Ms: asBuilt ? null : (res?.reliability.peakP99Ms ?? null),
+    monthlyDelta: asBuilt ? null : (res?.cost.monthlyDelta ?? null),
+    reasons: asBuilt ? [] : (res?.reasons ?? []),
+    warnings: asBuilt ? [] : (res?.confidence.warnings ?? []),
+  };
+}
+
+const predictionsPath = () => join(SYS, 'validation', 'predictions-oos.json');
+type Forecast = ReturnType<typeof forecast>;
+function predictionsOf(model: string): Record<string, Forecast> | undefined {
+  if (!existsSync(predictionsPath())) return undefined;
+  return (JSON.parse(readFileSync(predictionsPath(), 'utf8')) as { models: Record<string, Record<string, Forecast>> }).models[model];
+}
 
 /** score one calibrated model on every recorded case */
 async function score(label: string, ws: Workspace, base: string, evalDir: string, ordinaryDay: Dataset) {
@@ -202,34 +245,25 @@ async function score(label: string, ws: Workspace, base: string, evalDir: string
     const run = await telemetryOf([c.run], join(evalDir, 'runs', c.run));
     const log = settled(requestsOf(c.run), meta(c.run).start);
     const head = c.head ? resolve(SYS, c.head) : undefined;
-    // before the day: what verify_change says from the calibration history alone
-    const traffic = c.scale !== 1 ? { scale: c.scale } : undefined;
-    // the replay is the ordinary day, whatever else the model learned from (a load test)
-    const window = { start: meta('history').start + SETTLE_S, end: meta('history').end };
-    const exAnte = verifyChange(ws, [head ? { kubernetes: { base, head } } : { strategy: { name: 'as built', changes: [] } }], { traffic, window, report: false });
-    const res = exAnte.results[0];
-    const asBuiltMin = exAnte.asBuilt?.minutesOutOfSlo ?? 0;
+    // out-of-sample runs are scored on the verdict committed before they ran, not one computed after
+    const committed = c.oos ? predictionsOf(label)?.[c.run] : undefined;
+    const now = forecast(c, ws, base);
+    if (committed && committed.verdict !== now.verdict) console.warn(`(${label} ${c.run}: predicted ${committed.verdict} before the run; today's code says ${now.verdict})`);
+    const exAnte = committed ?? now;
     const actual = measured(log, m.slo);
     const actualBase = measured(settled(requestsOf(c.asBuilt), meta(c.asBuilt).start), m.slo);
     const post = predicted(m, ws, run, meta(c.run).start, head, base);
-    const nv = naive(history, !c.head ? 3 : c.head.includes('hpa') ? 'hpa' : Number(/frontend-(\d)/.exec(c.head)![1]), c.scale);
+    const nv = naive(history, !c.head ? 3 : c.head.includes('hpa') ? 'hpa' : replicasOfHead(c.head), c.scale, c.cpu);
     // reality's verdict, judged like verify_change's gate: more than 0.5 min out of SLO added over
     // the as-built system on the same day (for the as-built system itself: more than 0.5 min)
     const added = c.run === c.asBuilt ? actual.minutesOutOfSlo : actual.minutesOutOfSlo - actualBase.minutesOutOfSlo;
     const truth = added > 0.5 ? 'fail' : 'pass';
-    const verdict = c.run === c.asBuilt ? (asBuiltMin > 0.5 ? 'fail' : 'pass') : res?.verdict;
+    const verdict = exAnte.verdict;
     const row = {
       run: c.run,
       question: c.question,
-      exAnte: {
-        verdict,
-        confidence: c.run === c.asBuilt ? null : (res?.confidence.level ?? null),
-        minutesOutOfSlo: c.run === c.asBuilt ? asBuiltMin : (res?.reliability.minutesOutOfSlo ?? null),
-        peakP99Ms: c.run === c.asBuilt ? null : (res?.reliability.peakP99Ms ?? null),
-        monthlyDelta: c.run === c.asBuilt ? null : (res?.cost.monthlyDelta ?? null),
-        reasons: c.run === c.asBuilt ? [] : (res?.reasons ?? []),
-        warnings: c.run === c.asBuilt ? [] : (res?.confidence.warnings ?? []),
-      },
+      oos: !!c.oos,
+      exAnte,
       exPost: { p99Ms: Math.round(post.p99), errorRate: post.errorRate, minutesOutOfSlo: post.minutesOutOfSlo, frontendReplicasPeak: post.frontendReplicasPeak },
       measured: { p99Ms: Math.round(actual.p99), errorRate: actual.errorRate, minutesOutOfSlo: actual.minutesOutOfSlo, requests: actual.requests, addedOverAsBuilt: Math.round(added * 10) / 10 },
       series: { predicted: post.series, measured: measuredSeries(log, run.start, run.n), frontendReplicas: run.services.frontend?.replicas ?? [] },
@@ -261,7 +295,7 @@ async function main() {
   const evalDir = join(SYS, 'validation');
   // models are rebuilt every time; collected telemetry is kept (refreshed when the cluster is up)
   mkdirSync(evalDir, { recursive: true });
-  for (const f of readdirSync(evalDir)) if (f !== 'collected' && f !== 'runs') rmSync(join(evalDir, f), { recursive: true, force: true });
+  for (const f of readdirSync(evalDir)) if (!['collected', 'runs', 'predictions-oos.json'].includes(f)) rmSync(join(evalDir, f), { recursive: true, force: true });
   const base = resolve(SYS, 'shop.yaml');
 
   const calm = await calibrated('calm', ['history'], evalDir, cfg.slo);
@@ -269,6 +303,24 @@ async function main() {
   if (recorded('stress')) {
     const tested = await calibrated('load-tested', ['history', 'stress'], evalDir, cfg.slo);
     models.push({ id: 'load-tested', label: 'calibrated on the ordinary day and a 12-minute load test', rows: await score('load-tested', tested.ws, base, evalDir, calm.ws.readJson<Dataset>('dataset.json')), trust: tested.trust });
+  }
+
+  // --predict: write down what each model says about the out-of-sample runs before they are recorded
+  if (process.argv.includes('--predict')) {
+    const out = { madeAt: new Date().toISOString(), commit: spawnSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).stdout.trim(), models: {} as Record<string, Record<string, Forecast>> };
+    for (const mod of models) {
+      const ws = new Workspace(join(evalDir, mod.id));
+      out.models[mod.id] = {};
+      for (const c of CASES.filter((x) => x.oos)) {
+        out.models[mod.id][c.run] = forecast(c, ws, base);
+        const f = out.models[mod.id][c.run];
+        console.log(`[${mod.id}] ${c.run.padEnd(13)} predicts ${String(f.verdict).padEnd(12)} ${f.confidence ?? ''} ${f.minutesOutOfSlo ?? ''} min — ${c.question}`);
+      }
+    }
+    if (existsSync(predictionsPath()) && !process.argv.includes('--force')) throw new Error(`${predictionsPath()} exists: predictions are made once (--force to redo before any run is recorded)`);
+    writeFileSync(predictionsPath(), JSON.stringify(out, null, 1));
+    console.log(`wrote ${predictionsPath()}`);
+    return;
   }
 
   // the model the app bundles: the best history a team would have, with its accuracy on every run it never saw
