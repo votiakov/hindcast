@@ -295,6 +295,39 @@ mod wasm {
         Ok(crate::sim::des::simulate_des(&spec, &sc, &cfg).map_err(jerr)?.serialize(&ser())?)
     }
 
+    /// analyze(spec, scenario, { runs, seed, des }) → Analysis: discrete-event Monte Carlo
+    #[wasm_bindgen]
+    pub fn analyze(spec: JsValue, scenario: JsValue, opts: JsValue) -> Result<JsValue, JsValue> {
+        let spec: serde_json::Value = from(spec)?;
+        let sc: serde_json::Value = if scenario.is_undefined() || scenario.is_null() { serde_json::json!({}) } else { from(scenario)? };
+        let o: crate::sim::optimize::AnalyzeOptions = opt(opts)?;
+        Ok(crate::sim::optimize::analyze(&spec, &sc, &o).map_err(jerr)?.serialize(&ser())?)
+    }
+
+    /// optimize(spec, scenario, opts) → the cheapest configuration that meets the SLO
+    #[wasm_bindgen]
+    pub fn optimize(spec: JsValue, scenario: JsValue, opts: JsValue) -> Result<JsValue, JsValue> {
+        let spec: serde_json::Value = from(spec)?;
+        let sc: serde_json::Value = if scenario.is_undefined() || scenario.is_null() { serde_json::json!({}) } else { from(scenario)? };
+        let o: crate::sim::optimize::OptimizeOptions = opt(opts)?;
+        Ok(crate::sim::optimize::optimize(&spec, &sc, &o).map_err(jerr)?.serialize(&ser())?)
+    }
+
+    /// audit(spec, opts, onProgress?) → the failure audit: what breaks first, and what it costs
+    #[wasm_bindgen]
+    pub fn audit(spec: JsValue, opts: JsValue, progress: JsValue) -> Result<JsValue, JsValue> {
+        let spec: serde_json::Value = from(spec)?;
+        let a = crate::sim::spec::parse_architecture(&spec).map_err(jerr)?;
+        let o: crate::sim::audit::AuditOptions = opt(opts)?;
+        let f: Option<js_sys::Function> = progress.dyn_into().ok();
+        let mut cb = |done: f64, total: f64, label: &str| {
+            if let Some(f) = &f {
+                let _ = f.call3(&JsValue::NULL, &JsValue::from(done), &JsValue::from(total), &JsValue::from(label));
+            }
+        };
+        Ok(crate::sim::audit::audit(&a, &o, &mut cb).map_err(jerr)?.serialize(&ser())?)
+    }
+
     /// the same replay with the long series packed: the plan without its observed replicas, the
     /// traffic without its series; `series` holds each endpoint's n values (null as 0), then each
     /// service's observed replicas (null as NaN) at the offsets in `observed`. Returns

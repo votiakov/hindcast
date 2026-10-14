@@ -639,13 +639,16 @@ fn tail_of(r: &SimResult) -> (f64, f64, f64) {
 
 /// highest constant load the architecture sustains within SLO (steady state)
 pub fn breaking_point(spec: &Value, o: &BreakingOptions) -> Result<BreakingPoint, String> {
-    let a = parse_architecture(spec)?;
+    Ok(breaking_point_parsed(&parse_architecture(spec)?, o))
+}
+
+pub fn breaking_point_parsed(a: &Architecture, o: &BreakingOptions) -> BreakingPoint {
     let slo = (o.slo.as_ref().and_then(|s| s.get("maxErrorRate")).and_then(|x| x.as_f64()).unwrap_or(0.01), o.slo.as_ref().and_then(|s| s.get("maxP99Ms")).and_then(|x| x.as_f64()).unwrap_or(300.0));
     let hold = o.hold_s.unwrap_or(25.0);
     let cap = o.max_rps.unwrap_or(1_000_000.0);
     let so = SimOptions { dt: None, sample_every: Some(1.0), cfg: o.cfg.clone() };
     let probe = |rps: f64| {
-        let r = simulate_parsed(&a, &steady(o.read_ratio.unwrap_or(0.8), rps, hold, slo), &so);
+        let r = simulate_parsed(a, &steady(o.read_ratio.unwrap_or(0.8), rps, hold, slo), &so);
         let (err, p99, _) = tail_of(&r);
         (err <= slo.0 && p99 <= slo.1, r)
     };
@@ -658,7 +661,7 @@ pub fn breaking_point(spec: &Value, o: &BreakingOptions) -> Result<BreakingPoint
     }
     let slo_out = SloOut { max_error_rate: slo.0, max_p99_ms: slo.1 };
     if hi_run.0 {
-        return Ok(BreakingPoint { max_rps: hi, first_failing_rps: None, limited_by: None, note: Some(format!("sustains the probe ceiling of {} req/s", js_num(hi))), slo: slo_out });
+        return BreakingPoint { max_rps: hi, first_failing_rps: None, limited_by: None, note: Some(format!("sustains the probe ceiling of {} req/s", js_num(hi))), slo: slo_out };
     }
     let mut i = 0;
     while i < 14 && hi - lo > (lo * 0.01).max(5.0) {
@@ -673,7 +676,7 @@ pub fn breaking_point(spec: &Value, o: &BreakingOptions) -> Result<BreakingPoint
         i += 1;
     }
     let limiter = hi_run.1.bottlenecks.first();
-    Ok(BreakingPoint { max_rps: lo, first_failing_rps: Some(hi), limited_by: limiter.map(|l| l.id.clone()), note: limiter.and_then(|l| l.note.clone()), slo: slo_out })
+    BreakingPoint { max_rps: lo, first_failing_rps: Some(hi), limited_by: limiter.map(|l| l.id.clone()), note: limiter.and_then(|l| l.note.clone()), slo: slo_out }
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -689,16 +692,19 @@ pub struct CurvePoint {
 
 /// steady-state behaviour across a range of loads
 pub fn load_curve(spec: &Value, max_rps: f64, points: Option<f64>, read_ratio: Option<f64>, hold_s: Option<f64>, cfg: Option<Value>) -> Result<Vec<CurvePoint>, String> {
-    let a = parse_architecture(spec)?;
+    Ok(load_curve_parsed(&parse_architecture(spec)?, max_rps, points, read_ratio, hold_s, cfg))
+}
+
+pub fn load_curve_parsed(a: &Architecture, max_rps: f64, points: Option<f64>, read_ratio: Option<f64>, hold_s: Option<f64>, cfg: Option<Value>) -> Vec<CurvePoint> {
     let n = points.unwrap_or(16.0) as usize;
     let so = SimOptions { dt: None, sample_every: None, cfg };
     let mut out = vec![];
     for i in 1..=n {
         let rps = js_round((max_rps * i as f64) / n as f64);
-        let r = simulate_parsed(&a, &steady(read_ratio.unwrap_or(0.8), rps, hold_s.unwrap_or(20.0), (0.01, 300.0)), &so);
+        let r = simulate_parsed(a, &steady(read_ratio.unwrap_or(0.8), rps, hold_s.unwrap_or(20.0), (0.01, 300.0)), &so);
         let (err, p99, cost) = tail_of(&r);
         let ok = rps * (1.0 - err);
         out.push(CurvePoint { rps, error_rate: round(err, 4), p99_ms: js_round(p99), cost_per_hour: round(cost, 3), per_million: if ok > 0.0 { round((cost / (ok * 3600.0)) * 1e6, 4) } else { 0.0 }, bottleneck: r.bottlenecks.first().map(|b| b.id.clone()) });
     }
-    Ok(out)
+    out
 }

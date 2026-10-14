@@ -433,6 +433,51 @@ export function simulateDes(spec, scenario, cfg) {
     return takeFromExternrefTable0(ret[0]);
 }
 
+/**
+ * analyze(spec, scenario, { runs, seed, des }) → Analysis: discrete-event Monte Carlo
+ * @param {any} spec
+ * @param {any} scenario
+ * @param {any} opts
+ * @returns {any}
+ */
+export function analyze(spec, scenario, opts) {
+    const ret = wasm.analyze(spec, scenario, opts);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * optimize(spec, scenario, opts) → the cheapest configuration that meets the SLO
+ * @param {any} spec
+ * @param {any} scenario
+ * @param {any} opts
+ * @returns {any}
+ */
+export function optimize(spec, scenario, opts) {
+    const ret = wasm.optimize(spec, scenario, opts);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * audit(spec, opts, onProgress?) → the failure audit: what breaks first, and what it costs
+ * @param {any} spec
+ * @param {any} opts
+ * @param {any} progress
+ * @returns {any}
+ */
+export function audit(spec, opts, progress) {
+    const ret = wasm.audit(spec, opts, progress);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
 function passArrayJsValueToWasm0(array, malloc) {
     const ptr = malloc(array.length * 4, 4) >>> 0;
     for (let i = 0; i < array.length; i++) {
@@ -595,6 +640,10 @@ function __wbg_get_imports() {
         const ret = arg0.call(arg1);
         return ret;
     }, arguments) };
+    imports.wbg.__wbg_call_b8adc8b1d0a0d8eb = function() { return handleError(function (arg0, arg1, arg2, arg3, arg4) {
+        const ret = arg0.call(arg1, arg2, arg3, arg4);
+        return ret;
+    }, arguments) };
     imports.wbg.__wbg_done_769e5ede4b31c67b = function(arg0) {
         const ret = arg0.done;
         return ret;
@@ -705,6 +754,10 @@ function __wbg_get_imports() {
         const ret = arg0.next();
         return ret;
     }, arguments) };
+    imports.wbg.__wbg_now_807e54c39636c349 = function() {
+        const ret = Date.now();
+        return ret;
+    };
     imports.wbg.__wbg_of_66b3ee656cbd962b = function(arg0, arg1) {
         const ret = Array.of(arg0, arg1);
         return ret;

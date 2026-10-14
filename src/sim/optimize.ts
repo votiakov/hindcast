@@ -49,7 +49,17 @@ interface Eval {
   hot: string[];
 }
 
+let nativeOptimize: typeof optimizeTs | null = null;
+export function setNativeOptimize(f: typeof optimizeTs | null) {
+  nativeOptimize = f;
+}
+
 export function optimize(specInput: unknown, scenario: Record<string, unknown>, opts: OptimizeOptions = {}): OptimizeResult {
+  return nativeOptimize ? nativeOptimize(specInput, scenario, opts) : optimizeTs(specInput, scenario, opts);
+}
+
+/** the optimizer in TypeScript: the reference the Rust one is checked against */
+export function optimizeTs(specInput: unknown, scenario: Record<string, unknown>, opts: OptimizeOptions = {}): OptimizeResult {
   const parsed = ArchitectureSpec.parse(specInput);
   return withPricing(parsed.pricing, () => optimizeParsed(parsed, scenario, opts));
 }

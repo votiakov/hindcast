@@ -99,7 +99,17 @@ const SEV_RANK: Record<Severity, number> = { critical: 3, major: 2, minor: 1, ok
 const TIERS: Tier[] = ['S', 'M', 'L'];
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
 
+let nativeAudit: typeof auditTs | null = null;
+export function setNativeAudit(f: typeof auditTs | null) {
+  nativeAudit = f;
+}
+
 export function audit(specInput: unknown, opts: AuditOptions = {}): AuditResult {
+  return nativeAudit ? nativeAudit(specInput, opts) : auditTs(specInput, opts);
+}
+
+/** the failure audit in TypeScript: the reference the Rust one is checked against */
+export function auditTs(specInput: unknown, opts: AuditOptions = {}): AuditResult {
   const spec = ArchitectureSpec.parse(specInput);
   return withPricing(spec.pricing, () => auditParsed(spec, opts));
 }

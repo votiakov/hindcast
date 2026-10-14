@@ -69,6 +69,18 @@ export function loadCurve(spec: any, opts: any): any;
  */
 export function simulateDes(spec: any, scenario: any, cfg: any): any;
 /**
+ * analyze(spec, scenario, { runs, seed, des }) → Analysis: discrete-event Monte Carlo
+ */
+export function analyze(spec: any, scenario: any, opts: any): any;
+/**
+ * optimize(spec, scenario, opts) → the cheapest configuration that meets the SLO
+ */
+export function optimize(spec: any, scenario: any, opts: any): any;
+/**
+ * audit(spec, opts, onProgress?) → the failure audit: what breaks first, and what it costs
+ */
+export function audit(spec: any, opts: any, progress: any): any;
+/**
  * the same replay with the long series packed: the plan without its observed replicas, the
  * traffic without its series; `series` holds each endpoint's n values (null as 0), then each
  * service's observed replicas (null as NaN) at the offsets in `observed`. Returns
@@ -120,6 +132,9 @@ export interface InitOutput {
   readonly breakingPoint: (a: any, b: any) => [number, number, number];
   readonly loadCurve: (a: any, b: any) => [number, number, number];
   readonly simulateDes: (a: any, b: any, c: any) => [number, number, number];
+  readonly analyze: (a: any, b: any, c: any) => [number, number, number];
+  readonly optimize: (a: any, b: any, c: any) => [number, number, number];
+  readonly audit: (a: any, b: any, c: any) => [number, number, number];
   readonly runPlanPacked: (a: any, b: any, c: number, d: number, e: any, f: number, g: number, h: any) => [number, number, number];
   readonly __wbindgen_exn_store: (a: number) => void;
   readonly __externref_table_alloc: () => number;

@@ -10,6 +10,9 @@ import type { Num } from './dataset';
 import { setNativeSim, type NativeSim } from '../sim/engine';
 import { setNativeHeadless } from '../sim/headless';
 import { setNativeDes } from '../sim/des/des';
+import { setNativeAnalyze } from '../sim/des/analyze';
+import { setNativeOptimize } from '../sim/optimize';
+import { setNativeAudit } from '../sim/audit';
 import { setNativeCalibrate, type CalibrateOptions } from './calibrate';
 import { setNativeEngine, type Plan, type RunOpts, type RunResult, type Traffic } from './engine';
 import { setNativeBacktest, type BacktestOptions, type BacktestResult } from './backtest';
@@ -98,6 +101,12 @@ const use = () => {
   setNativeOutages({ outageScenario: outageScenarioNative });
   setNativeSim(() => new wasm.SimEngine() as unknown as NativeSim);
   setNativeDes((spec, scenario, cfg) => wasm.simulateDes(spec, scenario, cfg));
+  setNativeAnalyze((spec, scenario, opts) => wasm.analyze(spec, scenario, opts));
+  setNativeOptimize((spec, scenario, opts) => wasm.optimize(spec, scenario, opts));
+  setNativeAudit((spec, o = {}) => {
+    const { onProgress, ...opts } = o;
+    return wasm.audit(spec, opts, onProgress);
+  });
   setNativeHeadless({
     simulate: (spec, scenario, opts) => wasm.simulate(spec, scenario, opts),
     compare: (base, variants, scenario, opts) => wasm.compareVariants(base, variants, scenario, opts),

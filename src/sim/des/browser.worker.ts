@@ -4,6 +4,10 @@ import { slim } from './analyze';
 import { optimize } from '../optimize';
 import { breakingPoint } from '../headless';
 import { audit, type AuditOptions } from '../audit';
+import { loadNativeEngine } from '../../backtest/native';
+
+// the compiled engine, loaded once per worker before the first job
+const ready = loadNativeEngine();
 
 /** Off-main-thread analysis for the app: discrete-event runs, breaking point, optimizer. */
 export type AnalysisRequest =
@@ -12,7 +16,8 @@ export type AnalysisRequest =
   | { id: number; type: 'breaking'; spec: unknown; readRatio: number; slo?: { maxErrorRate: number; maxP99Ms: number } }
   | { id: number; type: 'audit'; spec: unknown; opts: Omit<AuditOptions, 'onProgress'> };
 
-self.onmessage = (e: MessageEvent<AnalysisRequest>) => {
+self.onmessage = async (e: MessageEvent<AnalysisRequest>) => {
+  await ready;
   const m = e.data;
   try {
     let result: unknown;

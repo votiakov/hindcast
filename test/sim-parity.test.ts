@@ -175,3 +175,58 @@ describe('the discrete-event simulator in Rust matches TypeScript, seed for seed
     }
   });
 });
+
+import { analyze as wAnalyze, optimize as wOptimize } from '../src/backtest/wasm/hindcast_engine.js';
+import { analyzeTs } from '../src/sim/des/analyze';
+import { optimizeTs } from '../src/sim/optimize';
+
+describe('Monte Carlo and the optimizer in Rust match TypeScript', () => {
+  const noWall = <T extends { wallMs?: number; verification?: { wallMs?: number } | null }>(x: T) => {
+    const c = JSON.parse(JSON.stringify(x));
+    if ('wallMs' in c) c.wallMs = 0;
+    if (c.verification) c.verification.wallMs = 0;
+    return c;
+  };
+  it('analyze: four seeds, means and confidence intervals', () => {
+    for (const [spec, sc] of [[shop, { duration: 12, rps: 900 }], [yaml('examples/shop.yaml'), { duration: 20, traffic: [{ at: 0, rps: 300 }, { at: 20, rps: 1500 }] }]] as const)
+      same(noWall(analyzeTs(spec, sc, { runs: 4, seed: 3 })), noWall(wAnalyze(spec, sc, { runs: 4, seed: 3 })), 'analyze');
+  });
+  it('optimize: grow, shrink, verify', () => {
+    const cases: [unknown, Record<string, unknown>, Record<string, unknown>][] = [
+      [shop, { duration: 20, rps: 1600 }, { verifyRuns: 2 }],
+      [yaml('examples/shop.yaml'), { duration: 20, rps: 300 }, { verifyRuns: 2 }],
+      [yaml('examples/shop.yaml'), { duration: 20, rps: 2400 }, { verifyRuns: 2, allowRuntimes: true }],
+    ];
+    for (const [spec, sc, o] of cases) same(noWall(optimizeTs(spec, sc, o)), noWall(wOptimize(spec, sc, o)), 'optimize');
+  });
+});
+
+import { audit as wAudit } from '../src/backtest/wasm/hindcast_engine.js';
+import { auditTs } from '../src/sim/audit';
+
+describe('the failure audit in Rust matches TypeScript', () => {
+  const zoned = {
+    name: 'zoned shop',
+    components: [
+      { id: 'users', kind: 'client' },
+      { id: 'lb', kind: 'lb' },
+      { id: 'api', kind: 'server', instances: 4 },
+      { id: 'cache', kind: 'cache' },
+      { id: 'db', kind: 'db', tier: 'M' },
+      { id: 'q', kind: 'queue' },
+      { id: 'mailer', kind: 'worker' },
+      { id: 'gw', kind: 'gateway', limit: 2000 },
+    ],
+    connections: ['users -> gw', 'gw -> lb', 'lb -> api', 'api -> cache', 'cache -> db', 'api -> q', 'q -> mailer'],
+    zones: [{ id: 'az-a', members: ['api', 'cache'] }, { id: 'az-b', members: ['db'] }],
+  };
+  it.each([['shop', shop], ['shop + replica', shopWithReplica], ['examples/shop.yaml', yaml('examples/shop.yaml')], ['zoned', zoned]] as [string, unknown][])('%s', (_, spec) => {
+    const progressTs: unknown[] = [];
+    const progressRs: unknown[] = [];
+    const a = auditTs(spec, { incidentCostPerMinute: 500, onProgress: (...x) => progressTs.push(x) });
+    const b = wAudit(spec, { incidentCostPerMinute: 500 }, (...x: unknown[]) => progressRs.push(x));
+    a.wallMs = b.wallMs = 0;
+    same(JSON.parse(JSON.stringify(a)), JSON.parse(JSON.stringify(b)), 'audit');
+    same(progressTs, progressRs, 'progress');
+  });
+});
