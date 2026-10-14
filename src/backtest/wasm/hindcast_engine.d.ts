@@ -55,6 +55,23 @@ export function outageScenario(model: any, outage: any, base_rps: number | null 
  * [every result series in one Float64Array (see `pack`), events]
  */
 export function runPlanPacked(plan: any, traffic: any, endpoints: string[], observed: any, series: Float64Array, opts: any): Array<any>;
+/**
+ * the design simulator's fluid engine, stepped by the app (one tick at a time) and by headless runs
+ */
+export class SimEngine {
+  free(): void;
+  constructor();
+  reset(): void;
+  /**
+   * step(nodes, edges, trafficRps, readRatio, dt, cfg, pricing) → events
+   */
+  step(nodes: any, edges: any, traffic: number, read_ratio: number, dt: number, cfg: any, pricing: string): any;
+  /**
+   * snapshot(nodes, edges) → { nodeStats, edgeStats, global }
+   */
+  snapshot(nodes: any, edges: any): any;
+  readonly t: number;
+}
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
@@ -72,6 +89,12 @@ export interface InitOutput {
   readonly nodeLossFaults: (a: any, b: any, c: number, d: number, e: number, f: number, g: any, h: any) => [number, number, number];
   readonly podsPerNode: (a: any, b: any) => [number, number, number];
   readonly outageScenario: (a: any, b: any, c: number, d: number, e: any) => [number, number, number];
+  readonly __wbg_simengine_free: (a: number, b: number) => void;
+  readonly simengine_new: () => number;
+  readonly simengine_t: (a: number) => number;
+  readonly simengine_reset: (a: number) => void;
+  readonly simengine_step: (a: number, b: any, c: any, d: number, e: number, f: number, g: any, h: number, i: number) => [number, number, number];
+  readonly simengine_snapshot: (a: number, b: any, c: any) => [number, number, number];
   readonly runPlanPacked: (a: any, b: any, c: number, d: number, e: any, f: number, g: number, h: any) => [number, number, number];
   readonly __wbindgen_exn_store: (a: number) => void;
   readonly __externref_table_alloc: () => number;

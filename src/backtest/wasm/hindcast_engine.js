@@ -409,6 +409,76 @@ export function runPlanPacked(plan, traffic, endpoints, observed, series, opts) 
     return takeFromExternrefTable0(ret[0]);
 }
 
+const SimEngineFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_simengine_free(ptr >>> 0, 1));
+/**
+ * the design simulator's fluid engine, stepped by the app (one tick at a time) and by headless runs
+ */
+export class SimEngine {
+
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        SimEngineFinalization.unregister(this);
+        return ptr;
+    }
+
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_simengine_free(ptr, 0);
+    }
+    constructor() {
+        const ret = wasm.simengine_new();
+        this.__wbg_ptr = ret >>> 0;
+        SimEngineFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * @returns {number}
+     */
+    get t() {
+        const ret = wasm.simengine_t(this.__wbg_ptr);
+        return ret;
+    }
+    reset() {
+        wasm.simengine_reset(this.__wbg_ptr);
+    }
+    /**
+     * step(nodes, edges, trafficRps, readRatio, dt, cfg, pricing) → events
+     * @param {any} nodes
+     * @param {any} edges
+     * @param {number} traffic
+     * @param {number} read_ratio
+     * @param {number} dt
+     * @param {any} cfg
+     * @param {string} pricing
+     * @returns {any}
+     */
+    step(nodes, edges, traffic, read_ratio, dt, cfg, pricing) {
+        const ptr0 = passStringToWasm0(pricing, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.simengine_step(this.__wbg_ptr, nodes, edges, traffic, read_ratio, dt, cfg, ptr0, len0);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * snapshot(nodes, edges) → { nodeStats, edgeStats, global }
+     * @param {any} nodes
+     * @param {any} edges
+     * @returns {any}
+     */
+    snapshot(nodes, edges) {
+        const ret = wasm.simengine_snapshot(this.__wbg_ptr, nodes, edges);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+}
+
 async function __wbg_load(module, imports) {
     if (typeof Response === 'function' && module instanceof Response) {
         if (typeof WebAssembly.instantiateStreaming === 'function') {

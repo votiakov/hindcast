@@ -10,6 +10,7 @@ pub mod engine;
 pub mod math;
 pub mod model;
 pub mod resilience;
+pub mod sim;
 pub mod strategy;
 pub mod types;
 
@@ -189,6 +190,40 @@ mod wasm {
         let outage: crate::resilience::Outage = from(outage)?;
         let roles: crate::types::Map<Vec<String>> = opt(roles)?;
         Ok(crate::resilience::outage_scenario(&model, &outage, base_rps, &roles).serialize(&ser())?)
+    }
+
+    /// the design simulator's fluid engine, stepped by the app (one tick at a time) and by headless runs
+    #[wasm_bindgen]
+    pub struct SimEngine {
+        inner: crate::sim::engine::Engine,
+    }
+
+    #[wasm_bindgen]
+    impl SimEngine {
+        #[wasm_bindgen(constructor)]
+        pub fn new() -> SimEngine {
+            SimEngine { inner: crate::sim::engine::Engine::new() }
+        }
+        #[wasm_bindgen(getter)]
+        pub fn t(&self) -> f64 {
+            self.inner.t
+        }
+        pub fn reset(&mut self) {
+            self.inner.reset();
+        }
+        /// step(nodes, edges, trafficRps, readRatio, dt, cfg, pricing) → events
+        pub fn step(&mut self, nodes: JsValue, edges: JsValue, traffic: f64, read_ratio: f64, dt: f64, cfg: JsValue, pricing: String) -> Result<JsValue, JsValue> {
+            let nodes: Vec<crate::sim::engine::SimNode> = from(nodes)?;
+            let edges: Vec<crate::sim::engine::SimEdge> = from(edges)?;
+            let cfg: crate::sim::engine::EngineConfig = if cfg.is_undefined() || cfg.is_null() { Default::default() } else { from(cfg)? };
+            Ok(self.inner.step(&nodes, &edges, traffic, read_ratio, dt, &cfg, &pricing).serialize(&ser())?)
+        }
+        /// snapshot(nodes, edges) → { nodeStats, edgeStats, global }
+        pub fn snapshot(&mut self, nodes: JsValue, edges: JsValue) -> Result<JsValue, JsValue> {
+            let nodes: Vec<crate::sim::engine::SimNode> = from(nodes)?;
+            let edges: Vec<crate::sim::engine::SimEdge> = from(edges)?;
+            Ok(self.inner.snapshot(&nodes, &edges).serialize(&ser())?)
+        }
     }
 
     /// the same replay with the long series packed: the plan without its observed replicas, the

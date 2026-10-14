@@ -7,6 +7,7 @@ import { setNativeStrategy, type Applied } from './strategy';
 import { setNativePlan } from './engine';
 import type { AccuracyRecord } from './model';
 import type { Num } from './dataset';
+import { setNativeSim, type NativeSim } from '../sim/engine';
 import { setNativeCalibrate, type CalibrateOptions } from './calibrate';
 import { setNativeEngine, type Plan, type RunOpts, type RunResult, type Traffic } from './engine';
 import { setNativeBacktest, type BacktestOptions, type BacktestResult } from './backtest';
@@ -93,6 +94,7 @@ const use = () => {
   setNativeAccuracy({ modelBreakingPoint: modelBreakingPointNative, holdoutAccuracy: holdoutAccuracyNative, referenceAccuracy: referenceAccuracyNative });
   setNativeResilience({ nodeLoss: nodeLossNative as never, nodeLossFaults: nodeLossFaultsNative as never, podsPerNode: podsPerNodeNative });
   setNativeOutages({ outageScenario: outageScenarioNative });
+  setNativeSim(() => new wasm.SimEngine() as unknown as NativeSim);
 };
 
 const wanted = () => typeof process === 'undefined' || process.env?.HINDCAST_ENGINE !== 'ts';

@@ -1,6 +1,7 @@
 import { KINDS, baseLatencyOf, cacheWarmth, costOf, isUp, perInstanceCapacity, requestPrice, type RetryPolicy, type SystemEdge, type SystemNode, type SystemNodeData } from './catalog';
 import { billedInstances, effectiveData, newScaler, stepScaler, type ScalerState } from './autoscale';
 import { BEHAVIORS, type Route } from './components';
+import { getPricing } from './pricing';
 
 /**
  * Fluid, tick-based queueing simulation.
@@ -186,7 +187,51 @@ export const fanoutTail = (n: number) => (n <= 1 ? 1 : 1 + 0.6 * Math.sqrt(2 * M
 /** share of responses arriving after a deadline (smooth ramp around it) */
 const lateFrac = (latMs: number, deadlineMs: number) => Math.min(1, Math.max(0, (latMs - 0.8 * deadlineMs) / (0.4 * deadlineMs)));
 
+/** the compiled engine (engine-rs SimEngine) */
+export interface NativeSim {
+  readonly t: number;
+  reset(): void;
+  step(nodes: SystemNode[], edges: SystemEdge[], trafficRps: number, readRatio: number, dt: number, cfg: EngineConfig, pricing: string): SimEvent[];
+  snapshot(nodes: SystemNode[], edges: SystemEdge[]): ReturnType<EngineTs['snapshot']>;
+  free?(): void;
+}
+let makeNative: (() => NativeSim) | null = null;
+export function setNativeSim(make: (() => NativeSim) | null) {
+  makeNative = make;
+}
+
+/**
+ * The fluid engine: the compiled one (engine-rs) once it is loaded, else the TypeScript one below.
+ * An engine created before the compiled one loaded moves to it at its next reset, or at its first
+ * step if it has not run yet — never in the middle of a run.
+ */
 export class Engine {
+  private impl: EngineTs | NativeSim = makeNative ? makeNative() : new EngineTs();
+  private native = !!makeNative;
+  get t() {
+    return this.impl.t;
+  }
+  private upgrade() {
+    if (!this.native && makeNative) {
+      this.impl = makeNative();
+      this.native = true;
+    }
+  }
+  reset() {
+    this.upgrade();
+    this.impl.reset();
+  }
+  step(nodes: SystemNode[], edges: SystemEdge[], trafficRps: number, readRatio: number, dt: number, cfg: EngineConfig = DEFAULT_ENGINE_CONFIG): SimEvent[] {
+    if (this.impl.t === 0) this.upgrade();
+    return this.native ? (this.impl as NativeSim).step(nodes, edges, trafficRps, readRatio, dt, cfg, getPricing()) : (this.impl as EngineTs).step(nodes, edges, trafficRps, readRatio, dt, cfg);
+  }
+  snapshot(nodes: SystemNode[], edges: SystemEdge[]) {
+    return this.impl.snapshot(nodes, edges);
+  }
+}
+
+/** the fluid engine in TypeScript: the reference the Rust one is checked against */
+export class EngineTs {
   t = 0;
   private nodes = new Map<string, NodeState>();
   private edges = new Map<string, { rps: number }>();
