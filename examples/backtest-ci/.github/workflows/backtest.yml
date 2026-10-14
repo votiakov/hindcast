@@ -1,7 +1,7 @@
 # Backtest every infrastructure change against recorded production traffic before it merges.
 #
 # What it needs in the repository:
-#   .hindcast/hindcast.mjs   the Hindcast CLI, one file (npm run build:cli in Hindcast)
+#   .hindcast/hindcast       the Hindcast binary for Linux x86-64 (a release asset: hindcast-x86_64-unknown-linux-musl)
 #   .hindcast/model.json       the calibrated model (hindcast calibrate)
 #   .hindcast/dataset.json     recent history (hindcast import), refreshed by the job at the bottom
 #
@@ -21,12 +21,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      - uses: actions/setup-node@v4
-        with: { node-version: 20 }
       - name: Manifests before this pull request
         run: git worktree add ../base ${{ github.event.pull_request.base.sha }}
       - name: Strategy from the diff
-        run: node .hindcast/hindcast.mjs diff-strategy --base ../base/deploy --head deploy --model .hindcast/model.json --out strategy.yaml
+        run: .hindcast/hindcast diff-strategy --base ../base/deploy --head deploy --model .hindcast/model.json --out strategy.yaml
       - name: Backtest against the last 14 days
         id: backtest
         env:
@@ -38,7 +36,7 @@ jobs:
             exit 0
           fi
           cat strategy.yaml
-          node .hindcast/hindcast.mjs backtest .hindcast/model.json .hindcast/dataset.json strategy.yaml \
+          .hindcast/hindcast backtest .hindcast/model.json .hindcast/dataset.json strategy.yaml \
             --last 14d --draws 30 --comment comment.md --md report.md --html report.html --run-url "$RUN_URL" --gate
       - name: Full report
         if: always()
@@ -66,7 +64,7 @@ jobs:
 #    steps:
 #      - uses: actions/checkout@v4
 #      - run: |
-#          node .hindcast/hindcast.mjs export-prometheus --url "$PROM_URL" --start "$(date -u -d '-14 days' +%FT%TZ)" --end "$(date -u +%FT%TZ)" --step 60 --out telemetry
-#          node .hindcast/hindcast.mjs import .hindcast/import.yaml --out .hindcast/dataset.json
-#          node .hindcast/hindcast.mjs calibrate .hindcast/dataset.json --holdout 0.3 --out .hindcast/model.json
+#          .hindcast/hindcast export-prometheus --url "$PROM_URL" --start "$(date -u -d '-14 days' +%FT%TZ)" --end "$(date -u +%FT%TZ)" --step 60 --out telemetry
+#          .hindcast/hindcast import .hindcast/import.yaml --out .hindcast/dataset.json
+#          .hindcast/hindcast calibrate .hindcast/dataset.json --holdout 0.3 --out .hindcast/model.json
 #      - commit and push .hindcast/

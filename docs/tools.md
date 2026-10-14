@@ -30,9 +30,9 @@
 | `outage <model.json> <outage-id \| list> [strategy.yaml …] [--rps N] [--role primary-db=orders-db]` | replays a public outage against the model, as built and with strategies |
 | `diff-strategy --base <dir> --head <dir> [--model model.json] [--out strategy.yaml]` | Kubernetes manifests before/after → a strategy (replicas, CPU/memory, HPAs, arch) |
 
-Guide: [backtest.md](backtest.md); the model: [calibration.md](calibration.md). A standalone build
-of the CLI (`npm run build:cli` → `dist-cli/hindcast.mjs`, Node 20, no install) is what the PR
-workflow ships.
+Guide: [backtest.md](backtest.md); the model: [calibration.md](calibration.md). The CLI is one native
+binary (`npm run cli:build` → `engine-rs/target/release/hindcast`, no runtime needed); a Linux
+build of it is what the PR workflow ships.
 
 Every command accepts `--json`. Files may be YAML or JSON. Examples live in `examples/`:
 

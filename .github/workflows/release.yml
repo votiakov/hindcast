@@ -1,0 +1,38 @@
+# On a version tag: the hindcast binary (CLI, agent tools, MCP server) for each platform, checked
+# against the golden outputs, attached to the GitHub release.
+name: release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-musl }
+          - { os: macos-14, target: aarch64-apple-darwin }
+          - { os: macos-13, target: x86_64-apple-darwin }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, ext: .exe }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - run: rustup target add ${{ matrix.target }}
+      - run: cargo build --release --bin hindcast --target ${{ matrix.target }}
+        working-directory: engine-rs
+      - name: golden outputs
+        if: matrix.os != 'windows-latest'
+        run: |
+          npm ci
+          mkdir -p engine-rs/target/release
+          cp engine-rs/target/${{ matrix.target }}/release/hindcast engine-rs/target/release/hindcast
+          npx tsx scripts/cli-golden.ts && npx tsx scripts/mcp-golden.ts
+      - run: cp engine-rs/target/${{ matrix.target }}/release/hindcast${{ matrix.ext }} hindcast-${{ matrix.target }}${{ matrix.ext }}
+        shell: bash
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: hindcast-${{ matrix.target }}${{ matrix.ext }}

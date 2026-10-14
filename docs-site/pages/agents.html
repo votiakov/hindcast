@@ -8,9 +8,9 @@ Jaeger or Tempo       workspace              how far to trust it $, SLO minutes,
 <p>Everything is read-only towards your systems: queries to your Prometheus and Jaeger or Tempo, and one <code>kubectl get</code> against a context you name. Credentials stay in environment variables. Nothing leaves your machine.</p>
 
 <h2>Set up</h2>
-<pre><code>npm run sim -- agent setup                 # builds the server, proves it starts, prints every host's config
+<pre><code>npm run sim -- agent setup                 # proves the server starts, prints every host's config
 npm run sim -- agent setup cursor --write  # or claude, vscode, desktop, windsurf: merges it into that host's file</code></pre>
-<p>Setup fills in the absolute paths, keeps any other servers in the file, and completes an MCP handshake with the server before it says it worked. By hand: <code>npm run build:mcp-server</code>, then <code>claude mcp add hindcast -- node /path/to/hindcast/dist-cli/hindcast-mcp.mjs</code>; other hosts take the same command in their <code>mcpServers</code> config (<code>examples/agents/mcp.json</code>). For agents without MCP: <code>npm run build:cli</code>, then <code>node dist-cli/hindcast.mjs agent connect_telemetry '{…}'</code>; <code>examples/agents/AGENTS.md</code> is an instruction file to paste into your project. For Claude Code there is also a skill, <code>examples/agents/skills/verify-infra-change</code>.</p>
+<p>Setup fills in the absolute paths, keeps any other servers in the file, and completes an MCP handshake with the server before it says it worked. By hand: <code>npm run cli:build</code>, then <code>claude mcp add hindcast -- /path/to/hindcast/engine-rs/target/release/hindcast mcp</code>; other hosts take the same command in their <code>mcpServers</code> config (<code>examples/agents/mcp.json</code>). For agents without MCP: <code>hindcast agent connect_telemetry '{…}'</code>; <code>examples/agents/AGENTS.md</code> is an instruction file to paste into your project. For Claude Code there is also a skill, <code>examples/agents/skills/verify-infra-change</code>.</p>
 
 <h2>The tools</h2>
 <div class="table-wrap"><table>

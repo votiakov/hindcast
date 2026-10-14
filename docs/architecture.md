@@ -43,8 +43,9 @@ Hindcast is one TypeScript codebase with three front-ends over the same simulati
 | `src/lessons/` | Lesson format (`types.ts`) and lessons |
 | `src/scenarios/` | Comparison scenario format, the built-in scenarios, templates |
 | `src/studio/` | Episodes (scripted clips), brands, the export Stage, the Studio editor |
-| `cli/bottleneck.ts` | CLI: `hindcast` (`npm run sim` in the repository) |
-| `mcp/server.ts` | MCP server (`npm run mcp`, registered in `.mcp.json`) |
+| `engine-rs/` | The engine in Rust: simulation, DES, audit, calibration, backtest, importers. Built to WebAssembly for the app (`npm run engine:build`) and to the native `hindcast` binary: the CLI (`src/cli/`), the agent tools (`src/cli/agent/`) and the MCP server (`src/cli/mcp/`, `hindcast mcp`) |
+| `bin/hindcast` | Runs the native binary in a checkout, building it on first use (`npm run sim`, `npm run mcp`, `.mcp.json`) |
+| `test/golden/` | The CLI's and MCP server's golden outputs (`npm run cli:golden`, `npm run mcp:golden`) |
 | `scripts/record.mjs` | Frame-perfect episode renderer (`npm run record`) |
 | `examples/` | Example specs, scenarios and variants |
 

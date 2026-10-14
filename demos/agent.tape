@@ -1,7 +1,7 @@
 # Claude Code, with the backtester's MCP server, asked a real question about a real cluster.
-# Before recording: the Kubernetes reference running (reference/k8s/README.md), the MCP server built
-# (npm run build:mcp-server) and demos/mcp.json written by `npm run sim -- agent setup` or by hand:
-#   { "mcpServers": { "hindcast": { "command": "node", "args": ["<repo>/dist-cli/hindcast-mcp.mjs"],
+# Before recording: the Kubernetes reference running (reference/k8s/README.md), the binary built
+# (npm run cli:build) and demos/mcp.json written by `npm run sim -- agent setup` or by hand:
+#   { "mcpServers": { "hindcast": { "command": "<repo>/engine-rs/target/release/hindcast", "args": ["mcp"],
 #                                      "env": { "HINDCAST_WORKSPACE": "<repo>/demos/ws" } } } }
 #   vhs demos/agent.tape
 Output demos/out/agent-k8s.mp4

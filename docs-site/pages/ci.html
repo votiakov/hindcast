@@ -9,7 +9,7 @@ hindcast headroom  model.json [strategy.yaml]
 hindcast accuracy  model.json
 hindcast outage    model.json slack-2021-01-04 [strategy.yaml]
 hindcast diff-strategy --base old/deploy --head deploy --model model.json --out strategy.yaml</code></pre>
-<p>In the repository: <code>npm run sim -- &lt;command&gt;</code>. As one file with no install: <code>npm run build:cli</code> → <code>dist-cli/hindcast.mjs</code> (Node 20). Every command takes <code>--json</code>.</p>
+<p>In the repository: <code>npm run sim -- &lt;command&gt;</code>. Anywhere else: the native binary, <code>npm run cli:build</code> → <code>engine-rs/target/release/hindcast</code> (no runtime needed). Every command takes <code>--json</code>.</p>
 <p>The terminal output of a backtest, HotROD with three strategies:</p>
 <pre><code>Backtest — HotROD · 0.7 h of history · 30 draws
   As built                        $96/month   14 min out of SLO   683 failed

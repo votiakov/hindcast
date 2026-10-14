@@ -15,7 +15,7 @@ Hindcast runs as an MCP server (`hindcast`) or from the shell. The shell form, J
 JSON out:
 
 ```bash
-B="node /path/to/hindcast/dist-cli/hindcast.mjs agent"
+B="/path/to/hindcast/engine-rs/target/release/hindcast agent"
 
 $B model_status                                     # what's already there; follow "next"
 # only if there is no model, or it is older than a week:

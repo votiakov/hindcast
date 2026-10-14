@@ -22,11 +22,11 @@ its workspace directory, and nothing leaves your machine.
 One command does it for any host:
 
 ```bash
-npm run sim -- agent setup                  # in the repository; or: node dist-cli/hindcast.mjs agent setup
+npm run sim -- agent setup                  # in the repository; or: hindcast agent setup
 npm run sim -- agent setup cursor --write   # claude | cursor | vscode | desktop | windsurf
 ```
 
-It builds the single-file server if needed, starts it and completes an MCP handshake (so a broken
+The server is the `hindcast` binary itself (`hindcast mcp`). Setup starts it and completes an MCP handshake (so a broken
 install shows up here, not in your agent), then prints the config for each host with absolute paths
 filled in. With a host and `--write` it merges the entry into that host's file (`.mcp.json`,
 `.cursor/mcp.json`, `.vscode/mcp.json`, Claude Desktop's or Windsurf's user config) and keeps every
@@ -35,12 +35,12 @@ The manual steps below do the same by hand.
 
 ### Claude Code
 
-In this repository it is already registered (`.mcp.json`). Elsewhere, build the single-file
-server once and register it:
+In this repository it is already registered (`.mcp.json`, through `bin/hindcast`, which builds
+the binary on first use). Elsewhere, build the binary once and register it:
 
 ```bash
-npm run build:mcp-server            # → dist-cli/hindcast-mcp.mjs (Node 20, no install)
-claude mcp add hindcast -- node /path/to/hindcast/dist-cli/hindcast-mcp.mjs
+npm run cli:build                   # → engine-rs/target/release/hindcast (one native binary, no runtime)
+claude mcp add hindcast -- /path/to/hindcast/engine-rs/target/release/hindcast mcp
 ```
 
 ### Any MCP host (Claude Desktop, Cursor, Windsurf, VS Code, …)
@@ -49,8 +49,8 @@ claude mcp add hindcast -- node /path/to/hindcast/dist-cli/hindcast-mcp.mjs
 {
   "mcpServers": {
     "hindcast": {
-      "command": "node",
-      "args": ["/path/to/hindcast/dist-cli/hindcast-mcp.mjs"],
+      "command": "/path/to/hindcast/engine-rs/target/release/hindcast",
+      "args": ["mcp"],
       "env": { "HINDCAST_WORKSPACE": "/path/to/project/.hindcast", "PROM_TOKEN": "…" }
     }
   }
@@ -75,8 +75,7 @@ hindcast agent calibrate_model
 hindcast agent verify_change @change.json          # or - to read stdin
 ```
 
-(`npm run sim -- agent …` inside the repository; `node dist-cli/hindcast.mjs agent …` from the
-standalone build.) A ready-made instruction file for such agents is in
+(`npm run sim -- agent …` inside the repository; the `hindcast` binary anywhere else.) A ready-made instruction file for such agents is in
 [`examples/agents/AGENTS.md`](../examples/agents/AGENTS.md).
 
 ### Prompts

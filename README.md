@@ -161,8 +161,9 @@ changes an architecture spec. Every command takes `--json`.
 
 Agents working on a live system: `connect_telemetry` → `collect_telemetry` → `calibrate_model` →
 `verify_change` (plus `suggest_changes`, `find_headroom`, `verify_design`, `read_cluster`, `model_status`); see
-[docs/agents.md](docs/agents.md). `npm run build:mcp-server` writes a single-file server
-(`dist-cli/hindcast-mcp.mjs`) to register anywhere: `claude mcp add hindcast -- node …/hindcast-mcp.mjs`.
+[docs/agents.md](docs/agents.md). The server is the `hindcast` binary itself (`npm run cli:build` →
+`engine-rs/target/release/hindcast`): `claude mcp add hindcast -- …/hindcast mcp`, or
+`hindcast agent setup` for any host.
 
 | tool | |
 |---|---|

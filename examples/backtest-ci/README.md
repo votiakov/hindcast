@@ -15,7 +15,7 @@ model's accuracy against runs it never saw is part of every comment.
 | `deploy/hotrod.yaml` | what is deployed |
 | `.hindcast/model.json` | calibrated model (`hindcast calibrate`) |
 | `.hindcast/dataset.json` | recorded history (`hindcast import`) |
-| `.hindcast/hindcast.mjs` | Hindcast CLI in one file (`npm run build:cli`) |
+| `.hindcast/hindcast` | the Hindcast binary for Linux x86-64 (a release asset, or `scripts/make-backtest-demo.sh` builds it) |
 
 Try it: open a pull request that sets `customer` to 2 replicas, or adds
 `nodeSelector: { kubernetes.io/arch: arm64 }` to a deployment.
