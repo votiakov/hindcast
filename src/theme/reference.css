@@ -389,6 +389,7 @@
 /* ---------- a selected card's own controls (CardControls) ---------- */
 .nc { border-top: 1px solid var(--r-line); padding: 7px 11px 9px; display: flex; flex-direction: column; gap: 5px; font-size: 11.5px; color: var(--r-ink-2); cursor: default; }
 .nc-row { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; }
+.nc-num { width: 54px; font: 11.5px var(--mono); padding: 1px 3px; border-radius: 3px; border: 1px solid var(--r-line-strong); background: var(--r-surface); color: var(--r-ink); }
 .nc-l { color: var(--r-muted); font-size: 11px; }
 .nc-row .nc-l:not(:first-child) { margin-left: 4px; }
 .ref-node .nc select { max-width: 118px; background: var(--r-surface); color: var(--r-ink); border: 1px solid var(--r-line-strong); border-radius: 3px; font: 11.5px var(--mono); padding: 1px 3px; }

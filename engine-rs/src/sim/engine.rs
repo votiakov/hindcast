@@ -512,7 +512,7 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
         "cache" | "cdn" => {
             let mut r = process_through(c, st);
             // only reads can hit; writes go on to the origin, or wait in the cache (write-behind)
-            let h = c.d.hit_rate.unwrap_or(0.85) * st.warmth;
+            let h = cache_hit_rate(c.d) * st.warmth;
             let reads = r.processed * c.read_ratio;
             let writes = r.processed - reads;
             let hits = reads * h;

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useReactFlow } from '@xyflow/react';
 import { HeartPulse, Minus, Plus, Skull, Trash2 } from 'lucide-react';
-import { KINDS, RUNTIME_KINDS, RUNTIMES, TIERS, isUp, type RetryPolicy, type RouteMode, type Runtime, type SystemNodeData, type Tier } from '../sim/catalog';
+import { KINDS, RUNTIME_KINDS, RUNTIMES, TIERS, cacheHitRate, isUp, type RetryPolicy, type RouteMode, type Runtime, type SystemNodeData, type Tier } from '../sim/catalog';
 import { useSim } from '../sim/store';
 import { useBoardId } from './BoardContext';
 import { fmt } from './nodeModel';
@@ -136,8 +136,26 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
       {(data.kind === 'cache' || data.kind === 'cdn') && (
         <div className="nc-row">
           <span className="nc-l">hit rate</span>
-          <input type="range" min={0} max={0.99} step={0.01} value={data.hitRate ?? 0.85} onChange={(e) => set({ hitRate: +e.target.value })} />
-          <b className="nc-v">{Math.round((data.hitRate ?? 0.85) * 100)}%</b>
+          {data.kind === 'cache' && data.workingSetGb ? (
+            <b className="nc-v" title="From the cache's memory and the data it fronts">{Math.round(cacheHitRate(data) * 100)}% (sized)</b>
+          ) : (
+            <>
+              <input type="range" min={0} max={0.99} step={0.01} value={data.hitRate ?? 0.85} onChange={(e) => set({ hitRate: +e.target.value })} />
+              <b className="nc-v">{Math.round((data.hitRate ?? 0.85) * 100)}%</b>
+            </>
+          )}
+        </div>
+      )}
+      {data.kind === 'cache' && (
+        <div className="nc-row">
+          <span className="nc-l" title="The data this cache fronts: with it, the hit rate follows from the cache's size (S 6.4, M 13, L 26 GB) and how skewed the reads are">data GB</span>
+          <input className="nc-num" type="number" min={0} step={1} value={data.workingSetGb ?? ''} placeholder="—" onChange={(e) => set({ workingSetGb: +e.target.value > 0 ? +e.target.value : undefined })} />
+          {data.workingSetGb ? (
+            <>
+              <span className="nc-l" title="Zipf exponent: 1 is typical of web traffic, higher means a few keys get most reads">skew</span>
+              <input className="nc-num" type="number" min={0.1} max={3} step={0.1} value={data.skew ?? 1} onChange={(e) => set({ skew: +e.target.value || undefined })} />
+            </>
+          ) : null}
         </div>
       )}
       {(data.kind === 'cache' || data.kind === 'cdn') && (

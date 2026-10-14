@@ -40,6 +40,8 @@ export const ComponentSpec = z
       .describe('server/worker/llm: target-tracking autoscaling; `instances` is the starting size'),
     warmupS: z.number().positive().optional().describe('cache/cdn: re-warm time constant after a restart or flush (default 20 s)'),
     writePolicy: z.enum(['through', 'behind']).optional().describe('cache/cdn: writes go on to the origin (through, default), or are acknowledged at the cache and flushed ~5 s later — fast, but lost if the cache dies first (behind)'),
+    workingSetGb: z.number().positive().optional().describe('cache: the data it fronts, GB — with it the hit rate follows from the cache size (S 6.4, M 13, L 26 GB) and `skew`'),
+    skew: z.number().min(0.1).max(3).optional().describe('cache: how concentrated reads are on popular keys (Zipf exponent, default 1)'),
     capacity: z.number().positive().optional().describe('override: req/s per size-S instance'),
     latencyMs: z.number().nonnegative().optional().describe('override: base service time'),
     costPerHour: z.number().nonnegative().optional().describe('override: $/h per size-S instance'),

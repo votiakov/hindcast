@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_ENGINE_CONFIG, Engine, type Snapshot } from '../src/sim/engine';
 import { specToGraph } from '../src/spec/convert';
-import { baseLatencyOf, capacityOf, costOf, isSystem, KINDS, type Kind, type SystemNodeData } from '../src/sim/catalog';
+import { baseLatencyOf, cacheHitRate, capacityOf, costOf, defaultData, isSystem, KINDS, type Kind, type SystemNodeData } from '../src/sim/catalog';
 import { simulateDes } from '../src/sim/des/des';
 import { simulate } from '../src/sim/headless';
 import { explain, nodeView } from '../src/canvas/nodeModel';
@@ -95,6 +95,20 @@ describe('one component at a time, against queueing arithmetic', () => {
     expect(edgeRps(run(b, 200, { readRatio: 0.5, seconds: 120 }), 'c', 'db')).toBeCloseTo(120, 0);
     // all writes: the cache saves the database nothing
     expect(edgeRps(run(b, 200, { readRatio: 0, seconds: 60 }), 'c', 'db')).toBeCloseTo(200, 0);
+  });
+
+  it('a cache sized against the data it fronts hits what its memory holds of the popular keys', () => {
+    const hit = (tier: 'S' | 'M' | 'L', workingSetGb: number, skew?: number) => cacheHitRate({ ...defaultData('cache', 'c'), tier, workingSetGb, skew });
+    // 64 GB of 1 KB keys, Zipf 1: the most popular 6.4 / 13 / 26 GB
+    expect(hit('S', 64)).toBeCloseTo(0.867, 2);
+    expect(hit('M', 64)).toBeCloseTo(0.905, 2);
+    expect(hit('L', 64)).toBeCloseTo(0.942, 2);
+    // everything fits: only expiry misses; flatter popularity: a small cache helps far less
+    expect(hit('S', 5)).toBeCloseTo(0.99, 3);
+    expect(hit('S', 64, 0.6)).toBeLessThan(0.5);
+    // and the engine uses it: the origin gets the misses of a sized cache
+    const b = board([{ id: 'users', kind: 'client' }, { id: 'c', kind: 'cache', workingSetGb: 64 }, { id: 'db', kind: 'db' }], [['users', 'c'], ['c', 'db']]);
+    expect(edgeRps(run(b, 200, { readRatio: 1, seconds: 120 }), 'c', 'db')).toBeCloseTo(200 * (1 - hit('S', 64)), 0);
   });
 
   it('a write-behind cache acknowledges writes at once, flushes them later, and loses the buffer when it dies', () => {

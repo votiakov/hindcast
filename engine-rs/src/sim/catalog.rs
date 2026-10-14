@@ -80,6 +80,12 @@ pub struct NodeData {
     /// cache, flushed to the origin a few seconds later — lost if the cache dies first)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub write_policy: Option<String>,
+    /// cache: the data it fronts, GB — with it, the hit rate follows from the cache's memory and `skew`
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub working_set_gb: Option<f64>,
+    /// cache: how concentrated requests are on popular keys (Zipf exponent; 1 is typical of web traffic)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skew: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fault_rate: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -203,6 +209,42 @@ fn tier_index(t: &str) -> usize {
 }
 
 /// hit-rate multiplier of a cache that went cold at `cold_at` (None = warm)
+/// a cache's memory by size: ElastiCache-like nodes (m7g.large, r7g.large, r7g.xlarge), GB
+pub fn cache_memory_gb(d: &NodeData) -> f64 {
+    match d.tier.as_str() {
+        "M" => 13.0,
+        "L" => 26.0,
+        _ => 6.4,
+    }
+}
+
+/// Σ_{i ≤ x} i^−s (Euler–Maclaurin): requests that land on the x most popular keys, unnormalised
+fn zipf_mass(x: f64, s: f64) -> f64 {
+    if x <= 1.0 {
+        return x.max(0.0);
+    }
+    if (s - 1.0).abs() < 1e-9 {
+        x.js_ln() + 0.5772156649 + 0.5 / x
+    } else {
+        (x.js_pow(1.0 - s) - 1.0) / (1.0 - s) + 0.5 * (1.0 + x.js_pow(-s))
+    }
+}
+
+/// the share of reads a cache answers: its own `hitRate`, or — given the data it fronts — the share of
+/// requests that land on the most popular keys its memory holds (1 KB keys, Zipf popularity)
+pub fn cache_hit_rate(d: &NodeData) -> f64 {
+    match d.working_set_gb.filter(|w| *w > 0.0) {
+        Some(ws) => {
+            let s = d.skew.unwrap_or(1.0).max(0.01);
+            let n = ws * 1e6;
+            let k = (cache_memory_gb(d) * 1e6).min(n);
+            // keys expire and new ones appear: even a cache that holds everything misses now and then
+            (zipf_mass(k, s) / zipf_mass(n, s)).min(1.0) * 0.99
+        }
+        None => d.hit_rate.unwrap_or(0.85),
+    }
+}
+
 pub fn cache_warmth(cold_at: Option<f64>, now: f64, warmup_s: Option<f64>) -> f64 {
     match cold_at {
         None => 1.0,

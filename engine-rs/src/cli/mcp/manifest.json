@@ -249,6 +249,17 @@
             "behind"
            ]
           },
+          "workingSetGb": {
+           "description": "cache: the data it fronts, GB — with it the hit rate follows from the cache size (S 6.4, M 13, L 26 GB) and `skew`",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
+          "skew": {
+           "description": "cache: how concentrated reads are on popular keys (Zipf exponent, default 1)",
+           "type": "number",
+           "minimum": 0.1,
+           "maximum": 3
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -576,6 +587,17 @@
             "through",
             "behind"
            ]
+          },
+          "workingSetGb": {
+           "description": "cache: the data it fronts, GB — with it the hit rate follows from the cache size (S 6.4, M 13, L 26 GB) and `skew`",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
+          "skew": {
+           "description": "cache: how concentrated reads are on popular keys (Zipf exponent, default 1)",
+           "type": "number",
+           "minimum": 0.1,
+           "maximum": 3
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -1218,6 +1240,17 @@
             "behind"
            ]
           },
+          "workingSetGb": {
+           "description": "cache: the data it fronts, GB — with it the hit rate follows from the cache size (S 6.4, M 13, L 26 GB) and `skew`",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
+          "skew": {
+           "description": "cache: how concentrated reads are on popular keys (Zipf exponent, default 1)",
+           "type": "number",
+           "minimum": 0.1,
+           "maximum": 3
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -1535,6 +1568,17 @@
                "behind"
               ]
              },
+             "workingSetGb": {
+              "description": "cache: the data it fronts, GB — with it the hit rate follows from the cache size (S 6.4, M 13, L 26 GB) and `skew`",
+              "type": "number",
+              "exclusiveMinimum": 0
+             },
+             "skew": {
+              "description": "cache: how concentrated reads are on popular keys (Zipf exponent, default 1)",
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 3
+             },
              "capacity": {
               "description": "override: req/s per size-S instance",
               "type": "number",
@@ -1806,6 +1850,17 @@
                  "behind"
                 ]
                },
+               "workingSetGb": {
+                "description": "cache: the data it fronts, GB — with it the hit rate follows from the cache size (S 6.4, M 13, L 26 GB) and `skew`",
+                "type": "number",
+                "exclusiveMinimum": 0
+               },
+               "skew": {
+                "description": "cache: how concentrated reads are on popular keys (Zipf exponent, default 1)",
+                "type": "number",
+                "minimum": 0.1,
+                "maximum": 3
+               },
                "capacity": {
                 "description": "override: req/s per size-S instance",
                 "type": "number",
@@ -2017,6 +2072,17 @@
                  "through",
                  "behind"
                 ]
+               },
+               "workingSetGb": {
+                "description": "cache: the data it fronts, GB — with it the hit rate follows from the cache size (S 6.4, M 13, L 26 GB) and `skew`",
+                "type": "number",
+                "exclusiveMinimum": 0
+               },
+               "skew": {
+                "description": "cache: how concentrated reads are on popular keys (Zipf exponent, default 1)",
+                "type": "number",
+                "minimum": 0.1,
+                "maximum": 3
                },
                "capacity": {
                 "description": "override: req/s per size-S instance",
@@ -2639,6 +2705,17 @@
             "behind"
            ]
           },
+          "workingSetGb": {
+           "description": "cache: the data it fronts, GB — with it the hit rate follows from the cache size (S 6.4, M 13, L 26 GB) and `skew`",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
+          "skew": {
+           "description": "cache: how concentrated reads are on popular keys (Zipf exponent, default 1)",
+           "type": "number",
+           "minimum": 0.1,
+           "maximum": 3
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -2982,6 +3059,17 @@
             "through",
             "behind"
            ]
+          },
+          "workingSetGb": {
+           "description": "cache: the data it fronts, GB — with it the hit rate follows from the cache size (S 6.4, M 13, L 26 GB) and `skew`",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
+          "skew": {
+           "description": "cache: how concentrated reads are on popular keys (Zipf exponent, default 1)",
+           "type": "number",
+           "minimum": 0.1,
+           "maximum": 3
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -3612,6 +3700,17 @@
             "through",
             "behind"
            ]
+          },
+          "workingSetGb": {
+           "description": "cache: the data it fronts, GB — with it the hit rate follows from the cache size (S 6.4, M 13, L 26 GB) and `skew`",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
+          "skew": {
+           "description": "cache: how concentrated reads are on popular keys (Zipf exponent, default 1)",
+           "type": "number",
+           "minimum": 0.1,
+           "maximum": 3
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -4252,6 +4351,17 @@
             "behind"
            ]
           },
+          "workingSetGb": {
+           "description": "cache: the data it fronts, GB — with it the hit rate follows from the cache size (S 6.4, M 13, L 26 GB) and `skew`",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
+          "skew": {
+           "description": "cache: how concentrated reads are on popular keys (Zipf exponent, default 1)",
+           "type": "number",
+           "minimum": 0.1,
+           "maximum": 3
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -4664,6 +4774,17 @@
             "behind"
            ]
           },
+          "workingSetGb": {
+           "description": "cache: the data it fronts, GB — with it the hit rate follows from the cache size (S 6.4, M 13, L 26 GB) and `skew`",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
+          "skew": {
+           "description": "cache: how concentrated reads are on popular keys (Zipf exponent, default 1)",
+           "type": "number",
+           "minimum": 0.1,
+           "maximum": 3
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -4978,6 +5099,17 @@
               "behind"
              ]
             },
+            "workingSetGb": {
+             "description": "cache: the data it fronts, GB — with it the hit rate follows from the cache size (S 6.4, M 13, L 26 GB) and `skew`",
+             "type": "number",
+             "exclusiveMinimum": 0
+            },
+            "skew": {
+             "description": "cache: how concentrated reads are on popular keys (Zipf exponent, default 1)",
+             "type": "number",
+             "minimum": 0.1,
+             "maximum": 3
+            },
             "capacity": {
              "description": "override: req/s per size-S instance",
              "type": "number",
@@ -5249,6 +5381,17 @@
                 "behind"
                ]
               },
+              "workingSetGb": {
+               "description": "cache: the data it fronts, GB — with it the hit rate follows from the cache size (S 6.4, M 13, L 26 GB) and `skew`",
+               "type": "number",
+               "exclusiveMinimum": 0
+              },
+              "skew": {
+               "description": "cache: how concentrated reads are on popular keys (Zipf exponent, default 1)",
+               "type": "number",
+               "minimum": 0.1,
+               "maximum": 3
+              },
               "capacity": {
                "description": "override: req/s per size-S instance",
                "type": "number",
@@ -5460,6 +5603,17 @@
                 "through",
                 "behind"
                ]
+              },
+              "workingSetGb": {
+               "description": "cache: the data it fronts, GB — with it the hit rate follows from the cache size (S 6.4, M 13, L 26 GB) and `skew`",
+               "type": "number",
+               "exclusiveMinimum": 0
+              },
+              "skew": {
+               "description": "cache: how concentrated reads are on popular keys (Zipf exponent, default 1)",
+               "type": "number",
+               "minimum": 0.1,
+               "maximum": 3
               },
               "capacity": {
                "description": "override: req/s per size-S instance",
@@ -6080,6 +6234,17 @@
             "behind"
            ]
           },
+          "workingSetGb": {
+           "description": "cache: the data it fronts, GB — with it the hit rate follows from the cache size (S 6.4, M 13, L 26 GB) and `skew`",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
+          "skew": {
+           "description": "cache: how concentrated reads are on popular keys (Zipf exponent, default 1)",
+           "type": "number",
+           "minimum": 0.1,
+           "maximum": 3
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -6394,6 +6559,17 @@
               "behind"
              ]
             },
+            "workingSetGb": {
+             "description": "cache: the data it fronts, GB — with it the hit rate follows from the cache size (S 6.4, M 13, L 26 GB) and `skew`",
+             "type": "number",
+             "exclusiveMinimum": 0
+            },
+            "skew": {
+             "description": "cache: how concentrated reads are on popular keys (Zipf exponent, default 1)",
+             "type": "number",
+             "minimum": 0.1,
+             "maximum": 3
+            },
             "capacity": {
              "description": "override: req/s per size-S instance",
              "type": "number",
@@ -6665,6 +6841,17 @@
                 "behind"
                ]
               },
+              "workingSetGb": {
+               "description": "cache: the data it fronts, GB — with it the hit rate follows from the cache size (S 6.4, M 13, L 26 GB) and `skew`",
+               "type": "number",
+               "exclusiveMinimum": 0
+              },
+              "skew": {
+               "description": "cache: how concentrated reads are on popular keys (Zipf exponent, default 1)",
+               "type": "number",
+               "minimum": 0.1,
+               "maximum": 3
+              },
               "capacity": {
                "description": "override: req/s per size-S instance",
                "type": "number",
@@ -6876,6 +7063,17 @@
                 "through",
                 "behind"
                ]
+              },
+              "workingSetGb": {
+               "description": "cache: the data it fronts, GB — with it the hit rate follows from the cache size (S 6.4, M 13, L 26 GB) and `skew`",
+               "type": "number",
+               "exclusiveMinimum": 0
+              },
+              "skew": {
+               "description": "cache: how concentrated reads are on popular keys (Zipf exponent, default 1)",
+               "type": "number",
+               "minimum": 0.1,
+               "maximum": 3
               },
               "capacity": {
                "description": "override: req/s per size-S instance",

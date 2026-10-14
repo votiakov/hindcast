@@ -117,6 +117,11 @@ export function importKubernetes(documents: any, name?: string | null): any;
  */
 export function importTerraform(doc: any, name?: string | null): any;
 /**
+ * cacheHitRate(nodeData) → the share of reads a cache answers (its hitRate, or what its size and the
+ * data it fronts give)
+ */
+export function cacheHitRate(d: any): number;
+/**
  * exportPlan(presets, { window?, selector?, entry?, namespaces? }) → [{ preset, query: { file, query, mapping } }]:
  * the Prometheus queries `export-prometheus` and collect_telemetry run, for scripts that fetch them
  */
@@ -197,6 +202,7 @@ export interface InitOutput {
   readonly instanceType: (a: number, b: number) => [number, number, number];
   readonly importKubernetes: (a: any, b: number, c: number) => [number, number, number];
   readonly importTerraform: (a: any, b: number, c: number) => [number, number, number];
+  readonly cacheHitRate: (a: any) => [number, number, number];
   readonly exportPlan: (a: number, b: number, c: any) => [number, number, number];
   readonly podsByNodeQuery: (a: number, b: number) => [number, number];
   readonly zoneOfProviderId: (a: number, b: number) => [number, number];

@@ -553,6 +553,14 @@ mod wasm {
         Ok(crate::convert::terraform::import_terraform(&doc, name.as_deref()).map_err(err)?.serialize(&ser())?)
     }
 
+    /// cacheHitRate(nodeData) → the share of reads a cache answers (its hitRate, or what its size and the
+    /// data it fronts give)
+    #[wasm_bindgen(js_name = cacheHitRate)]
+    pub fn cache_hit_rate(d: JsValue) -> Result<f64, JsValue> {
+        let d: crate::sim::catalog::NodeData = from(d)?;
+        Ok(crate::sim::catalog::cache_hit_rate(&d))
+    }
+
     /// exportPlan(presets, { window?, selector?, entry?, namespaces? }) → [{ preset, query: { file, query, mapping } }]:
     /// the Prometheus queries `export-prometheus` and collect_telemetry run, for scripts that fetch them
     #[wasm_bindgen(js_name = exportPlan)]

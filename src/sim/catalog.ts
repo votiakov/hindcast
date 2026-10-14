@@ -1,6 +1,7 @@
 import type { Node, Edge } from '@xyflow/react';
 import { kindPricing } from './pricing';
 import type { AutoscaleSpec } from './autoscale';
+import * as wasm from '../backtest/wasm/hindcast_engine.js';
 
 /**
  * Component catalog: the *numbers* (capacity, latency, price) and node data shape.
@@ -90,6 +91,10 @@ export interface SystemNodeData extends Record<string, unknown> {
   warmupS?: number;
   /** cache/cdn: writes go on to the origin (through) or wait in the cache and flush later (behind) */
   writePolicy?: 'through' | 'behind';
+  /** cache: the data it fronts, GB (hit rate then follows from its size and `skew`) */
+  workingSetGb?: number;
+  /** cache: Zipf exponent of key popularity (default 1) */
+  skew?: number;
   /** cache / cdn: bumped by the flush action — the engine empties the cache when it changes */
   flushes?: number;
 
@@ -249,6 +254,9 @@ export function isUp(d: SystemNodeData): boolean {
 }
 
 /** capacity in req/s; `reachable` = instances that actually receive traffic */
+/** the share of reads a cache answers: its hitRate, or what its size and the data it fronts give (engine) */
+export const cacheHitRate = (d: SystemNodeData): number => (d.kind === 'cache' && d.workingSetGb ? wasm.cacheHitRate(d) : (d.hitRate ?? 0.85));
+
 export function capacityOf(d: SystemNodeData, reachable = instancesUp(d)): number {
   const spec = KINDS[d.kind];
   let cap: number;

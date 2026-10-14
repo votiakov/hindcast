@@ -1,6 +1,6 @@
 import { NodeToolbar, Position } from '@xyflow/react';
 import { HeartPulse, Minus, Plus, Skull, Trash2 } from 'lucide-react';
-import { KINDS, RUNTIME_KINDS, RUNTIMES, TIERS, isUp, type RetryPolicy, type RouteMode, type Runtime, type SystemNodeData, type Tier } from '../sim/catalog';
+import { KINDS, RUNTIME_KINDS, RUNTIMES, TIERS, cacheHitRate, isUp, type RetryPolicy, type RouteMode, type Runtime, type SystemNodeData, type Tier } from '../sim/catalog';
 import { useSim } from '../sim/store';
 import { useBoardId } from './BoardContext';
 import { fmt } from './nodeModel';
@@ -98,8 +98,26 @@ export function NodeControls({ id, data, selected }: { id: string; data: SystemN
         {(data.kind === 'cache' || data.kind === 'cdn') && (
           <div className="tb-group">
             <span className="tb-label">hit</span>
-            <input type="range" min={0} max={0.99} step={0.01} value={data.hitRate ?? 0.85} onChange={(e) => set({ hitRate: +e.target.value })} />
-            <span className="tb-count">{Math.round((data.hitRate ?? 0.85) * 100)}%</span>
+            {data.kind === 'cache' && data.workingSetGb ? (
+              <span className="tb-count" title="From the cache's memory and the data it fronts">{Math.round(cacheHitRate(data) * 100)}%</span>
+            ) : (
+              <>
+                <input type="range" min={0} max={0.99} step={0.01} value={data.hitRate ?? 0.85} onChange={(e) => set({ hitRate: +e.target.value })} />
+                <span className="tb-count">{Math.round((data.hitRate ?? 0.85) * 100)}%</span>
+              </>
+            )}
+            {data.kind === 'cache' && (
+              <>
+                <span className="tb-label" title="The data this cache fronts: with it, the hit rate follows from the cache's size (S 6.4, M 13, L 26 GB) and how skewed the reads are">data GB</span>
+                <input className="tb-num" type="number" min={0} step={1} value={data.workingSetGb ?? ''} placeholder="—" onChange={(e) => set({ workingSetGb: +e.target.value > 0 ? +e.target.value : undefined })} />
+                {data.workingSetGb ? (
+                  <>
+                    <span className="tb-label" title="Zipf exponent: 1 is typical of web traffic, higher means a few keys get most reads">skew</span>
+                    <input className="tb-num" type="number" min={0.1} max={3} step={0.1} value={data.skew ?? 1} onChange={(e) => set({ skew: +e.target.value || undefined })} />
+                  </>
+                ) : null}
+              </>
+            )}
             <span className="tb-label">writes</span>
             <select className="tb-select" value={data.writePolicy ?? 'through'} onChange={(e) => set({ writePolicy: e.target.value as 'through' | 'behind' })} title="through: writes go on to the origin. behind: acknowledged at the cache and flushed ~5 s later — lost if the cache dies first">
               <option value="through">through</option>

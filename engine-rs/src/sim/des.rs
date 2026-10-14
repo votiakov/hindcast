@@ -728,7 +728,7 @@ impl<'a> Des<'a> {
                 self.at(wait, Ev::Flush { n });
                 return self.deliver(done, true);
             }
-            let hit = if job.read { d.hit_rate.unwrap_or(0.85) * cache_warmth(self.nodes[n].cold_at, self.now, d.warmup_s) } else { 0.0 };
+            let hit = if job.read { super::catalog::cache_hit_rate(d) * cache_warmth(self.nodes[n].cold_at, self.now, d.warmup_s) } else { 0.0 };
             if self.rng.next() < hit {
                 self.nodes[n].win.hits += 1.0;
                 return self.deliver(done, true);

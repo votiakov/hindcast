@@ -627,6 +627,7 @@ select { background: #0a1122; color: var(--text); border: 1px solid var(--border
 .node-toolbar { flex-direction: column; align-items: center; }
 .tb-row { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
 .tb-select { background: #0a1122; color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 4px; font-size: 11px; font-family: inherit; }
+.tb-num { width: 52px; background: #0a1122; color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 4px; font-size: 11px; font-family: var(--mono); }
 .tb-chip.wide { padding: 0 9px; }
 .node-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
 .node-tag { font-family: var(--mono); font-size: 9.5px; font-weight: 600; padding: 2px 6px; border-radius: 4px; background: rgba(148, 163, 184, 0.1); color: var(--muted); border: 1px solid var(--border); }

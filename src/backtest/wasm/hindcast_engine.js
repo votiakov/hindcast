@@ -643,6 +643,20 @@ export function importTerraform(doc, name) {
 }
 
 /**
+ * cacheHitRate(nodeData) → the share of reads a cache answers (its hitRate, or what its size and the
+ * data it fronts give)
+ * @param {any} d
+ * @returns {number}
+ */
+export function cacheHitRate(d) {
+    const ret = wasm.cacheHitRate(d);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0];
+}
+
+/**
  * exportPlan(presets, { window?, selector?, entry?, namespaces? }) → [{ preset, query: { file, query, mapping } }]:
  * the Prometheus queries `export-prometheus` and collect_telemetry run, for scripts that fetch them
  * @param {string[]} presets
