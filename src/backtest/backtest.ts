@@ -279,9 +279,13 @@ export function mergeBacktests(parts: BacktestResult[]): BacktestResult {
  *  installs a parallel runner — src/backtest/parallel.ts, Node only */
 export type ReplayRunner = (plans: Plan[], traffic: Traffic, opts: { faults?: Fault[] }) => RunResult[];
 let replayRunner: ReplayRunner = (plans, traffic, opts) => plans.map((p) => runPlan(p, traffic, opts));
-export function setReplayRunner(r: ReplayRunner | null) {
+let replayThreads = 1;
+export function setReplayRunner(r: ReplayRunner | null, threads = 1) {
   replayRunner = r ?? ((plans, traffic, opts) => plans.map((p) => runPlan(p, traffic, opts)));
+  replayThreads = r ? Math.max(1, threads) : 1;
 }
+/** how many replays run at once (time budgets divide by it) */
+export const replayConcurrency = () => replayThreads;
 
 export function backtest(model: Model, d: Dataset, strategies: unknown[], opts: BacktestOptions = {}): BacktestResult {
   const draws = Math.max(1, opts.draws ?? 30);

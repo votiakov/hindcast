@@ -4,7 +4,7 @@ import { parse as parseYaml, stringify as toYaml } from 'yaml';
 import { sliceDataset, type Dataset } from '../src/backtest/dataset';
 import { calibrate, type CalibrateOptions } from '../src/backtest/calibrate';
 import { holdoutAccuracy, modelBreakingPoint } from '../src/backtest/accuracy';
-import { backtest, type BacktestResult, type Ranged, type StrategyResult } from '../src/backtest/backtest';
+import { backtest, replayConcurrency, type BacktestResult, type Ranged, type StrategyResult } from '../src/backtest/backtest';
 import { basePlan, runPlan } from '../src/backtest/engine';
 import { observedReplicas, trafficOf } from '../src/backtest/calibrate';
 import { applyStrategy, StrategySpec } from '../src/backtest/strategy';
@@ -258,7 +258,8 @@ export function drawsFor(m: Model, d: Dataset, plans: number, requested = 30, bu
   const t0 = performance.now();
   runPlan(basePlan(m, observedReplicas(d, m)), trafficOf(d, m));
   const one = Math.max(1, performance.now() - t0);
-  const fit = Math.floor(budgetMs / (plans * one));
+  // the replays share the threads the host gave them (80% efficient: the copies back cost something)
+  const fit = Math.floor((budgetMs * Math.max(1, replayConcurrency() * 0.8)) / (plans * one));
   const draws = Math.max(3, Math.min(requested, fit));
   return draws < requested ? { draws, note: `${draws} capacity draws instead of ${requested}: one replay of this ${d.n}-bucket history takes ${Math.round(one)} ms, so the bands are coarser (the medians are not affected). Pass draws to override, or last to shorten the history` } : { draws };
 }

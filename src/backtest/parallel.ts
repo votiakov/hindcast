@@ -96,7 +96,7 @@ export function enableParallelReplays(entry: string | URL, o: { threads?: number
   // a worker starts on the main thread's event loop: until every one has said so, replays stay here
   const ready = Promise.all(starting).then((ws) => {
     pool = ws.filter((w): w is Worker => !!w);
-    if (pool.length >= 2) setReplayRunner((plans, traffic, opts) => (plans.length < MIN_BATCH ? plans.map((p) => runPlan(p, traffic, opts)) : replayAll(plans, traffic, opts)));
+    if (pool.length >= 2) setReplayRunner((plans, traffic, opts) => (plans.length < MIN_BATCH ? plans.map((p) => runPlan(p, traffic, opts)) : replayAll(plans, traffic, opts)), pool.length);
     return pool.length;
   });
   return { threads: n, ready };
