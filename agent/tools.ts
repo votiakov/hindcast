@@ -10,6 +10,7 @@ import { basePlan } from '../src/backtest/engine';
 import { applyStrategy } from '../src/backtest/strategy';
 import { modelBreakingPoint } from '../src/backtest/accuracy';
 import { nodeLoss } from '../src/backtest/resilience';
+import { reviewCapacity } from './review';
 import type { Dataset } from '../src/backtest/dataset';
 
 /**
@@ -167,6 +168,14 @@ export const TOOLS: AgentTool[] = [
       }
       return out;
     },
+  },
+  {
+    name: 'review_capacity',
+    title: 'Capacity review: headroom, busier days, node loss, binding limits, fixes and savings',
+    description:
+      'The capacity review a platform team does by hand, from the calibrated history, every number backtested: headroom over the busiest moment and what saturates first; whether 1.5× and 2× today\'s traffic hold; what losing a node at the peak costs and the single points of failure (Kubernetes), with the replicas that fix it; services held back by CPU quota throttling or near their memory limit; and the fixes and savings that pass. Writes a Markdown report into the workspace. Use it for "how are we doing?", "weekly capacity review", "are we ready for next week?".',
+    input: { workspace, draws: z.number().int().min(1).max(30).optional().describe('capacity draws per replay (default 12)') },
+    run: (a, ws, progress) => reviewCapacity(ws, a as { draws?: number }, progress),
   },
   {
     name: 'check_node_loss',

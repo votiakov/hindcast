@@ -299,6 +299,22 @@ The req/s the system sustains within SLO with today's endpoint mix, as built and
 and what binds first. That can be a service saturating, or errors that grow with load crossing
 the error SLO.
 
+### `review_capacity`
+
+The capacity review a platform team does by hand, in one call, every number replayed from the
+history:
+
+- the headroom over the busiest moment, and what saturates first;
+- whether 1.5× and 2× today's traffic hold;
+- what losing a node at the peak costs, the single points of failure and the backtested fix;
+- the services held back by CPU quota throttling or close to their memory limit;
+- how full the node pool runs;
+- the fixes and savings that pass.
+
+It writes `reports/capacity-review-<date>.md` into the workspace. On the Kubernetes reference it
+takes about 6 seconds. It found the `email` service at 95% of its memory limit, which nobody had
+noticed.
+
 ### `check_node_loss`
 
 Kubernetes only. It replays the history's busiest moment with each node gone. Every pod on the node
@@ -423,6 +439,7 @@ or dropped on the app's Backtest screen.
 | `verify_change` | `changes[]`, `last?`, `traffic?{scale \| peakRps}`, `gateMinutes?`, `draws?` (30, fewer on long histories to fit ~40 s) | per change: verdict, confidence, cost, reliability, headroom, reasons; reports and `app.open` |
 | `suggest_changes` | `goal?` (reliability \| cost \| both), `last?`, `draws?`, `gateMinutes?`, `idleBelow?` | saturated services; fixes and savings that pass, each judged; the savings combined; rejected candidates |
 | `find_headroom` | `strategy?` | req/s within SLO, what binds, history peak |
+| `review_capacity` | `draws?` | headroom, 1.5× and 2× load, node loss and its fix, throttled and memory-bound services, node pool fill, fixes and savings; a Markdown report |
 | `check_node_loss` | `strategy?`, `traffic?{scale \| peakRps}`, `recoverS?` | per node: services lost or degraded, minutes out of SLO and failed requests added; single points of failure |
 | `verify_design` | `spec`, `rps?`, `slo?`, `budgetMonthly?`, `incidentCostPerMinute?` | verdict, problems, findings with fixes as spec changes, app link |
 | `read_cluster` | `context`, `namespace?`, `selector?` | workloads, snapshot path, the exact command run |

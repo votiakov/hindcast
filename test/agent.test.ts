@@ -356,7 +356,7 @@ describe('verify_change on real history (HotROD)', () => {
   });
 
   it('runs every tool through the shared registry (MCP and `hindcast agent`)', async () => {
-    expect(TOOLS.map((t) => t.name)).toEqual(['connect_telemetry', 'collect_telemetry', 'calibrate_model', 'model_status', 'verify_change', 'suggest_changes', 'find_headroom', 'check_node_loss', 'verify_design', 'read_cluster']);
+    expect(TOOLS.map((t) => t.name)).toEqual(['connect_telemetry', 'collect_telemetry', 'calibrate_model', 'model_status', 'verify_change', 'suggest_changes', 'find_headroom', 'review_capacity', 'check_node_loss', 'verify_design', 'read_cluster']);
     const h = (await runTool('find_headroom', { workspace: dir, strategy: { name: 'x', changes: [{ service: 'customer', replicas: 2 }] } })) as { asBuilt: { rps: number; limitedBy: string } };
     expect(h.asBuilt.rps).toBeGreaterThan(3);
     await expect(runTool('nope', {})).rejects.toThrow(/no tool/);
