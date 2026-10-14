@@ -494,4 +494,49 @@ export const BASIC_SCENARIOS: Scenario[] = [
 import { ADVANCED } from './advanced';
 
 /** built-in comparisons: the basics, then the advanced (principal-level) set */
+/** a cache on a write-heavy system: the habit that saves nothing (after The System Design Primer's Mint.com problem) */
+BASIC_SCENARIOS.push({
+  id: 'cache-on-writes',
+  title: 'A Cache on a Write-Heavy App',
+  tagline: 'Nine in ten requests are writes. Does a cache help?',
+  watch: 'The database on the left stays red: only reads can hit a cache, and there are hardly any.',
+  readRatio: 0.1,
+  a: {
+    title: 'Cache in front of a medium DB',
+    graph: graph(
+      [
+        ['users', 'client', X[0], 200],
+        ['lb', 'lb', X[1], 200],
+        ['api', 'server', X[2], 200, { instances: 12 }],
+        ['cache', 'cache', X[3], 200],
+        ['db', 'db', X[4], 200, { tier: 'M' }],
+      ],
+      [['users', 'lb'], ['lb', 'api'], ['api', 'cache'], ['cache', 'db']],
+    ),
+  },
+  b: {
+    title: 'A large DB, no cache',
+    graph: graph(
+      [
+        ['users', 'client', X[0], 200],
+        ['lb', 'lb', X[1], 200],
+        ['api', 'server', X[2], 200, { instances: 12 }],
+        ['db', 'db', X[3], 200, { tier: 'L' }],
+      ],
+      [['users', 'lb'], ['lb', 'api'], ['api', 'db']],
+    ),
+  },
+  timeline: [
+    { at: 0, rps: 1200, caption: '1,200 req/s, 90% of them writes. Both keep up.' },
+    { at: 8, rps: 2600, caption: 'Month-end: 2,600 req/s.' },
+    { at: 30, rps: 2600 },
+  ],
+  events: [],
+  takeaway: {
+    a: 'The cache answered under 9% of requests — the reads that hit. Every write went through to a database that could not take them.',
+    b: 'A database sized for writes carried the month-end with room to spare, for about $0.90/h more than the cache — and none of the failed requests.',
+    lesson: 'Caches scale reads. Look at the read/write mix before reaching for one: a write-heavy system needs somewhere for its writes to go.',
+  },
+});
+
 export const SCENARIOS: Scenario[] = [...BASIC_SCENARIOS, ...ADVANCED];

@@ -6,7 +6,10 @@ import { runtimes } from './runtimes';
 import { elastic } from './elastic';
 import { queues } from './queues';
 import { zones } from './zones';
+import { pastebin } from './pastebin';
+import { mint } from './mint';
+import { scale201 } from './scale201';
 
 /** all lessons, in the order the picker shows them */
-export const LESSONS: Lesson[] = [lesson1, queues, retryStorm, elastic, zones, aiServing, runtimes];
+export const LESSONS: Lesson[] = [lesson1, scale201, pastebin, mint, queues, retryStorm, elastic, zones, aiServing, runtimes];
 export const lessonById = (id: string) => LESSONS.find((l) => l.id === id) ?? LESSONS[0];
