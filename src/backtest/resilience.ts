@@ -23,6 +23,12 @@ export interface NodeLossOptions {
   draws?: number;
   /** minutes out of SLO a node loss may add before it counts as a failure (default 0.5) */
   gateMinutes?: number;
+  /** placement to use instead of the model's (pods per node per service) */
+  pods?: Record<string, Record<string, number>>;
+  /** only these nodes (default: every node) */
+  nodes?: string[];
+  /** when the node goes, seconds from the start of the history (default: a minute before its busiest moment) */
+  atS?: number;
 }
 
 export interface NodeLossResult {
@@ -38,8 +44,8 @@ export interface NodeLossResult {
 const RECOVER_S = 50 + 300 + 30;
 
 export function nodeLoss(model: Model, d: Dataset, o: NodeLossOptions = {}) {
-  const spread = podsPerNode(model, o.strategy);
-  const nodes = [...new Set(Object.values(spread).flatMap((p) => Object.keys(p)))].sort();
+  const spread = o.pods ? Object.fromEntries(Object.entries(o.pods).filter(([id]) => model.services[id] && !model.services[id].hostedBy)) : podsPerNode(model, o.strategy);
+  const nodes = (o.nodes ?? [...new Set(Object.values(spread).flatMap((p) => Object.keys(p)))]).sort();
   if (!nodes.length) throw new Error('no pod placement in the model: collect from a Kubernetes cluster (kube-state-metrics kube_pod_info) to check node loss');
   let traffic = trafficOf(d, model);
   if (o.load) traffic = scaleTraffic(traffic, o.load).traffic;
@@ -50,7 +56,7 @@ export function nodeLoss(model: Model, d: Dataset, o: NodeLossOptions = {}) {
     const t = Object.values(traffic.endpoints).reduce((a, s) => a + (s[i] ?? 0), 0);
     if (t > peak) (peak = t), (at = i);
   }
-  const start = Math.max(0, at * traffic.stepS - 60);
+  const start = o.atS ?? Math.max(0, at * traffic.stepS - 60);
   // without an autoscaler and with no room left on the other nodes, the pods stay Pending
   const c = model.cluster;
   const want = c ? requested(model, c.other) : null;

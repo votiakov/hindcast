@@ -41,7 +41,7 @@ export interface K8sReference {
   /** the access log the days are replayed from */
   log: string;
   /** a day from the log, or a step load test (shape.mjs steps args: from, to, step, holdS) */
-  runs: Record<string, { day?: string; minutes?: number; scale?: string; steps?: (string | number)[]; manifests: string; note?: string }>;
+  runs: Record<string, { day?: string; minutes?: number; scale?: string; steps?: (string | number)[]; manifests: string; note?: string; kill?: { node: string; atS: number } }>;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -102,8 +102,26 @@ async function main() {
   const scaleLog: string[] = [];
   const watch = setInterval(() => scaleLog.push(`${Math.floor(Date.now() / 1000)} ${replicas()}`), 15_000);
   const start = Math.floor(Date.now() / 1000);
+  // a node failure, for real: its container stops (as a VM would vanish), mid-day. What ran on it
+  // is written down first — the placement a node-loss prediction starts from
+  let killedAt: number | null = null;
+  const kill = r.kill
+    ? setTimeout(() => {
+        const pods = kubectl(['get', 'pods', '-A', '-o', 'jsonpath={range .items[*]}{.metadata.namespace} {.metadata.name} {.spec.nodeName} {.status.phase}{"\\n"}{end}'], { quiet: true });
+        writeFileSync(join(out, 'placement.txt'), pods);
+        killedAt = Math.floor(Date.now() / 1000);
+        spawnSync('docker', ['stop', r.kill!.node], { stdio: 'ignore' });
+        console.log(`killed ${r.kill!.node} at ${killedAt}`);
+      }, r.kill.atS * 1000)
+    : null;
   await k6(out, 'shape.json', cfg, true);
   const end = Math.floor(Date.now() / 1000);
+  if (kill) clearTimeout(kill);
+  if (r.kill && killedAt) {
+    spawnSync('docker', ['start', r.kill.node], { stdio: 'ignore' });
+    kubectl(['wait', '--for=condition=Ready', `node/${r.kill.node}`, '--timeout=300s'], { quiet: true });
+    console.log(`${r.kill.node} is back`);
+  }
   clearInterval(watch);
   writeFileSync(join(out, 'frontend-replicas.log'), scaleLog.join('\n') + '\n');
   console.log('flushing 45 s…');
@@ -116,13 +134,18 @@ async function main() {
   rmSync(join(out, 'raw', 'k6.csv'));
 
   // the run is recorded: its metadata first, so a failed collection below doesn't lose it
-  writeFileSync(join(out, 'run.json'), JSON.stringify({ system, run, start, end, day: r.day ?? null, minutes: r.minutes ?? null, scale: r.scale ?? null, steps: r.steps ?? null, manifests: r.manifests, note: r.note ?? null, recordedAt: new Date().toISOString() }, null, 2));
+  writeFileSync(join(out, 'run.json'), JSON.stringify({ system, run, start, end, day: r.day ?? null, minutes: r.minutes ?? null, scale: r.scale ?? null, steps: r.steps ?? null, manifests: r.manifests, note: r.note ?? null, ...(r.kill ? { kill: { node: r.kill.node, at: killedAt } } : {}), recordedAt: new Date().toISOString() }, null, 2));
 
   // 4. telemetry, collected the way an agent collects it: from the live Prometheus and Jaeger
   const ws = new Workspace(join(out, 'workspace'));
   const conn = await connectTelemetry(ws, { prometheus: { url: cfg.prometheus }, jaeger: { url: cfg.jaeger }, system: { name: `${cfg.name} — ${run}`, slo: cfg.slo, timeoutMs: Number(String(cfg.timeout ?? '5s').replace('s', '')) * 1000 } });
   if (conn.problems.length) console.warn('connect problems:', conn.problems);
-  const col = await collect(ws, { start, end, stepS: 30 });
+  // a killed node may have taken Jaeger and its traces with it: the metrics still stand
+  const col = await collect(ws, { start, end, stepS: 30 }).catch((e) => {
+    if (!r.kill) throw e;
+    console.warn(`collection failed after the node kill: ${(e as Error).message}`);
+    return { window: { buckets: 0 }, services: 0, warnings: [String(e)] } as unknown as Awaited<ReturnType<typeof collect>>;
+  });
   writeFileSync(join(out, 'collect.json'), JSON.stringify(col, null, 1));
   console.log(`collected ${col.window.buckets} buckets, ${col.services} services; warnings: ${col.warnings.length}`);
   console.log(`done: ${out} (${Math.round((end - start) / 60)} min, ${reqs.length} requests)`);

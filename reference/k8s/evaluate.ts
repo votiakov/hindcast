@@ -29,7 +29,8 @@ import { applyStrategy } from '../../src/backtest/strategy';
 import { observedReplicas, trafficOf } from '../../src/backtest/calibrate';
 import { accuracyLines, parseRequestLog, referenceAccuracy, type ReferenceRun, type RequestLog } from '../../src/backtest/accuracy';
 import { importBundle } from '../../src/backtest/import/manifest';
-import { PRESETS, podsByNodeQuery } from '../../src/backtest/import/promExport';
+import { PRESETS, podsByNodeQuery, WORKLOAD_RE } from '../../src/backtest/import/promExport';
+import { nodeLoss } from '../../src/backtest/resilience';
 import { fileAccess } from '../../cli/files';
 import type { K8sReference } from './record';
 
@@ -329,6 +330,45 @@ async function score(label: string, ws: Workspace, base: string, evalDir: string
   return rows;
 }
 
+/** a node failure for real (a run with `kill`): what check_node_loss said from the ordinary day and
+ *  the placement at the instant of the kill, what the model said on the day's own traffic, and what
+ *  the client measured — each against the as-built ordinary day */
+async function nodeLossCase(run: string, ws: Workspace, evalDir: string) {
+  const m = reviveModel(ws.readJson<Model>('model.json'));
+  const info = JSON.parse(readFileSync(join(runDir(run), 'run.json'), 'utf8')) as { start: number; end: number; kill: { node: string; at: number } };
+  const ns = 'shop';
+  const re = new RegExp(WORKLOAD_RE);
+  const pods: Record<string, Record<string, number>> = {};
+  for (const line of readFileSync(join(runDir(run), 'placement.txt'), 'utf8').split('\n')) {
+    const [nsp, pod, node, phase] = line.trim().split(/\s+/);
+    if (nsp !== ns || phase !== 'Running' || !node) continue;
+    const mm = re.exec(pod);
+    const w = mm ? (mm[1] ?? mm[2] ?? mm[3]) : pod;
+    (pods[w] ??= {})[node] = (pods[w][node] ?? 0) + 1;
+  }
+  const into = info.kill.at - info.start;
+  // before the day: the ordinary day (it starts SETTLE_S into the run's clock)
+  const calm = ws.readJson<Dataset>('dataset.json');
+  const exAnte = nodeLoss(m, calm, { pods, nodes: [info.kill.node], atS: into - SETTLE_S, draws: 10 }).results[0];
+  // on the day: the run's own traffic, the node lost at the moment it was
+  const day = await telemetryOf([run], join(evalDir, 'runs', run));
+  const onDay = nodeLoss(m, day, { pods, nodes: [info.kill.node], atS: info.kill.at - day.start, draws: 10 }).results[0];
+  const actual = measured(settled(requestsOf(run), info.start), m.slo);
+  const asBuilt = measured(settled(requestsOf('history'), meta('history').start), m.slo);
+  const failedOf = (x: ReturnType<typeof measured>) => Math.round(x.errorRate * x.requests);
+  const row = {
+    run,
+    node: info.kill.node,
+    atMinute: Math.round((into / 60) * 10) / 10,
+    lost: exAnte.lost,
+    predicted: { minutesOutOfSlo: exAnte.minutesOutOfSlo, failedRequests: exAnte.failedRequests, verdict: exAnte.verdict, worst: exAnte.worst },
+    onTheDay: { minutesOutOfSlo: onDay.minutesOutOfSlo, failedRequests: onDay.failedRequests },
+    measured: { minutesOutOfSlo: Math.round((actual.minutesOutOfSlo - asBuilt.minutesOutOfSlo) * 10) / 10, failedRequests: failedOf(actual) - failedOf(asBuilt), errorRate: actual.errorRate, p99Ms: Math.round(actual.p99) },
+  };
+  console.log(`[node loss] ${run}: ${info.kill.node} at minute ${row.atMinute} — predicted +${row.predicted.minutesOutOfSlo} min, +${row.predicted.failedRequests} failed; on the day +${row.onTheDay.minutesOutOfSlo} min, +${row.onTheDay.failedRequests}; measured +${row.measured.minutesOutOfSlo} min, +${row.measured.failedRequests} failed`);
+  return row;
+}
+
 async function calibrated(name: string, runs: string[], evalDir: string, slo: Model['slo']) {
   const dir = join(evalDir, name);
   mkdirSync(dir, { recursive: true });
@@ -407,7 +447,10 @@ async function main() {
   const entry = { id: `k8s-${system}`, label: `${cfg.name} (reference)` };
   writeFileSync(indexPath, JSON.stringify([...index.filter((x) => x.id !== entry.id), entry], null, 1));
 
-  writeFileSync(join(evalDir, 'validation.json'), JSON.stringify({ system: cfg.name, slo: cfg.slo, settleS: SETTLE_S, models, evaluatedAt: new Date().toISOString() }, null, 1));
+  const nodeLosses = [];
+  for (const [run, r] of Object.entries(cfg.runs)) if (r.kill && recorded(run)) nodeLosses.push(await nodeLossCase(run, calm.ws, evalDir));
+
+  writeFileSync(join(evalDir, 'validation.json'), JSON.stringify({ system: cfg.name, slo: cfg.slo, settleS: SETTLE_S, models, nodeLosses, evaluatedAt: new Date().toISOString() }, null, 1));
 
   // the README's results tables, one per model
   const pc = (v: number) => `${(v * 100).toFixed(v < 0.01 ? 2 : 1)}%`;

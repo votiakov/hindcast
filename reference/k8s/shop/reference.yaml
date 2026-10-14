@@ -34,6 +34,9 @@ runs:
   normal-1c: { day: 12/Jul/1995, minutes: 40, scale: x83, manifests: variants/frontend-1-1cpu.yaml }
   normal-1-750: { day: 12/Jul/1995, minutes: 40, scale: x83, manifests: variants/frontend-1-750m.yaml }
   launch-x1.3: { day: 13/Jul/1995, minutes: 40, scale: x108, manifests: shop.yaml }
+  # a node failure for real: bnk8s-worker's container stops a minute before the ordinary day's
+  # busiest moment (as built). check_node_loss predicts it from the placement at that instant
+  normal-nodeloss: { day: 12/Jul/1995, minutes: 40, scale: x83, manifests: shop.yaml, kill: { node: bnk8s-worker, atS: 1160 } }
   # a 4-minute check that the recorder works end to end (not used for accuracy)
   smoke: { day: 13/Jul/1995, minutes: 4, scale: x83, manifests: shop.yaml }
   # a 12-minute step load test as built (+50 req/s a minute from 50 to 600): the kind of load test a
