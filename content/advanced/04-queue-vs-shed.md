@@ -16,7 +16,7 @@ Render: `npm run record -- cmp-queue-vs-shed --theme reference --aspect 4:5`
 
 "We never drop a request" sounds like good engineering. Under overload it's how you drop nearly all of them.
 
-The setup in Bottleneck: 4 API servers with capacity for about 1,000 req/s, and clients that time out after 1 second. Traffic jumps from 600 to 1,900 req/s for 18 seconds.
+The setup in Hindcast: 4 API servers with capacity for about 1,000 req/s, and clients that time out after 1 second. Traffic jumps from 600 to 1,900 req/s for 18 seconds.
 
 A queues everything, up to 10 seconds of work. B admits 950 req/s at the edge and keeps a 200 ms queue behind that.
 

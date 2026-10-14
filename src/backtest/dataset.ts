@@ -1,5 +1,5 @@
 /**
- * Telemetry dataset: everything Bottleneck learned from real files, on one regular time grid.
+ * Telemetry dataset: everything Hindcast learned from real files, on one regular time grid.
  *
  * Importers (Prometheus, CloudWatch, OpenTelemetry, billing exports) each produce raw points;
  * `DatasetBuilder` buckets them onto the grid. Missing values are `null` (JSON-safe), never 0 —

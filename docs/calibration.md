@@ -1,6 +1,6 @@
 # Calibration — how a model is fitted from real telemetry
 
-`bottleneck calibrate` (and the app, when you drop files on the Backtest tab) turns a dataset —
+`hindcast calibrate` (and the app, when you drop files on the Backtest tab) turns a dataset —
 metrics, traces and a bill on one time grid — into a model of the system: what each component costs,
 how much load it can take, how its latency grows with load, and how each endpoint's requests travel
 through it. The model is then replayed over the same history and compared with what was measured,
@@ -295,12 +295,12 @@ The whole history is replayed through the model and compared with what was measu
 Services are checked on self time, endpoints on p99. Each component also carries plain-English notes:
 how its capacity was read, what limited it, whether it was extrapolated. They show in the app
 (Backtest → Model tab, and on every node when a moment is opened on the board), in
-`bottleneck calibrate` output, and in every report.
+`hindcast calibrate` output, and in every report.
 
 ## 7. Accuracy
 
 Two kinds of check travel with the model (`model.accuracy`) into the app, the CLI
-(`bottleneck accuracy model.json`) and every report:
+(`hindcast accuracy model.json`) and every report:
 
 - **Holdout** (`--holdout 0.3`): calibrated on the first 70% of the requests, the last 30% predicted
   (split by requests, not by time, so a quiet week with one busy hour isn't judged on its empty

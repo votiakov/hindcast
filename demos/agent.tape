@@ -1,8 +1,8 @@
 # Claude Code, with the backtester's MCP server, asked a real question about a real cluster.
 # Before recording: the Kubernetes reference running (reference/k8s/README.md), the MCP server built
 # (npm run build:mcp-server) and demos/mcp.json written by `npm run sim -- agent setup` or by hand:
-#   { "mcpServers": { "bottleneck": { "command": "node", "args": ["<repo>/dist-cli/bottleneck-mcp.mjs"],
-#                                      "env": { "BOTTLENECK_WORKSPACE": "<repo>/demos/ws" } } } }
+#   { "mcpServers": { "hindcast": { "command": "node", "args": ["<repo>/dist-cli/hindcast-mcp.mjs"],
+#                                      "env": { "HINDCAST_WORKSPACE": "<repo>/demos/ws" } } } }
 #   vhs demos/agent.tape
 Output demos/out/agent-k8s.mp4
 Output demos/out/agent-k8s.gif

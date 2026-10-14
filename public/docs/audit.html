@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Failure audit and analysis · Bottleneck docs</title>
+<title>Failure audit and analysis · Hindcast docs</title>
 <meta name="description" content="What breaks first, and what it costs. The audit replays every way production goes wrong, grades each by what users would have seen, and verifies and prices each fix.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
@@ -11,7 +11,7 @@
 </head>
 <body>
 <header class="bar">
-  <a class="brand" href="index.html">Bottleneck<span>docs</span></a>
+  <a class="brand" href="index.html">Hindcast<span>docs</span></a>
   <nav class="bar-links" aria-label="The app">
     <a href="../#backtest">Backtest</a><a href="../#live">Live</a><a href="../#lessons">Lessons</a><a href="../#sandbox">Sandbox</a><a href="../#compare">Compare</a><a href="../#studio">Studio</a>
   </nav>
@@ -43,7 +43,7 @@
 <li id="audit-report" data-n="9"><h3>The report</h3><p>Markdown to paste, or a self-contained HTML page for a design review.</p></li>
 <li id="audit-mark" data-n="10"><h3>Risks on the board</h3><p>Components that take the system down alone are marked "single point of failure".</p></li>
 </ol>
-<p>From the command line, <code>bottleneck audit arch.yaml --rps 500 --cost-per-min 1000 --md report.md</code> exits with code 2 on a critical finding, so it can gate a pull request that changes an architecture spec.</p>
+<p>From the command line, <code>hindcast audit arch.yaml --rps 500 --cost-per-min 1000 --md report.md</code> exits with code 2 on a critical finding, so it can gate a pull request that changes an architecture spec.</p>
 </div>
 </div>
 </section>

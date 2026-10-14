@@ -1,5 +1,5 @@
 /**
- * Write the Bottleneck import manifest for a recorded reference run — the same file a user writes
+ * Write the Hindcast import manifest for a recorded reference run — the same file a user writes
  * for their own system (see docs/backtest.md).
  *
  *   npx tsx reference/manifest.ts <system> <run>
@@ -12,6 +12,10 @@ import { exportPlan, manifestMetrics } from '../src/backtest/import/promExport';
 import type { ReferenceConfig } from './record';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
+
+/** the manifest this script writes; runs recorded before the rename carry bottleneck.import.yaml */
+export const MANIFEST = 'hindcast.import.yaml';
+export const MANIFESTS = [MANIFEST, 'bottleneck.import.yaml'];
 
 export function writeManifest(system: string, run: string) {
   const sysDir = join(ROOT, system);
@@ -29,7 +33,7 @@ export function writeManifest(system: string, run: string) {
     ...(cfg.placement ? { placement: cfg.placement } : {}),
     model: { slo: cfg.slo, timeoutMs: Number(String(cfg.timeout ?? '5s').replace('s', '')) * 1000, ...(cfg.hostedBy ? { hostedBy: cfg.hostedBy } : {}) },
   };
-  writeFileSync(join(dir, 'bottleneck.import.yaml'), `# Recorded reference run (${system}/${run}); see reference/README.md\n` + stringify(manifest));
+  writeFileSync(join(dir, MANIFEST), `# Recorded reference run (${system}/${run}); see reference/README.md\n` + stringify(manifest));
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) writeManifest(process.argv[2], process.argv[3]);

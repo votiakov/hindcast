@@ -24,7 +24,7 @@ import { iso, seconds, Workspace } from './workspace';
  * model fits them, where the prices come from, and how the model did on data it never saw.
  */
 
-const APP_URL = process.env.BOTTLENECK_APP_URL ?? 'http://localhost:5173';
+const APP_URL = process.env.HINDCAST_APP_URL ?? process.env.BOTTLENECK_APP_URL ?? 'http://localhost:5173';
 const r1 = (x: number) => Math.round(x * 10) / 10;
 const r2 = (x: number) => Math.round(x * 100) / 100;
 const pct = (x: number) => `${Math.round(x * 100)}%`;
@@ -298,7 +298,7 @@ export function verifyChange(ws: Workspace, inputs: ChangeInput[], o: VerifyOpti
   if (o.report !== false) {
     ws.ensure('reports');
     const slug = `${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}-${strategies[0].name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}`;
-    reports = { html: join(ws.path('reports'), `${slug}.html`), markdown: join(ws.path('reports'), `${slug}.md`), bundle: join(ws.path('reports'), `${slug}.bottleneck.json`) };
+    reports = { html: join(ws.path('reports'), `${slug}.html`), markdown: join(ws.path('reports'), `${slug}.md`), bundle: join(ws.path('reports'), `${slug}.hindcast.json`) };
     writeFileSync(reports.html, backtestHtml(r, m));
     writeFileSync(reports.markdown, backtestMarkdown(r, m));
     writeFileSync(join(ws.path('reports'), `${slug}.strategies.yaml`), strategies.map((s) => toYaml(s)).join('---\n'));

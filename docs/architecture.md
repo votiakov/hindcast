@@ -1,6 +1,6 @@
 # Architecture
 
-Bottleneck is one TypeScript codebase with three front-ends over the same simulation core:
+Hindcast is one TypeScript codebase with three front-ends over the same simulation core:
 
 ```
                 ┌──────────────────────────── src/sim ─────────────────────────────┐
@@ -42,7 +42,7 @@ Bottleneck is one TypeScript codebase with three front-ends over the same simula
 | `src/lessons/` | Lesson format (`types.ts`) and lessons |
 | `src/scenarios/` | Comparison scenario format, the built-in scenarios, templates |
 | `src/studio/` | Episodes (scripted clips), brands, the export Stage, the Studio editor |
-| `cli/bottleneck.ts` | CLI (`npm run sim`) |
+| `cli/bottleneck.ts` | CLI: `hindcast` (`npm run sim` in the repository) |
 | `mcp/server.ts` | MCP server (`npm run mcp`, registered in `.mcp.json`) |
 | `scripts/record.mjs` | Frame-perfect episode renderer (`npm run record`) |
 | `examples/` | Example specs, scenarios and variants |

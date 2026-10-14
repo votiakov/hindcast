@@ -8,10 +8,10 @@
 <tr><td>2</td><td>Should we move to Graviton?</td><td><code>arch: arm</code>, with <code>perf:</code> from your benchmark.</td><td><a href="strategies.html">strategies</a></td></tr>
 <tr><td>3</td><td>Which autoscaling policy: target 60% or 75%, 15-second or 60-second metrics, how much warm-up?</td><td>One strategy per candidate, ranked side by side; the scaler runs on its own clock.</td><td><a href="strategies.html">strategies</a></td></tr>
 <tr><td>4</td><td>Is a replica, a cache or a read replica worth it?</td><td><code>replicas</code>, <code>cache</code>, <code>readReplicas</code>: cost against the time out of SLO it removes.</td><td><a href="backtest.html">backtest</a></td></tr>
-<tr><td>5</td><td>How much more traffic can we take, and what gives out first?</td><td><code>bottleneck headroom</code>; the Model tab's capacities and limits.</td><td><a href="calibration.html">calibration</a></td></tr>
+<tr><td>5</td><td>How much more traffic can we take, and what gives out first?</td><td><code>hindcast headroom</code>; the Model tab's capacities and limits.</td><td><a href="calibration.html">calibration</a></td></tr>
 <tr><td>6</td><td>Would retries turn a blip into an outage?</td><td><code>retries</code> with and without a budget, per endpoint or all.</td><td><a href="strategies.html">strategies</a></td></tr>
 <tr><td>7</td><td>What will this pull request do to production?</td><td>The ready-made workflow backtests the manifest diff and comments on the PR; <code>--gate</code> fails the check.</td><td><a href="ci.html">pull requests</a></td></tr>
-<tr><td>8</td><td>Would we survive a famous outage?</td><td><b>Replay an outage…</b> or <code>bottleneck outage</code>.</td><td><a href="outages.html">outages</a></td></tr>
+<tr><td>8</td><td>Would we survive a famous outage?</td><td><b>Replay an outage…</b> or <code>hindcast outage</code>.</td><td><a href="outages.html">outages</a></td></tr>
 <tr><td>9</td><td>Where does the money go, per endpoint and across zones?</td><td>Endpoints tab: $ per million requests; <code>zone</code> / <code>region</code> strategies price the transfer.</td><td><a href="backtest.html#bt-endpoints-price">endpoints</a></td></tr>
 <tr><td>10</td><td>Are our critical endpoints inside their own SLOs?</td><td>Per-endpoint SLOs in the manifest; minutes out of each endpoint's own SLO.</td><td><a href="data.html">data</a></td></tr>
 <tr><td>11</td><td>What in our telemetry doesn't add up?</td><td>Fit status and notes per component: unexplained, poor, cost only.</td><td><a href="calibration.html">calibration</a></td></tr>
@@ -23,9 +23,9 @@
 <p>A design you draw, write as YAML, or import from Terraform or Kubernetes. Answers are directional: good for comparing designs, finding the weak spot and teaching. Calibrate components from production numbers before making claims about a real system.</p>
 <div class="table-wrap"><table class="ledger">
 <tr><th>#</th><th>question</th><th>how</th><th>read</th></tr>
-<tr><td>14</td><td>What breaks first in this design, and what does it cost?</td><td>The failure audit: a risk register with verified, priced fixes; <code>bottleneck audit</code> in CI.</td><td><a href="audit.html">audit</a></td></tr>
+<tr><td>14</td><td>What breaks first in this design, and what does it cost?</td><td>The failure audit: a risk register with verified, priced fixes; <code>hindcast audit</code> in CI.</td><td><a href="audit.html">audit</a></td></tr>
 <tr><td>15</td><td>Which of two designs is better here?</td><td>Compare: same traffic, same failures, a computed takeaway.</td><td><a href="compare.html">compare</a></td></tr>
-<tr><td>16</td><td>What is the cheapest sizing that meets the SLO?</td><td>Analysis → cheapest config, or <code>bottleneck optimize</code>.</td><td><a href="audit.html#analysis-cheapest">analysis</a></td></tr>
+<tr><td>16</td><td>What is the cheapest sizing that meets the SLO?</td><td>Analysis → cheapest config, or <code>hindcast optimize</code>.</td><td><a href="audit.html#analysis-cheapest">analysis</a></td></tr>
 <tr><td>17</td><td>How sure is that number?</td><td>Monte Carlo with 95% confidence intervals.</td><td><a href="audit.html#analysis-montecarlo">analysis</a></td></tr>
 <tr><td>18</td><td>How do I learn this?</td><td>Lessons, and the Live board's next moves.</td><td><a href="lessons.html">lessons</a></td></tr>
 <tr><td>19</td><td>How do I walk a room through an incident?</td><td>Present mode (P); the recorder's incident timeline.</td><td><a href="sandbox.html">sandbox</a></td></tr>

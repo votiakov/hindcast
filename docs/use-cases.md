@@ -1,6 +1,6 @@
 # Use cases
 
-What people use Bottleneck for, what each needs, and how to do it. Two families:
+What people use Hindcast for, what each needs, and how to do it. Two families:
 
 - **With your real data** — metric exports, traces and the bill from a running system; the model
   is calibrated from them and its accuracy is shown. Answers are about *your* system.
@@ -25,7 +25,7 @@ What people use Bottleneck for, what each needs, and how to do it. Two families:
       cpu: 1
   ```
   ```
-  bottleneck backtest model.json dataset.json api-1cpu.yaml --last 14d --html report.html
+  hindcast backtest model.json dataset.json api-1cpu.yaml --last 14d --html report.html
   ```
 - **You get**: $/month saved (with a range), minutes out of SLO, failed requests, and the worst
   moment and why ("Sep 14 12:03 — api at 104% of capacity, 1.2 s queue"). A resize below the CPU
@@ -65,7 +65,7 @@ What people use Bottleneck for, what each needs, and how to do it. Two families:
 *"How much more traffic can we take before Black Friday, and what gives out first?"*
 
 ```
-bottleneck headroom model.json [strategy.yaml]
+hindcast headroom model.json [strategy.yaml]
 ```
 
 - **You get**: the req/s it sustains with today's endpoint mix within the SLO, and the component
@@ -87,7 +87,7 @@ bottleneck headroom model.json [strategy.yaml]
 - **Needs**: a calibrated model and dataset committed (or fetched) in the repository, and the
   ready-made workflow from [examples/backtest-ci](../examples/backtest-ci).
 - **How**: the workflow turns the changed Kubernetes manifests into a strategy
-  (`bottleneck diff-strategy --base … --head …`: replicas, CPU/memory limits, HPAs,
+  (`hindcast diff-strategy --base … --head …`: replicas, CPU/memory limits, HPAs,
   `kubernetes.io/arch`), backtests it over the last N days, and posts the result on the PR. `--gate`
   fails the check if the change adds time out of SLO.
 - **You get**: "frontend CPU 1 → 0.05 saves $23/month; it would have caused 20 minutes out of SLO,
@@ -96,8 +96,8 @@ bottleneck headroom model.json [strategy.yaml]
 ### 8. Would we survive a famous outage?
 
 ```
-bottleneck outage model.json list
-bottleneck outage model.json slack-2021-01-04 autoscale.yaml --role primary-db=orders-db
+hindcast outage model.json list
+hindcast outage model.json slack-2021-01-04 autoscale.yaml --role primary-db=orders-db
 ```
 
 or Backtest tab → *Replay an outage…*
@@ -149,7 +149,7 @@ or Backtest tab → *Replay an outage…*
 
 ### 13. Turn a result into a post
 
-- Backtest tab → **Card ↗**, or `bottleneck backtest … --card card.json` then
+- Backtest tab → **Card ↗**, or `hindcast backtest … --card card.json` then
   `npm run record -- --card card.json`: the chart drawing itself, then the verdict, as MP4 and PNG
   stills at post size, with the model's measured accuracy on the card.
 
@@ -160,7 +160,7 @@ or Backtest tab → *Replay an outage…*
 ### 14. Find what breaks first in a design, and what it costs
 
 - Draw it, import it (`import-terraform`, `import-k8s`, or drop the file on the board), or write it
-  as YAML. Run the **failure audit** (Sandbox → audit, or `bottleneck audit arch.yaml --rps 500
+  as YAML. Run the **failure audit** (Sandbox → audit, or `hindcast audit arch.yaml --rps 500
   --cost-per-min 1000`).
 - **You get**: a risk register — every component dying, every dependency turning slow, caches
   restarting cold, zones going dark, a traffic surge — graded by what users would have seen, with
@@ -169,17 +169,17 @@ or Backtest tab → *Replay an outage…*
 
 ### 15. Compare two designs
 
-- **Compare** tab (17 built-in comparisons) or `bottleneck compare arch.yaml variants.yaml
+- **Compare** tab (17 built-in comparisons) or `hindcast compare arch.yaml variants.yaml
   scenario.yaml`. Same traffic and failures on both; the engine computes the takeaway.
 
 ### 16. Cheapest sizing that meets the SLO
 
-- Analysis → optimizer, or `bottleneck optimize arch.yaml scenario.yaml --runtimes --out
+- Analysis → optimizer, or `hindcast optimize arch.yaml scenario.yaml --runtimes --out
   optimized.yaml`; optionally lets it change language runtimes.
 
 ### 17. Confidence, not one run
 
-- `bottleneck analyze` / Analysis → Monte Carlo: discrete-event runs with 95% confidence intervals
+- `hindcast analyze` / Analysis → Monte Carlo: discrete-event runs with 95% confidence intervals
   on p50/p99/p99.9, errors and cost; the share of runs that meet the SLO.
 
 ### 18. Learn system design by breaking things

@@ -129,6 +129,13 @@ describe('Terraform plan → strategy', () => {
     expect(r.ignored.join('\n')).toMatch(/aws_s3_bucket\.logs/);
     expect(r.ignored.join('\n')).toMatch(/aws_ecs_service\.search: new/);
   });
+
+  it('maps resources by the hindcast service tag, and by the pre-rename bottleneck one', () => {
+    const svc = (address: string, tags: Record<string, string>) => ({ address, type: 'aws_ecs_service', name: address.split('.')[1], change: { actions: ['update'], before: { name: address.split('.')[1], desired_count: 1, tags }, after: { name: address.split('.')[1], desired_count: 3, tags } } });
+    const known = new Set(['customer', 'driver']);
+    const r = strategyFromTerraformPlan({ resource_changes: [svc('aws_ecs_service.cust_v2', { 'hindcast:service': 'customer' }), svc('aws_ecs_service.drv_v2', { 'bottleneck:service': 'driver' })] }, { known });
+    expect(r.strategy!.changes).toEqual([{ service: 'customer', replicas: 3 }, { service: 'driver', replicas: 3 }]);
+  });
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -289,7 +296,7 @@ describe('verify_change on real history (HotROD)', () => {
     expect(bundle.strategies).toHaveLength(2);
     expect(bundle.dataset.n).toBeGreaterThan(10);
     const link = await appLink(ws, r.reports!.bundle);
-    expect(link).toMatch(/^http:\/\/localhost:5173\/#backtest=http%3A%2F%2F127\.0\.0\.1%3A\d+%2F.*\.bottleneck\.json$/);
+    expect(link).toMatch(/^http:\/\/localhost:5173\/#backtest=http%3A%2F%2F127\.0\.0\.1%3A\d+%2F.*\.hindcast\.json$/);
     const url = decodeURIComponent(link.split('#backtest=')[1]);
     const res = await fetch(url);
     expect(res.status).toBe(200);
@@ -317,14 +324,14 @@ describe('verify_change on real history (HotROD)', () => {
     writeFileSync(join(dir, 'kubectl.log'), '');
     writeFileSync(kubectl, `#!/usr/bin/env node\nrequire('fs').appendFileSync(${JSON.stringify(join(dir, 'kubectl.log'))}, process.argv.slice(2).join(' ') + '\\n');\nconsole.log(JSON.stringify({ kind: 'List', items: [${JSON.stringify(JSON.stringify({ kind: 'Deployment', metadata: { name: 'customer' }, spec: { replicas: 1, template: { spec: { containers: [{ name: 'customer', resources: { limits: { cpu: '500m', memory: '128Mi' } } }] } } } }))}].map(JSON.parse) }));\n`);
     chmodSync(kubectl, 0o755);
-    process.env.BOTTLENECK_KUBECTL = kubectl;
+    process.env.HINDCAST_KUBECTL = kubectl;
     await expect(readCluster(ws, { context: '' })).rejects.toThrow(/explicitly/);
     const snap = await readCluster(ws, { context: 'kind-test', namespace: 'shop' });
     expect(snap.workloads).toEqual([expect.objectContaining({ service: 'customer', replicas: 1, cpu: 0.5 })]);
     expect(readFileSync(join(dir, 'kubectl.log'), 'utf8').trim()).toBe('--context kind-test -n shop get deployments,statefulsets,horizontalpodautoscalers -o json --request-timeout=20s');
     const c = verifyChange(ws, [{ cluster: { head: deploy('customer', 3, '500m') } }], { draws: 5, report: false });
     expect(c.results[0].change.changes[0]).toEqual({ service: 'customer', replicas: 3 });
-    delete process.env.BOTTLENECK_KUBECTL;
+    delete process.env.HINDCAST_KUBECTL;
   }, 120_000);
 
   it('suggest_changes fixes what saturated and finds savings that pass together', async () => {
@@ -348,7 +355,7 @@ describe('verify_change on real history (HotROD)', () => {
     expect(Array.isArray(s.warnings)).toBe(true);
   });
 
-  it('runs every tool through the shared registry (MCP and `bottleneck agent`)', async () => {
+  it('runs every tool through the shared registry (MCP and `hindcast agent`)', async () => {
     expect(TOOLS.map((t) => t.name)).toEqual(['connect_telemetry', 'collect_telemetry', 'calibrate_model', 'model_status', 'verify_change', 'suggest_changes', 'find_headroom', 'check_node_loss', 'verify_design', 'read_cluster']);
     const h = (await runTool('find_headroom', { workspace: dir, strategy: { name: 'x', changes: [{ service: 'customer', replicas: 2 }] } })) as { asBuilt: { rps: number; limitedBy: string } };
     expect(h.asBuilt.rps).toBeGreaterThan(3);

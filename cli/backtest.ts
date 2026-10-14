@@ -21,7 +21,7 @@ import { OUTAGES, outageById, replayOutage, type Role } from '../src/backtest/ou
 /**
  * Backtest commands:
  *   export-prometheus --url http://prom:9090 --start 2026-09-01 --end 2026-09-15 [--step 60] [--preset otel-spanmetrics,cadvisor] [--selector 'namespace="shop"'] --out data/
- *   import        <bottleneck.import.yaml> [--out dataset.json]
+ *   import        <hindcast.import.yaml> [--out dataset.json]
  *   calibrate     <dataset.json> [--out model.json] [--p99 500] [--errors 0.01] [--timeout 5000] [--holdout 0.3]
  *   backtest      <model.json> <dataset.json> <strategy.yaml …> [--last 14d] [--scale 2 | --peak 400] [--draws 30] [--md r.md] [--html r.html] [--comment pr.md] [--card card.json] [--json]
  *   headroom      <model.json> [strategy.yaml]
@@ -55,7 +55,7 @@ export function lastWindow(d: Dataset, span: string): Dataset {
 
 function printAccuracy(m: Model) {
   if (!m.accuracy.length) {
-    console.log(c.yellow('  no accuracy record yet — `bottleneck calibrate --holdout 0.3` measures one'));
+    console.log(c.yellow('  no accuracy record yet — `hindcast calibrate --holdout 0.3` measures one'));
     return;
   }
   for (const a of m.accuracy) {
@@ -81,8 +81,8 @@ function printModel(m: Model) {
 /** one line: how well this model predicted runs it never saw */
 function accuracyLine(acc: Model['accuracy']): string {
   const checks = acc.flatMap((a) => a.checks.map((c) => ({ ...c, method: a.method }))).filter((c) => c.metric !== 'errors');
-  if (!checks.length) return c.yellow('  model accuracy: not measured yet (bottleneck calibrate --holdout 0.3)');
-  return `  ${c.bold('model accuracy')} ${checks.map((x) => `${x.metric}${x.method === 'holdout' ? ' (holdout)' : ''} ${(x.pass ? c.green : c.red)(`${(x.error * 100).toFixed(0)}%`)}`).join(c.dim(' · '))} ${c.dim('— bottleneck accuracy <model> for details')}`;
+  if (!checks.length) return c.yellow('  model accuracy: not measured yet (hindcast calibrate --holdout 0.3)');
+  return `  ${c.bold('model accuracy')} ${checks.map((x) => `${x.metric}${x.method === 'holdout' ? ' (holdout)' : ''} ${(x.pass ? c.green : c.red)(`${(x.error * 100).toFixed(0)}%`)}`).join(c.dim(' · '))} ${c.dim('— hindcast accuracy <model> for details')}`;
 }
 
 function printBacktest(r: BacktestResult) {
@@ -113,9 +113,9 @@ export async function backtestCommand(cmd: string, pos: string[], opt: Opt): Pro
       const plan = exportPlan(presets, { window: opt.window ? String(opt.window) : undefined, selector: opt.selector ? String(opt.selector) : undefined });
       const res = await runExport(url, plan, { start, end, stepS: Number(opt.step ?? 60) }, (f, body) => writeFileSync(join(out, 'metrics', f), body));
       const manifest = { name: String(opt.name ?? 'my system'), step: `${Number(opt.step ?? 60)}s`, metrics: manifestMetrics(plan, 'metrics'), traces: [], billing: [] };
-      writeFileSync(join(out, 'bottleneck.import.yaml'), `# Written by bottleneck export-prometheus. Add traces (OTLP JSON) and a bill (AWS CUR / GCP export), then:\n#   bottleneck import ${join(out, 'bottleneck.import.yaml')}\n` + toYaml(manifest));
+      writeFileSync(join(out, 'hindcast.import.yaml'), `# Written by hindcast export-prometheus. Add traces (OTLP JSON) and a bill (AWS CUR / GCP export), then:\n#   hindcast import ${join(out, 'hindcast.import.yaml')}\n` + toYaml(manifest));
       for (const r of res) console.log(`  ${r.series ? c.green('✓') : c.yellow('·')} ${r.file} ${c.dim(`${r.series} series`)}`);
-      console.log(`\n${c.bold('Wrote')} ${join(out, 'bottleneck.import.yaml')} ${c.dim(`(${Object.keys(PRESETS).join(', ')} presets available)`)}\n`);
+      console.log(`\n${c.bold('Wrote')} ${join(out, 'hindcast.import.yaml')} ${c.dim(`(${Object.keys(PRESETS).join(', ')} presets available)`)}\n`);
       return true;
     }
     case 'import': {

@@ -15,6 +15,7 @@ reference/petclinic/otel/*.jar
 reference/.dbg/
 reference/*/runs/*/warm-mix.json
 public/docs/shots/_debug-*
+.hindcast/
 .bottleneck/
 ui-audit/
 reference/k8s/nasa/*.gz

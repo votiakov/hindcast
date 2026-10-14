@@ -13,7 +13,7 @@ import { nodeLoss } from '../src/backtest/resilience';
 import type { Dataset } from '../src/backtest/dataset';
 
 /**
- * The agent tools, defined once: the MCP server registers them, and `bottleneck agent <tool>`
+ * The agent tools, defined once: the MCP server registers them, and `hindcast agent <tool>`
  * runs them from a shell (for agents without MCP, scripts and CI). Every tool is read-only towards
  * the user's systems: it queries Prometheus, Jaeger/Tempo and (read_cluster) the Kubernetes API,
  * and writes only inside the workspace directory.
@@ -36,7 +36,7 @@ const auth = {
   headersEnv: z.record(z.string(), z.string()).optional().describe('header → env var, e.g. { "X-Scope-OrgID": "TENANT" }'),
 };
 const slo = z.object({ p99Ms: z.number().positive(), errorRate: z.number().min(0).max(1) });
-const workspace = z.string().optional().describe('workspace directory (default ./.bottleneck, or $BOTTLENECK_WORKSPACE)');
+const workspace = z.string().optional().describe('workspace directory (default ./.hindcast, or $HINDCAST_WORKSPACE)');
 
 const change = z.union([
   z.object({ strategy: z.union([z.string(), z.record(z.string(), z.unknown())]).describe('a strategy object or YAML: { name, changes: [{ service, replicas | autoscale | cpu | memoryGb | cpuRequest | memoryRequestGb | arch | perf | capacityRps | cache | readReplicas | zone | region } | { endpoint, retries, timeoutMs }] }') }),
@@ -50,7 +50,7 @@ export const TOOLS: AgentTool[] = [
     name: 'connect_telemetry',
     title: 'Connect to telemetry (Prometheus, Jaeger/Tempo, bill)',
     description:
-      'Point Bottleneck at the system\'s live telemetry and probe it, read-only: which metric presets Prometheus supports, which services it names, how far back data goes; which services Jaeger or Tempo knows and which ones requests enter through. Saves the connection in the workspace (credentials only as env var names). Call this first; calling it again merges new settings. Returns problems to fix and what the model will be able to know.',
+      'Point Hindcast at the system\'s live telemetry and probe it, read-only: which metric presets Prometheus supports, which services it names, how far back data goes; which services Jaeger or Tempo knows and which ones requests enter through. Saves the connection in the workspace (credentials only as env var names). Call this first; calling it again merges new settings. Returns problems to fix and what the model will be able to know.',
     input: {
       workspace,
       prometheus: z.object({ url: z.string().url(), selector: z.string().optional().describe('label matchers added to every query, e.g. cluster="prod-eu"'), namespaces: z.array(z.string()).optional().describe('Kubernetes namespaces the system runs in (default: the namespaces holding the traced services)'), presets: z.array(z.enum(['otel-spanmetrics', 'http-server', 'spring', 'ingress-nginx', 'cadvisor', 'kubernetes'])).optional().describe('default: every preset whose metrics exist'), ...auth }).optional(),

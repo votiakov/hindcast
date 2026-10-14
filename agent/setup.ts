@@ -3,9 +3,10 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { defaultWorkspaceDir } from './workspace';
 
 /**
- * `bottleneck agent setup [host] [--write]`: register the MCP server with an agent host without
+ * `hindcast agent setup [host] [--write]`: register the MCP server with an agent host without
  * hand-editing paths. Finds (or builds) the single-file server, prints the host's config with
  * absolute paths filled in, merges it into the host's file when asked, and proves the server starts
  * by completing an MCP handshake with it.
@@ -19,20 +20,24 @@ interface Launch {
   args: string[];
 }
 
+const SERVER_FILES = ['hindcast-mcp.mjs', 'bottleneck-mcp.mjs'];
+
 /** where the server is: next to this CLI when it is the standalone build, else built from the repository */
 export function findServer(): { launch: Launch; note?: string } {
   const here = dirname(fileURLToPath(import.meta.url));
-  const sibling = join(here, 'bottleneck-mcp.mjs');
-  if (existsSync(sibling)) return { launch: { command: process.execPath, args: [sibling] } };
+  // hindcast-mcp.mjs; bottleneck-mcp.mjs is the same server built before the rename
+  const sibling = SERVER_FILES.map((f) => join(here, f)).find((p) => existsSync(p));
+  if (sibling) return { launch: { command: process.execPath, args: [sibling] } };
   // running from the repository (tsx cli/bottleneck.ts): the bundle lives in dist-cli/
   const repo = resolve(here, '..');
-  const bundle = join(repo, 'dist-cli', 'bottleneck-mcp.mjs');
+  const built = SERVER_FILES.map((f) => join(repo, 'dist-cli', f));
+  const bundle = built.find((p) => existsSync(p)) ?? built[0];
   if (!existsSync(bundle) && existsSync(join(repo, 'mcp', 'server.ts'))) {
     const r = spawnSync('npm', ['run', '-s', 'build:mcp-server'], { cwd: repo, stdio: 'inherit' });
     if (r.status !== 0) throw new Error('could not build the MCP server: run `npm run build:mcp-server` in the repository and look at its output');
     return { launch: { command: process.execPath, args: [bundle] }, note: `built ${bundle}` };
   }
-  if (!existsSync(bundle)) throw new Error('no MCP server found next to this CLI or in a Bottleneck repository');
+  if (!existsSync(bundle)) throw new Error('no MCP server found next to this CLI or in a Hindcast repository');
   return { launch: { command: process.execPath, args: [bundle] } };
 }
 
@@ -61,12 +66,19 @@ export function configPath(host: Host, project: string): { path: string; scope: 
   }
 }
 
-/** the host's file with the bottleneck server merged in; every other server is kept */
+/**
+ * the host's file with the hindcast server merged in; every other server is kept, except an entry
+ * under the pre-rename name "bottleneck", which this one replaces
+ */
 export function mergedConfig(host: Host, existing: Record<string, unknown>, launch: Launch, env: Record<string, string>): Record<string, unknown> {
   const entry = { command: launch.command, args: launch.args, ...(Object.keys(env).length ? { env } : {}) };
+  const others = (k: string) => {
+    const { bottleneck: _old, ...rest } = (existing[k] as Record<string, unknown>) ?? {};
+    return rest;
+  };
   // VS Code keeps servers under "servers" and wants a type; the others use "mcpServers"
-  if (host === 'vscode') return { ...existing, servers: { ...((existing.servers as object) ?? {}), bottleneck: { type: 'stdio', ...entry } } };
-  return { ...existing, mcpServers: { ...((existing.mcpServers as object) ?? {}), bottleneck: entry } };
+  if (host === 'vscode') return { ...existing, servers: { ...others('servers'), hindcast: { type: 'stdio', ...entry } } };
+  return { ...existing, mcpServers: { ...others('mcpServers'), hindcast: entry } };
 }
 
 /** start the server, initialize, list its tools: the same first steps every host takes */
@@ -108,7 +120,7 @@ export function handshake(launch: Launch, env: Record<string, string>, timeoutMs
         } else if (msg.id === 2) finish(null, { tools: (msg.result?.tools ?? []).map((t) => t.name), version });
       }
     });
-    send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'bottleneck-setup', version: '1' } } });
+    send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'hindcast-setup', version: '1' } } });
   });
 }
 
@@ -123,10 +135,10 @@ export async function setup(o: SetupOptions, log: (s: string) => void = console.
   const project = resolve(o.project ?? process.cwd());
   const { launch, note } = findServer();
   if (note) log(note);
-  const env: Record<string, string> = { BOTTLENECK_WORKSPACE: resolve(o.workspace ?? join(project, '.bottleneck')) };
+  const env: Record<string, string> = { HINDCAST_WORKSPACE: resolve(o.workspace ?? defaultWorkspaceDir(project)) };
 
   log(`MCP server: ${launch.command} ${launch.args.join(' ')}`);
-  const hs = await handshake(launch, { BOTTLENECK_WORKSPACE: env.BOTTLENECK_WORKSPACE });
+  const hs = await handshake(launch, { HINDCAST_WORKSPACE: env.HINDCAST_WORKSPACE });
   log(`✓ it starts and answers: ${hs.tools.length} tools (${hs.tools.slice(0, 6).join(', ')}${hs.tools.length > 6 ? ', …' : ''})`);
 
   const hosts = o.host ? [o.host] : HOSTS;
@@ -134,7 +146,7 @@ export async function setup(o: SetupOptions, log: (s: string) => void = console.
     const { path, scope } = configPath(host, project);
     if (host === 'claude' && !o.write) {
       const envFlags = Object.entries(env).map(([k, v]) => `-e ${k}=${JSON.stringify(v)}`).join(' ');
-      log(`\nClaude Code (${scope === 'project' ? 'this project' : 'you'}):\n  claude mcp add bottleneck ${envFlags} -- ${[launch.command, ...launch.args].map((a) => JSON.stringify(a)).join(' ')}`);
+      log(`\nClaude Code (${scope === 'project' ? 'this project' : 'you'}):\n  claude mcp add hindcast ${envFlags} -- ${[launch.command, ...launch.args].map((a) => JSON.stringify(a)).join(' ')}`);
       continue;
     }
     const existing = existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8') || '{}') as Record<string, unknown>) : {};
@@ -145,12 +157,12 @@ export async function setup(o: SetupOptions, log: (s: string) => void = console.
       log(`✓ ${host}: wrote ${path}${Object.keys(existing).length ? ' (other servers kept)' : ''}`);
     } else {
       const key = host === 'vscode' ? 'servers' : 'mcpServers';
-      log(`\n${label(host)} — ${path}:\n${indent(JSON.stringify({ [key]: { bottleneck: (next[key] as Record<string, unknown>).bottleneck } }, null, 2))}`);
+      log(`\n${label(host)} — ${path}:\n${indent(JSON.stringify({ [key]: { hindcast: (next[key] as Record<string, unknown>).hindcast } }, null, 2))}`);
     }
   }
   if (!o.write) log(`\nAdd --write (with one host: cursor, vscode, desktop, windsurf or claude) to merge it into that file.`);
   log(`Credentials (a Prometheus token, say) go in the server's "env" in that file; tools name the variable (tokenEnv), never the value.`);
-  log(`Then ask your agent: "use bottleneck to check whether <change> is safe".`);
+  log(`Then ask your agent: "use hindcast to check whether <change> is safe".`);
 }
 
 const label = (h: Host) => ({ claude: 'Claude Code', cursor: 'Cursor', vscode: 'VS Code', desktop: 'Claude Desktop', windsurf: 'Windsurf' })[h];

@@ -18,7 +18,7 @@ Worst-case amplification with 3 retries at 3 layers: 4 × 4 × 4 = 64 calls per 
 
 Count the calls. A user taps "place order". The app retries 3 times on failure. So does the API, and so does the orders service before it gives up on the database. Four attempts at each of three layers is up to 64 calls landing on the database for one tap, and that worst case arrives exactly when the database is struggling.
 
-I ran it in Bottleneck: client, API, orders service, Postgres, 800 req/s, then a 10-second brownout where the database drops to 30% of its capacity. Version A retries at every layer. Version B retries only at the client, within a 10% budget, and the inner services time out after 1 s and fail fast.
+I ran it in Hindcast: client, API, orders service, Postgres, 800 req/s, then a 10-second brownout where the database drops to 30% of its capacity. Version A retries at every layer. Version B retries only at the client, within a 10% budget, and the inner services time out after 1 s and fail fast.
 
 During the brownout they look similar, 64% vs 56% errors. The retries even feel like they're helping.
 

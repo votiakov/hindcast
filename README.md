@@ -1,10 +1,10 @@
-# Bottleneck
+# Hindcast
 
 Backtest infrastructure changes on your real production data before they ship — and an
 architecture simulator that tells you what breaks first, and what it costs.
 
 **Backtesting** (the app's Backtest tab, the CLI and a pull-request check): import metric exports
-(Prometheus, CloudWatch), OpenTelemetry traces and the cloud bill (AWS CUR, GCP export); Bottleneck
+(Prometheus, CloudWatch), OpenTelemetry traces and the cloud bill (AWS CUR, GCP export); Hindcast
 builds a model of the system calibrated from them and shows how well each component is explained;
 then any change — resize, autoscaling policy, a cache, a replica, a retry budget, Graviton — is
 replayed over the real history as "what would have happened": $ saved or spent, minutes out of SLO,
@@ -18,7 +18,7 @@ turning slow, caches restarting cold, zones going dark, a traffic surge. Each in
 users would have seen, and each fix is verified by re-running the same incident and priced in $/month.
 
 **For AI agents** ([docs/agents.md](docs/agents.md)): give Claude Code (or any MCP host, or any
-agent with a shell) the Bottleneck tools and it does the work itself. It connects to your Prometheus
+agent with a shell) the Hindcast tools and it does the work itself. It connects to your Prometheus
 and Jaeger or Tempo, collects a week of history, calibrates the model, reads its trust report, and
 verifies a change before proposing it: a strategy, a Kubernetes diff or a Terraform plan. The
 answer is a verdict (pass / fail / inconclusive) with a confidence that says which services the
@@ -142,7 +142,7 @@ changes an architecture spec. Every command takes `--json`.
 Agents working on a live system: `connect_telemetry` → `collect_telemetry` → `calibrate_model` →
 `verify_change` (plus `suggest_changes`, `find_headroom`, `verify_design`, `read_cluster`, `model_status`); see
 [docs/agents.md](docs/agents.md). `npm run build:mcp-server` writes a single-file server
-(`dist-cli/bottleneck-mcp.mjs`) to register anywhere: `claude mcp add bottleneck -- node …/bottleneck-mcp.mjs`.
+(`dist-cli/hindcast-mcp.mjs`) to register anywhere: `claude mcp add hindcast -- node …/hindcast-mcp.mjs`.
 
 | tool | |
 |---|---|

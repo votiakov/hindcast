@@ -7,7 +7,8 @@ import type { StrategySpec } from './strategy';
  * replica counts, CPU / memory limits, HorizontalPodAutoscalers, and the CPU architecture
  * (nodeSelector / affinity on kubernetes.io/arch).
  *
- * Workloads map to model services by the `bottleneck.dev/service` annotation, else by name.
+ * Workloads map to model services by the `hindcast.dev/service` annotation (or the pre-rename
+ * `bottleneck.dev/service`), else by name.
  */
 
 export interface WorkloadConfig {
@@ -59,7 +60,8 @@ export function readWorkloads(yamlTexts: string[]): Map<string, WorkloadConfig> 
     if (!['Deployment', 'StatefulSet', 'ReplicaSet'].includes(String(d.kind))) continue;
     const meta = o(d.metadata);
     const name = String(meta.name);
-    const service = String(o(meta.annotations)['bottleneck.dev/service'] ?? name);
+    const ann = o(meta.annotations);
+    const service = String(ann['hindcast.dev/service'] ?? ann['bottleneck.dev/service'] ?? name);
     const spec = o(d.spec);
     const pod = o(o(spec.template).spec);
     const c = o(arr(pod.containers)[0]);
@@ -105,7 +107,7 @@ export function strategyFromDiff(before: Map<string, WorkloadConfig>, after: Map
       continue;
     }
     if (opts.known && !opts.known.has(svc)) {
-      ignored.push(`${svc}: no service of that name in the model (annotate it with bottleneck.dev/service)`);
+      ignored.push(`${svc}: no service of that name in the model (annotate it with hindcast.dev/service)`);
       continue;
     }
     const ch: Record<string, unknown> = { service: svc };

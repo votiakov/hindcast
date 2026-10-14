@@ -18,11 +18,11 @@ const arg = (k, d) => {
 };
 const prom = arg('prom', 'http://localhost:9090');
 const jaeger = arg('jaeger', 'http://localhost:16686');
-const workspace = arg('workspace', mkdtempSync(join(tmpdir(), 'bottleneck-e2e-')));
-const server = arg('bundle') ? { command: 'node', args: ['dist-cli/bottleneck-mcp.mjs'] } : { command: 'npx', args: ['tsx', 'mcp/server.ts'] };
+const workspace = arg('workspace', mkdtempSync(join(tmpdir(), 'hindcast-e2e-')));
+const server = arg('bundle') ? { command: 'node', args: ['dist-cli/hindcast-mcp.mjs'] } : { command: 'npx', args: ['tsx', 'mcp/server.ts'] };
 
-const client = new Client({ name: 'bottleneck-e2e', version: '1.0.0' });
-await client.connect(new StdioClientTransport({ ...server, env: { ...process.env, BOTTLENECK_WORKSPACE: workspace }, stderr: 'inherit' }));
+const client = new Client({ name: 'hindcast-e2e', version: '1.0.0' });
+await client.connect(new StdioClientTransport({ ...server, env: { ...process.env, HINDCAST_WORKSPACE: workspace }, stderr: 'inherit' }));
 
 const transcript = [];
 const call = async (name, args = {}) => {

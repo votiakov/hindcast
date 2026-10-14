@@ -18,7 +18,7 @@ from them. Full guide: [backtest.md](backtest.md). How the model is fitted:
 **Opening data**
 - Three **reference systems** are built in (HotROD, Astronomy Shop, PetClinic): real recordings
   with their models and accuracy. Pick one from the system menu.
-- **Open files…** or drop files on the screen: a `bottleneck.import.yaml` with its metric, trace and
+- **Open files…** or drop files on the screen: a `hindcast.import.yaml` with its metric, trace and
   bill files, or a `dataset.json` + `model.json` from the CLI, plus any strategy `.yaml` files.
 
 **The chart** — one time axis, panes stacked like a trading terminal:
@@ -200,7 +200,7 @@ a comparison or an audit), the format (Feed 4:5, Square 1:1, Story 9:16, Slide 1
 the theme, then **Render video, GIF and carousel**: it renders in the browser, frame by frame, and
 offers the MP4, the GIF, a PNG still after every caption and the PDF carousel for download. The same
 output from the command line: the `npm run record` command under *Or from the command line*. Backtest results become cards and clips too (Backtest → Card ↗,
-or `bottleneck backtest … --card card.json`). Details: [content.md](content.md).
+or `hindcast backtest … --card card.json`). Details: [content.md](content.md).
 
 ---
 

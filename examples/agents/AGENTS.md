@@ -1,4 +1,4 @@
-# Verifying infrastructure changes with Bottleneck
+# Verifying infrastructure changes with Hindcast
 
 Copy this section into your project's `AGENTS.md` (or `CLAUDE.md`, `.cursorrules`, …) so coding
 agents check infrastructure changes against production history before proposing them.
@@ -7,15 +7,15 @@ agents check infrastructure changes against production history before proposing 
 
 Before proposing or committing a change to replicas, CPU or memory limits, autoscaling, instance
 types or architecture (Graviton), caches, read replicas, retries or timeouts, verify it with
-Bottleneck and report the verdict.
+Hindcast and report the verdict.
 
 ## How
 
-Bottleneck runs as an MCP server (`bottleneck`) or from the shell. The shell form, JSON in and
+Hindcast runs as an MCP server (`hindcast`) or from the shell. The shell form, JSON in and
 JSON out:
 
 ```bash
-B="node /path/to/bottleneck/dist-cli/bottleneck.mjs agent"
+B="node /path/to/hindcast/dist-cli/hindcast.mjs agent"
 
 $B model_status                                     # what's already there; follow "next"
 # only if there is no model, or it is older than a week:

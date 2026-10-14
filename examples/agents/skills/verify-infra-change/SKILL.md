@@ -1,11 +1,11 @@
 ---
 name: verify-infra-change
-description: Backtest an infrastructure change (replicas, CPU/memory limits, autoscaling, instance types, Graviton, caches, retries, a Terraform plan or Kubernetes manifests) against real production history with the Bottleneck MCP server, and report a verdict with its confidence. Use whenever the user proposes, reviews or asks about such a change, or before you commit one.
+description: Backtest an infrastructure change (replicas, CPU/memory limits, autoscaling, instance types, Graviton, caches, retries, a Terraform plan or Kubernetes manifests) against real production history with the Hindcast MCP server, and report a verdict with its confidence. Use whenever the user proposes, reviews or asks about such a change, or before you commit one.
 ---
 
-# Verify an infrastructure change with Bottleneck
+# Verify an infrastructure change with Hindcast
 
-Bottleneck (MCP server `bottleneck`) replays a change over the system's recorded history and
+Hindcast (MCP server `hindcast`) replays a change over the system's recorded history and
 says what would have happened: $ per month, minutes out of SLO, the worst moment and why, and
 how far to trust it.
 

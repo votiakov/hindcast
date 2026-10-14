@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Strategies · Bottleneck docs</title>
+<title>Strategies · Hindcast docs</title>
 <meta name="description" content="A strategy is any infrastructure change, written as a short YAML file. The backtest replays it over your real history: thirty times, with every uncertain capacity drawn from its band, paired against the system as built.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
@@ -11,7 +11,7 @@
 </head>
 <body>
 <header class="bar">
-  <a class="brand" href="index.html">Bottleneck<span>docs</span></a>
+  <a class="brand" href="index.html">Hindcast<span>docs</span></a>
   <nav class="bar-links" aria-label="The app">
     <a href="../#backtest">Backtest</a><a href="../#live">Live</a><a href="../#lessons">Lessons</a><a href="../#sandbox">Sandbox</a><a href="../#compare">Compare</a><a href="../#studio">Studio</a>
   </nav>
@@ -64,11 +64,11 @@ changes:
 
 <h2>Where strategies come from</h2>
 <ul>
-<li><b>A file</b> — written by hand, kept next to the code, passed to <code>bottleneck backtest</code> or dropped on the backtest screen.</li>
+<li><b>A file</b> — written by hand, kept next to the code, passed to <code>hindcast backtest</code> or dropped on the backtest screen.</li>
 <li><b>The Changes tab</b> — edit live; the backtest reruns as you type.</li>
 <li><b>The board</b> — open any moment, edit the system, press <b>Backtest these edits</b>.</li>
 <li><b>Audit fixes</b> — each verified fix in the failure audit has a <b>Backtest</b> button when the board came from a backtest.</li>
-<li><b>A pull request</b> — <code>bottleneck diff-strategy --base old/ --head new/</code> reads Kubernetes manifests before and after: replicas, CPU and memory limits, HPAs, <code>kubernetes.io/arch</code>.</li>
+<li><b>A pull request</b> — <code>hindcast diff-strategy --base old/ --head new/</code> reads Kubernetes manifests before and after: replicas, CPU and memory limits, HPAs, <code>kubernetes.io/arch</code>.</li>
 </ul>
 
 <h2>What you get back</h2>

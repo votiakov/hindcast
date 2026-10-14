@@ -557,6 +557,13 @@ spec:
     expect(strategyFromDiff(before, before).strategy).toBeNull();
   });
 
+  it('maps workloads by the hindcast.dev/service annotation, and by the pre-rename one', async () => {
+    const { readWorkloads } = await import('../src/backtest/configDiff');
+    const annotated = (name: string, key: string) => dep(name, 1, '1').replace(`{ name: ${name} }`, `{ name: ${name}, annotations: { "${key}": api } }`);
+    expect([...readWorkloads([annotated('api-v2', 'hindcast.dev/service')]).keys()]).toEqual(['api']);
+    expect([...readWorkloads([annotated('api-v3', 'bottleneck.dev/service')]).keys()]).toEqual(['api']);
+  });
+
   it('reads requests apart from limits: a request cut alone, and a limit change that carries its request', async () => {
     const { readWorkloads, strategyFromDiff } = await import('../src/backtest/configDiff');
     const w = (req: string, lim: string) => `apiVersion: apps/v1

@@ -1,8 +1,8 @@
 import type { SeriesMapping } from './metrics';
 
 /**
- * Standard Prometheus queries for the metrics Bottleneck needs, grouped in presets that match
- * common setups. `bottleneck export-prometheus` runs them against a Prometheus URL and writes one
+ * Standard Prometheus queries for the metrics Hindcast needs, grouped in presets that match
+ * common setups. `hindcast export-prometheus` runs them against a Prometheus URL and writes one
  * query_range JSON per query plus the `metrics:` block of an import manifest — after that,
  * everything works from files.
  */

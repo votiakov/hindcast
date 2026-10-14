@@ -3,12 +3,13 @@ import { join, resolve } from 'node:path';
 import { z } from 'zod';
 
 /**
- * The agent workspace: one directory (default `.bottleneck/` in the directory the agent runs in)
+ * The agent workspace: one directory (default `.hindcast/` in the directory the agent runs in;
+ * an existing `.bottleneck/` from before the rename is kept when there is no `.hindcast/`)
  * holding where the telemetry lives, what was collected, the calibrated model and the reports.
  *
- *   .bottleneck/
+ *   .hindcast/
  *     sources.json          connections and system hints (never secrets: credentials are env var names)
- *     telemetry/            the last collection: metrics/*.json, traces/*.json, bottleneck.import.yaml
+ *     telemetry/            the last collection: metrics/*.json, traces/*.json, hindcast.import.yaml
  *     dataset.json          the imported history
  *     model.json            the calibrated model
  *     calibration.json      what the model rests on, per service (history peak vs capacity)
@@ -50,10 +51,17 @@ export const Sources = z.object({
 export type Sources = z.infer<typeof Sources>;
 export type AuthConfig = z.infer<typeof Auth>;
 
+/** `.hindcast/` in `cwd`, or the pre-rename `.bottleneck/` when only that one exists */
+export function defaultWorkspaceDir(cwd: string): string {
+  const fresh = join(cwd, '.hindcast');
+  const legacy = join(cwd, '.bottleneck');
+  return !existsSync(fresh) && existsSync(legacy) ? legacy : fresh;
+}
+
 export class Workspace {
   readonly dir: string;
   constructor(dir?: string) {
-    this.dir = resolve(dir ?? process.env.BOTTLENECK_WORKSPACE ?? join(process.cwd(), '.bottleneck'));
+    this.dir = resolve(dir ?? process.env.HINDCAST_WORKSPACE ?? process.env.BOTTLENECK_WORKSPACE ?? defaultWorkspaceDir(process.cwd()));
   }
   path(...p: string[]) {
     return join(this.dir, ...p);

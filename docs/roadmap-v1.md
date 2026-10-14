@@ -1,4 +1,4 @@
-# Bottleneck v1 — roadmap
+# Hindcast v1 — roadmap
 
 v0.1 (tagged) = fluid + DES engines, Live/Lesson/Sandbox/Compare/Studio, CLI, MCP, Terraform import.
 

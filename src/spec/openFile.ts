@@ -5,7 +5,7 @@ import { importTerraform } from './terraform';
 import type { ArchitectureSpec } from './schema';
 import { validateSpec } from './validate';
 
-const OPENS = 'Bottleneck opens an architecture spec (YAML or JSON), Kubernetes manifests, `terraform show -json` output, or a traffic CSV of time and requests per second.';
+const OPENS = 'Hindcast opens an architecture spec (YAML or JSON), Kubernetes manifests, `terraform show -json` output, or a traffic CSV of time and requests per second.';
 import { specToGraph } from './convert';
 import { parseTrafficCsv } from './trafficCsv';
 

@@ -20,7 +20,7 @@ On October 20, 2025, a race condition in DynamoDB's DNS automation left dynamodb
 
 Most of that outage happened after the root cause was gone. When the record came back, clients and internal services retried at the same moment, the backlog never drained, and AWS had to throttle globally and restart control-plane nodes to get out of it.
 
-I rebuilt a small version of that in Bottleneck, the simulator I've been building. The same app twice: 900 req/s, six API servers, a state store that disappears for 12 seconds and then comes back.
+I rebuilt a small version of that in Hindcast, the simulator I've been building. The same app twice: 900 req/s, six API servers, a state store that disappears for 12 seconds and then comes back.
 
 Version A does what most HTTP stacks do by default. Clients retry 3 times immediately, the API retries twice more, and each API server keeps a 3-second queue. Version B caps retries at 10% extra load, keeps a 250 ms queue and throttles at the edge.
 

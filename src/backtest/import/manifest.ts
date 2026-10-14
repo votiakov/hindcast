@@ -6,8 +6,8 @@ import { parseCur, parseGcpBilling, summariseBill, type BillLine } from './billi
 import { parseTimestamp } from './csv';
 
 /**
- * Import manifest (`bottleneck.import.yaml`): which files hold what. Everything is a file —
- * Bottleneck never connects to a live system.
+ * Import manifest (`hindcast.import.yaml`; `bottleneck.import.yaml` before the rename): which files hold what. Everything is a file —
+ * Hindcast never connects to a live system.
  */
 
 const duration = z.union([z.number().positive(), z.string().regex(/^\d+(\.\d+)?(ms|s|m|h|d)$/)]).transform((v) => {

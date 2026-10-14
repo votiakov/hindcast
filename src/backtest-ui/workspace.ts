@@ -60,7 +60,7 @@ export async function loadWorkspaceUrl(url: string) {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`${url} answered ${res.status}`);
     const w = (await res.json()) as WorkspaceFile;
-    if (!w.dataset || !w.model) throw new Error('not a Bottleneck workspace bundle');
+    if (!w.dataset || !w.model) throw new Error('not a Hindcast workspace bundle');
     s.setWorkspace({ id: url, name: w.name, source: w.source, dataset: w.dataset, model: reviveModel(w.model), strategies: w.strategies.map((yaml) => ({ yaml, visible: true })) });
   } catch (e) {
     useSim.getState().toast('bad', `Could not open the agent's backtest: ${e instanceof Error ? e.message : String(e)} — is the MCP server that wrote it still running?`);

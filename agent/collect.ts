@@ -184,8 +184,8 @@ export async function collect(ws: Workspace, o: CollectOptions = {}, progress?: 
       ...(src.system.hostedBy ? { hostedBy: src.system.hostedBy } : {}),
     },
   };
-  const manifestPath = join(tel, 'bottleneck.import.yaml');
-  writeFileSync(manifestPath, `# Written by Bottleneck collect_telemetry, ${iso(now)}: ${parts.map((w) => `${iso(w.start)} … ${iso(w.end)}`).join(', ')}\n` + toYaml(manifest));
+  const manifestPath = join(tel, 'hindcast.import.yaml');
+  writeFileSync(manifestPath, `# Written by Hindcast collect_telemetry, ${iso(now)}: ${parts.map((w) => `${iso(w.start)} … ${iso(w.end)}`).join(', ')}\n` + toYaml(manifest));
 
   // ---- import
   await say('importing', 3);

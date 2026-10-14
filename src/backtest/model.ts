@@ -1,7 +1,7 @@
 import type { Placement } from './dataset';
 
 /**
- * The calibrated model: what Bottleneck believes about each component, fitted from real data,
+ * The calibrated model: what Hindcast believes about each component, fitted from real data,
  * with how well each belief reproduces what was measured.
  */
 
