@@ -528,6 +528,54 @@ export function runPlanPacked(plan, traffic, endpoints, observed, series, opts) 
     return takeFromExternrefTable0(ret[0]);
 }
 
+/**
+ * importBundle(manifest, files) → { dataset, log } (src/backtest/import/manifest.ts); the manifest
+ * already validated on the JS side
+ * @param {any} manifest
+ * @param {any} files
+ * @returns {any}
+ */
+export function importBundle(manifest, files) {
+    const ret = wasm.importBundle(manifest, files);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * readWorkloads(documents) → [service, WorkloadConfig][] (src/backtest/configDiff.ts), in document order
+ * @param {any} documents
+ * @returns {any}
+ */
+export function readWorkloads(documents) {
+    const ret = wasm.readWorkloads(documents);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * strategyFromDiff(before, after, name?, known?) → { strategy, ignored }; workloads as [service, config][]
+ * @param {any} before
+ * @param {any} after
+ * @param {string | null} [name]
+ * @param {string[] | null} [known]
+ * @returns {any}
+ */
+export function strategyFromDiff(before, after, name, known) {
+    var ptr0 = isLikeNone(name) ? 0 : passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len0 = WASM_VECTOR_LEN;
+    var ptr1 = isLikeNone(known) ? 0 : passArrayJsValueToWasm0(known, wasm.__wbindgen_malloc);
+    var len1 = WASM_VECTOR_LEN;
+    const ret = wasm.strategyFromDiff(before, after, ptr0, len0, ptr1, len1);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
 const SimEngineFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_simengine_free(ptr >>> 0, 1));
@@ -640,6 +688,10 @@ function __wbg_get_imports() {
         const ret = arg0.call(arg1);
         return ret;
     }, arguments) };
+    imports.wbg.__wbg_call_7cccdd69e0791ae2 = function() { return handleError(function (arg0, arg1, arg2) {
+        const ret = arg0.call(arg1, arg2);
+        return ret;
+    }, arguments) };
     imports.wbg.__wbg_call_b8adc8b1d0a0d8eb = function() { return handleError(function (arg0, arg1, arg2, arg3, arg4) {
         const ret = arg0.call(arg1, arg2, arg3, arg4);
         return ret;
@@ -650,6 +702,10 @@ function __wbg_get_imports() {
     };
     imports.wbg.__wbg_entries_3265d4158b33e5dc = function(arg0) {
         const ret = Object.entries(arg0);
+        return ret;
+    };
+    imports.wbg.__wbg_from_2a5d3e218e67aa85 = function(arg0) {
+        const ret = Array.from(arg0);
         return ret;
     };
     imports.wbg.__wbg_get_67b2ba62fc30de12 = function() { return handleError(function (arg0, arg1) {
@@ -668,6 +724,16 @@ function __wbg_get_imports() {
         let result;
         try {
             result = arg0 instanceof ArrayBuffer;
+        } catch (_) {
+            result = false;
+        }
+        const ret = result;
+        return ret;
+    };
+    imports.wbg.__wbg_instanceof_Error_4d54113b22d20306 = function(arg0) {
+        let result;
+        try {
+            result = arg0 instanceof Error;
         } catch (_) {
             result = false;
         }
@@ -712,6 +778,10 @@ function __wbg_get_imports() {
     };
     imports.wbg.__wbg_length_e2d2a49132c1b256 = function(arg0) {
         const ret = arg0.length;
+        return ret;
+    };
+    imports.wbg.__wbg_message_97a2af9b89d693a3 = function(arg0) {
+        const ret = arg0.message;
         return ret;
     };
     imports.wbg.__wbg_new0_f788a2397c7ca929 = function() {

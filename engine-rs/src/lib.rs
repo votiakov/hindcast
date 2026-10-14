@@ -5,8 +5,10 @@
 pub mod accuracy;
 pub mod backtest;
 pub mod calibrate;
+pub mod config_diff;
 pub mod dataset;
 pub mod engine;
+pub mod import;
 pub mod math;
 pub mod model;
 pub mod resilience;
@@ -42,6 +44,75 @@ pub fn pack(out: &types::RunResult) -> Vec<f64> {
         }
     }
     v
+}
+
+/// The WebAssembly heap: dlmalloc, as the standard library uses, but asking the host for memory in
+/// steps of a quarter of what is already held (at least 4 MiB). The standard one grows by exactly the
+/// shortfall, so a large import made thousands of `memory.grow` calls, each detaching the JavaScript
+/// view of the memory.
+#[cfg(target_arch = "wasm32")]
+mod heap {
+    use core::arch::wasm32::{memory_grow, memory_size};
+    use core::cell::UnsafeCell;
+    use dlmalloc::{Allocator, Dlmalloc};
+    use std::alloc::{GlobalAlloc, Layout};
+
+    const PAGE: usize = 65536;
+
+    pub struct Geometric;
+    unsafe impl Allocator for Geometric {
+        fn alloc(&self, size: usize) -> (*mut u8, usize, u32) {
+            let held = memory_size(0) * PAGE;
+            for want in [size.max(held / 4).max(4 << 20), size] {
+                let pages = want.div_ceil(PAGE);
+                let prev = memory_grow(0, pages);
+                if prev != usize::MAX {
+                    return ((prev * PAGE) as *mut u8, pages * PAGE, 0);
+                }
+            }
+            (core::ptr::null_mut(), 0, 0)
+        }
+        fn remap(&self, _ptr: *mut u8, _old: usize, _new: usize, _can_move: bool) -> *mut u8 {
+            core::ptr::null_mut()
+        }
+        fn free_part(&self, _ptr: *mut u8, _old: usize, _new: usize) -> bool {
+            false
+        }
+        fn free(&self, _ptr: *mut u8, _size: usize) -> bool {
+            false
+        }
+        fn can_release_part(&self, _flags: u32) -> bool {
+            false
+        }
+        fn allocates_zeros(&self) -> bool {
+            true
+        }
+        fn page_size(&self) -> usize {
+            PAGE
+        }
+    }
+
+    /// single-threaded: WebAssembly here has no threads
+    pub struct Heap(UnsafeCell<Dlmalloc<Geometric>>);
+    unsafe impl Sync for Heap {}
+
+    unsafe impl GlobalAlloc for Heap {
+        unsafe fn alloc(&self, l: Layout) -> *mut u8 {
+            (*self.0.get()).malloc(l.size(), l.align())
+        }
+        unsafe fn alloc_zeroed(&self, l: Layout) -> *mut u8 {
+            (*self.0.get()).calloc(l.size(), l.align())
+        }
+        unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
+            (*self.0.get()).free(p, l.size(), l.align())
+        }
+        unsafe fn realloc(&self, p: *mut u8, l: Layout, new: usize) -> *mut u8 {
+            (*self.0.get()).realloc(p, l.size(), l.align(), new)
+        }
+    }
+
+    #[global_allocator]
+    static HEAP: Heap = Heap(UnsafeCell::new(Dlmalloc::new_with_allocator(Geometric)));
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -361,5 +432,88 @@ mod wasm {
         let ser = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true).serialize_missing_as_null(true);
         let events = out.events.serialize(&ser)?;
         Ok(js_sys::Array::of2(&data, &events))
+    }
+
+    /// the files the JS side can reach: { read(path), glob(pattern), lines?(path) }
+    struct JsFiles(JsValue);
+    impl JsFiles {
+        fn call(&self, name: &str, arg: &str) -> Result<JsValue, String> {
+            let f: js_sys::Function = js_sys::Reflect::get(&self.0, &JsValue::from(name)).ok().and_then(|f| f.dyn_into().ok()).ok_or_else(|| format!("files.{} is missing", name))?;
+            f.call1(&self.0, &JsValue::from(arg)).map_err(|e| e.dyn_ref::<js_sys::Error>().map(|e| String::from(e.message())).or_else(|| e.as_string()).unwrap_or_else(|| format!("{:?}", e)))
+        }
+    }
+    impl crate::import::manifest::FileAccess for JsFiles {
+        fn chunks(&mut self, path: &str) -> Option<Result<crate::import::manifest::ChunkReader, String>> {
+            let has = js_sys::Reflect::get(&self.0, &JsValue::from("chunks")).map(|f| f.is_function()).unwrap_or(false);
+            if !has {
+                return None;
+            }
+            Some(self.call("chunks", path).and_then(|it| {
+                let iter = js_sys::try_iter(&it).ok().flatten().ok_or_else(|| format!("{}: chunks() did not return an iterable", path))?;
+                let mut iter = iter;
+                // each block is copied into the same buffer: no new allocation (and no memory.grow) per block
+                Ok(Box::new(move |buf: &mut Vec<u8>| match iter.next() {
+                    None => Ok(false),
+                    Some(Err(e)) => Err(format!("{:?}", e)),
+                    Some(Ok(v)) => {
+                        let a = js_sys::Uint8Array::new(&v);
+                        buf.resize(a.length() as usize, 0);
+                        a.copy_to(buf);
+                        Ok(true)
+                    }
+                }) as crate::import::manifest::ChunkReader)
+            }))
+        }
+        fn read(&mut self, path: &str) -> Result<String, String> {
+            self.call("read", path)?.as_string().ok_or_else(|| format!("{}: read() did not return text", path))
+        }
+        fn glob(&mut self, pattern: &str) -> Result<Vec<String>, String> {
+            let a = self.call("glob", pattern)?;
+            Ok(js_sys::Array::from(&a).iter().filter_map(|v| v.as_string()).collect())
+        }
+        fn lines(&mut self, path: &str) -> Option<Result<Box<dyn Iterator<Item = String>>, String>> {
+            let has = js_sys::Reflect::get(&self.0, &JsValue::from("lines")).map(|f| f.is_function()).unwrap_or(false);
+            if !has {
+                return None;
+            }
+            // pulled one line at a time: trace files run to gigabytes
+            Some(self.call("lines", path).and_then(|it| {
+                let iter = js_sys::try_iter(&it).ok().flatten().ok_or_else(|| format!("{}: lines() did not return an iterable", path))?;
+                Ok(Box::new(iter.filter_map(|v| v.ok().and_then(|v| v.as_string()))) as Box<dyn Iterator<Item = String>>)
+            }))
+        }
+    }
+
+    /// importBundle(manifest, files) → { dataset, log } (src/backtest/import/manifest.ts); the manifest
+    /// already validated on the JS side
+    #[wasm_bindgen(js_name = importBundle)]
+    pub fn import_bundle(manifest: JsValue, files: JsValue) -> Result<JsValue, JsValue> {
+        let m: serde_json::Value = from(manifest)?;
+        let mut fs = JsFiles(files);
+        let (dataset, log) = crate::import::manifest::import_bundle(&m, &mut fs).map_err(jerr)?;
+        #[derive(Serialize)]
+        struct Out {
+            dataset: crate::dataset::Dataset,
+            log: Vec<crate::import::manifest::ImportLog>,
+        }
+        Ok(Out { dataset, log }.serialize(&ser())?)
+    }
+
+    /// readWorkloads(documents) → [service, WorkloadConfig][] (src/backtest/configDiff.ts), in document order
+    #[wasm_bindgen(js_name = readWorkloads)]
+    pub fn read_workloads(documents: JsValue) -> Result<JsValue, JsValue> {
+        let docs: Vec<serde_json::Value> = from(documents)?;
+        let w: Vec<(String, crate::config_diff::WorkloadConfig)> = crate::config_diff::read_workloads(&docs).into_iter().collect();
+        Ok(w.serialize(&ser())?)
+    }
+
+    /// strategyFromDiff(before, after, name?, known?) → { strategy, ignored }; workloads as [service, config][]
+    #[wasm_bindgen(js_name = strategyFromDiff)]
+    pub fn strategy_from_diff(before: JsValue, after: JsValue, name: Option<String>, known: Option<Vec<String>>) -> Result<JsValue, JsValue> {
+        let before: Vec<(String, crate::config_diff::WorkloadConfig)> = from(before)?;
+        let after: Vec<(String, crate::config_diff::WorkloadConfig)> = from(after)?;
+        let known: Option<indexmap::IndexSet<String>> = known.map(|k| k.into_iter().collect());
+        let r = crate::config_diff::strategy_from_diff(&before.into_iter().collect(), &after.into_iter().collect(), name.as_deref(), known.as_ref());
+        Ok(r.serialize(&ser())?)
     }
 }

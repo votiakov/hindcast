@@ -47,10 +47,31 @@ export function memQuantity(q: unknown): number | undefined {
   return (parseFloat(m[1]) * (m[2] ? mult[m[2]] : 1)) / 2 ** 30;
 }
 
+type NativeConfigDiff = {
+  readWorkloads: (documents: unknown[]) => [string, WorkloadConfig][];
+  strategyFromDiff: (before: [string, WorkloadConfig][], after: [string, WorkloadConfig][], name?: string, known?: string[]) => { strategy: StrategySpec | null; ignored: string[] };
+};
+let native: NativeConfigDiff | null = null;
+/** the compiled engine's config diff (src/backtest/native.ts) */
+export function setNativeConfigDiff(n: NativeConfigDiff | null) {
+  native = n;
+}
+
+/** every YAML document in the texts, as plain values */
+export function yamlDocuments(yamlTexts: string[]): unknown[] {
+  const docs: unknown[] = [];
+  for (const t of yamlTexts) for (const d of parseAllDocuments(t)) docs.push(d.toJS());
+  return docs;
+}
+
 export function readWorkloads(yamlTexts: string[]): Map<string, WorkloadConfig> {
+  return native ? new Map(native.readWorkloads(yamlDocuments(yamlTexts))) : readWorkloadsTs(yamlTexts);
+}
+
+export function readWorkloadsTs(yamlTexts: string[]): Map<string, WorkloadConfig> {
   const docs: Obj[] = [];
-  for (const t of yamlTexts) for (const d of parseAllDocuments(t)) {
-    const x = o(d.toJS());
+  for (const x0 of yamlDocuments(yamlTexts)) {
+    const x = o(x0);
     if (x.kind === 'List') docs.push(...arr(x.items).map(o));
     else if (x.kind) docs.push(x);
   }
@@ -97,6 +118,10 @@ export function readWorkloads(yamlTexts: string[]): Map<string, WorkloadConfig> 
 
 /** the strategy that turns `before` into `after`, or null when nothing the model knows changed */
 export function strategyFromDiff(before: Map<string, WorkloadConfig>, after: Map<string, WorkloadConfig>, opts: { name?: string; known?: Set<string> } = {}): { strategy: StrategySpec | null; ignored: string[] } {
+  return native ? native.strategyFromDiff([...before], [...after], opts.name, opts.known ? [...opts.known] : undefined) : strategyFromDiffTs(before, after, opts);
+}
+
+export function strategyFromDiffTs(before: Map<string, WorkloadConfig>, after: Map<string, WorkloadConfig>, opts: { name?: string; known?: Set<string> } = {}): { strategy: StrategySpec | null; ignored: string[] } {
   const changes: StrategySpec['changes'] = [];
   const ignored: string[] = [];
   const said: string[] = [];

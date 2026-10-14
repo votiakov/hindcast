@@ -88,6 +88,19 @@ export function audit(spec: any, opts: any, progress: any): any;
  */
 export function runPlanPacked(plan: any, traffic: any, endpoints: string[], observed: any, series: Float64Array, opts: any): Array<any>;
 /**
+ * importBundle(manifest, files) → { dataset, log } (src/backtest/import/manifest.ts); the manifest
+ * already validated on the JS side
+ */
+export function importBundle(manifest: any, files: any): any;
+/**
+ * readWorkloads(documents) → [service, WorkloadConfig][] (src/backtest/configDiff.ts), in document order
+ */
+export function readWorkloads(documents: any): any;
+/**
+ * strategyFromDiff(before, after, name?, known?) → { strategy, ignored }; workloads as [service, config][]
+ */
+export function strategyFromDiff(before: any, after: any, name?: string | null, known?: string[] | null): any;
+/**
  * the design simulator's fluid engine, stepped by the app (one tick at a time) and by headless runs
  */
 export class SimEngine {
@@ -136,6 +149,9 @@ export interface InitOutput {
   readonly optimize: (a: any, b: any, c: any) => [number, number, number];
   readonly audit: (a: any, b: any, c: any) => [number, number, number];
   readonly runPlanPacked: (a: any, b: any, c: number, d: number, e: any, f: number, g: number, h: any) => [number, number, number];
+  readonly importBundle: (a: any, b: any) => [number, number, number];
+  readonly readWorkloads: (a: any) => [number, number, number];
+  readonly strategyFromDiff: (a: any, b: any, c: number, d: number, e: number, f: number) => [number, number, number];
   readonly __wbindgen_exn_store: (a: number) => void;
   readonly __externref_table_alloc: () => number;
   readonly __wbindgen_export_2: WebAssembly.Table;

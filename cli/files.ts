@@ -22,6 +22,21 @@ export function* readLines(path: string, chunk = 1 << 22): Generator<string> {
   }
 }
 
+/** a file in blocks of bytes; each block is valid until the next is asked for (one buffer, reused) */
+export function* readChunks(path: string, chunk = 1 << 22): Generator<Uint8Array> {
+  const fd = openSync(path, 'r');
+  const buf = Buffer.allocUnsafe(chunk);
+  try {
+    for (;;) {
+      const n = readSync(fd, buf, 0, chunk, null);
+      if (n <= 0) break;
+      yield buf.subarray(0, n);
+    }
+  } finally {
+    closeSync(fd);
+  }
+}
+
 /** minimal glob: `*` and `**` within path segments */
 export function glob(pattern: string, base = '.'): string[] {
   const abs = resolve(base, pattern);
@@ -49,5 +64,6 @@ export function fileAccess(manifestPath: string): FileAccess {
     read: (p) => readFileSync(resolve(base, p), 'utf8'),
     glob: (p) => glob(p, base),
     lines: (p) => readLines(resolve(base, p)),
+    chunks: (p) => readChunks(resolve(base, p)),
   };
 }

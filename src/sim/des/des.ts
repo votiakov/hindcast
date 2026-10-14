@@ -681,7 +681,7 @@ function runDes(spec: ArchitectureSpec, scenarioInput: unknown, cfgIn: Partial<D
     now = q.peekTime();
     q.pop()();
     if (++processed > cfg.maxEvents) {
-      evLog.push({ t: r3(now), what: `stopped: event budget (${cfg.maxEvents.toLocaleString()}) exhausted` });
+      evLog.push({ t: r3(now), what: `stopped: event budget (${cfg.maxEvents.toLocaleString('en-US')}) exhausted` });
       break;
     }
   }

@@ -80,3 +80,19 @@ for (const file of ['k8s-shop', 'shop']) {
   const [rs] = t(() => wasm.simulateDes(shop, bf, { seed: 1 }));
   console.log(`DES: black friday on examples/shop.yaml (${(r as { summary: { requests: number; events: number } }).summary.requests.toLocaleString('en-US')} requests, ${(r as { summary: { events: number } }).summary.events.toLocaleString('en-US')} events) — TypeScript ${ts.toFixed(0)} ms, Rust/WASM ${rs.toFixed(0)} ms (${(ts / rs).toFixed(1)}×)`);
 }
+
+// importing raw telemetry: metrics, traces and a bill on the file system
+{
+  const { parse } = await import('yaml');
+  const { importBundleTs, ImportManifest } = await import('../src/backtest/import/manifest');
+  const { importBundle: importBundleRs } = await import('../src/backtest/wasm/hindcast_engine.js');
+  const { fileAccess } = await import('../cli/files');
+  for (const path of ['reference/k8s/shop/runs/normal-1/workspace/telemetry/bottleneck.import.yaml', 'reference/shop/runs/stress/bottleneck.import.yaml']) {
+    const m = ImportManifest.parse(parse(readFileSync(path, 'utf8')));
+    const fs = fileAccess(path);
+    const t = (f: () => unknown) => { let b = Infinity; for (let i = 0; i < 2; i++) { const a = performance.now(); f(); b = Math.min(b, performance.now() - a); } return b; };
+    const ts = t(() => importBundleTs(m, fs));
+    const rs = t(() => importBundleRs(m, fs));
+    console.log(`${path.split('/').slice(-4, -1).join('/')}: import — TypeScript ${ts.toFixed(0)} ms, Rust/WASM ${rs.toFixed(0)} ms (${(ts / rs).toFixed(1)}×)`);
+  }
+}

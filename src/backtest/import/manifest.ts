@@ -82,6 +82,8 @@ export interface FileAccess {
   glob(pattern: string): string[];
   /** stream a file line by line (large trace files); falls back to read() */
   lines?(path: string): Iterable<string>;
+  /** a large file as raw blocks of bytes, each valid until the next is asked for (the compiled importer splits the lines itself) */
+  chunks?(path: string): Iterable<Uint8Array>;
 }
 
 export interface ImportLog {
@@ -90,7 +92,21 @@ export interface ImportLog {
   points?: number;
 }
 
-export function importBundle(manifestInput: unknown, fs: FileAccess): { dataset: Dataset; log: ImportLog[] } {
+export type ImportResult = { dataset: Dataset; log: ImportLog[] };
+type Importer = (manifest: ImportManifest, fs: FileAccess) => ImportResult;
+let nativeImport: Importer | null = null;
+/** the compiled engine's importer (src/backtest/native.ts) */
+export function setNativeImport(f: Importer | null) {
+  nativeImport = f;
+}
+
+/** import everything a manifest names: the compiled engine when loaded, else the TypeScript one */
+export function importBundle(manifestInput: unknown, fs: FileAccess): ImportResult {
+  const m = ImportManifest.parse(manifestInput);
+  return nativeImport ? nativeImport(m, fs) : importBundleTs(m, fs);
+}
+
+export function importBundleTs(manifestInput: unknown, fs: FileAccess): ImportResult {
   const m = ImportManifest.parse(manifestInput);
   const b = new DatasetBuilder();
   const log: ImportLog[] = [];
@@ -128,7 +144,7 @@ export function importBundle(manifestInput: unknown, fs: FileAccess): { dataset:
     const had = new Set(b.services().filter((id) => b.hasService(id, 'rps')));
     topology = buildTopology(spans, b, { stepS, sampling: src.sampling, ignoreServices: src.ignore, rename, series });
     for (const id of Object.keys(topology.services)) if (!had.has(id) && b.hasService(id, 'rps')) filledFromTraces.add(id);
-    log.push({ file: files.join(', '), what: `traces: ${topology.traces.toLocaleString()} requests, ${Object.keys(topology.services).length} services, ${Object.keys(topology.endpoints).length} endpoints`, points: spans.length });
+    log.push({ file: files.join(', '), what: `traces: ${topology.traces.toLocaleString('en-US')} requests, ${Object.keys(topology.services).length} services, ${Object.keys(topology.endpoints).length} endpoints`, points: spans.length });
   }
 
   const ws = m.window?.start !== undefined ? parseTimestamp(m.window.start) ?? undefined : undefined;

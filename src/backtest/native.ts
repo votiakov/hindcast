@@ -14,6 +14,8 @@ import { setNativeAnalyze } from '../sim/des/analyze';
 import { setNativeOptimize } from '../sim/optimize';
 import { setNativeAudit } from '../sim/audit';
 import { setNativeCalibrate, type CalibrateOptions } from './calibrate';
+import { setNativeImport, type ImportResult } from './import/manifest';
+import { setNativeConfigDiff } from './configDiff';
 import { setNativeEngine, type Plan, type RunOpts, type RunResult, type Traffic } from './engine';
 import { setNativeBacktest, type BacktestOptions, type BacktestResult } from './backtest';
 import type { Model } from './model';
@@ -94,6 +96,13 @@ const use = () => {
   setNativeEngine(runPlanNative);
   setNativeBacktest(backtestNative);
   setNativeCalibrate(calibrateNative);
+  setNativeConfigDiff({
+    readWorkloads: (docs) => wasm.readWorkloads(docs),
+    strategyFromDiff: (before, after, name, known) => wasm.strategyFromDiff(before, after, name, known),
+  });
+  setNativeImport((m, fs) => {
+    return wasm.importBundle(m, fs) as ImportResult;
+  });
   setNativePlan({ basePlan: basePlanNative });
   setNativeStrategy({ applyStrategy: applyStrategyNative });
   setNativeAccuracy({ modelBreakingPoint: modelBreakingPointNative, holdoutAccuracy: holdoutAccuracyNative, referenceAccuracy: referenceAccuracyNative });
