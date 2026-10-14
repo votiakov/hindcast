@@ -17,6 +17,8 @@ import { setNativeCalibrate, type CalibrateOptions } from './calibrate';
 import { setNativeImport, type ImportResult } from './import/manifest';
 import { setNativeConfigDiff } from './configDiff';
 import { setNativeTerraform } from './terraformDiff';
+import { setNativeKubernetes } from '../spec/kubernetes';
+import { setNativeTerraform as setNativeTerraformSpec, type ImportResult as SpecImport } from '../spec/terraform';
 import { setNativeEngine, type Plan, type RunOpts, type RunResult, type Traffic } from './engine';
 import { setNativeBacktest, type BacktestOptions, type BacktestResult } from './backtest';
 import type { Model } from './model';
@@ -105,6 +107,8 @@ const use = () => {
     instanceType: (t) => wasm.instanceType(t),
     strategyFromTerraformPlan: (plan, name, known) => wasm.strategyFromTerraformPlan(plan, name, known),
   });
+  setNativeKubernetes((docs, name) => wasm.importKubernetes(docs, name) as SpecImport);
+  setNativeTerraformSpec((doc, name) => wasm.importTerraform(doc, name) as SpecImport);
   setNativeImport((m, fs) => {
     return wasm.importBundle(m, fs) as ImportResult;
   });

@@ -610,6 +610,38 @@ export function instanceType(t) {
     return takeFromExternrefTable0(ret[0]);
 }
 
+/**
+ * importKubernetes(documents, name?) → { spec, assumptions, skipped, mapped } (src/spec/kubernetes.ts)
+ * @param {any} documents
+ * @param {string | null} [name]
+ * @returns {any}
+ */
+export function importKubernetes(documents, name) {
+    var ptr0 = isLikeNone(name) ? 0 : passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len0 = WASM_VECTOR_LEN;
+    const ret = wasm.importKubernetes(documents, ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * importTerraform(doc, name?) → { spec, assumptions, skipped, mapped } (src/spec/terraform.ts)
+ * @param {any} doc
+ * @param {string | null} [name]
+ * @returns {any}
+ */
+export function importTerraform(doc, name) {
+    var ptr0 = isLikeNone(name) ? 0 : passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len0 = WASM_VECTOR_LEN;
+    const ret = wasm.importTerraform(doc, ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
 const SimEngineFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_simengine_free(ptr >>> 0, 1));

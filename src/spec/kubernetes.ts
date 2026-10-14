@@ -62,7 +62,17 @@ interface Workload {
   comp: ComponentSpec;
 }
 
+let nativeKubernetes: ((...a: Parameters<typeof importKubernetesTs>) => ImportResult) | null = null;
+/** the compiled engine's reader (src/backtest/native.ts) */
+export function setNativeKubernetes(f: typeof nativeKubernetes) {
+  nativeKubernetes = f;
+}
+
 export function importKubernetes(docsIn: unknown[], name?: string): ImportResult {
+  return nativeKubernetes ? nativeKubernetes(docsIn, name) : importKubernetesTs(docsIn, name);
+}
+
+export function importKubernetesTs(docsIn: unknown[], name?: string): ImportResult {
   // flatten `List` documents and drop empties
   const docs: Obj[] = [];
   for (const d of docsIn) {

@@ -6,6 +6,7 @@ pub mod accuracy;
 pub mod backtest;
 pub mod calibrate;
 pub mod config_diff;
+pub mod convert;
 pub mod dataset;
 pub mod engine;
 pub mod import;
@@ -530,5 +531,19 @@ mod wasm {
     #[wasm_bindgen(js_name = instanceType)]
     pub fn instance_type(t: &str) -> Result<JsValue, JsValue> {
         Ok(crate::terraform_diff::instance_type(t).serialize(&ser())?)
+    }
+
+    /// importKubernetes(documents, name?) → { spec, assumptions, skipped, mapped } (src/spec/kubernetes.ts)
+    #[wasm_bindgen(js_name = importKubernetes)]
+    pub fn import_kubernetes(documents: JsValue, name: Option<String>) -> Result<JsValue, JsValue> {
+        let docs: Vec<serde_json::Value> = from(documents)?;
+        Ok(crate::convert::kubernetes::import_kubernetes(&docs, name.as_deref()).map_err(err)?.serialize(&ser())?)
+    }
+
+    /// importTerraform(doc, name?) → { spec, assumptions, skipped, mapped } (src/spec/terraform.ts)
+    #[wasm_bindgen(js_name = importTerraform)]
+    pub fn import_terraform(doc: JsValue, name: Option<String>) -> Result<JsValue, JsValue> {
+        let doc: serde_json::Value = from(doc)?;
+        Ok(crate::convert::terraform::import_terraform(&doc, name.as_deref()).map_err(err)?.serialize(&ser())?)
     }
 }

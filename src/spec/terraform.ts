@@ -68,7 +68,17 @@ const REFERENCE_TYPES = new Set([
 
 const slug = (s: string) => s.replace(/[^a-zA-Z0-9-]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'x';
 
+let nativeTerraform: ((...a: Parameters<typeof importTerraformTs>) => ImportResult) | null = null;
+/** the compiled engine's reader (src/backtest/native.ts) */
+export function setNativeTerraform(f: typeof nativeTerraform) {
+  nativeTerraform = f;
+}
+
 export function importTerraform(doc: unknown, name?: string): ImportResult {
+  return nativeTerraform ? nativeTerraform(doc, name) : importTerraformTs(doc, name);
+}
+
+export function importTerraformTs(doc: unknown, name?: string): ImportResult {
   const resources = collect(doc);
   const components: ComponentSpec[] = [];
   const edges = new Set<string>();

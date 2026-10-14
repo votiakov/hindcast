@@ -5,6 +5,8 @@ import { parse } from 'yaml';
 import { initSync, importBundle as importBundleRs, readWorkloads as readWorkloadsRs, strategyFromDiff as strategyFromDiffRs } from '../src/backtest/wasm/hindcast_engine.js';
 import { readWorkloadsTs, strategyFromDiffTs, yamlDocuments } from '../src/backtest/configDiff';
 import { instanceTypeTs, strategyFromTerraformPlanTs } from '../src/backtest/terraformDiff';
+import { importKubernetesTs } from '../src/spec/kubernetes';
+import { importTerraformTs } from '../src/spec/terraform';
 import * as W from '../src/backtest/wasm/hindcast_engine.js';
 import { importBundleTs, ImportManifest } from '../src/backtest/import/manifest';
 import { fileAccess } from '../cli/files';
@@ -148,5 +150,81 @@ describe('Rust Terraform plan reading matches TypeScript', () => {
     // the corpus reaches the branches that matter
     const all = plans.map((p) => JSON.stringify(strategyFromTerraformPlanTs(JSON.parse(JSON.stringify(p))))).join('\n');
     for (const w of ['autoscale', 'readReplicas', 'arch', 'memoryGb', 'replicas', 'matches no service', 'destroyed', 'not something the backtest models']) expect(all + JSON.stringify(plans.map((p) => strategyFromTerraformPlanTs(JSON.parse(JSON.stringify(p)), { known: new Set(['customer']) })))).toContain(w);
+  });
+});
+
+describe('Rust spec import (Kubernetes, Terraform) matches TypeScript', () => {
+  let seed = 11;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  const pick = <T,>(a: T[]): T => a[Math.floor(rnd() * a.length)];
+  /** the same result, key order included; an error must be the same error */
+  const same = (f: () => unknown, g: () => unknown, where: string, diffs: Diff[]) => {
+    let a: string, b: string;
+    try {
+      a = JSON.stringify(f());
+    } catch (e) {
+      a = `throws ${(e as Error).message}`;
+    }
+    try {
+      b = JSON.stringify(g());
+    } catch (e) {
+      b = `throws ${(e as Error).message}`;
+    }
+    // where the TypeScript reader crashes on a malformed document, the Rust one may read on
+    if (a.startsWith('throws Cannot read') || a.startsWith('throws Cannot destructure')) return void crashed++;
+    if (a !== b) {
+      let i = 0;
+      while (a[i] === b[i]) i++;
+      diffs.push({ where, ts: a.slice(Math.max(0, i - 150), i + 150), rs: b.slice(Math.max(0, i - 150), i + 150) });
+    }
+  };
+  let crashed = 0;
+  // a document tree with a few values changed, a few entries dropped or doubled
+  const mutate = (x: unknown, depth = 0): unknown => {
+    if (Array.isArray(x)) {
+      const out: unknown[] = [];
+      for (const v of x) {
+        const r = rnd();
+        if (r < 0.08) continue;
+        out.push(mutate(v, depth + 1));
+        if (r > 0.95) out.push(mutate(v, depth + 1));
+      }
+      return out;
+    }
+    if (x && typeof x === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(x)) {
+        if (depth >= 5 && rnd() < 0.04) continue;
+        out[k] = mutate(v, depth + 1);
+      }
+      return out;
+    }
+    if (typeof x === 'number') return rnd() < 0.15 ? pick([0, 1, 2, 3, 5, 10, x * 2, 0.5]) : x;
+    if (typeof x === 'string' && rnd() < 0.06) return pick(['', 'redis:7', 'postgres:16', 'rabbitmq:3', 'm7g.2xlarge', 'g5.xlarge', 'arm64', 'LoadBalancer', 'web', 'api', x + '-x']);
+    if (typeof x === 'boolean') return rnd() < 0.2 ? !x : x;
+    return x;
+  };
+
+  const k8sDocs = k8s.map((f) => yamlDocuments([readFileSync(f, 'utf8')]));
+  it('Kubernetes: every manifest, and 300 mutations of them', () => {
+    const diffs: Diff[] = [];
+    k8sDocs.forEach((docs, i) => same(() => importKubernetesTs(docs, 'n'), () => W.importKubernetes(docs, 'n'), k8s[i], diffs));
+    for (let i = 0; i < 300; i++) {
+      const docs = mutate([...pick(k8sDocs), ...(rnd() < 0.3 ? pick(k8sDocs) : [])]) as unknown[];
+      same(() => importKubernetesTs(docs), () => W.importKubernetes(docs, undefined), `mutation ${i}`, diffs);
+    }
+    expect(diffs.slice(0, 3)).toEqual([]);
+  });
+
+  const tf = JSON.parse(readFileSync('examples/terraform/shop.tfstate.json', 'utf8'));
+  it('Terraform: the example state, and 300 mutations of it', () => {
+    const diffs: Diff[] = [];
+    same(() => importTerraformTs(tf, 'n'), () => W.importTerraform(tf, 'n'), 'shop', diffs);
+    for (let i = 0; i < 300; i++) {
+      const doc = mutate(tf);
+      same(() => importTerraformTs(doc), () => W.importTerraform(doc, undefined), `mutation ${i}`, diffs);
+    }
+    expect(diffs.slice(0, 3)).toEqual([]);
+    expect(crashed).toBeLessThan(60);
   });
 });

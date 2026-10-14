@@ -109,6 +109,14 @@ export function strategyFromTerraformPlan(plan: any, name?: string | null, known
  */
 export function instanceType(t: string): any;
 /**
+ * importKubernetes(documents, name?) → { spec, assumptions, skipped, mapped } (src/spec/kubernetes.ts)
+ */
+export function importKubernetes(documents: any, name?: string | null): any;
+/**
+ * importTerraform(doc, name?) → { spec, assumptions, skipped, mapped } (src/spec/terraform.ts)
+ */
+export function importTerraform(doc: any, name?: string | null): any;
+/**
  * the design simulator's fluid engine, stepped by the app (one tick at a time) and by headless runs
  */
 export class SimEngine {
@@ -162,6 +170,8 @@ export interface InitOutput {
   readonly strategyFromDiff: (a: any, b: any, c: number, d: number, e: number, f: number) => [number, number, number];
   readonly strategyFromTerraformPlan: (a: any, b: number, c: number, d: number, e: number) => [number, number, number];
   readonly instanceType: (a: number, b: number) => [number, number, number];
+  readonly importKubernetes: (a: any, b: number, c: number) => [number, number, number];
+  readonly importTerraform: (a: any, b: number, c: number) => [number, number, number];
   readonly __wbindgen_exn_store: (a: number) => void;
   readonly __externref_table_alloc: () => number;
   readonly __wbindgen_export_2: WebAssembly.Table;
