@@ -31,6 +31,8 @@ export const runPlanPacked: (a: any, b: any, c: number, d: number, e: any, f: nu
 export const importBundle: (a: any, b: any) => [number, number, number];
 export const readWorkloads: (a: any) => [number, number, number];
 export const strategyFromDiff: (a: any, b: any, c: number, d: number, e: number, f: number) => [number, number, number];
+export const strategyFromTerraformPlan: (a: any, b: number, c: number, d: number, e: number) => [number, number, number];
+export const instanceType: (a: number, b: number) => [number, number, number];
 export const __wbindgen_exn_store: (a: number) => void;
 export const __externref_table_alloc: () => number;
 export const __wbindgen_export_2: WebAssembly.Table;

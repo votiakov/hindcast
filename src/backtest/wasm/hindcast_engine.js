@@ -576,6 +576,40 @@ export function strategyFromDiff(before, after, name, known) {
     return takeFromExternrefTable0(ret[0]);
 }
 
+/**
+ * strategyFromTerraformPlan(plan, name?, known?) → { strategy, ignored, mapped } (src/backtest/terraformDiff.ts)
+ * @param {any} plan
+ * @param {string | null} [name]
+ * @param {string[] | null} [known]
+ * @returns {any}
+ */
+export function strategyFromTerraformPlan(plan, name, known) {
+    var ptr0 = isLikeNone(name) ? 0 : passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len0 = WASM_VECTOR_LEN;
+    var ptr1 = isLikeNone(known) ? 0 : passArrayJsValueToWasm0(known, wasm.__wbindgen_malloc);
+    var len1 = WASM_VECTOR_LEN;
+    const ret = wasm.strategyFromTerraformPlan(plan, ptr0, len0, ptr1, len1);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * instanceType("m7g.large") → { cpu, memoryGb, arch }
+ * @param {string} t
+ * @returns {any}
+ */
+export function instanceType(t) {
+    const ptr0 = passStringToWasm0(t, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.instanceType(ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
 const SimEngineFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_simengine_free(ptr >>> 0, 1));

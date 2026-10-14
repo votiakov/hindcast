@@ -16,6 +16,7 @@ import { setNativeAudit } from '../sim/audit';
 import { setNativeCalibrate, type CalibrateOptions } from './calibrate';
 import { setNativeImport, type ImportResult } from './import/manifest';
 import { setNativeConfigDiff } from './configDiff';
+import { setNativeTerraform } from './terraformDiff';
 import { setNativeEngine, type Plan, type RunOpts, type RunResult, type Traffic } from './engine';
 import { setNativeBacktest, type BacktestOptions, type BacktestResult } from './backtest';
 import type { Model } from './model';
@@ -99,6 +100,10 @@ const use = () => {
   setNativeConfigDiff({
     readWorkloads: (docs) => wasm.readWorkloads(docs),
     strategyFromDiff: (before, after, name, known) => wasm.strategyFromDiff(before, after, name, known),
+  });
+  setNativeTerraform({
+    instanceType: (t) => wasm.instanceType(t),
+    strategyFromTerraformPlan: (plan, name, known) => wasm.strategyFromTerraformPlan(plan, name, known),
   });
   setNativeImport((m, fs) => {
     return wasm.importBundle(m, fs) as ImportResult;

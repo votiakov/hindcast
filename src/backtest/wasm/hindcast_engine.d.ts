@@ -101,6 +101,14 @@ export function readWorkloads(documents: any): any;
  */
 export function strategyFromDiff(before: any, after: any, name?: string | null, known?: string[] | null): any;
 /**
+ * strategyFromTerraformPlan(plan, name?, known?) → { strategy, ignored, mapped } (src/backtest/terraformDiff.ts)
+ */
+export function strategyFromTerraformPlan(plan: any, name?: string | null, known?: string[] | null): any;
+/**
+ * instanceType("m7g.large") → { cpu, memoryGb, arch }
+ */
+export function instanceType(t: string): any;
+/**
  * the design simulator's fluid engine, stepped by the app (one tick at a time) and by headless runs
  */
 export class SimEngine {
@@ -152,6 +160,8 @@ export interface InitOutput {
   readonly importBundle: (a: any, b: any) => [number, number, number];
   readonly readWorkloads: (a: any) => [number, number, number];
   readonly strategyFromDiff: (a: any, b: any, c: number, d: number, e: number, f: number) => [number, number, number];
+  readonly strategyFromTerraformPlan: (a: any, b: number, c: number, d: number, e: number) => [number, number, number];
+  readonly instanceType: (a: number, b: number) => [number, number, number];
   readonly __wbindgen_exn_store: (a: number) => void;
   readonly __externref_table_alloc: () => number;
   readonly __wbindgen_export_2: WebAssembly.Table;

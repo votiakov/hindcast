@@ -45,8 +45,22 @@ const ARM_FAMILY = /^(?:db\.|cache\.)?[a-z]+\d+g[a-z]*\./;
 const SIZE_VCPU: Record<string, number> = { nano: 2, micro: 2, small: 2, medium: 1, large: 2, xlarge: 4, '2xlarge': 8, '3xlarge': 12, '4xlarge': 16, '6xlarge': 24, '8xlarge': 32, '9xlarge': 36, '12xlarge': 48, '16xlarge': 64, '18xlarge': 72, '24xlarge': 96, '32xlarge': 128, '48xlarge': 192, metal: 96 };
 const SIZE_GB_PER_VCPU: Record<string, number> = { c: 2, m: 4, r: 8, x: 16, t: 2 };
 
+type NativeTerraform = {
+  instanceType: (t: string) => { cpu?: number; memoryGb?: number; arch: 'x86' | 'arm' };
+  strategyFromTerraformPlan: (plan: unknown, name?: string, known?: string[]) => { strategy: StrategySpec | null; ignored: string[]; mapped: string[] };
+};
+let native: NativeTerraform | null = null;
+/** the compiled engine's Terraform reading (src/backtest/native.ts) */
+export function setNativeTerraform(n: NativeTerraform | null) {
+  native = n;
+}
+
 /** an EC2 / RDS / ElastiCache instance type → vCPU, memory and architecture (approximate for odd families) */
 export function instanceType(t: string): { cpu?: number; memoryGb?: number; arch: 'x86' | 'arm' } {
+  return native ? native.instanceType(t) : instanceTypeTs(t);
+}
+
+export function instanceTypeTs(t: string): { cpu?: number; memoryGb?: number; arch: 'x86' | 'arm' } {
   const bare = t.replace(/^(db|cache)\./, '');
   const [family = '', size = ''] = bare.split('.');
   const arch = ARM_FAMILY.test(t) ? 'arm' : 'x86';
@@ -100,12 +114,12 @@ function readWorkload(r: ResourceChange, v: Obj | null): { service: string; w: W
     }
     case 'aws_launch_template':
     case 'aws_instance': {
-      const t = v.instance_type ? instanceType(String(v.instance_type)) : undefined;
+      const t = v.instance_type ? instanceTypeTs(String(v.instance_type)) : undefined;
       return t ? { service, w: { cpu: t.cpu, memoryGb: t.memoryGb, arch: t.arch } } : null;
     }
     case 'aws_db_instance':
     case 'aws_rds_cluster_instance': {
-      const t = v.instance_class ? instanceType(String(v.instance_class)) : undefined;
+      const t = v.instance_class ? instanceTypeTs(String(v.instance_class)) : undefined;
       return t ? { service, w: { cpu: t.cpu, memoryGb: t.memoryGb, arch: t.arch } } : null;
     }
     case 'google_cloud_run_v2_service': {
@@ -175,6 +189,10 @@ export function matchService(name: string, known?: Set<string>): string | undefi
 }
 
 export function strategyFromTerraformPlan(plan: unknown, opts: { name?: string; known?: Set<string> } = {}): { strategy: StrategySpec | null; ignored: string[]; mapped: string[] } {
+  return native ? native.strategyFromTerraformPlan(plan, opts.name, opts.known ? [...opts.known] : undefined) : strategyFromTerraformPlanTs(plan, opts);
+}
+
+export function strategyFromTerraformPlanTs(plan: unknown, opts: { name?: string; known?: Set<string> } = {}): { strategy: StrategySpec | null; ignored: string[]; mapped: string[] } {
   const changes = arr(o(plan).resource_changes).map((x) => x as ResourceChange).filter((r) => r?.change && !(r.change.actions.length === 1 && r.change.actions[0] === 'no-op'));
   const ignored: string[] = [];
   const mapped: string[] = [];

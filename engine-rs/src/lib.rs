@@ -14,6 +14,7 @@ pub mod model;
 pub mod resilience;
 pub mod sim;
 pub mod strategy;
+pub mod terraform_diff;
 pub mod types;
 
 pub use engine::run_plan;
@@ -515,5 +516,19 @@ mod wasm {
         let known: Option<indexmap::IndexSet<String>> = known.map(|k| k.into_iter().collect());
         let r = crate::config_diff::strategy_from_diff(&before.into_iter().collect(), &after.into_iter().collect(), name.as_deref(), known.as_ref());
         Ok(r.serialize(&ser())?)
+    }
+
+    /// strategyFromTerraformPlan(plan, name?, known?) → { strategy, ignored, mapped } (src/backtest/terraformDiff.ts)
+    #[wasm_bindgen(js_name = strategyFromTerraformPlan)]
+    pub fn strategy_from_terraform_plan(plan: JsValue, name: Option<String>, known: Option<Vec<String>>) -> Result<JsValue, JsValue> {
+        let plan: serde_json::Value = from(plan)?;
+        let known: Option<indexmap::IndexSet<String>> = known.map(|k| k.into_iter().collect());
+        Ok(crate::terraform_diff::strategy_from_terraform_plan(&plan, name.as_deref(), known.as_ref()).serialize(&ser())?)
+    }
+
+    /// instanceType("m7g.large") → { cpu, memoryGb, arch }
+    #[wasm_bindgen(js_name = instanceType)]
+    pub fn instance_type(t: &str) -> Result<JsValue, JsValue> {
+        Ok(crate::terraform_diff::instance_type(t).serialize(&ser())?)
     }
 }
