@@ -27,7 +27,8 @@ const k8s = readFileSync('examples/kubernetes/shop.yaml', 'utf8');
 
 /** [label, method, params] — a tools/call when method is a tool name */
 type Case = [string, string, Record<string, unknown>?];
-const call = (name: string, args?: Record<string, unknown>, progress = false): Case => [`${name} ${JSON.stringify(args ?? null).slice(0, 80)}`, 'tools/call', { name, ...(args === undefined ? {} : { arguments: args }), ...(progress ? { _meta: { progressToken: `p-${name}` } } : {}) }];
+// the label is cut after the temp dir is masked, so it reads the same on every machine
+const call = (name: string, args?: Record<string, unknown>, progress = false): Case => [`${name} ${JSON.stringify(args ?? null).replaceAll(out, '$OUT').slice(0, 80)}`, 'tools/call', { name, ...(args === undefined ? {} : { arguments: args }), ...(progress ? { _meta: { progressToken: `p-${name}` } } : {}) }];
 const CASES: Case[] = [
   ['ping', 'ping'],
   ['tools/list', 'tools/list'],
