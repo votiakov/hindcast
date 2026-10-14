@@ -7,7 +7,8 @@ import { join } from 'node:path';
 export function engineSourceHash(root = 'engine-rs') {
   const h = createHash('sha256');
   const walk = (dir) => readdirSync(join(root, dir)).sort().flatMap((f) => (statSync(join(root, dir, f)).isDirectory() ? walk(join(dir, f)) : [join(dir, f)]));
-  const files = ['Cargo.toml', 'Cargo.lock', ...walk('src')];
+  // the native command line (src/cli, src/bin) is not part of the WebAssembly build
+  const files = ['Cargo.toml', 'Cargo.lock', ...walk('src').filter((f) => !/^src\/(cli|bin)\//.test(f))];
   for (const f of files) h.update(f).update('\0').update(readFileSync(join(root, f)));
   return h.digest('hex');
 }

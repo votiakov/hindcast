@@ -621,3 +621,60 @@ pub fn apply_strategy(model: &Model, base: &Plan, spec: &StrategySpec) -> Result
     }
     Ok(Applied { plan, notes })
 }
+
+/// a strategy as the schema returns it (StrategySpec.parse): validated, then each change written in its
+/// schema's key order, arch spellings mapped (arm64, graviton → arm; amd64, x86_64 → x86)
+pub fn normalize_strategy(v: &Value) -> Result<Value, String> {
+    parse_strategy(v)?;
+    let o = v.as_object().cloned().unwrap_or_default();
+    let mut out = serde_json::Map::new();
+    out.insert("name".into(), o.get("name").cloned().unwrap_or(Value::Null));
+    if let Some(d) = o.get("description").filter(|x| !x.is_null()) {
+        out.insert("description".into(), d.clone());
+    }
+    let pick = |m: &serde_json::Map<String, Value>, keys: &[&str]| {
+        let mut x = serde_json::Map::new();
+        for k in keys {
+            if let Some(v) = m.get(*k) {
+                x.insert((*k).into(), v.clone());
+            }
+        }
+        x
+    };
+    let changes: Vec<Value> = o
+        .get("changes")
+        .and_then(|c| c.as_array())
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|c| {
+            let m = c.as_object().cloned().unwrap_or_default();
+            if m.contains_key("endpoint") && !m.contains_key("service") {
+                let mut x = pick(&m, &["endpoint", "retries", "timeoutMs"]);
+                if let Some(Value::Object(r)) = x.get("retries").cloned() {
+                    x.insert("retries".into(), Value::Object(pick(&r, &["attempts", "budget"])));
+                }
+                return Value::Object(x);
+            }
+            let mut x = pick(&m, &["service", "replicas", "autoscale", "cpu", "memoryGb", "spread", "cpuRequest", "memoryRequestGb", "arch", "perf", "capacityRps", "cache", "readReplicas", "readShare", "zone", "region"]);
+            if let Some(Value::Object(a)) = x.get("autoscale").cloned() {
+                x.insert("autoscale".into(), Value::Object(pick(&a, &["min", "max", "targetCpu", "warmupS", "cooldownS", "intervalS", "metricWindowS"])));
+            }
+            if let Some(Value::Object(a)) = x.get("cache").cloned() {
+                x.insert("cache".into(), Value::Object(pick(&a, &["hitRate", "latencyMs", "costPerHour"])));
+            }
+            if let Some(Value::String(a)) = x.get("arch").cloned() {
+                let l = a.to_lowercase();
+                let mapped = match l.as_str() {
+                    "arm64" | "aarch64" | "graviton" => "arm".to_string(),
+                    "amd64" | "x86_64" | "x86-64" | "intel" | "amd" => "x86".to_string(),
+                    _ => l,
+                };
+                x.insert("arch".into(), Value::String(mapped));
+            }
+            Value::Object(x)
+        })
+        .collect();
+    out.insert("changes".into(), Value::Array(changes));
+    Ok(Value::Object(out))
+}

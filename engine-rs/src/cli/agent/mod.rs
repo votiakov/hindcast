@@ -4,6 +4,7 @@
 pub mod collect;
 pub mod connect;
 pub mod sources;
+pub mod verify;
 pub mod workspace;
 
 use crate::cli::util::*;
@@ -168,6 +169,27 @@ pub fn validate(schema: &Value, v: Option<&Value>, path: &[String], issues: &mut
     }
 }
 
+/// a schema error (the issues as JSON) as explainError writes it: "invalid input" and a "path: message" line each
+pub fn explain_schema_error(e: &str) -> String {
+    match serde_json::from_str::<Value>(e) {
+        Ok(Value::Array(issues)) => format!(
+            "invalid input:\n{}",
+            issues
+                .iter()
+                .map(|i| {
+                    let path: Vec<String> = i.get("path").and_then(|p| p.as_array()).map(|a| a.iter().map(|x| match x {
+                        Value::String(s) => s.clone(),
+                        x => crate::math::js_num(x.as_f64().unwrap_or(f64::NAN)),
+                    }).collect()).unwrap_or_default();
+                    format!("- {}: {}", if path.is_empty() { "(root)".to_string() } else { path.join(".") }, i.get("message").and_then(|m| m.as_str()).unwrap_or(""))
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        ),
+        _ => e.to_string(),
+    }
+}
+
 /// run a tool by name with arguments: the result as JSON, or an error an agent can act on
 pub fn run_tool(name: &str, args: &Value) -> Result<Value, String> {
     let all = tools();
@@ -182,6 +204,12 @@ pub fn run_tool(name: &str, args: &Value) -> Result<Value, String> {
         "connect_telemetry" => connect::connect_telemetry(&ws, &parsed),
         "read_cluster" => connect::read_cluster(&ws, &parsed),
         "collect_telemetry" => collect::collect(&ws, &parsed),
+        "calibrate_model" => verify::calibrate_model(&ws, &parsed),
+        "model_status" => verify::model_status(&ws),
+        "verify_change" => verify::verify_change(&ws, parsed.get("changes").and_then(|c| c.as_array()).map(|a| a.as_slice()).unwrap_or(&[]), &parsed),
+        "find_headroom" => verify::find_headroom(&ws, &parsed),
+        "check_node_loss" => verify::check_node_loss(&ws, &parsed),
+        "verify_design" => verify::verify_design(&parsed),
         _ => Err(format!("{} is not available in this build yet", name)),
     }
 }

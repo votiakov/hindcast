@@ -101,6 +101,24 @@ export const CASES: string[][] = [
   agent('connect_telemetry', { workspace: ws('m'), prometheus: { url: `${TEL}/prom` }, tempo: { url: `${TEL}/tempo` } }),
   agent('collect_telemetry', { workspace: ws('m'), start: '2026-10-09T00:00:00Z', end: '2026-10-09T02:00:00Z' }),
   agent('collect_telemetry', { workspace: ws('z') }),
+  agent('model_status', { workspace: ws('a') }),
+  agent('calibrate_model', { workspace: ws('v') }),
+  agent('model_status', { workspace: ws('v') }),
+  agent('find_headroom', { workspace: ws('v') }),
+  agent('find_headroom', { workspace: ws('v'), strategy: 'name: more customer\nchanges:\n  - service: customer\n    replicas: 3\n' }),
+  agent('verify_change', { workspace: ws('v'), changes: [{ strategy: { name: 'customer ×3', changes: [{ service: 'customer', replicas: 3, extra: 1 }] } }], draws: 4 }),
+  agent('verify_change', { workspace: ws('v'), changes: [{ strategy: 'name: graviton\nchanges:\n  - service: route\n    arch: Graviton\n  - endpoint: "*"\n    retries: { attempts: 2 }\n' }, { terraformPlan: { resource_changes: [{ address: 'aws_ecs_service.customer', type: 'aws_ecs_service', name: 'customer', change: { actions: ['update'], before: { name: 'customer', desired_count: 1 }, after: { name: 'customer', desired_count: 2 } } }] } }], draws: 3, traffic: { scale: 2 }, gateMinutes: 1 }),
+  agent('verify_change', { workspace: ws('v'), changes: [{ kubernetes: { base: 'examples/backtest-ci/deploy/hotrod.yaml', head: 'examples/backtest-ci/deploy/hotrod.yaml' } }], draws: 3 }),
+  agent('verify_change', { workspace: ws('v'), changes: [{ strategy: { name: 'cut', changes: [{ service: 'mysql', cpu: 0.25 }] } }], draws: 3, last: '20m', report: false }),
+  agent('verify_change', { workspace: ws('v'), changes: [{ strategy: { name: 'nope', changes: [{ service: 'ghost', replicas: 2 }] } }] }),
+  agent('verify_change', { workspace: ws('v'), changes: [] }),
+  agent('calibrate_model', { workspace: ws('n'), holdout: 0.2, slo: { p99Ms: 400, errorRate: 0.02 } }),
+  agent('check_node_loss', { workspace: ws('n') }),
+  agent('check_node_loss', { workspace: ws('n'), strategy: { name: 'spread', changes: [{ service: 'frontend', replicas: 3, spread: 'even' }] }, traffic: { scale: 1.5 } }),
+  agent('verify_change', { workspace: ws('n'), changes: [{ strategy: { name: 'frontend ×3 spread', changes: [{ service: 'frontend', replicas: 3, spread: 'even' }] } }], draws: 3 }),
+  agent('verify_design', { spec: readFileSync('examples/shop.yaml', 'utf8') }),
+  agent('verify_design', { spec: readFileSync('examples/shop.yaml', 'utf8'), rps: 2000, budgetMonthly: 500, slo: { maxP99Ms: 200 } }),
+  agent('verify_design', { spec: 'components: []' }),
   ['outage', 'reference/shop/model.json', 'list'],
   ['outage', 'reference/shop/model.json', 'aws-use1-2025-10-20'],
   ['outage', 'reference/shop/model.json', 'slack-2021-01-04', 'reference/shop/strategies/1-autoscale-frontend.yaml', '--md', `${out}/OUT/o.md`],
@@ -117,7 +135,7 @@ export const CASES: string[][] = [
 ];
 
 /** wall-clock numbers differ run to run */
-const mask = (s: string) => s.replace(/(in |· )\d+ ms/g, '$1# ms').replace(/"wallMs": \d+(\.\d+)?/g, '"wallMs": #').replace(/"measuredAt": "[^"]*"/g, '"measuredAt": #').replace(/cli-parity-\w+/g, 'cli-parity-X').replace(/\/OUT[12]\//g, '/OUT/');
+const mask = (s: string) => s.replace(/(in |· )\d+ ms/g, '$1# ms').replace(/"wallMs": \d+(\.\d+)?/g, '"wallMs": #').replace(/"measuredAt": ?"[^"]*"/g, '"measuredAt": #').replace(/cli-parity-\w+/g, 'cli-parity-X').replace(/\/OUT[12]\//g, '/OUT/');
 
 function run(cmd: string, args: string[], tag: string) {
   const a = args.map((x) => x.replace('/OUT/', `/OUT${tag}/`));
@@ -132,6 +150,14 @@ function run(cmd: string, args: string[], tag: string) {
 const prom = spawn('node', ['test/cli-fixtures/mock-prometheus.mjs', '19090'], { stdio: 'ignore' });
 const tel = spawn('node', ['test/cli-fixtures/mock-telemetry.mjs', '19091'], { stdio: 'ignore' });
 spawnSync('sleep', ['0.5']);
+// workspaces seeded with recorded histories, for the verdict tools
+import { writeFileSync as wf, mkdirSync as md, copyFileSync } from 'node:fs';
+for (const tag of ['1', '2']) {
+  md(`${out}/OUT${tag}/ws-v`, { recursive: true });
+  copyFileSync('reference/hotrod/dataset.json', `${out}/OUT${tag}/ws-v/dataset.json`);
+  md(`${out}/OUT${tag}/ws-n`, { recursive: true });
+  wf(`${out}/OUT${tag}/ws-n/dataset.json`, JSON.stringify(JSON.parse(readFileSync('public/reference/k8s-shop.json', 'utf8')).dataset));
+}
 const filter = process.argv[2];
 let failed = 0;
 for (const c of CASES) {

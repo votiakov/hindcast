@@ -2,12 +2,12 @@
 //! Node CLI, on the engine without WebAssembly or Node.
 
 pub mod agent;
-mod bt;
-mod design;
+pub mod bt;
+pub mod design;
 pub mod files;
 pub mod http;
-mod reports;
-mod sim;
+pub mod reports;
+pub mod sim;
 pub mod util;
 
 use util::*;
