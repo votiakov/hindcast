@@ -283,11 +283,11 @@ fn late_frac(lat: f64, deadline: f64) -> f64 {
     ((lat - 0.8 * deadline) / (0.4 * deadline)).max(0.0).min(1.0)
 }
 
-#[derive(Clone, Debug)]
+/// an outgoing connection: edge index, target node index, target up
+#[derive(Clone, Copy, Debug)]
 pub struct Route {
-    pub edge_id: String,
-    pub target: String,
-    pub data: NodeData,
+    pub e: usize,
+    pub t: usize,
     pub up: bool,
 }
 
@@ -296,7 +296,8 @@ struct ProcessResult {
     failed: f64,
     forward: f64,
     routes: Option<Vec<Route>>,
-    shares: Option<HashMap<String, f64>>,
+    /// explicit share per edge index, bypassing the routing policy
+    shares: Option<Vec<(usize, f64)>>,
     local_share: Option<f64>,
     hits: Option<f64>,
     util: f64,
@@ -334,6 +335,8 @@ fn service_latency(d: &NodeData, st: &NodeState) -> f64 {
 
 struct Ctx<'a> {
     d: &'a NodeData,
+    /// every node's data this tick (a route's target by index)
+    data: &'a [NodeData],
     arrivals: f64,
     dt: f64,
     cfg: &'a EngineConfig,
@@ -398,7 +401,7 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
         "db" => {
             let d = c.d;
             let write_ratio = 1.0 - c.read_ratio;
-            let replicas: Vec<Route> = c.routes.iter().filter(|k| k.data.kind == "replica" && k.up).cloned().collect();
+            let replicas: Vec<Route> = c.routes.iter().filter(|k| c.data[k.t].kind == "replica" && k.up).cloned().collect();
             st.failover = Failover::None;
             let mut shares = None;
             if !d.alive {
@@ -408,7 +411,7 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
                         // first replica is the new primary: all writes plus its share of reads
                         st.failover = Failover::Promoted;
                         let n = replicas.len() as f64;
-                        shares = Some(replicas.iter().enumerate().map(|(i, k)| (k.edge_id.clone(), c.read_ratio / n + if i == 0 { write_ratio } else { 0.0 })).collect::<HashMap<_, _>>());
+                        shares = Some(replicas.iter().enumerate().map(|(i, k)| (k.e, c.read_ratio / n + if i == 0 { write_ratio } else { 0.0 })).collect::<Vec<_>>());
                     } else {
                         st.failover = Failover::Electing;
                     }
@@ -445,7 +448,7 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
                 st.queue = QUEUE_MAX_BACKLOG;
             }
             let routes: Vec<Route> = c.routes.iter().filter(|k| k.up).cloned().collect();
-            let drain = routes.iter().fold(0.0, |s, k| s + capacity_of(&k.data, None));
+            let drain = routes.iter().fold(0.0, |s, k| s + capacity_of(&c.data[k.t], None));
             st.drain_rps = drain;
             let processed = st.queue.min(drain * c.dt);
             st.queue -= processed;
@@ -580,8 +583,9 @@ pub struct Snapshot {
 struct Local {
     local_share: f64,
     routes: Vec<Route>,
-    flows: Vec<(String, f64)>,
-    mode: String,
+    /// (edge index, volume), in the order first sent
+    flows: Vec<(usize, f64)>,
+    mode: &'static str,
     up: bool,
 }
 
@@ -669,97 +673,95 @@ impl Engine {
         }
     }
 
+    /// the index of a node's state, created fresh the first time
+    fn state_index(&mut self, id: &str) -> usize {
+        if let Some(i) = self.nodes.get_index_of(id) {
+            return i;
+        }
+        self.nodes.insert(id.to_string(), fresh());
+        self.nodes.len() - 1
+    }
+
     /// one tick: `traffic` req/s sent by all clients, `read_ratio` share of reads
     pub fn step(&mut self, nodes_in: &[SimNode], edges: &[SimEdge], traffic: f64, read_ratio: f64, dt: f64, cfg: &EngineConfig, profile: &str) -> Vec<SimEvent> {
         self.t += dt;
         let mut events: Vec<SimEvent> = vec![];
         let now = self.t;
-        let original: HashMap<&str, &NodeData> = nodes_in.iter().map(|n| (n.id.as_str(), &n.data)).collect();
-        let mut nodes: Vec<(String, NodeData)> = Vec::with_capacity(nodes_in.len());
-        for n in nodes_in {
-            if n.data.autoscale.is_some() && spec(&n.data.kind).scalable {
-                if !self.scalers.contains_key(&n.id) {
-                    self.scalers.insert(n.id.clone(), new_scaler(&n.data));
+        let n = nodes_in.len();
+        for nd in nodes_in {
+            if nd.data.autoscale.is_some() && spec(&nd.data.kind).scalable {
+                if !self.scalers.contains_key(&nd.id) {
+                    self.scalers.insert(nd.id.clone(), new_scaler(&nd.data));
                 }
-            } else {
-                self.scalers.shift_remove(&n.id);
-            }
-            nodes.push((n.id.clone(), dynamic_data(&n.data, self.scalers.get(&n.id))));
-        }
-        let mut edge_lat: HashMap<&str, f64> = HashMap::new();
-        for e in edges {
-            if let Some(l) = e.data.as_ref().and_then(|d| d.latency_ms).filter(|l| *l != 0.0 && !l.is_nan()) {
-                edge_lat.insert(&e.id, l);
+            } else if self.scalers.contains_key(&nd.id) {
+                self.scalers.shift_remove(&nd.id);
             }
         }
-        let by_id: HashMap<&str, usize> = nodes.iter().enumerate().map(|(i, (id, _))| (id.as_str(), i)).collect();
-        let mut out: HashMap<&str, Vec<Route>> = HashMap::new();
-        let mut indeg: HashMap<&str, i64> = nodes.iter().map(|(id, _)| (id.as_str(), 0)).collect();
-        let mut pooled: HashSet<&str> = HashSet::new();
-        for e in edges {
+        let data: Vec<NodeData> = nodes_in.iter().map(|nd| dynamic_data(&nd.data, self.scalers.get(&nd.id))).collect();
+        let by_id: HashMap<&str, usize> = nodes_in.iter().enumerate().map(|(i, nd)| (nd.id.as_str(), i)).collect();
+        // states by node index (every node gets one this tick, as the TypeScript engine's lookups do)
+        let sidx: Vec<usize> = nodes_in.iter().map(|nd| self.state_index(&nd.id)).collect();
+        let edge_lat: Vec<f64> = edges.iter().map(|e| e.data.as_ref().and_then(|d| d.latency_ms).filter(|l| *l != 0.0 && !l.is_nan()).unwrap_or(0.0)).collect();
+        let mut out: Vec<Vec<Route>> = vec![vec![]; n];
+        let mut indeg: Vec<i64> = vec![0; n];
+        let mut pooled: Vec<bool> = vec![false; n];
+        for (ei, e) in edges.iter().enumerate() {
             let (si, ti) = match (by_id.get(e.source.as_str()), by_id.get(e.target.as_str())) {
                 (Some(s), Some(t)) if e.source != e.target => (*s, *t),
                 _ => continue,
             };
-            let sd = &nodes[si].1;
+            let sd = &data[si];
             // instances are reachable behind a balancer/queue, or when a scatter-gather caller addresses partitions
             if sd.kind == "lb" || sd.kind == "gateway" || sd.kind == "queue" || sd.fanout.unwrap_or(1.0) > 1.0 {
-                pooled.insert(&e.target);
+                pooled[ti] = true;
             }
-            let data = nodes[ti].1.clone();
-            let up = is_up(&data);
-            out.entry(&e.source).or_default().push(Route { edge_id: e.id.clone(), target: e.target.clone(), data, up });
-            *indeg.get_mut(e.target.as_str()).unwrap() += 1;
+            out[si].push(Route { e: ei, t: ti, up: is_up(&data[ti]) });
+            indeg[ti] += 1;
         }
 
         // Kahn topological order; nodes in cycles go at the end
-        let mut order: Vec<String> = vec![];
-        let mut ready: VecDeque<String> = nodes.iter().filter(|(id, _)| indeg[id.as_str()] == 0).map(|(id, _)| id.clone()).collect();
-        let mut seen: HashSet<String> = HashSet::new();
-        while let Some(id) = ready.pop_front() {
-            if seen.contains(&id) {
+        let mut order: Vec<usize> = Vec::with_capacity(n);
+        let mut ready: VecDeque<usize> = (0..n).filter(|&i| indeg[i] == 0).collect();
+        let mut seen = vec![false; n];
+        while let Some(i) = ready.pop_front() {
+            if seen[i] {
                 continue;
             }
-            seen.insert(id.clone());
-            order.push(id.clone());
-            if let Some(rs) = out.get(id.as_str()) {
-                for k in rs {
-                    let v = indeg.get_mut(k.target.as_str()).unwrap();
-                    *v -= 1;
-                    if *v == 0 {
-                        ready.push_back(k.target.clone());
-                    }
+            seen[i] = true;
+            order.push(i);
+            for k in &out[i] {
+                indeg[k.t] -= 1;
+                if indeg[k.t] == 0 {
+                    ready.push_back(k.t);
                 }
             }
         }
-        for (id, _) in &nodes {
-            if !seen.contains(id) {
-                order.push(id.clone());
+        for i in 0..n {
+            if !seen[i] {
+                order.push(i);
             }
         }
 
-        let mut inflow: HashMap<String, f64> = HashMap::new();
-        let mut edge_flow: HashMap<String, f64> = HashMap::new();
-        let mut local: HashMap<String, Local> = HashMap::new();
-        let mut promoted: HashSet<String> = HashSet::new();
-        let clients: Vec<String> = nodes.iter().filter(|(_, d)| d.kind == "client" && d.alive).map(|(id, _)| id.clone()).collect();
+        let mut inflow = vec![0.0; n];
+        let mut edge_flow = vec![0.0; edges.len()];
+        let mut local: Vec<Option<Local>> = (0..n).map(|_| None).collect();
+        let mut promoted = vec![false; n];
+        let clients: Vec<usize> = (0..n).filter(|&i| data[i].kind == "client" && data[i].alive).collect();
         let per_client = if clients.is_empty() { 0.0 } else { (traffic * dt) / clients.len() as f64 };
-        let empty: Vec<Route> = vec![];
 
         // ---- forward pass ----
-        for id in &order {
-            let d = nodes[by_id[id.as_str()]].1.clone();
-            let routes = out.get(id.as_str()).unwrap_or(&empty).clone();
-            let arrivals = if d.kind == "client" { if d.alive { per_client } else { 0.0 } } else { inflow.get(id).copied().unwrap_or(0.0) };
-            let is_promoted = promoted.contains(id);
-            let up_targets: HashMap<String, f64> = routes.iter().map(|k| (k.target.clone(), self.nodes.get(&k.target).map(|s| s.success).unwrap_or(1.0))).collect();
-            let st = self.state(id);
+        for &i in &order {
+            let d = &data[i];
+            let id = nodes_in[i].id.as_str();
+            let routes = &out[i];
+            let arrivals = if d.kind == "client" { if d.alive { per_client } else { 0.0 } } else { inflow[i] };
+            let mut st = std::mem::replace(&mut self.nodes[sidx[i]], fresh());
             if d.kind == "replica" {
-                st.failover = if is_promoted { Failover::Promoted } else { Failover::None };
+                st.failover = if promoted[i] { Failover::Promoted } else { Failover::None };
             }
             if d.kind == "cache" || d.kind == "cdn" {
                 // a dead or flushed cache comes back empty and re-warms from misses
-                if !is_up(&d) || d.flushes.unwrap_or(0.0) != st.flush_seen {
+                if !is_up(d) || d.flushes.unwrap_or(0.0) != st.flush_seen {
                     st.cold_at = Some(now);
                 }
                 st.flush_seen = d.flushes.unwrap_or(0.0);
@@ -769,12 +771,12 @@ impl Engine {
                 }
             }
             // a dead node fails everything (databases handle their own failover)
-            let mut r = if !is_up(&d) && d.kind != "db" && d.kind != "client" {
+            let mut r = if !is_up(d) && d.kind != "db" && d.kind != "client" {
                 st.queue = 0.0;
                 res(0.0, arrivals, 0.0, 0.0, false)
             } else {
-                let ctx = Ctx { d: &d, arrivals, dt, cfg, read_ratio, routes: &routes, pooled: pooled.contains(id.as_str()) };
-                process(&ctx, st)
+                let ctx = Ctx { d, data: &data, arrivals, dt, cfg, read_ratio, routes, pooled: pooled[i] };
+                process(&ctx, &mut st)
             };
             // gray failure: the node answers a share of what it handles with errors
             if let Some(fr) = d.fault_rate.filter(|x| *x != 0.0 && !x.is_nan()) {
@@ -787,70 +789,76 @@ impl Engine {
             }
             if d.kind == "db" && st.failover == Failover::Promoted {
                 if let Some(t) = r.routes.as_ref().and_then(|rs| rs.first()) {
-                    promoted.insert(t.target.clone());
+                    promoted[t.t] = true;
                 }
             }
             // generic caller behaviour: breaker first, then retries on whatever passes
-            let targets = r.routes.clone().unwrap_or_else(|| routes.clone());
-            st.breaker_pass = if targets.is_empty() { 1.0 } else { Self::breaker_pass(&d, st, dt, &mut events, id) };
+            let targets: Vec<Route> = r.routes.take().unwrap_or_else(|| routes.clone());
+            st.breaker_pass = if targets.is_empty() { 1.0 } else { Self::breaker_pass(d, &mut st, dt, &mut events, id) };
             let retries = d.retries.unwrap_or(0.0);
             st.retry_amp = if retries > 0.0 && !targets.is_empty() { retry_amp(st.attempt_fail, retries, d.retry_policy.as_deref().unwrap_or("immediate")) } else { 1.0 };
             let forward = r.forward * st.breaker_pass * st.retry_amp * d.fanout.unwrap_or(1.0).max(1.0);
 
             // routing policy
-            let mut flows: Vec<(String, f64)> = vec![];
-            let mode = if r.shares.is_some() { "split".to_string() } else { d.routing.clone().unwrap_or_else(|| "split".into()) };
+            let mut flows: Vec<(usize, f64)> = vec![];
+            let mode: &'static str = if r.shares.is_some() {
+                "split"
+            } else {
+                match d.routing.as_deref() {
+                    Some("fanout") => "fanout",
+                    Some("failover") => "failover",
+                    _ => "split",
+                }
+            };
             if !targets.is_empty() && forward > 0.0 {
+                let set = |flows: &mut Vec<(usize, f64)>, e: usize, v: f64| {
+                    // a Map keeps one entry per edge: a later write replaces the value in place
+                    if let Some(x) = flows.iter_mut().find(|x| x.0 == e) {
+                        x.1 = v;
+                    } else {
+                        flows.push((e, v));
+                    }
+                };
                 if let Some(sh) = &r.shares {
                     for k in &targets {
-                        flows.push((k.edge_id.clone(), forward * sh.get(&k.edge_id).copied().unwrap_or(0.0)));
+                        set(&mut flows, k.e, forward * sh.iter().find(|x| x.0 == k.e).map(|x| x.1).unwrap_or(0.0));
                     }
                 } else if mode == "fanout" {
                     for k in &targets {
-                        flows.push((k.edge_id.clone(), forward));
+                        set(&mut flows, k.e, forward);
                     }
                 } else if mode == "failover" {
                     // children in order; whatever one failed last tick spills over to the next
                     let mut remaining = forward;
                     let mut ordered = targets.clone();
                     js_sort_by(&mut ordered, |a, b| {
-                        let usage = |d: &NodeData| if spec(&d.kind).cost_per_request.map(|c| c != 0.0).unwrap_or(false) { 1.0 } else { 0.0 };
+                        let usage = |t: usize| if spec(&data[t].kind).cost_per_request.map(|c| c != 0.0).unwrap_or(false) { 1.0 } else { 0.0 };
                         let u = (b.up as i32 - a.up as i32) as f64;
                         if u != 0.0 {
                             u
                         } else {
-                            usage(&a.data) - usage(&b.data)
+                            usage(a.t) - usage(b.t)
                         }
                     });
                     for k in &ordered {
-                        flows.push((k.edge_id.clone(), remaining));
-                        remaining *= if k.up { 1.0 - up_targets.get(&k.target).copied().unwrap_or(1.0) } else { 1.0 };
+                        set(&mut flows, k.e, remaining);
+                        remaining *= if k.up { 1.0 - self.nodes[sidx[k.t]].success } else { 1.0 };
                         if remaining < 1e-9 {
                             break;
                         }
                     }
                 } else {
+                    let share = forward / targets.len() as f64;
                     for k in &targets {
-                        flows.push((k.edge_id.clone(), forward / targets.len() as f64));
+                        set(&mut flows, k.e, share);
                     }
                 }
-                // a Map keeps one entry per edge: later writes replace earlier ones
-                let mut dedup: Vec<(String, f64)> = vec![];
-                for (eid, v) in flows.drain(..) {
-                    if let Some(x) = dedup.iter_mut().find(|x| x.0 == eid) {
-                        x.1 = v;
-                    } else {
-                        dedup.push((eid, v));
-                    }
-                }
-                flows = dedup;
-                for (eid, v) in &flows {
-                    let k = targets.iter().find(|x| x.edge_id == *eid).unwrap();
-                    *inflow.entry(k.target.clone()).or_insert(0.0) += v;
-                    *edge_flow.entry(eid.clone()).or_insert(0.0) += v;
+                for &(e, v) in &flows {
+                    let t = targets.iter().find(|x| x.e == e).unwrap().t;
+                    inflow[t] += v;
+                    edge_flow[e] += v;
                 }
             }
-            let st = self.state(id);
             st.in_rps = ema(st.in_rps, arrivals / dt, dt, 0.6);
             st.drop_rps = ema(st.drop_rps, r.failed / dt, dt, 0.6);
             st.hit_rps = ema(st.hit_rps, r.hits.unwrap_or(0.0) / dt, dt, 0.6);
@@ -858,45 +866,45 @@ impl Engine {
             let local_share = r.local_share.unwrap_or(1.0);
             let own = if d.kind == "db" { arrivals * local_share } else { arrivals };
             st.drop_ratio = ema(st.drop_ratio, if own > 0.0 { r.failed / own } else { 0.0 }, dt, 0.6);
-            local.insert(id.clone(), Local { local_share, routes: targets, flows, mode, up: r.up });
+            self.nodes[sidx[i]] = st;
+            local[i] = Some(Local { local_share, routes: targets, flows, mode, up: r.up });
         }
 
         // ---- backward pass ----
-        for i in (0..order.len()).rev() {
-            let id = &order[i];
-            let d = nodes[by_id[id.as_str()]].1.clone();
-            let l = local.remove(id).unwrap();
+        for &i in order.iter().rev() {
+            let d = &data[i];
+            let id = nodes_in[i].id.as_str();
+            let l = local[i].take().unwrap();
             let has_kids = !l.routes.is_empty();
             // aggregate one downstream attempt according to the routing policy
             let (mut succ, mut lat) = (1.0, 0.0);
             if has_kids {
-                let kids: Vec<(f64, f64, f64)> = l
-                    .routes
-                    .iter()
-                    .map(|k| {
-                        let s = self.nodes.get(&k.target).cloned().unwrap_or_else(fresh);
-                        let link = edge_lat.get(k.edge_id.as_str()).copied().unwrap_or(0.0);
-                        let f = l.flows.iter().find(|x| x.0 == k.edge_id).map(|x| x.1).unwrap_or(0.0);
-                        (s.success, s.latency_ms + link, f)
-                    })
-                    .collect();
+                let kid = |k: &Route| {
+                    let s = &self.nodes[sidx[k.t]];
+                    let f = l.flows.iter().find(|x| x.0 == k.e).map(|x| x.1).unwrap_or(0.0);
+                    (s.success, s.latency_ms + edge_lat[k.e], f)
+                };
                 if l.mode == "fanout" {
-                    succ = kids.iter().fold(1.0, |p, k| p * k.0);
-                    lat = js_max(f64::NEG_INFINITY, kids.iter().map(|k| k.1));
+                    succ = l.routes.iter().fold(1.0, |p, k| p * kid(k).0);
+                    lat = js_max(f64::NEG_INFINITY, l.routes.iter().map(|k| kid(k).1));
                 } else if l.mode == "failover" {
                     let mut miss = 1.0;
-                    for k in kids.iter().filter(|x| x.2 > 0.0) {
-                        lat += miss * k.1;
-                        miss *= 1.0 - k.0;
+                    for k in &l.routes {
+                        let (s, la, f) = kid(k);
+                        if f > 0.0 {
+                            lat += miss * la;
+                            miss *= 1.0 - s;
+                        }
                     }
                     succ = 1.0 - miss;
                 } else {
                     let (mut w, mut s) = (0.0, 0.0);
-                    for k in &kids {
-                        let wk = if k.2 > 0.0 { k.2 } else { 1e-9 };
+                    for k in &l.routes {
+                        let (ks, kl, f) = kid(k);
+                        let wk = if f > 0.0 { f } else { 1e-9 };
                         w += wk;
-                        s += k.0 * wk;
-                        lat += k.1 * wk;
+                        s += ks * wk;
+                        lat += kl * wk;
                     }
                     succ = s / w;
                     lat /= w;
@@ -906,11 +914,12 @@ impl Engine {
             let degree = d.fanout.unwrap_or(1.0).max(1.0);
             if degree > 1.0 && has_kids {
                 succ = succ.powf(degree);
-                let kd = &l.routes[0].data;
+                let kd = &data[l.routes[0].t];
                 let p = kd.stall_rate.unwrap_or(0.0);
                 lat = lat * fanout_tail(degree) + (1.0 - (1.0 - p).powf(degree) - p) * kd.stall_ms.unwrap_or(0.0);
             }
-            let st = self.state(id);
+            let billed = self.scalers.get(id).map(|s| s.live + s.pending.len() as f64);
+            let st = &mut self.nodes[sidx[i]];
             // caller deadline: answers slower than timeoutMs are failures to the caller
             let tmo = d.timeout_ms.filter(|t| *t != 0.0 && !t.is_nan());
             st.late_frac = match tmo {
@@ -927,8 +936,8 @@ impl Engine {
             let mut child_lat = lat;
             let retries = d.retries.unwrap_or(0.0);
             if retries > 0.0 && has_kids {
-                let policy = d.retry_policy.clone().unwrap_or_else(|| "immediate".into());
-                child_succ = retry_success(attempt, retries, &policy, st.retry_amp);
+                let policy = d.retry_policy.as_deref().unwrap_or("immediate");
+                child_succ = retry_success(attempt, retries, policy, st.retry_amp);
                 child_lat = lat * st.retry_amp + if policy == "backoff" { (st.retry_amp - 1.0) * BACKOFF_DELAY_MS * 4.0 } else { 0.0 };
             }
             if st.breaker_pass < 1.0 {
@@ -937,49 +946,48 @@ impl Engine {
                 child_lat = p * child_lat + (1.0 - p) * 2.0;
             }
             let keep = 1.0 - st.drop_ratio;
-            let (mut success, mut latency) = if l.up { fold(&FoldCtx { d: &d, keep, local_share: l.local_share, child_succ, child_lat, has_kids, cfg }, st) } else { (0.0, 0.0) };
+            let (success, mut latency) = if l.up { fold(&FoldCtx { d, keep, local_share: l.local_share, child_succ, child_lat, has_kids, cfg }, st) } else { (0.0, 0.0) };
             if l.up {
                 if let Some(fl) = d.fault_latency_ms.filter(|x| *x != 0.0 && !x.is_nan()) {
                     latency += fl;
                 }
             }
-            let _ = &mut success;
             st.success = ema(st.success, success, dt, 0.3);
             st.latency_ms = ema(st.latency_ms, latency, dt, 0.3);
-            let usage = usage_cost(&d, st, profile);
-            let billed = self.scalers.get(id).map(|s| s.live + s.pending.len() as f64);
-            let st = self.state(id);
-            st.cost_per_hour = cost_of(&match billed {
-                Some(b) => NodeData { instances: Some(b), ..d.clone() },
-                None => d.clone(),
-            }, profile) + usage;
+            let usage = usage_cost(d, st, profile);
+            let fixed = match billed {
+                Some(b) => cost_of(&NodeData { instances: Some(b), ..d.clone() }, profile),
+                None => cost_of(d, profile),
+            };
+            st.cost_per_hour = fixed + usage;
             let over = l.up && d.kind != "client" && d.kind != "queue" && st.drop_rps > (st.in_rps * 0.02).max(1.0);
             if over && !st.overloaded {
-                events.push(SimEvent { kind: "overload".into(), node_id: id.clone(), name: d.name.clone(), detail: None });
+                events.push(SimEvent { kind: "overload".into(), node_id: id.into(), name: d.name.clone(), detail: None });
             }
             if !over && st.overloaded {
-                events.push(SimEvent { kind: "recovered".into(), node_id: id.clone(), name: d.name.clone(), detail: None });
+                events.push(SimEvent { kind: "recovered".into(), node_id: id.into(), name: d.name.clone(), detail: None });
             }
             st.overloaded = over;
             if d.kind == "db" && st.failover == Failover::Promoted {
                 if let Some(fs) = cfg.failover_s {
                     if st.down_for - dt < fs {
-                        events.push(SimEvent { kind: "failover".into(), node_id: id.clone(), name: d.name.clone(), detail: None });
+                        events.push(SimEvent { kind: "failover".into(), node_id: id.into(), name: d.name.clone(), detail: None });
                     }
                 }
             }
         }
 
         // autoscalers react to the demand they saw this tick
-        let ids: Vec<String> = self.scalers.keys().cloned().collect();
-        for id in ids {
-            let orig = match original.get(id.as_str()) {
-                Some(o) => *o,
+        for k in 0..self.scalers.len() {
+            let id = self.scalers.get_index(k).unwrap().0.clone();
+            let i = match by_id.get(id.as_str()) {
+                Some(i) => *i,
                 None => continue,
             };
-            let demand = self.state(&id).in_rps;
+            let orig = &nodes_in[i].data;
+            let demand = self.nodes[sidx[i]].in_rps;
             let per = per_instance_capacity(orig);
-            let sc = self.scalers.get_mut(&id).unwrap();
+            let sc = self.scalers.get_index_mut(k).unwrap().1;
             for (kind, from, to) in step_scaler(sc, orig, now, demand, per) {
                 if kind != "scaled" {
                     events.push(SimEvent { kind: kind.into(), node_id: id.clone(), name: orig.name.clone(), detail: Some(format!("{} → {}", js_num(from), js_num(to))) });
@@ -987,24 +995,32 @@ impl Engine {
             }
         }
 
-        let live: HashSet<&str> = edges.iter().map(|e| e.id.as_str()).collect();
-        self.edges.retain(|k, _| live.contains(k.as_str()));
-        for e in edges {
-            let prev = self.edges.get(&e.id).copied().unwrap_or(0.0);
-            let next = ema(prev, edge_flow.get(&e.id).copied().unwrap_or(0.0) / dt, dt, 0.6);
-            self.edges.insert(e.id.clone(), next);
+        if self.edges.len() != edges.len() || edges.iter().any(|e| !self.edges.contains_key(&e.id)) {
+            let live: HashSet<&str> = edges.iter().map(|e| e.id.as_str()).collect();
+            self.edges.retain(|k, _| live.contains(k.as_str()));
         }
-        self.nodes.retain(|k, _| by_id.contains_key(k.as_str()));
-
-        // ---- global ----
+        for (ei, e) in edges.iter().enumerate() {
+            match self.edges.get_mut(&e.id) {
+                Some(v) => *v = ema(*v, edge_flow[ei] / dt, dt, 0.6),
+                None => {
+                    self.edges.insert(e.id.clone(), ema(0.0, edge_flow[ei] / dt, dt, 0.6));
+                }
+            }
+        }
+        // states are indexed: prune only when the graph lost a node
+        let cost = (0..n).fold(0.0, |s, i| s + self.nodes[sidx[i]].cost_per_hour);
         let (mut rps, mut ok, mut lat) = (0.0, 0.0, 0.0);
-        for c in &clients {
-            let st = self.state(c);
+        for &c in &clients {
+            let st = &self.nodes[sidx[c]];
             rps += st.in_rps;
             ok += st.in_rps * st.success;
             lat += st.in_rps * st.latency_ms;
         }
-        let cost = nodes.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>().iter().fold(0.0, |s, id| s + self.state(id).cost_per_hour);
+        if self.nodes.len() != n {
+            self.nodes.retain(|k, _| by_id.contains_key(k.as_str()));
+        }
+
+        // ---- global ----
         let g = &mut self.global;
         g.t = self.t;
         g.rps = rps;
@@ -1033,6 +1049,11 @@ impl Engine {
     }
 
     pub fn snapshot(&mut self, nodes: &[SimNode], edges: &[SimEdge]) -> Snapshot {
+        self.snapshot_with(nodes, edges, true)
+    }
+
+    /// without each node's utilisation history (headless runs never read it)
+    pub fn snapshot_with(&mut self, nodes: &[SimNode], edges: &[SimEdge], with_history: bool) -> Snapshot {
         let mut node_stats = IndexMap::new();
         for n in nodes {
             let scaling = self.scalers.get(&n.id).map(|s| Scaling { live: s.live, pending: s.pending.len() as f64, desired: s.desired });
@@ -1066,7 +1087,7 @@ impl Engine {
                         None
                     },
                     late_frac: st.late_frac,
-                    history: st.history.iter().copied().collect(),
+                    history: if with_history { st.history.iter().copied().collect() } else { vec![] },
                     scaling,
                     warmth: st.warmth,
                 },
@@ -1080,6 +1101,7 @@ impl Engine {
             };
             edge_stats.insert(e.id.clone(), EdgeStats { rps: self.edges.get(&e.id).copied().unwrap_or(0.0), err_ratio: 1.0 - success, util });
         }
-        Snapshot { node_stats, edge_stats, global: self.global.clone() }
+        let global = if with_history { self.global.clone() } else { GlobalStats { history: vec![], ..self.global.clone() } };
+        Snapshot { node_stats, edge_stats, global }
     }
 }

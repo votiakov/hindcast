@@ -441,7 +441,7 @@ pub fn simulate_parsed(spec: &Architecture, sc: &Scenario, o: &SimOptions) -> Si
         for e in engine.step(&nodes, &edges, traffic(t), sc.read_ratio, dt, &cfg, &pricing) {
             events.push(Event { t: round(t + dt, 2), what: format!("{}: {}{}", e.kind, e.name, e.detail.map(|d| format!(" {}", d)).unwrap_or_default()) });
         }
-        let snap = engine.snapshot(&nodes, &edges);
+        let snap = engine.snapshot_with(&nodes, &edges, false);
         let gl = snap.global;
         requests += gl.rps * dt;
         failed += gl.rps * gl.error_rate * dt;
