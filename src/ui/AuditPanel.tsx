@@ -8,7 +8,7 @@ import { graphToSpec } from '../spec/convert';
 import { auditInBrowser } from '../sim/des/browserPool';
 import { auditMarkdown } from '../sim/auditReport';
 import { auditHtml } from '../sim/auditHtml';
-import type { Finding, Severity } from '../sim/audit';
+import { availPct, type Finding, type Severity } from '../sim/audit';
 import type { SimAction } from '../sim/actions';
 import { isSystem } from '../sim/catalog';
 import './audit.css';
@@ -240,6 +240,12 @@ export function AuditPanel() {
               <div>
                 survives <b>{r.survived}</b> of {r.total} incidents
               </div>
+              {r.availability && (
+                <div title={`What the structure promises before any load: components in sequence multiply their availability, redundant ones back each other up. ${r.availability.weakest.length ? `Costs the most downtime: ${r.availability.weakest.map((w) => `${w.name} ${w.downtimeHoursPerYear} h/yr`).join(', ')}.` : ''}`}>
+                  available <b>{availPct(r.availability.estimate)}</b> by design · {r.availability.downtimeHoursPerYear} h/yr down
+                  {r.availability.weakest[0] ? <> · {r.availability.weakest[0].name} the weakest link</> : null}
+                </div>
+              )}
               <div>
                 headroom <b>{r.headroom.ratio.toFixed(1)}×</b> · {names.get(r.headroom.limitedBy ?? '') ?? r.headroom.limitedBy ?? '—'} first
               </div>

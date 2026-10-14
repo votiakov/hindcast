@@ -216,6 +216,8 @@ fn print_audit(r: &Value, out: &mut Out) {
     let findings = arr(r, &["findings"]);
     out.log(&format!("\n{} {} failure audit at {} req/s {}", bold(&s(r, &["architecture"])), dim("·"), js_num(n(r, &["load", "rps"])), dim(&format!("· {} scenarios · {} ms", findings.len(), js_num(n(r, &["wallMs"]))))));
     out.log(&format!("  resilience {}/100 {}", sc, dim(&format!("— survives {} of {} incidents within SLO", js_num(n(r, &["survived"])), js_num(n(r, &["total"]))))));
+    let weakest = arr(r, &["availability", "weakest"]).first().map(|w| format!(", {} the weakest link", s(w, &["name"]))).unwrap_or_default();
+    out.log(&format!("  available  {} {}", avail_pct(n(r, &["availability", "estimate"])), dim(&format!("— by design, about {} h of downtime a year{}", js_num(n(r, &["availability", "downtimeHoursPerYear"])), weakest))));
     out.log(&format!("  headroom   {}× {}   cost ${}/month\n", js_to_fixed(n(r, &["headroom", "ratio"]), 1), dim(&format!("({} req/s, then {})", js_num(js_round(n(r, &["headroom", "maxRps"]))), or_dash(r, &["headroom", "limitedBy"]))), loc(n(r, &["baseline", "monthly"]))));
     for f in &findings {
         out.log(&format!("  {} {} {}", sev(&s(f, &["severity"])), bold(&pad(&s(f, &["title"]), 36)), dim(&s(f, &["explanation"]))));
@@ -242,6 +244,11 @@ fn ams(x: f64) -> String {
     } else {
         format!("{} ms", js_num(x))
     }
+}
+/// an availability with as many decimals as its nines need: 99.5%, 99.95%, 99.995%
+fn avail_pct(x: f64) -> String {
+    let nines = if x >= 1.0 { 6.0 } else { -(1.0 - x).log10() };
+    format!("{}%", js_to_fixed(x * 100.0, (nines.floor() as i32 - 1).clamp(1, 4) as u32 as _))
 }
 fn sev_name(x: &str) -> &'static str {
     match x {
@@ -279,6 +286,13 @@ pub fn audit_markdown(r: &Value) -> String {
     l.push("| | |".into());
     l.push("|---|---|".into());
     l.push(format!("| Resilience score | **{}/100** — survives {} of {} incidents within SLO |", js_num(n(r, &["score"])), js_num(n(r, &["survived"])), js_num(n(r, &["total"]))));
+    let weak: Vec<String> = arr(r, &["availability", "weakest"]).iter().map(|w| format!("{} ({} h)", s(w, &["name"]), js_num(n(w, &["downtimeHoursPerYear"])))).collect();
+    l.push(format!(
+        "| Availability by design | {} — about {} h of downtime a year{} |",
+        avail_pct(n(r, &["availability", "estimate"])),
+        js_num(n(r, &["availability", "downtimeHoursPerYear"])),
+        if weak.is_empty() { String::new() } else { format!("; costs the most: {}", weak.join(", ")) }
+    ));
     l.push(format!("| Headroom | {}× — {} req/s, then **{}** gives out |", js_to_fixed(n(r, &["headroom", "ratio"]), 1), loc(js_round(n(r, &["headroom", "maxRps"]))), or_dash(r, &["headroom", "limitedBy"])));
     l.push(format!("| Normal operation | errors {}, p99 {}, {}/month{} |", apct(n(r, &["baseline", "errorRate"])), ams(n(r, &["baseline", "p99Ms"])), money(n(r, &["baseline", "monthly"])), if g(r, &["baseline", "meetsSlo"]).as_bool().unwrap_or(false) { "" } else { " — **already outside the SLO**" }));
     l.push(String::new());
@@ -492,6 +506,7 @@ pub fn audit_html(r: &Value, date: &str) -> String {
 <p class=\"sub\">At {rps} req/s ({reads}% reads). SLO: errors ≤ {err}, p99 ≤ {p99}.</p>
 <div class=\"kpis\">
   <div class=\"kpi\"><b class=\"{cls}\">{score}<small style=\"font-size:14px;letter-spacing:0\">/100</small></b><span>resilience — survives {surv} of {total} incidents</span></div>
+  <div class=\"kpi\"><b>{avail}</b><span>availability by design — {downh} h of downtime a year</span></div>
   <div class=\"kpi\"><b>{ratio}×</b><span>headroom — {maxrps} req/s, then {lim}</span></div>
   <div class=\"kpi\"><b>${monthly}</b><span>per month at this load{outside}</span></div>
 </div>
@@ -513,6 +528,8 @@ pub fn audit_html(r: &Value, date: &str) -> String {
         score = js_num(score),
         surv = js_num(n(r, &["survived"])),
         total = js_num(n(r, &["total"])),
+        avail = avail_pct(n(r, &["availability", "estimate"])),
+        downh = js_num(n(r, &["availability", "downtimeHoursPerYear"])),
         ratio = js_to_fixed(n(r, &["headroom", "ratio"]), 1),
         maxrps = loc(js_round(n(r, &["headroom", "maxRps"]))),
         lim = esc(&or_dash(r, &["headroom", "limitedBy"])),

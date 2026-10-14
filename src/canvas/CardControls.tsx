@@ -146,7 +146,7 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
           )}
         </div>
       )}
-      {data.kind === 'db' && (
+      {(data.kind === 'db' || data.kind === 'replica') && (
         <div className="nc-row">
           <span className="nc-l" title="Horizontal partitions: each shard is a full database holding part of the keys — capacity and cost × shards. A hot key still lands on one shard.">shards</span>
           <input className="nc-num" type="number" min={1} max={256} step={1} value={data.shards ?? 1} onChange={(e) => set({ shards: Math.round(+e.target.value) > 1 ? Math.min(256, Math.round(+e.target.value)) : undefined })} />

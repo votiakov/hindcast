@@ -144,6 +144,8 @@ pub struct AuditResult {
     pub baseline: Baseline,
     pub headroom: Headroom,
     pub score: f64,
+    /// what the design's structure promises in a year: redundancy vs single points of failure
+    pub availability: super::availability::Availability,
     pub survived: f64,
     pub total: f64,
     pub findings: Vec<Finding>,
@@ -393,6 +395,10 @@ fn candidate_fixes(inc: &Incident, a: &Architecture, nm: &dyn Fn(&str) -> String
                 let mut comp = json!({ "id": rep, "kind": "replica", "name": format!("{}-replica", nm(&id)) });
                 if let Some(t) = c.get("tier") {
                     comp["tier"] = t.clone();
+                }
+                // a replica per shard: it has to hold (and serve) everything the primary does
+                if let Some(sh) = c.get("shards") {
+                    comp["shards"] = sh.clone();
                 }
                 out.push(Cand { title: format!("Add a read replica to {}", nm(&id)), why: "A replica serves reads and is promoted to primary in seconds when the primary dies.".into(), changes: vec![json!({ "op": "add", "component": comp }), json!({ "op": "connect", "from": id, "to": rep })] });
             }
@@ -702,6 +708,7 @@ pub fn audit(input: &Architecture, o: &AuditOptions, progress: &mut dyn FnMut(f6
         baseline,
         headroom: Headroom { max_rps: bp.max_rps, limited_by: bp.limited_by.clone(), note: bp.note.clone(), ratio: r3(ratio) },
         score,
+        availability: super::availability::availability(&spec, read_ratio),
         survived,
         total: total_graded,
         findings,

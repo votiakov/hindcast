@@ -414,7 +414,8 @@ fn service_latency(d: &NodeData, st: &NodeState) -> f64 {
 fn shard_parts(d: &NodeData, st: &NodeState) -> Vec<(f64, f64, f64)> {
     let n = shards_of(d);
     let total = capacity_of(d, Some(st.reachable)).max(1e-6);
-    if n <= 1.0 {
+    // a replica's shards share its reads evenly: one pool
+    if n <= 1.0 || d.kind != "db" {
         let (m, t) = pool_latency(d, total, st.util, st.queue);
         return vec![(1.0, m, t)];
     }

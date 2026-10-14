@@ -95,7 +95,7 @@ export function NodeControls({ id, data, selected }: { id: string; data: SystemN
             </button>
           </div>
         )}
-        {data.kind === 'db' && (
+        {(data.kind === 'db' || data.kind === 'replica') && (
           <div className="tb-group">
             <span className="tb-label" title="Horizontal partitions: each shard is a full database holding part of the keys — capacity and cost × shards. A hot key still lands on one shard.">shards</span>
             <input className="tb-num" type="number" min={1} max={256} step={1} value={data.shards ?? 1} onChange={(e) => set({ shards: Math.round(+e.target.value) > 1 ? Math.min(256, Math.round(+e.target.value)) : undefined })} />

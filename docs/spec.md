@@ -51,7 +51,7 @@ zones:                          # optional failure domains
 | `warmupS` | cache, cdn | re-warm time constant after a restart or flush (default 20 s) |
 | `writePolicy` | cache, cdn | `through` (default): writes go on to the origin. `behind`: acknowledged at the cache and flushed ~5 s later — writes are fast and the origin sees them smoothed, but the buffered ones are lost if the cache dies (`lostWrites`) |
 | `workingSetGb`, `skew` | cache | the data the cache fronts (GB) and how concentrated reads are on popular keys (Zipf exponent, default 1): with them the hit rate follows from the cache's memory (S 6.4, M 13, L 26 GB) instead of `hitRate` |
-| `shards` | db | horizontal partitions (1–256), each a full database holding part of the keys: capacity and cost × shards. Writes split with the data, which replicas and caches cannot do |
+| `shards` | db, replica | horizontal partitions (1–256), each a full database holding part of the keys: capacity and cost × shards. Writes split with the data, which replicas and caches cannot do. Give a sharded database's replica the same count (a replica per shard) |
 | `hotKeyShare` | db | share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which takes `hotKeyShare + (1 − hotKeyShare) / shards` of the load and saturates first |
 | `capacity` | any | override: req/s per size-S instance |
 | `latencyMs` | any | override: base service time |

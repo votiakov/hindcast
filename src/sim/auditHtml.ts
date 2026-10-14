@@ -1,4 +1,4 @@
-import type { AuditResult, Finding, Severity } from './audit';
+import { availPct, type AuditResult, type Finding, type Severity } from './audit';
 
 /**
  * The audit as one self-contained HTML file (no scripts, no external assets) — to attach to a
@@ -103,6 +103,7 @@ footer { margin-top: 40px; color: var(--mut); font-size: 12px; border-top: 1px s
 <p class="sub">At ${r.load.rps.toLocaleString('en-US')} req/s (${Math.round(r.load.readRatio * 100)}% reads). SLO: errors ≤ ${pct(r.slo.maxErrorRate)}, p99 ≤ ${ms(r.slo.maxP99Ms)}.</p>
 <div class="kpis">
   <div class="kpi"><b class="${r.score >= 80 ? 'good' : r.score >= 50 ? 'warn' : 'bad'}">${r.score}<small style="font-size:14px;letter-spacing:0">/100</small></b><span>resilience — survives ${r.survived} of ${r.total} incidents</span></div>
+  <div class="kpi"><b>${availPct(r.availability.estimate)}</b><span>availability by design — ${r.availability.downtimeHoursPerYear} h of downtime a year</span></div>
   <div class="kpi"><b>${r.headroom.ratio.toFixed(1)}×</b><span>headroom — ${Math.round(r.headroom.maxRps).toLocaleString('en-US')} req/s, then ${esc(r.headroom.limitedBy ?? '—')}</span></div>
   <div class="kpi"><b>$${r.baseline.monthly.toLocaleString('en-US')}</b><span>per month at this load${r.baseline.meetsSlo ? '' : ' — <span class="bad">already outside the SLO</span>'}</span></div>
 </div>

@@ -285,7 +285,7 @@ export function capacityOf(d: SystemNodeData, reachable = instancesUp(d)): numbe
 }
 
 /** a database's shard count (1 for everything else) */
-export const shardsOf = (d: SystemNodeData): number => (d.kind === 'db' ? Math.max(1, Math.floor(d.shards ?? 1)) : 1);
+export const shardsOf = (d: SystemNodeData): number => (d.kind === 'db' || d.kind === 'replica' ? Math.max(1, Math.floor(d.shards ?? 1)) : 1);
 
 /** the share of a database's traffic on its busiest shard: the hot key, plus an even share of the rest */
 export function hotShardShare(d: SystemNodeData): number {

@@ -560,7 +560,8 @@ impl<'a> Des<'a> {
         // serverless throttles instead of queueing; unlimited pools never queue
         n.queue_max = if kind == "function" || !n.workers.is_finite() { 0.0 } else { (cap * d.queue_s.or(spec(kind).queue_s).unwrap_or(cfg_queue)).floor().max(1.0) };
         // a sharded database: a pool and a queue per shard
-        let shards = shards_of(d);
+        // (a sharded replica's reads spread evenly: one pool of all its shards' workers)
+        let shards = if kind == "db" { shards_of(d) } else { 1.0 };
         if shards > 1.0 {
             let k = shards as usize;
             let one = cap / shards;

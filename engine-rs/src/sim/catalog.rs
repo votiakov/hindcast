@@ -292,9 +292,9 @@ pub fn capacity_of(d: &NodeData, reachable: Option<f64>) -> f64 {
     cap * d.degraded.unwrap_or(1.0)
 }
 
-/// a database's shard count (1 for everything else)
+/// a database's (or its replica's) shard count (1 for everything else)
 pub fn shards_of(d: &NodeData) -> f64 {
-    if d.kind == "db" {
+    if d.kind == "db" || d.kind == "replica" {
         d.shards.unwrap_or(1.0).max(1.0).floor()
     } else {
         1.0

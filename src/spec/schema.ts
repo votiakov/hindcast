@@ -42,7 +42,7 @@ export const ComponentSpec = z
     writePolicy: z.enum(['through', 'behind']).optional().describe('cache/cdn: writes go on to the origin (through, default), or are acknowledged at the cache and flushed ~5 s later — fast, but lost if the cache dies first (behind)'),
     workingSetGb: z.number().positive().optional().describe('cache: the data it fronts, GB — with it the hit rate follows from the cache size (S 6.4, M 13, L 26 GB) and `skew`'),
     skew: z.number().min(0.1).max(3).optional().describe('cache: how concentrated reads are on popular keys (Zipf exponent, default 1)'),
-    shards: z.number().int().min(1).max(256).optional().describe('db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash'),
+    shards: z.number().int().min(1).max(256).optional().describe('db/replica: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash (give a sharded database\'s replica the same count)'),
     hotKeyShare: z.number().min(0).max(1).optional().describe('db: share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which saturates first'),
     capacity: z.number().positive().optional().describe('override: req/s per size-S instance'),
     latencyMs: z.number().nonnegative().optional().describe('override: base service time'),

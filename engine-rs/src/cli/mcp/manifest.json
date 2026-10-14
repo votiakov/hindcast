@@ -262,7 +262,7 @@
            "maximum": 3
           },
           "shards": {
-           "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+           "description": "db/replica: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash (give a sharded database's replica the same count)",
            "type": "integer",
            "minimum": 1,
            "maximum": 256
@@ -636,7 +636,7 @@
            "maximum": 3
           },
           "shards": {
-           "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+           "description": "db/replica: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash (give a sharded database's replica the same count)",
            "type": "integer",
            "minimum": 1,
            "maximum": 256
@@ -1382,7 +1382,7 @@
            "maximum": 3
           },
           "shards": {
-           "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+           "description": "db/replica: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash (give a sharded database's replica the same count)",
            "type": "integer",
            "minimum": 1,
            "maximum": 256
@@ -1745,7 +1745,7 @@
               "maximum": 3
              },
              "shards": {
-              "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+              "description": "db/replica: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash (give a sharded database's replica the same count)",
               "type": "integer",
               "minimum": 1,
               "maximum": 256
@@ -2061,7 +2061,7 @@
                 "maximum": 3
                },
                "shards": {
-                "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+                "description": "db/replica: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash (give a sharded database's replica the same count)",
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 256
@@ -2297,7 +2297,7 @@
                 "maximum": 3
                },
                "shards": {
-                "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+                "description": "db/replica: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash (give a sharded database's replica the same count)",
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 256
@@ -3026,7 +3026,7 @@
            "maximum": 3
           },
           "shards": {
-           "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+           "description": "db/replica: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash (give a sharded database's replica the same count)",
            "type": "integer",
            "minimum": 1,
            "maximum": 256
@@ -3416,7 +3416,7 @@
            "maximum": 3
           },
           "shards": {
-           "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+           "description": "db/replica: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash (give a sharded database's replica the same count)",
            "type": "integer",
            "minimum": 1,
            "maximum": 256
@@ -4151,7 +4151,7 @@
            "maximum": 3
           },
           "shards": {
-           "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+           "description": "db/replica: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash (give a sharded database's replica the same count)",
            "type": "integer",
            "minimum": 1,
            "maximum": 256
@@ -4670,7 +4670,7 @@
   {
    "name": "audit_resilience",
    "title": "Failure audit: what breaks first, and what it costs",
-   "description": "Replays one minute at the expected load once per production failure mode — every component dying (one instance or all), every zone going dark, each dependency turning slow (+250 ms) or erroring (20 %), caches restarting cold, a 3× traffic surge — plus the breaking point. Grades each incident by user impact (critical / major / minor / ok), detects self-healing and metastable non-recovery, lists the blast radius, and proposes fixes that are verified by re-running the same incident and priced in $/month. Returns a resilience score and a ranked risk register, plus a Markdown report. Ask the user for their expected req/s and what a minute of outage costs them.",
+   "description": "Replays one minute at the expected load once per production failure mode — every component dying (one instance or all), every zone going dark, each dependency turning slow (+250 ms) or erroring (20 %), caches restarting cold, a 3× traffic surge — plus the breaking point. Grades each incident by user impact (critical / major / minor / ok), detects self-healing and metastable non-recovery, lists the blast radius, and proposes fixes that are verified by re-running the same incident and priced in $/month. Returns a resilience score, the availability its structure promises (components in sequence multiply, redundant ones back each other up: nines, downtime a year, the weakest links) and a ranked risk register, plus a Markdown report. Ask the user for their expected req/s and what a minute of outage costs them.",
    "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
@@ -4895,7 +4895,7 @@
            "maximum": 3
           },
           "shards": {
-           "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+           "description": "db/replica: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash (give a sharded database's replica the same count)",
            "type": "integer",
            "minimum": 1,
            "maximum": 256
@@ -5353,7 +5353,7 @@
            "maximum": 3
           },
           "shards": {
-           "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+           "description": "db/replica: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash (give a sharded database's replica the same count)",
            "type": "integer",
            "minimum": 1,
            "maximum": 256
@@ -5713,7 +5713,7 @@
              "maximum": 3
             },
             "shards": {
-             "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+             "description": "db/replica: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash (give a sharded database's replica the same count)",
              "type": "integer",
              "minimum": 1,
              "maximum": 256
@@ -6029,7 +6029,7 @@
                "maximum": 3
               },
               "shards": {
-               "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+               "description": "db/replica: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash (give a sharded database's replica the same count)",
                "type": "integer",
                "minimum": 1,
                "maximum": 256
@@ -6265,7 +6265,7 @@
                "maximum": 3
               },
               "shards": {
-               "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+               "description": "db/replica: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash (give a sharded database's replica the same count)",
                "type": "integer",
                "minimum": 1,
                "maximum": 256
@@ -6992,7 +6992,7 @@
            "maximum": 3
           },
           "shards": {
-           "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+           "description": "db/replica: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash (give a sharded database's replica the same count)",
            "type": "integer",
            "minimum": 1,
            "maximum": 256
@@ -7352,7 +7352,7 @@
              "maximum": 3
             },
             "shards": {
-             "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+             "description": "db/replica: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash (give a sharded database's replica the same count)",
              "type": "integer",
              "minimum": 1,
              "maximum": 256
@@ -7668,7 +7668,7 @@
                "maximum": 3
               },
               "shards": {
-               "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+               "description": "db/replica: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash (give a sharded database's replica the same count)",
                "type": "integer",
                "minimum": 1,
                "maximum": 256
@@ -7904,7 +7904,7 @@
                "maximum": 3
               },
               "shards": {
-               "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+               "description": "db/replica: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash (give a sharded database's replica the same count)",
                "type": "integer",
                "minimum": 1,
                "maximum": 256

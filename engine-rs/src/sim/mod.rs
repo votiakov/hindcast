@@ -1,6 +1,7 @@
 //! The design simulator (src/sim): the component catalogue's numbers and the fluid engine.
 
 pub mod audit;
+pub mod availability;
 pub mod catalog;
 pub mod des;
 pub mod engine;

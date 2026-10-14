@@ -82,12 +82,20 @@ export interface AuditResult {
   headroom: { maxRps: number; limitedBy: string | null; note: string | null; ratio: number };
   /** share of incidents that stay within SLO (or heal by themselves quickly), 0–100 */
   score: number;
+  /** what the design's structure promises in a year (components in sequence multiply, redundant ones back each other up) */
+  availability: { estimate: number; nines: number; downtimeHoursPerYear: number; downtimeMinutesPerMonth: number; weakest: { id: string; name: string; downtimeHoursPerYear: number }[] };
   survived: number;
   total: number;
   findings: Finding[];
   /** steady-state latency, errors and unit cost from light load to 2× the breaking point */
   curve: CurvePoint[];
   wallMs: number;
+}
+
+/** an availability with as many decimals as its nines need: 99.5%, 99.95%, 99.995% */
+export function availPct(x: number): string {
+  const nines = x >= 1 ? 6 : -Math.log10(1 - x);
+  return `${(x * 100).toFixed(Math.min(4, Math.max(1, Math.floor(nines) - 1)))}%`;
 }
 
 export function audit(specInput: unknown, opts: AuditOptions = {}): AuditResult {
