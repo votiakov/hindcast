@@ -27,6 +27,8 @@ export interface NodeView {
   booting: number;
   unreachable: boolean;
   noOrigin: boolean;
+  /** a balancer or gateway with nothing behind it: whatever it receives fails */
+  noTargets: boolean;
   cost: number;
   /** concrete SKU under a real pricing profile, e.g. "m7g.xlarge" */
   sku: string | null;
@@ -51,8 +53,6 @@ export function nodeView(d0: SystemNodeData, st: NodeStats | undefined, running:
   if (d.kind === 'client') health = up ? (inRps > 0.5 ? 'ok' : 'idle') : 'down';
   else if (d.kind === 'queue') health = !up ? 'down' : dropRps > 1 ? 'hot' : (st?.queue ?? 0) > 500 ? 'warm' : inRps < 0.5 ? 'idle' : 'ok';
   else if (failover === 'electing') health = 'hot';
-  // a cache with nothing behind it fails its misses: that is a wiring problem, not overload
-  else if ((d.kind === 'cache' || d.kind === 'cdn') && !hasOutgoing) health = healthOf(util, 0, inRps, up);
   else health = healthOf(util, dropRps, inRps, up);
 
   const pct = `${Math.round(Math.min(util, 9.99) * 100)}%`;
@@ -141,6 +141,7 @@ export function nodeView(d0: SystemNodeData, st: NodeStats | undefined, running:
     booting: st?.scaling?.pending ?? 0,
     unreachable: !!spec.scalable && d.kind !== 'llm' && instancesUp(d) > 1 && (st?.reachable ?? 1) < instancesUp(d) && running,
     noOrigin: (d.kind === 'cache' || d.kind === 'cdn') && !hasOutgoing,
+    noTargets: (d.kind === 'lb' || d.kind === 'gateway') && !hasOutgoing,
     cost: st?.costPerHour ?? costOf(d),
     sku: skuOf(d),
     stats,
@@ -169,8 +170,11 @@ export function explain(d: SystemNodeData, st: NodeStats | undefined, v: NodeVie
   if (d.kind === 'queue' && st.lagS > 5) return { tone: 'warn', text: `Backlog of ${fmt(st.queue)} messages: consumers are ${isFinite(st.lagS) ? `${st.lagS.toFixed(0)}s` : 'indefinitely'} behind. Producers are unaffected — work completes later.` };
   if ((d.kind === 'gateway' || d.kind === 'llmapi') && st.dropRps > 1) return { tone: 'warn', text: `Rate limit reached: ${fmt(st.dropRps)}/s rejected with HTTP 429 to protect what is behind it.` };
   if (d.kind === 'function' && st.coldFrac > 0.05) return { tone: 'warn', text: `${Math.round(st.coldFrac * 100)}% of invocations hit a cold start while new instances spin up.` };
+  if (v.noTargets && st.inRps > 0.01) return { tone: 'bad', text: `Nothing behind this ${d.kind === 'lb' ? 'load balancer' : 'gateway'}: the ${fmt(st.inRps)} req/s it receives have nowhere to go and fail. Connect it to what it fronts.` };
   if (v.noOrigin && st.dropRps > 0.01) return { tone: 'bad', text: `No origin behind this cache: its ${fmt(st.dropRps)} misses a second have nowhere to go and fail. Connect it to the store it caches, or make it a database if it is the store.` };
-  if (v.health === 'hot' && st.dropRps > 1) return { tone: 'bad', text: `Overloaded: ${fmt(st.inRps)} req/s offered vs ${fmt(cap)} req/s capacity. The excess queues, then gets dropped.` };
+  if (v.health === 'hot' && st.dropRps > 1 && st.inRps >= cap * 0.9) return { tone: 'bad', text: `Overloaded: ${fmt(st.inRps)} req/s offered vs ${fmt(cap)} req/s capacity. The excess queues, then gets dropped.` };
+  // drops while the offered load is below capacity: a surge just passed (the averages lag it)
+  if (v.health === 'hot' && st.dropRps > 1) return { tone: 'warn', text: `Recovering from a surge: load came in above its ${fmt(cap)} req/s capacity moments ago, and ${fmt(st.dropRps)} req/s are still being shed while its queue drains.` };
   if (v.health === 'hot') return { tone: 'bad', text: `Saturated at ${Math.round(st.util * 100)}% — requests are queuing and latency is climbing steeply.` };
   if (v.health === 'warm') return { tone: 'warn', text: `${Math.round(st.util * 100)}% utilised. Queueing delay grows non-linearly beyond ~70%; little headroom left for spikes.` };
   if (v.unreachable) return { tone: 'warn', text: 'Extra instances receive no traffic: without a load balancer, clients only know one address.' };

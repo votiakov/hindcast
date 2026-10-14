@@ -22,7 +22,8 @@ export function RefNode({ data, st, v, selected, showCost, running, explainOn, c
   const note = explainOn ? explain(data, st, v) : null;
   const util = st?.util ?? 0;
   const reachable = running ? (st?.reachable ?? v.instancesUp) : v.instancesUp;
-  const status = v.failedOver ? 'Failed over' : v.electing ? 'Electing' : v.promotedReplica ? 'Primary' : STATUS[v.health];
+  const failing = v.health === 'hot' || v.health === 'warm';
+  const status = v.failedOver ? 'Failed over' : v.electing ? 'Electing' : v.promotedReplica ? 'Primary' : v.noTargets && failing ? 'No targets' : v.noOrigin && failing ? 'No origin' : STATUS[v.health];
 
   return (
     <div className={`ref-node s-${v.health} ${selected ? 'sel' : ''} ${controls ? 'open' : ''} ${v.promotedReplica ? 'promoted' : ''}`}>

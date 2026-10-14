@@ -310,12 +310,14 @@ struct ProcessResult {
     shares: Option<Vec<(usize, f64)>>,
     local_share: Option<f64>,
     hits: Option<f64>,
+    /// processed work this component already failed itself (nowhere to send it)
+    failed_processed: f64,
     util: f64,
     up: bool,
 }
 
 fn res(processed: f64, failed: f64, forward: f64, util: f64, up: bool) -> ProcessResult {
-    ProcessResult { processed, failed, forward, routes: None, shares: None, local_share: None, hits: None, util, up }
+    ProcessResult { processed, failed, forward, routes: None, shares: None, local_share: None, hits: None, failed_processed: 0.0, util, up }
 }
 
 fn queue_seconds(d: &NodeData, cfg: &EngineConfig) -> f64 {
@@ -380,6 +382,7 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
             let routes: Vec<Route> = c.routes.iter().filter(|k| k.up).cloned().collect();
             if routes.is_empty() {
                 r.failed += r.processed;
+                r.failed_processed = r.processed;
                 r.forward = 0.0;
             }
             r.routes = Some(routes);
@@ -391,6 +394,9 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
             let routes: Vec<Route> = c.routes.iter().filter(|k| k.up).cloned().collect();
             let failed = c.arrivals - processed + (if routes.is_empty() { processed } else { 0.0 });
             let mut r = res(processed, failed, if routes.is_empty() { 0.0 } else { processed }, c.arrivals / (limit * c.dt), true);
+            if r.forward == 0.0 {
+                r.failed_processed = processed;
+            }
             r.routes = Some(routes);
             r
         }
@@ -401,6 +407,7 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
             let mut forward = r.processed - hits;
             if c.routes.is_empty() {
                 r.failed += forward;
+                r.failed_processed = forward;
                 forward = 0.0;
             }
             r.forward = forward;
@@ -791,7 +798,9 @@ impl Engine {
             // gray failure: the node answers a share of what it handles with errors
             if let Some(fr) = d.fault_rate.filter(|x| *x != 0.0 && !x.is_nan()) {
                 if r.up && d.kind != "client" {
-                    let bad = r.processed * fr;
+                    // only what is still on its way to succeeding can fail (a balancer with nowhere
+                    // to send has already failed everything)
+                    let bad = (r.processed - r.failed_processed) * fr;
                     r.failed += bad;
                     r.forward *= 1.0 - fr;
                     r.hits = Some(r.hits.unwrap_or(0.0) * (1.0 - fr));
