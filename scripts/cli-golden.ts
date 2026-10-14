@@ -142,7 +142,7 @@ export const CASES: string[][] = [
 ];
 
 /** wall-clock numbers differ run to run */
-const mask = (s: string) => s.replace(/(in |· )\d+ ms/g, '$1# ms').replace(/"wallMs": \d+(\.\d+)?/g, '"wallMs": #').replace(/"measuredAt": ?"[^"]*"/g, '"measuredAt": #').replace(/"collectedHoursAgo": -?[\d.]+/g, '"collectedHoursAgo": #').replaceAll(realpathSync(out), '$OUT').replaceAll(out, '$OUT').replaceAll(process.cwd(), '$CWD').replace(/\/[^"\s]*\/system-design-sandbox(?=\/)/g, '$CWD');
+const mask = (s: string) => s.replace(/(in |· )\d+ ms/g, '$1# ms').replace(/"wallMs": \d+(\.\d+)?/g, '"wallMs": #').replace(/"measuredAt": ?"[^"]*"/g, '"measuredAt": #').replace(/"collectedHoursAgo": -?[\d.]+/g, '"collectedHoursAgo": #').replaceAll(realpathSync(out), '$OUT').replaceAll(out, '$OUT').replaceAll(process.cwd(), '$CWD').replace(/\/[^"\s]*\/system-design-sandbox(?=\/)/g, '$CWD').replace(/(\.\.\/)*\.\.(?=\$CWD)/g, '…');
 
 interface Golden {
   stdout: string;

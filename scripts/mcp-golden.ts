@@ -109,7 +109,9 @@ const mask = (s: string) =>
     .replaceAll(out, '$OUT')
     .replaceAll(process.cwd(), '$CWD')
     // committed reference datasets name the absolute path they were recorded in
-    .replace(/\/[^"\s\\]*\/system-design-sandbox(?=\/)/g, '$CWD');
+    .replace(/\/[^"\s\\]*\/system-design-sandbox(?=\/)/g, '$CWD')
+    // a path relative from the temp dir back to the checkout: its depth is the machine's
+    .replace(/(\.\.\/)*\.\.(?=\$CWD)/g, '…');
 
 interface Golden {
   /** each case: its notifications and its response, masked */
