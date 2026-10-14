@@ -101,6 +101,11 @@ A summary; every rule, and the recording that taught it, is in [calibration.md](
   collapses well before the limit. Where the history shows the service failing while throttled, this
   caps a capacity read from latency too. Where it shows the service throttled that hard and healthy,
   throttling is ignored.
+- **Memory** — the largest container's peak working set per bucket against req/s per replica (a
+  line, or flat when memory doesn't follow load), plus the worst spike above that line in the
+  history. A strategy that lowers a memory limit below it gets its pods OOM-killed in the replay. They
+  restart with CrashLoopBackOff (10 s doubling to 5 min, plus a start), failing every request routed
+  to them meanwhile. The explanation names the kill. Cost uses the limit per replica, not the usage.
 - **Latency** — self time at low load (mean, p99) plus queueing; a tail multiplier fitted on the p99s.
 - **Endpoints** — critical-path weight per service, network/proxy overhead (measured minus the
   path), baseline errors, its own SLO, a tail multiplier fitted on its measured p99.

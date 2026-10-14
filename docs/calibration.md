@@ -106,6 +106,18 @@ Two guards:
 - **Healthy while throttled:** if the history shows it throttled past the threshold for 3+ buckets
   with its latency within 2× of normal and no errors, the quota does not limit it: no knee.
 
+### Memory
+
+From `memoryMaxBytes` (the largest container's working set at its highest in the bucket,
+`max_over_time` per container) or, without it, the average replica (`memoryBytes` / replicas):
+least squares against req/s per replica. When the slope is positive and R² ≥ 0.3 the line is kept;
+otherwise memory is flat at its median. `spike` is the largest amount any bucket rose above the
+line. `memoryLimitBytes` (kube-state-metrics `kube_pod_container_resource_limits`, or cAdvisor's
+`container_spec_memory_limit_bytes`) is the limit. In the replay a service whose `base + perReq ×
+load + spike` passes its limit is OOM-killed: all its replicas, since they carry the same load. It
+is down for the CrashLoopBackOff delay plus 10 s. `memoryGb`, used for pricing and resizing, is
+the limit per replica (the usage per replica when there is no limit).
+
 ### Self time at low load
 
 The median self time (mean and p99) over the 30% least-loaded buckets: what a request costs when

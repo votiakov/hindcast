@@ -338,7 +338,19 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
     const replicas = repVals.length ? Math.round(median(repVals)) : 1;
     const limitVals = (d.services[hostedBy[id] ?? id]?.cpuLimitCores ?? []).filter((x): x is number => x !== null && x > 0);
     const cpuLimit = limitVals.length ? median(limitVals) : null;
-    const memVals = (d.services[hostedBy[id] ?? id]?.memoryBytes ?? []).filter((x): x is number => x !== null && x > 0);
+    const host = d.services[hostedBy[id] ?? id];
+    const GiB = 2 ** 30;
+    const memLimits = (host?.memoryLimitBytes ?? []).filter((x): x is number => x !== null && x > 0);
+    const memLimit = memLimits.length ? median(memLimits) / GiB : null;
+    // used per replica: the largest container at its peak where collected, else the average replica
+    const memUsed = Array.from({ length: d.n }, (_, i) => {
+      const mx = vals(host?.memoryMaxBytes, i);
+      if (mx !== null && mx > 0) return mx / GiB;
+      const sum = vals(host?.memoryBytes, i);
+      const r = vals(reps, i) ?? replicas;
+      return sum !== null && sum > 0 && r > 0 ? sum / r / GiB : null;
+    }).map((x) => (x !== null && x > 0 ? x : null));
+    const memVals = memUsed.filter((x): x is number => x !== null);
 
     const lam: (number | null)[] = Array.from({ length: d.n }, (_, i) => vals(s.rps, i));
     const perRep = lam.map((l, i) => (l === null ? 0 : l / Math.max(1, vals(reps, i) ?? replicas)));
@@ -364,6 +376,27 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
         cpuSe = fit.se;
         if (fit.r2 < 0.3 && xs.length > 10) notes.push(`CPU barely follows load (R² ${fit.r2.toFixed(2)}) — capacity is not CPU-bound or CPU data is noisy`);
       }
+    }
+
+    // memory against load: an OOM kill comes when one container's working set passes its limit
+    let memory: ServiceModel['memory'];
+    if (memVals.length >= 5 && !hostedBy[id]) {
+      const xs: number[] = [];
+      const ys: number[] = [];
+      for (let i = 0; i < d.n; i++) {
+        const y = memUsed[i];
+        if (y === null || lam[i] === null) continue;
+        xs.push(perRep[i]);
+        ys.push(y);
+      }
+      const fit = xs.length >= 5 ? regress(xs, ys) : null;
+      // memory that doesn't follow load (heaps sized up front, caches) is a flat line at its median
+      const follows = !!fit && fit.slope > 0 && fit.r2 >= 0.3;
+      const base = follows ? Math.max(0, fit!.intercept) : median(ys);
+      const perReq = follows ? fit!.slope : 0;
+      const spike = Math.max(0, ...ys.map((y, k) => y - (base + perReq * xs[k])));
+      memory = { base, perReq, spike, peak: Math.max(...ys), limit: memLimit, r2: fit?.r2 ?? 0 };
+      if (memLimit) notes.push(`memory: peaks at ${Math.round(memory.peak * 1024)} MiB per container against a ${Math.round(memLimit * 1024)} MiB limit (${Math.round((memory.peak / memLimit) * 100)}%)${follows ? `, +${(perReq * 1024 * 100).toFixed(1)} MiB per 100 req/s per replica` : ', flat with load'}`);
     }
 
     // CFS quota throttling: a runtime that runs on one thread (Node, Python) or bursts across several
@@ -735,7 +768,8 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
       ...(hostedBy[id] ? { hostedBy: hostedBy[id] } : {}),
       replicas,
       cpuLimit,
-      memoryGb: memVals.length ? median(memVals) / 2 ** 30 : null,
+      memoryGb: memLimit ?? (memVals.length ? median(memVals) : null),
+      ...(memory ? { memory } : {}),
       cpu,
       capacity,
       self: { mean: selfMean, p99: Math.max(selfMean, selfP99) },

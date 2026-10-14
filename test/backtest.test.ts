@@ -397,6 +397,54 @@ describe('strategies and backtest', () => {
   });
 });
 
+describe('memory limits and CPU quota throttling', () => {
+  const MiB = 2 ** 20;
+  /** the synthetic service, with a working set that grows with load and a 512 MiB limit */
+  const withMemory = (peak: number) => {
+    const d = synthetic({ K: 40, c: 4, S: 20 }, peak);
+    const api = d.services.api;
+    api.memoryMaxBytes = api.rps!.map((r, i) => (200 + 0.8 * (r! / api.replicas![i]!)) * MiB + (i === 7 ? 6 * MiB : 0));
+    api.memoryLimitBytes = new Array(d.n).fill(512 * MiB);
+    return d;
+  };
+
+  it('fits the working set against load and prices the limit, not what was used', () => {
+    const m = calibrate(withMemory(0.6), { bootstrap: 0 });
+    const mem = m.services.api.memory!;
+    expect(mem.limit).toBeCloseTo(0.5, 6);
+    expect(mem.perReq * 1024).toBeCloseTo(0.8, 1);
+    expect(mem.spike * 1024).toBeGreaterThan(4);
+    expect(m.services.api.memoryGb).toBeCloseTo(0.5, 6);
+  });
+
+  it('OOM-kills a limit below the working set, and passes one above it', () => {
+    const d = withMemory(0.6);
+    const m = calibrate(d, { bootstrap: 0 });
+    const r = backtest(m, d, [{ name: 'tight', changes: [{ service: 'api', memoryGb: 0.18 }] }, { name: 'trim', changes: [{ service: 'api', memoryGb: 0.3 }] }], { draws: 1 });
+    const tight = r.strategies.find((x) => x.name === 'tight')!;
+    const trim = r.strategies.find((x) => x.name === 'trim')!;
+    expect(tight.delta.minutesOutOfSlo.p50).toBeGreaterThan(10);
+    expect(tight.worst.why).toMatch(/api OOM-killed/);
+    expect(tight.events.some((e) => /OOM-killed/.test(e.what))).toBe(true);
+    expect(trim.delta.minutesOutOfSlo.p50).toBe(0);
+    expect(trim.delta.monthly.p50).toBeLessThan(0);
+  });
+
+  it('stops CPU-bound capacity where quota throttling takes over, not at the limit', () => {
+    // many workers: latency stays flat until the limit, so only CPU tells where it is
+    const plain = synthetic({ K: 40, c: 64, S: 20 }, 0.3);
+    const throttled = synthetic({ K: 40, c: 64, S: 20 }, 0.3);
+    const api = throttled.services.api;
+    // throttled share rising exponentially with CPU use: 25% at 70% of the limit
+    api.cpuThrottled = api.cpuCores!.map((c, i) => 0.25 * Math.exp(5 * (c! / api.replicas![i]! - 0.7)));
+    const a = calibrate(plain, { bootstrap: 0 }).services.api;
+    const b = calibrate(throttled, { bootstrap: 0 }).services.api;
+    expect(b.capacity.throttle?.knee).toBeCloseTo(0.7, 1);
+    expect(b.capacity.perReplicaRps).toBeLessThan(a.capacity.perReplicaRps * 0.8);
+    expect(b.fit.notes.join(' ')).toMatch(/CPU quota throttling/);
+  });
+});
+
 describe('strategy from a config diff', () => {
   const dep = (name: string, replicas: number, cpu: string, arch?: string) => `apiVersion: apps/v1
 kind: Deployment

@@ -29,6 +29,7 @@ import { applyStrategy } from '../../src/backtest/strategy';
 import { observedReplicas, trafficOf } from '../../src/backtest/calibrate';
 import { accuracyLines, parseRequestLog, referenceAccuracy, type ReferenceRun, type RequestLog } from '../../src/backtest/accuracy';
 import { importBundle } from '../../src/backtest/import/manifest';
+import { PRESETS } from '../../src/backtest/import/promExport';
 import { fileAccess } from '../../cli/files';
 import type { K8sReference } from './record';
 
@@ -73,14 +74,52 @@ const runDir = (r: string) => join(SYS, 'runs', r);
 const meta = (r: string) => JSON.parse(readFileSync(join(runDir(r), 'run.json'), 'utf8')) as { start: number; end: number };
 const recorded = (r: string) => existsSync(join(runDir(r), 'run.json'));
 
-/** the telemetry of one or more runs, collected again with today's code from the live Prometheus
- *  and Jaeger (the agent's path; both keep every run). Without the cluster: the files collected
- *  during the recording, imported with today's importer */
+/** series added to the kubernetes preset after a collection: filled into a cached dataset from
+ *  Prometheus alone (Jaeger doesn't keep traces as long), so the traces it was built on stay */
+const LATER_SERIES = ['memory-max.json', 'memory-limit.json'];
+async function fillLater(d: Dataset, out: string): Promise<Dataset> {
+  const want = PRESETS.kubernetes.queries({ window: `${STEP}s`, selector: '', namespaces: [] } as never).filter((q) => LATER_SERIES.includes(q.file));
+  const missing = want.filter((q) => !Object.values(d.services).some((sv) => (sv as Record<string, unknown>)[q.mapping.metric]));
+  if (!missing.length) return d;
+  const prom = (JSON.parse(readFileSync(join(out, 'sources.json'), 'utf8')) as { prometheus: { url: string } }).prometheus.url;
+  for (const q of missing) {
+    const u = `${prom}/api/v1/query_range?query=${encodeURIComponent(q.query)}&start=${d.start}&end=${d.start + (d.n - 1) * d.stepS}&step=${d.stepS}`;
+    const j = (await (await fetch(u)).json()) as { data: { result: { metric: Record<string, string>; values: [number, string][] }[] } };
+    for (const r of j.data.result) {
+      const sv = d.services[r.metric.workload] as Record<string, unknown> | undefined;
+      if (!sv) continue;
+      const xs: (number | null)[] = new Array(d.n).fill(null);
+      for (const [t, v] of r.values) {
+        const i = Math.round((t - d.start) / d.stepS);
+        if (i >= 0 && i < d.n) xs[i] = Number(v);
+      }
+      sv[q.mapping.metric] = xs;
+    }
+  }
+  writeFileSync(join(out, 'dataset.json'), JSON.stringify(d));
+  console.warn(`(${out}: filled ${missing.map((q) => q.mapping.metric).join(', ')} from Prometheus)`);
+  return d;
+}
+
+/** the telemetry of one or more runs, collected from the live Prometheus and Jaeger with today's code
+ *  (the agent's path) the first time, then kept: Jaeger only holds the traces while the cluster runs.
+ *  --refresh collects again. Without the cluster and a collection: the files collected during the
+ *  recording, imported with today's importer */
 const collected = new Map<string, Dataset>();
 async function telemetryOf(runs: string[], out: string, settle = false): Promise<Dataset> {
   const key = runs.join('+') + (settle ? ':settled' : '');
   if (collected.has(key)) return collected.get(key)!;
   let d: Dataset;
+  if (existsSync(join(out, 'dataset.json')) && !process.argv.includes('--refresh')) {
+    d = JSON.parse(readFileSync(join(out, 'dataset.json'), 'utf8')) as Dataset;
+    try {
+      d = await fillLater(d, out);
+    } catch (e) {
+      console.warn(`(${out}: could not fill newer series — ${(e as Error).message.slice(0, 100)})`);
+    }
+    collected.set(key, d);
+    return d;
+  }
   const fresh = `${out}.new`;
   try {
     rmSync(fresh, { recursive: true, force: true });

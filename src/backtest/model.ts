@@ -50,7 +50,11 @@ export interface ServiceModel {
   replicas: number;
   /** cores per replica (limit), null if unknown */
   cpuLimit: number | null;
+  /** memory per replica: its limit, or (no limit seen) what it used; GB */
   memoryGb: number | null;
+  /** the largest container's peak working set = base + perReq × req/s per replica, + up to spike
+   *  above that line (the worst the history showed); GiB. An OOM kill compares it with the limit */
+  memory?: { base: number; perReq: number; spike: number; peak: number; limit: number | null; r2: number };
   /** cores per replica = base + perReq × (req/s per replica) */
   cpu: { base: number; perReq: number; r2: number } | null;
   capacity: Capacity;

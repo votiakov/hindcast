@@ -146,6 +146,13 @@ export function applyStrategy(model: Model, base: Plan, input: unknown): Applied
         }
         s.cpuLimit = c1!;
       }
+      if (ch.memoryGb !== undefined) {
+        if (m.memory) {
+          s.memory = { base: m.memory.base, perReq: m.memory.perReq, spike: m.memory.spike, limit: ch.memoryGb };
+          const head = ch.memoryGb - m.memory.peak;
+          notes.push(`${ch.service}: memory limit ${m.memory.limit ? `${Math.round(m.memory.limit * 1024)} → ` : ''}${Math.round(ch.memoryGb * 1024)} MiB; the history's peak working set was ${Math.round(m.memory.peak * 1024)} MiB per container (${head >= 0 ? `${Math.round(head * 1024)} MiB of headroom` : `${Math.round(-head * 1024)} MiB over: it would be OOM-killed`})`);
+        } else notes.push(`${ch.service}: memory ${ch.memoryGb} GiB — no memory usage in the history, so OOM kills can't be checked`);
+      }
       const cpuPart = c0 && c1 ? (m.cost.cpuShare * c1) / c0 : m.cost.cpuShare;
       const memPart = m0 && m1 ? ((1 - m.cost.cpuShare) * m1) / m0 : 1 - m.cost.cpuShare;
       s.replicaHour *= cpuPart + memPart;

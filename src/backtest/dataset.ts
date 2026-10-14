@@ -33,14 +33,19 @@ export interface ServiceSeries {
   /** network bytes sent per second (all replicas) */
   netTxBps?: Num[];
   netRxBps?: Num[];
+  /** memory working set, bytes (sum over replicas) */
   memoryBytes?: Num[];
+  /** the largest container's working set at its highest within the bucket, bytes: what an OOM kill compares */
+  memoryMaxBytes?: Num[];
+  /** memory limit per container, bytes */
+  memoryLimitBytes?: Num[];
   /** share of CFS periods in which the CPU limit throttled the containers (0–1): the limit binds
    *  in bursts even when average CPU sits below it */
   cpuThrottled?: Num[];
 }
 
 export type ServiceMetric = keyof ServiceSeries;
-export const SERVICE_METRICS: ServiceMetric[] = ['rps', 'doneRps', 'errorRate', 'p50Ms', 'p95Ms', 'p99Ms', 'meanMs', 'selfMeanMs', 'selfP99Ms', 'cpuCores', 'cpuLimitCores', 'replicas', 'netTxBps', 'netRxBps', 'memoryBytes', 'cpuThrottled'];
+export const SERVICE_METRICS: ServiceMetric[] = ['rps', 'doneRps', 'errorRate', 'p50Ms', 'p95Ms', 'p99Ms', 'meanMs', 'selfMeanMs', 'selfP99Ms', 'cpuCores', 'cpuLimitCores', 'replicas', 'netTxBps', 'netRxBps', 'memoryBytes', 'memoryMaxBytes', 'memoryLimitBytes', 'cpuThrottled'];
 
 /** an endpoint as users see it: a route on the entry service */
 export interface EndpointSeries {

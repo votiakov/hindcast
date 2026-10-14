@@ -69,6 +69,9 @@ export interface ServicePlan {
   loadExponent?: number;
   cpu: { base: number; perReq: number } | null;
   cpuLimit: number | null;
+  /** peak working set per container = base + perReq × req/s per replica + spike, against limit (GiB):
+   *  past it the pods are OOM-killed and restart with CrashLoopBackOff */
+  memory?: { base: number; perReq: number; spike: number; limit: number };
   /** $ per replica-hour and per request */
   replicaHour: number;
   perRequest: number;
@@ -124,6 +127,8 @@ export interface ServiceTrace {
   selfP99Ms: number[];
   backlog: number[];
   cpuCores: number[];
+  /** share of the bucket its pods were down after an OOM kill */
+  oomDown?: number[];
 }
 
 export interface EndpointTrace {
@@ -232,6 +237,9 @@ export function linkPrice(a: ServicePlan | undefined, b: ServicePlan | undefined
   return 0;
 }
 
+/** seconds an OOM-killed container takes to start serving again, on top of the backoff */
+const OOM_RESTART_S = 10;
+
 export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number; faults?: Fault[] } = {}): RunResult {
   const { n, stepS } = traffic;
   const sub = Math.max(1, Math.ceil(stepS / (opts.substepS ?? 5)));
@@ -246,7 +254,7 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
       const s = plan.services[id];
       const first = s.observedReplicas?.find((x) => x !== null) ?? null;
       const live = s.replicas ?? first ?? 1;
-      return [id, { backlog: 0, live: s.autoscale ? Math.max(s.autoscale.min, Math.min(s.autoscale.max, live)) : live, pending: [] as { at: number; n: number }[], lastScale: -Infinity, nextEval: 0, blockedSaid: false, util: 0, collapsed: false }];
+      return [id, { backlog: 0, live: s.autoscale ? Math.max(s.autoscale.min, Math.min(s.autoscale.max, live)) : live, pending: [] as { at: number; n: number }[], lastScale: -Infinity, nextEval: 0, blockedSaid: false, util: 0, collapsed: false, oomUntil: -Infinity, ooms: 0 }];
     }),
   );
   const epFail = Object.fromEntries(epIds.map((id) => [id, 0]));
@@ -372,9 +380,20 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
         const live = liveOf(id);
         const perRep = live > 0 ? svcLam[id] / live : svcLam[id] > 0 ? Infinity : 0;
         const K = s.perReplicaRps * fx[id].capacity * (s.hostedBy ? fx[s.hostedBy]?.capacity ?? 1 : 1);
+        // OOM: every replica carries the same load, so the working set passes the limit on all of them;
+        // they are killed and come back after CrashLoopBackOff (10 s, doubling to 5 min) and a start
+        if (s.memory && now >= S.oomUntil && live > 0) {
+          const ws = s.memory.base + s.memory.perReq * Math.min(perRep, isFinite(K) ? K * 1.5 : perRep) + s.memory.spike;
+          if (ws > s.memory.limit) {
+            S.ooms++;
+            S.oomUntil = now + Math.min(300, 10 * 2 ** (S.ooms - 1)) + OOM_RESTART_S;
+            out.events.push({ t: traffic.start + now, what: `${id}: OOM-killed — working set ${Math.round(ws * 1024)} MiB per container at ${Math.round(perRep)} req/s per replica, limit ${Math.round(s.memory.limit * 1024)} MiB` });
+          } else if (now >= S.oomUntil + 600) S.ooms = 0; // ten minutes up: the backoff resets
+        }
+        const down = f.down || now < S.oomUntil;
         let waitMean = 0;
         let waitP99 = 0;
-        if (f.down) {
+        if (down) {
           // refused at once: nothing queues
           S.backlog = 0;
         } else if (live <= 0 && svcLam[id] > 0) {
@@ -397,7 +416,7 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
         const extra = fx[id].extraMs;
         const mean = s.selfMean + waitMean + extra;
         const p99 = mean + Math.sqrt(ex0 ** 2 + (s.tail * Math.max(0, waitP99 - waitMean)) ** 2);
-        lat[id] = { mean, p99, wait: waitMean, err: f.down ? 1 : fx[id].errorRate };
+        lat[id] = { mean, p99, wait: waitMean, err: down ? 1 : fx[id].errorRate };
         const o = out.services[id];
         o.rps[i] += svcLam[id] / sub;
         o.util[i] += (isFinite(K) && live > 0 ? Math.min(1.5, perRep / K) : 0) / sub;
@@ -407,6 +426,7 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
         o.selfP99Ms[i] += (isFinite(p99) ? p99 : 1e6) / sub;
         o.backlog[i] += S.backlog / sub;
         o.cpuCores[i] += (s.cpu ? live * (s.cpu.base + s.cpu.perReq * Math.min(perRep, K)) : 0) / sub;
+        if (s.memory) (o.oomDown ??= z())[i] += (now < S.oomUntil ? 1 : 0) / sub;
       }
 
       // endpoints: latency along the critical path, failures past the deadline
@@ -547,6 +567,7 @@ export function basePlan(model: Model, observed?: Record<string, Num[] | undefin
       loadExponent: s.loadExponent,
       cpu: s.cpu ? { base: s.cpu.base, perReq: s.cpu.perReq } : null,
       cpuLimit: s.cpuLimit,
+      ...(s.memory?.limit ? { memory: { base: s.memory.base, perReq: s.memory.perReq, spike: s.memory.spike, limit: s.memory.limit } } : {}),
       replicaHour: s.cost.perReplicaHour,
       perRequest: s.cost.perRequest,
       zone: s.placement?.zone,

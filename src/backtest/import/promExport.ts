@@ -132,6 +132,9 @@ export const PRESETS: Record<string, Preset> = {
         { file: 'replicas.json', query: `count by (${by}) (container_memory_working_set_bytes${s})`, mapping: { metric: 'replicas', by } },
         { file: 'net-tx.json', query: `sum by (${by}) (rate(container_network_transmit_bytes_total${s}[${w}]))`, mapping: { metric: 'netTxBps', by } },
         { file: 'memory.json', query: `sum by (${by}) (container_memory_working_set_bytes${s})`, mapping: { metric: 'memoryBytes', by } },
+        { file: 'memory-max.json', query: `max by (${by}) (max_over_time(container_memory_working_set_bytes${s}[${w}]))`, mapping: { metric: 'memoryMaxBytes', by } },
+        // cAdvisor reports no limit as 0 (or the host's memory): only real limits
+        { file: 'memory-limit.json', query: `max by (${by}) (container_spec_memory_limit_bytes${s} > 0 < 2^50)`, mapping: { metric: 'memoryLimitBytes', by } },
       ];
     },
   },
@@ -149,6 +152,9 @@ export const PRESETS: Record<string, Preset> = {
         { file: 'replicas.json', query: `count by (workload) (${workload(`kube_pod_status_ready{condition="true",${pod}} == 1`)})`, mapping: { metric: 'replicas', by: 'workload' } },
         { file: 'net-tx.json', query: `sum by (workload) (${workload(`rate(container_network_transmit_bytes_total{${pod}}[${w}])`)})`, mapping: { metric: 'netTxBps', by: 'workload' } },
         { file: 'memory.json', query: `sum by (workload) (${workload(`container_memory_working_set_bytes{${ctr}}`)})`, mapping: { metric: 'memoryBytes', by: 'workload' } },
+        // OOM kills compare one container's working set with its limit, at its peak — not the average
+        { file: 'memory-max.json', query: `max by (workload) (${workload(`max_over_time(container_memory_working_set_bytes{${ctr}}[${w}])`)})`, mapping: { metric: 'memoryMaxBytes', by: 'workload' } },
+        { file: 'memory-limit.json', query: `max by (workload) (${workload(`kube_pod_container_resource_limits{resource="memory",${pod}}`)})`, mapping: { metric: 'memoryLimitBytes', by: 'workload' } },
         { file: 'throttled.json', query: `sum by (workload) (${workload(`rate(container_cpu_cfs_throttled_periods_total{${ctr}}[${w}])`)}) / sum by (workload) (${workload(`rate(container_cpu_cfs_periods_total{${ctr}}[${w}])`)})`, mapping: { metric: 'cpuThrottled', by: 'workload', unit: 'ratio' } },
       ];
     },

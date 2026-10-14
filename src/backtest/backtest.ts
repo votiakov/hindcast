@@ -121,6 +121,13 @@ function summarise(r: RunResult, slo: { p99Ms: number; errorRate: number }, step
 
 /** which service was the problem at bucket i, in words */
 export function explainMoment(r: RunResult, plan: Plan, i: number): { why: string; service: string | null } {
+  // a service down after an OOM kill explains everything behind it
+  const oom = Object.entries(r.services).find(([, s]) => (s.oomDown?.[i] ?? 0) > 0);
+  if (oom) {
+    const mem = plan.services[oom[0]].memory!;
+    const perRep = r.services[oom[0]].rps[i] / Math.max(1, r.services[oom[0]].replicas[i]);
+    return { why: `${oom[0]} OOM-killed: working set ${Math.round((mem.base + mem.perReq * perRep + mem.spike) * 1024)} MiB per container against a ${Math.round(mem.limit * 1024)} MiB limit, its pods restarting (CrashLoopBackOff)`, service: oom[0] };
+  }
   let worst: { id: string; score: number } | null = null;
   for (const [id, s] of Object.entries(r.services)) {
     const score = s.util[i] + s.backlog[i] / Math.max(1, plan.services[id].perReplicaRps) + s.waitMs[i] / 1000;
