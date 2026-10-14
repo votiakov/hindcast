@@ -614,6 +614,8 @@ pub struct Engine {
     scalers: IndexMap<String, ScalerState>,
     global: GlobalStats,
     since_history: f64,
+    /// requests sent this tick to a component that had already run (a call cycle): they arrive next tick
+    carry: HashMap<String, f64>,
 }
 
 fn failover_name(f: Failover) -> &'static str {
@@ -760,6 +762,8 @@ impl Engine {
         }
 
         let mut inflow = vec![0.0; n];
+        let mut done = vec![false; n];
+        let mut carried: HashMap<String, f64> = std::mem::take(&mut self.carry);
         let mut edge_flow = vec![0.0; edges.len()];
         let mut local: Vec<Option<Local>> = (0..n).map(|_| None).collect();
         let mut promoted = vec![false; n];
@@ -771,7 +775,8 @@ impl Engine {
             let d = &data[i];
             let id = nodes_in[i].id.as_str();
             let routes = &out[i];
-            let arrivals = if d.kind == "client" { if d.alive { per_client } else { 0.0 } } else { inflow[i] };
+            let arrivals = if d.kind == "client" { if d.alive { per_client } else { 0.0 } } else { inflow[i] + carried.remove(id).unwrap_or(0.0) };
+            done[i] = true;
             let mut st = std::mem::replace(&mut self.nodes[sidx[i]], fresh());
             if d.kind == "replica" {
                 st.failover = if promoted[i] { Failover::Promoted } else { Failover::None };
@@ -874,7 +879,12 @@ impl Engine {
                 }
                 for &(e, v) in &flows {
                     let t = targets.iter().find(|x| x.e == e).unwrap().t;
-                    inflow[t] += v;
+                    if done[t] {
+                        // a call back into a component that already ran this tick (a cycle): next tick
+                        *self.carry.entry(nodes_in[t].id.clone()).or_insert(0.0) += v;
+                    } else {
+                        inflow[t] += v;
+                    }
                     edge_flow[e] += v;
                 }
             }

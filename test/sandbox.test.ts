@@ -5,6 +5,12 @@ import { baseLatencyOf, capacityOf, costOf, isSystem, KINDS, type Kind, type Sys
 import { simulateDes } from '../src/sim/des/des';
 import { simulate } from '../src/sim/headless';
 import { explain, nodeView } from '../src/canvas/nodeModel';
+import { readFileSync } from 'node:fs';
+import { modelToSpec } from '../src/backtest/toSpec';
+import { basePlan } from '../src/backtest/engine';
+import { observedReplicas } from '../src/backtest/calibrate';
+import { modelBreakingPoint } from '../src/backtest/accuracy';
+import { breakingPoint } from '../src/sim/headless';
 
 /**
  * The sandbox's engine against what it claims to model: every component kind on its own against
@@ -341,6 +347,37 @@ describe('what the board says about a component matches its numbers', () => {
       }
     }
     expect(bad.slice(0, 10)).toEqual([]);
+  });
+});
+
+describe('a backtest moment opened on the board', () => {
+  for (const f of ['hotrod', 'shop', 'petclinic', 'k8s-shop']) {
+    it(`${f}: healthy at the traffic it really served, and breaks where its model does`, () => {
+      const { model, dataset } = JSON.parse(readFileSync(`public/reference/${f}.json`, 'utf8'));
+      const { spec } = modelToSpec(model, basePlan(model, observedReplicas(dataset, model)));
+      const total = (i: number) => Object.values(dataset.endpoints as Record<string, { rps?: (number | null)[] }>).reduce((a, e) => a + (e.rps?.[i] ?? 0), 0);
+      const p90 = Array.from({ length: dataset.n }, (_, i) => total(i)).sort((a, b) => a - b)[Math.floor(dataset.n * 0.9)];
+      const g = specToGraph(spec);
+      expect(run(g, p90).global.errorRate).toBeLessThan(0.01);
+      const m = modelBreakingPoint(model);
+      // a limit the model fitted as errors growing with load is not something a board can draw
+      if (m.limitedBy && !m.limitedBy.startsWith('errors')) {
+        const b = breakingPoint(spec, { slo: { maxErrorRate: model.slo.errorRate, maxP99Ms: model.slo.p99Ms } });
+        expect(b.maxRps / m.rps).toBeGreaterThan(0.7);
+        expect(b.maxRps / m.rps).toBeLessThan(1.4);
+      }
+    });
+  }
+});
+
+describe('call cycles', () => {
+  it('requests that come back to a component that already ran this tick arrive next tick, not lost', () => {
+    // users → lb → a → b, and b calls back into the lb half the time
+    const b = board([{ id: 'users', kind: 'client' }, { id: 'lb', kind: 'lb' }, { id: 'a', kind: 'server', capacity: 10000 }, { id: 'b', kind: 'server', capacity: 10000 }, { id: 'c', kind: 'server', capacity: 10000 }], [['users', 'lb'], ['lb', 'a'], ['a', 'b'], ['b', 'lb'], ['b', 'c']]);
+    const s = run(b, 100);
+    // a sees the users' 100 plus half of everything b handles: a = 100 + a/2 → 200
+    expect(s.nodeStats.a.inRps).toBeCloseTo(200, -1);
+    expect(edgeRps(s, 'b', 'c')).toBeCloseTo(100, -1);
   });
 });
 
