@@ -107,7 +107,9 @@ const mask = (s: string) =>
     .replace(/127\.0\.0\.1(%3A|:)19101/g, '127.0.0.1$1PORT')
     .replaceAll(realpathSync(out), '$OUT')
     .replaceAll(out, '$OUT')
-    .replaceAll(process.cwd(), '$CWD');
+    .replaceAll(process.cwd(), '$CWD')
+    // committed reference datasets name the absolute path they were recorded in
+    .replace(/\/[^"\s\\]*\/system-design-sandbox(?=\/)/g, '$CWD');
 
 interface Golden {
   /** each case: its notifications and its response, masked */
@@ -132,6 +134,8 @@ async function run(record: boolean): Promise<Golden> {
   const cases: Record<string, string[]> = {};
   let pending: string[] = [];
   for (const l of lines) {
+    // the canvas is the app's build (dist-mcp/), not the server's: its URI, type and metadata are checked
+    for (const c of ((l as { result?: { contents?: { text?: string }[] } }).result?.contents ?? [])) if (c.text) c.text = '#canvas html';
     const s = mask(JSON.stringify(l));
     if ('id' in l) {
       cases[labels.get(l.id as number) ?? String(l.id)] = [...pending, s];

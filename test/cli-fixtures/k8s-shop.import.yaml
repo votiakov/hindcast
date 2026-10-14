@@ -1,0 +1,85 @@
+# The Astronomy Shop normal-1 run (reference/k8s/shop) with one batch of its traces, for the golden tests
+name: Astronomy Shop on Kubernetes — normal-1
+step: 30s
+metrics:
+  - prometheus: ../../reference/k8s/shop/runs/normal-1/workspace/telemetry/metrics/otel-spanmetrics-rps.json
+    metric: rps
+    by: service_name
+  - prometheus: ../../reference/k8s/shop/runs/normal-1/workspace/telemetry/metrics/otel-spanmetrics-errors.json
+    metric: errorRate
+    by: service_name
+    unit: ratio
+  - prometheus: ../../reference/k8s/shop/runs/normal-1/workspace/telemetry/metrics/otel-spanmetrics-p50.json
+    metric: p50Ms
+    by: service_name
+    unit: ms
+  - prometheus: ../../reference/k8s/shop/runs/normal-1/workspace/telemetry/metrics/otel-spanmetrics-p99.json
+    metric: p99Ms
+    by: service_name
+    unit: ms
+  - prometheus: ../../reference/k8s/shop/runs/normal-1/workspace/telemetry/metrics/otel-spanmetrics-mean.json
+    metric: meanMs
+    by: service_name
+    unit: ms
+  - prometheus: ../../reference/k8s/shop/runs/normal-1/workspace/telemetry/metrics/otel-spanmetrics-endpoint-rps.json
+    metric: rps
+    by: service_name
+    endpointBy: span_name
+    template: true
+  - prometheus: ../../reference/k8s/shop/runs/normal-1/workspace/telemetry/metrics/otel-spanmetrics-endpoint-errors.json
+    metric: errorRate
+    unit: ratio
+    by: service_name
+    endpointBy: span_name
+    template: true
+    combine: ratio
+  - prometheus: ../../reference/k8s/shop/runs/normal-1/workspace/telemetry/metrics/ingress-nginx-rps.json
+    metric: rps
+    by: exported_service
+    edge: true
+  - prometheus: ../../reference/k8s/shop/runs/normal-1/workspace/telemetry/metrics/ingress-nginx-errors.json
+    metric: errorRate
+    unit: ratio
+    by: exported_service
+    edge: true
+  - prometheus: ../../reference/k8s/shop/runs/normal-1/workspace/telemetry/metrics/ingress-nginx-p99.json
+    metric: p99Ms
+    unit: s
+    by: exported_service
+    edge: true
+  - prometheus: ../../reference/k8s/shop/runs/normal-1/workspace/telemetry/metrics/ingress-nginx-mean.json
+    metric: meanMs
+    unit: s
+    by: exported_service
+    edge: true
+  - prometheus: ../../reference/k8s/shop/runs/normal-1/workspace/telemetry/metrics/kubernetes-cpu.json
+    metric: cpuCores
+    by: workload
+  - prometheus: ../../reference/k8s/shop/runs/normal-1/workspace/telemetry/metrics/kubernetes-cpu-limit.json
+    metric: cpuLimitCores
+    by: workload
+  - prometheus: ../../reference/k8s/shop/runs/normal-1/workspace/telemetry/metrics/kubernetes-replicas.json
+    metric: replicas
+    by: workload
+  - prometheus: ../../reference/k8s/shop/runs/normal-1/workspace/telemetry/metrics/kubernetes-net-tx.json
+    metric: netTxBps
+    by: workload
+  - prometheus: ../../reference/k8s/shop/runs/normal-1/workspace/telemetry/metrics/kubernetes-memory.json
+    metric: memoryBytes
+    by: workload
+  - prometheus: ../../reference/k8s/shop/runs/normal-1/workspace/telemetry/metrics/kubernetes-throttled.json
+    metric: cpuThrottled
+    by: workload
+    unit: ratio
+traces:
+  - file: traces/k8s-shop.jsonl
+    series:
+      rps: false
+      latency: false
+      endpoints: false
+billing: []
+model:
+  slo:
+    p99Ms: 1000
+    errorRate: 0.01
+  timeoutMs: 5000

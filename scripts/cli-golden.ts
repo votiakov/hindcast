@@ -62,20 +62,19 @@ export const CASES: string[][] = [
   ['link', `${ex}/shop.yaml`],
   ['link', `${ex}/shop.yaml`, `${ex}/shop-variants.yaml`],
   ['link', `${ex}/terraform/shop.yaml`],
-  ['import', 'reference/hotrod/runs/history/bottleneck.import.yaml', '--out', `${out}/OUT/hotrod.dataset.json`],
-  ['import', 'reference/k8s/shop/runs/normal-1/workspace/telemetry/bottleneck.import.yaml', '--out', `${out}/OUT/k8s.dataset.json`, '--json'],
-  ['import', 'demos/ws/telemetry/bottleneck.import.yaml', '--out', `${out}/OUT/ws.dataset.json`],
+  ['import', `${fx}/hotrod.import.yaml`, '--out', `${out}/OUT/hotrod.dataset.json`],
+  ['import', `${fx}/k8s-shop.import.yaml`, '--out', `${out}/OUT/k8s.dataset.json`, '--json'],
   ['calibrate', 'reference/hotrod/dataset.json', '--out', `${out}/OUT/hotrod.model.json`],
   ['calibrate', 'reference/hotrod/dataset.json', '--out', `${out}/OUT/hotrod2.model.json`, '--holdout', '0.3', '--p99', '400'],
-  ['calibrate', 'demos/ws/dataset.json', '--out', `${out}/OUT/ws.model.json`, '--json'],
+  ['calibrate', 'reference/k8s/shop/runs/normal-1/workspace/dataset.json', '--out', `${out}/OUT/k8s.model.json`, '--json'],
   ['backtest', 'reference/hotrod/model.json', 'reference/hotrod/dataset.json', 'reference/hotrod/strategies/1-customer-replicas.yaml', 'reference/hotrod/strategies/2-graviton.yaml', '--draws', '8'],
   ['backtest', 'reference/hotrod/model.json', 'reference/hotrod/dataset.json', 'reference/hotrod/strategies/3-autoscale-customer.yaml', '--draws', '6', '--md', `${out}/OUT/bt.md`, '--html', `${out}/OUT/bt.html`, '--comment', `${out}/OUT/pr.md`, '--card', `${out}/OUT/card.json`, '--out', `${out}/OUT/bt.json`],
   ['backtest', 'reference/petclinic/model.json', 'reference/petclinic/dataset.json', 'reference/petclinic/strategies/1-app-replicas.yaml', '--draws', '5', '--scale', '2', '--gate'],
-  ['backtest', 'demos/ws/model.json', 'demos/ws/dataset.json', '--draws', '4', '--last', '1h', '--json'],
+  ['backtest', `${out}/OUT/k8s.model.json`, 'reference/k8s/shop/runs/normal-1/workspace/dataset.json', '--draws', '4', '--last', '20m', '--json'],
   ['headroom', 'reference/hotrod/model.json'],
   ['headroom', 'reference/petclinic/model.json', 'reference/petclinic/strategies/4-read-replica.yaml', '--json'],
   ['accuracy', 'reference/shop/model.json'],
-  ['accuracy', 'demos/ws/model.json', '--json'],
+  ['accuracy', `${out}/OUT/k8s.model.json`, '--json'],
   ['diff-strategy', '--base', 'reference/k8s/shop/variants/frontend-1.yaml', '--head', 'reference/k8s/shop/variants/frontend-hpa.yaml'],
   ['diff-strategy', '--base', 'reference/k8s/shop/variants/frontend-2.yaml', '--head', 'reference/k8s/shop/variants/frontend-1-750m.yaml', '--name', 'smaller', '--out', `${out}/OUT/s.yaml`],
   ['diff-strategy', '--base', 'reference/k8s/shop/shop.yaml', '--head', 'reference/k8s/shop/variants', '--model', 'reference/shop/model.json'],
@@ -89,7 +88,7 @@ export const CASES: string[][] = [
   ['agent', 'nonsense'],
   agent('connect_telemetry', { workspace: ws('a'), prometheus: { url: `${TEL}/prom` }, jaeger: { url: `${TEL}/jaeger` } }),
   agent('connect_telemetry', { workspace: ws('b'), prometheus: { url: `${TEL}/gappy`, tokenEnv: 'HINDCAST_TEST_UNSET_TOKEN' }, tempo: { url: `${TEL}/tempo` }, system: { name: 'Gappy', slo: { errorRate: 0.02, p99Ms: 300 }, rename: { 'shop-worker': 'other' } } }),
-  agent('connect_telemetry', { workspace: ws('c'), prometheus: { url: `${TEL}/broken` }, traceFiles: ['reference/hotrod/runs/history/raw/*.jsonl'], bill: { cur: 'nowhere.csv', tag: 'user:service' } }),
+  agent('connect_telemetry', { workspace: ws('c'), prometheus: { url: `${TEL}/broken` }, traceFiles: [`${fx}/traces/hotrod.jsonl`], bill: { cur: 'nowhere.csv', tag: 'user:service' } }),
   agent('connect_telemetry', { workspace: ws('d') }),
   agent('connect_telemetry', { workspace: ws('e'), prometheus: { url: 'not a url' } }),
   agent('connect_telemetry', { workspace: ws('f'), prometheus: { url: `${TEL}/prom`, selector: 'cluster="eu"', namespaces: ['shop'], presets: ['cadvisor'], extra: 1 }, system: { entry: ['api'], ignore: [], exclude: ['db'], hostedBy: { redis: 'api' }, placement: { api: { zone: 'a', foo: 1 } } } }),
@@ -99,7 +98,7 @@ export const CASES: string[][] = [
   agent('read_cluster', { workspace: ws('j') }),
   agent('collect_telemetry', { workspace: ws('a'), last: '6h' }),
   agent('collect_telemetry', { workspace: ws('a'), maxTraces: 120 }),
-  agent('connect_telemetry', { workspace: ws('k'), prometheus: { url: `${TEL}/prom` }, traceFiles: ['reference/hotrod/runs/history/raw/*.jsonl'], system: { name: 'HotROD-ish', rename: { 'shop-worker': 'worker' }, hostedBy: { redis: 'api' }, exclude: ['worker'] } }),
+  agent('connect_telemetry', { workspace: ws('k'), prometheus: { url: `${TEL}/prom` }, traceFiles: [`${fx}/traces/hotrod.jsonl`], system: { name: 'HotROD-ish', rename: { 'shop-worker': 'worker' }, hostedBy: { redis: 'api' }, exclude: ['worker'] } }),
   agent('collect_telemetry', { workspace: ws('k'), windows: [{ start: '2026-10-08T12:00:00Z', end: '2026-10-08T14:00:00Z' }, { start: 1791480000, end: 1791490000 }], stepS: 60 }),
   agent('connect_telemetry', { workspace: ws('m'), prometheus: { url: `${TEL}/prom` }, tempo: { url: `${TEL}/tempo` } }),
   agent('collect_telemetry', { workspace: ws('m'), start: '2026-10-09T00:00:00Z', end: '2026-10-09T02:00:00Z' }),
@@ -143,7 +142,7 @@ export const CASES: string[][] = [
 ];
 
 /** wall-clock numbers differ run to run */
-const mask = (s: string) => s.replace(/(in |· )\d+ ms/g, '$1# ms').replace(/"wallMs": \d+(\.\d+)?/g, '"wallMs": #').replace(/"measuredAt": ?"[^"]*"/g, '"measuredAt": #').replace(/"collectedHoursAgo": -?[\d.]+/g, '"collectedHoursAgo": #').replaceAll(realpathSync(out), '$OUT').replaceAll(out, '$OUT').replaceAll(process.cwd(), '$CWD');
+const mask = (s: string) => s.replace(/(in |· )\d+ ms/g, '$1# ms').replace(/"wallMs": \d+(\.\d+)?/g, '"wallMs": #').replace(/"measuredAt": ?"[^"]*"/g, '"measuredAt": #').replace(/"collectedHoursAgo": -?[\d.]+/g, '"collectedHoursAgo": #').replaceAll(realpathSync(out), '$OUT').replaceAll(out, '$OUT').replaceAll(process.cwd(), '$CWD').replace(/\/[^"\s]*\/system-design-sandbox(?=\/)/g, '$CWD');
 
 interface Golden {
   stdout: string;
@@ -153,6 +152,8 @@ interface Golden {
 }
 
 const root = `${out}/OUT`;
+const DUMP = process.argv.includes('--dump') ? process.argv[process.argv.indexOf('--dump') + 1] : '';
+let dumped = 0;
 let files = snapshot(root, mask);
 function run(args: string[], record: boolean): Golden {
   for (const x of args) if (x.startsWith(`${root}/`)) mkdirSync(x.slice(0, x.lastIndexOf('/')), { recursive: true });
@@ -161,6 +162,13 @@ function run(args: string[], record: boolean): Golden {
   // everything the command wrote: named outputs, workspaces, reports
   const now = snapshot(root, mask);
   const g = { stdout: mask(r.stdout), stderr: store(mask(r.stderr)), code: r.status, files: changed(files, now) };
+  // --dump <dir>: every case's output in full, to diff two runs
+  if (DUMP) {
+    const d = `${DUMP}/${String(++dumped).padStart(3, '0')}`;
+    mkdirSync(d, { recursive: true });
+    writeFileSync(`${d}/stdout`, g.stdout);
+    for (const [k, v] of now) if (files.get(k) !== v) mkdirSync(join(d, 'files', k, '..'), { recursive: true }), writeFileSync(join(d, 'files', k), v);
+  }
   files = now;
   return g;
 }
@@ -177,7 +185,7 @@ for (const k of ['v', 'n']) utimesSync(`${root}/ws-${k}/dataset.json`, 179140000
 files = snapshot(root, mask);
 
 const record = process.argv.includes('--record');
-const filter = process.argv.slice(2).find((a) => !a.startsWith('--'));
+const filter = process.argv.slice(2).find((a, i, all) => !a.startsWith('--') && all[i - 1] !== '--dump');
 const golden: Record<string, Golden> = record ? {} : read(GOLDEN);
 let failed = 0;
 for (const c of CASES) {

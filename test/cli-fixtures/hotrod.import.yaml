@@ -1,0 +1,53 @@
+# The HotROD history (reference/hotrod/runs/history) with a few batches of its traces, for the golden tests
+name: HotROD — history
+step: 30s
+metrics:
+  - prometheus: ../../reference/hotrod/runs/history/metrics/otel-spanmetrics-rps.json
+    metric: rps
+    by: service_name
+  - prometheus: ../../reference/hotrod/runs/history/metrics/otel-spanmetrics-errors.json
+    metric: errorRate
+    by: service_name
+    unit: ratio
+  - prometheus: ../../reference/hotrod/runs/history/metrics/otel-spanmetrics-p50.json
+    metric: p50Ms
+    by: service_name
+    unit: ms
+  - prometheus: ../../reference/hotrod/runs/history/metrics/otel-spanmetrics-p99.json
+    metric: p99Ms
+    by: service_name
+    unit: ms
+  - prometheus: ../../reference/hotrod/runs/history/metrics/cadvisor-cpu.json
+    metric: cpuCores
+    by: container_label_com_docker_compose_service
+  - prometheus: ../../reference/hotrod/runs/history/metrics/cadvisor-cpu-limit.json
+    metric: cpuLimitCores
+    by: container_label_com_docker_compose_service
+  - prometheus: ../../reference/hotrod/runs/history/metrics/cadvisor-replicas.json
+    metric: replicas
+    by: container_label_com_docker_compose_service
+  - prometheus: ../../reference/hotrod/runs/history/metrics/cadvisor-net-tx.json
+    metric: netTxBps
+    by: container_label_com_docker_compose_service
+  - prometheus: ../../reference/hotrod/runs/history/metrics/cadvisor-memory.json
+    metric: memoryBytes
+    by: container_label_com_docker_compose_service
+  - csv: ../../reference/hotrod/runs/history/client.csv
+traces:
+  - file: traces/hotrod.jsonl
+    sampling: 0.2
+    series:
+      rps: false
+      latency: false
+      endpoints: false
+billing:
+  - cur: ../../reference/hotrod/runs/history/bill.csv
+    tag: user:service
+model:
+  slo:
+    p99Ms: 1000
+    errorRate: 0.03
+  timeoutMs: 5000
+  hostedBy:
+    mysql: customer
+    redis-manual: driver
