@@ -430,6 +430,17 @@ describe('memory limits and CPU quota throttling', () => {
     expect(trim.delta.monthly.p50).toBeLessThan(0);
   });
 
+  it('never OOM-kills the history it was fitted on: a spike seen at low load is not added at the peak', () => {
+    const d = withMemory(0.6);
+    const api = d.services.api;
+    // the limit just above the measured peak; the worst spike sat in a quiet bucket
+    const peak = Math.max(...api.memoryMaxBytes!.map((x) => x!));
+    api.memoryMaxBytes![2] = api.memoryMaxBytes![2]! + 0.6 * (peak - api.memoryMaxBytes![2]!);
+    api.memoryLimitBytes = new Array(d.n).fill(peak * 1.02);
+    const r = backtest(calibrate(d, { bootstrap: 0 }), d, [], { draws: 1 });
+    expect(r.baseline.events.some((e) => /OOM/.test(e.what))).toBe(false);
+  });
+
   it('stops CPU-bound capacity where quota throttling takes over, not at the limit', () => {
     // many workers: latency stays flat until the limit, so only CPU tells where it is
     const plain = synthetic({ K: 40, c: 64, S: 20 }, 0.3);
@@ -547,6 +558,10 @@ describe('losing a node', () => {
     expect(one.singlePointsOfFailure.map((x) => x.service)).toEqual(['api']);
     expect(one.results[0]).toMatchObject({ verdict: 'fails' });
     expect(one.results[0].lost[0].down).toBe(true);
+    // a strategy's new replicas go where the scheduler would: the least-loaded node
+    const { podsPerNode } = await import('../src/backtest/resilience');
+    const m3 = { ...m, services: { ...m.services, db: { ...m.services.api, id: 'db', pods: { a: 1 } } } };
+    expect(podsPerNode(m3, { name: 'x', changes: [{ service: 'api', replicas: 1 }] }).api).toEqual({ b: 1 });
     const six = nodeLoss(m, d, { draws: 2, strategy: { name: 'six', changes: [{ service: 'api', replicas: 6 }] } });
     expect(six.survives).toBe(true);
   });

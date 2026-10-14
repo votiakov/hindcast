@@ -3,7 +3,8 @@ import type { Model } from './model';
 import type { Fault } from './engine';
 import { backtest } from './backtest';
 import { scaleTraffic, trafficOf } from './calibrate';
-import { StrategySpec } from './strategy';
+import { applyStrategy, StrategySpec } from './strategy';
+import { basePlan } from './engine';
 
 /**
  * Losing a Kubernetes node at the worst moment: every pod on it goes at once. Services left with no
@@ -69,8 +70,12 @@ export function nodeLoss(model: Model, d: Dataset, o: NodeLossOptions = {}) {
   const start = o.atS ?? Math.max(0, at * traffic.stepS - 60);
   // without an autoscaler and with no room left on the other nodes, the pods stay Pending
   const c = model.cluster;
-  const want = c ? requested(model, c.other) : null;
-  const roomless = !!c && !c.autoscaled && !!want && (want.cpu > (c.nodes - 1) * c.node.cpu || want.memoryGb > (c.nodes - 1) * c.node.memoryGb);
+  // room for the lost pods elsewhere: every pod's requests (the strategy's replicas and requests)
+  // against the nodes left once this node — or every node of this zone — is gone
+  const want = c ? requested(model, c.other, o.strategy) : null;
+  const nodesIn = (unit: string) => (o.zones ? Object.values(c?.zones ?? {}).filter((z) => z === unit).length || 1 : 1);
+  const roomlessFor = (unit: string) => !!c && !c.autoscaled && !!want && (want.cpu > (c.nodes - nodesIn(unit)) * c.node.cpu || want.memoryGb > (c.nodes - nodesIn(unit)) * c.node.memoryGb);
+  const roomless = nodes.some(roomlessFor);
   const recoverS = o.recoverS ?? RECOVER_S;
   const strategies = o.strategy ? [o.strategy] : [];
   const draws = o.draws ?? 8;
@@ -85,12 +90,12 @@ export function nodeLoss(model: Model, d: Dataset, o: NodeLossOptions = {}) {
         const of = Object.values(p).reduce((a, x) => a + x, 0);
         return { service, pods: p[node], of, down: p[node] >= of };
       });
-    const until = roomless ? undefined : start + recoverS;
+    const until = roomlessFor(node) ? undefined : start + recoverS;
     const faults: Fault[] = lost.map((l) => ({ service: l.service, at: start, until, ...(l.down ? { down: true } : { replicasLost: l.pods }), note: `${node} lost: ${l.service} ${l.down ? 'has no replica left' : `down to ${l.of - l.pods} of ${l.of} replicas`}` }));
     const r = backtest(model, d, strategies, { draws, traffic, faults, seed: 11 });
     const s = o.strategy ? r.strategies[0] : r.baseline;
     const added = s.summary.minutesOutOfSlo.p50 - ref.summary.minutesOutOfSlo.p50;
-    results.push({ node, lost, verdict: added > gate ? 'fails' : 'survives', minutesOutOfSlo: Math.round(added * 10) / 10, failedRequests: Math.round(s.summary.failedRequests.p50 - ref.summary.failedRequests.p50), worst: s.worst.why, recovered: !roomless, total: { minutesOutOfSlo: Math.round(s.summary.minutesOutOfSlo.p50 * 10) / 10, failedRequests: Math.round(s.summary.failedRequests.p50) } });
+    results.push({ node, lost, verdict: added > gate ? 'fails' : 'survives', minutesOutOfSlo: Math.round(added * 10) / 10, failedRequests: Math.round(s.summary.failedRequests.p50 - ref.summary.failedRequests.p50), worst: s.worst.why, recovered: !roomlessFor(node), total: { minutesOutOfSlo: Math.round(s.summary.minutesOutOfSlo.p50 * 10) / 10, failedRequests: Math.round(s.summary.failedRequests.p50) } });
   }
   results.sort((a, b) => b.minutesOutOfSlo - a.minutesOutOfSlo || b.failedRequests - a.failedRequests);
   // services one node failure takes out entirely
@@ -106,7 +111,7 @@ export function nodeLoss(model: Model, d: Dataset, o: NodeLossOptions = {}) {
     results,
     singlePointsOfFailure: spof,
     notes: [
-      roomless ? 'the node pool is fixed and the other nodes have no room for the lost pods: they stay Pending until the node returns' : `pods come back ${Math.round(recoverS / 60)} min after the node goes (NotReady after ~50 s, the default 300 s eviction toleration, a start)`,
+      roomless ? `the node pool is fixed and losing ${nodes.filter(roomlessFor).join(', ')} leaves no room for its pods: they stay Pending until it returns` : `pods come back ${Math.round(recoverS / 60)} min after the node goes (NotReady after ~50 s, the default 300 s eviction toleration, a start)`,
       ...(o.strategy ? ['replica counts the strategy changes are spread evenly over the nodes, as the default scheduler does'] : []),
     ],
   };
@@ -147,21 +152,32 @@ export function podsPerNode(model: Model, strategy?: unknown): Record<string, Re
     const now = Object.values(out[ch.service]).reduce((a, x) => a + x, 0);
     const r = ch.replicas ?? (ch.autoscale ? ch.autoscale.min : ch.spread ? now : undefined);
     if (r === undefined) continue;
+    // the default scheduler spreads a Deployment's pods and balances the nodes: each replica goes to
+    // the node with the fewest of this service, then the fewest pods overall
+    delete out[ch.service];
+    const load = new Map(nodes.map((n) => [n, 0]));
+    for (const q of Object.values(out)) for (const [n, k] of Object.entries(q)) load.set(n, (load.get(n) ?? 0) + k);
     const p: Record<string, number> = {};
-    for (let k = 0; k < r; k++) p[nodes[k % nodes.length]] = (p[nodes[k % nodes.length]] ?? 0) + 1;
+    for (let k = 0; k < r; k++) {
+      const n = [...nodes].sort((a, b) => (p[a] ?? 0) - (p[b] ?? 0) || load.get(a)! - load.get(b)! || a.localeCompare(b))[0];
+      p[n] = (p[n] ?? 0) + 1;
+      load.set(n, load.get(n)! + 1);
+    }
     out[ch.service] = p;
   }
   return out;
 }
 
-/** every pod's requests with the services at their typical replica counts */
-function requested(model: Model, other: { cpu: number; memoryGb: number }) {
+/** every pod's requests with the services at their typical replica counts, or the strategy's */
+function requested(model: Model, other: { cpu: number; memoryGb: number }, strategy?: unknown) {
+  const plan = strategy ? applyStrategy(model, basePlan(model), strategy).plan : basePlan(model);
   let cpu = other.cpu;
   let memoryGb = other.memoryGb;
-  for (const s of Object.values(model.services))
+  for (const [id, s] of Object.entries(plan.services))
     if (s.requests && !s.hostedBy) {
-      cpu += s.replicas * s.requests.cpu;
-      memoryGb += s.replicas * s.requests.memoryGb;
+      const r = s.replicas ?? s.autoscale?.min ?? model.services[id].replicas;
+      cpu += r * s.requests.cpu;
+      memoryGb += r * s.requests.memoryGb;
     }
   return { cpu, memoryGb };
 }

@@ -125,7 +125,9 @@ function summarise(r: RunResult, slo: { p99Ms: number; errorRate: number }, step
 /** which service was the problem at bucket i, in words */
 export function explainMoment(r: RunResult, plan: Plan, i: number): { why: string; service: string | null } {
   // a service down after an OOM kill explains everything behind it
-  const oom = Object.entries(r.services).find(([, s]) => (s.oomDown?.[i] ?? 0) > 0);
+  const oom = Object.entries(r.services)
+    .filter(([, s]) => (s.oomDown?.[i] ?? 0) > 0)
+    .sort((a, b) => b[1].oomDown![i] - a[1].oomDown![i] || b[1].rps[i] - a[1].rps[i])[0];
   if (oom) {
     const mem = plan.services[oom[0]].memory!;
     const perRep = r.services[oom[0]].rps[i] / Math.max(1, r.services[oom[0]].replicas[i]);

@@ -73,7 +73,7 @@ export interface ServicePlan {
   cpuLimit: number | null;
   /** peak working set per container = base + perReq × req/s per replica + spike, against limit (GiB):
    *  past it the pods are OOM-killed and restart with CrashLoopBackOff */
-  memory?: { base: number; perReq: number; spike: number; limit: number };
+  memory?: { base: number; perReq: number; spike: number; limit: number; peak?: number; seenTo?: number };
   /** Kubernetes requests per replica (cores, GiB): what it takes of a node */
   requests?: { cpu: number; memoryGb: number };
   /** $ per replica-hour and per request */
@@ -293,13 +293,13 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
       const s = plan.services[id];
       const first = s.observedReplicas?.find((x) => x !== null) ?? null;
       const live = s.replicas ?? first ?? 1;
-      return [id, { backlog: 0, live: s.autoscale ? Math.max(s.autoscale.min, Math.min(s.autoscale.max, live)) : live, pending: [] as { at: number; n: number }[], lastScale: -Infinity, nextEval: 0, blockedSaid: false, util: 0, collapsed: false, oomUntil: -Infinity, ooms: 0 }];
+      return [id, { backlog: 0, live: s.autoscale ? Math.max(s.autoscale.min, Math.min(s.autoscale.max, live)) : live, pending: [] as { at: number; n: number }[], lastScale: -Infinity, nextEval: 0, blockedSaid: false, util: 0, collapsed: false, oomUntil: -Infinity, ooms: 0, pendingSaid: false }];
     }),
   );
   const epFail = Object.fromEntries(epIds.map((id) => [id, 0]));
   const cl = plan.cluster;
   // an autoscaled pool starts at what the first moment needs
-  const CS = { nodes: cl ? (cl.autoscaled ? -1 : cl.nodes) : 0, unneededSince: -Infinity, pendingSaid: false };
+  const CS = { nodes: cl ? (cl.autoscaled ? -1 : cl.nodes) : 0, unneededSince: -Infinity, pendingSaid: false, adds: [] as number[], wantMax: 0 };
   const faults = (opts.faults ?? []).filter((f) => plan.services[f.service]);
   const faultOn = new Set<Fault>();
   type Effect = { capacity: number; down: boolean; extraMs: number; errorRate: number; noScaleOut: boolean; warmupFactor: number; lost: number };
@@ -438,7 +438,11 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
         // OOM: every replica carries the same load, so the working set passes the limit on all of them;
         // they are killed and come back after CrashLoopBackOff (10 s, doubling to 5 min) and a start
         if (s.memory && now >= S.oomUntil && live > 0) {
-          const ws = s.memory.base + s.memory.perReq * Math.min(perRep, isFinite(K) ? K * 1.5 : perRep) + s.memory.spike;
+          // within the loads the history saw, never above the peak it measured (the worst spike sat
+          // at some load, not at every one)
+          const load = Math.min(perRep, isFinite(K) ? K * 1.5 : perRep);
+          const line = s.memory.base + s.memory.perReq * load + s.memory.spike;
+          const ws = s.memory.peak !== undefined && s.memory.seenTo !== undefined && load <= s.memory.seenTo ? Math.min(line, s.memory.peak) : line;
           if (ws > s.memory.limit) {
             S.ooms++;
             S.oomUntil = now + Math.min(300, 10 * 2 ** (S.ooms - 1)) + OOM_RESTART_S;
@@ -561,16 +565,20 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
           if (CS.nodes < 0) CS.nodes = want;
           else if (want > CS.nodes) {
             out.events.push({ t: traffic.start + now, what: `cluster: ${CS.nodes} → ${want} nodes (pods request ${rc.toFixed(1)} cores, ${rm.toFixed(1)} GiB)` });
+            for (let k = CS.nodes; k < want; k++) CS.adds.push(now);
             CS.nodes = want;
             CS.unneededSince = -Infinity;
           } else if (want < CS.nodes) {
-            if (!isFinite(CS.unneededSince)) CS.unneededSince = now;
-            else if (now - CS.unneededSince >= cl.scaleDownS) {
-              out.events.push({ t: traffic.start + now, what: `cluster: ${CS.nodes} → ${want} nodes (unneeded for ${Math.round(cl.scaleDownS / 60)} min)` });
-              CS.nodes = want;
+            // removed only down to the most the window needed
+            if (!isFinite(CS.unneededSince)) (CS.unneededSince = now), (CS.wantMax = want);
+            CS.wantMax = Math.max(CS.wantMax, want);
+            if (now - CS.unneededSince >= cl.scaleDownS) {
+              out.events.push({ t: traffic.start + now, what: `cluster: ${CS.nodes} → ${CS.wantMax} nodes (unneeded for ${Math.round(cl.scaleDownS / 60)} min)` });
+              CS.nodes = CS.wantMax;
               CS.unneededSince = -Infinity;
             }
           } else CS.unneededSince = -Infinity;
+          CS.adds = CS.adds.filter((at) => at > now - cl.provisionS);
         }
         if (ideal > CS.nodes && !CS.pendingSaid) {
           out.events.push({ t: traffic.start + now, what: `cluster: pods request ${rc.toFixed(1)} cores and ${rm.toFixed(1)} GiB, more than ${CS.nodes} nodes hold — some would stay Pending` });
@@ -638,20 +646,23 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
         }
         S.pending = S.pending.filter((p) => p.at > t);
         // what the metric shows: utilisation averaged over its window
-        const perRepNow = S.live > 0 ? svcLam[id] / S.live : 0;
+        // the HPA sees ready pods: replicas a node failure took aren't there until they're replaced
+        const lost = Math.min(S.live, fx[id].lost);
+        const ready = S.live - lost;
+        const perRepNow = ready > 0 ? svcLam[id] / ready : 0;
         const utilNow = s.cpu && s.cpuLimit ? (s.cpu.base + s.cpu.perReq * Math.min(perRepNow, s.perReplicaRps)) / s.cpuLimit : isFinite(s.perReplicaRps) ? Math.min(perRepNow, s.perReplicaRps) / s.perReplicaRps : 0;
         S.util += (utilNow - S.util) * (1 - Math.exp(-dt / Math.max(dt, (a.metricWindowS ?? 30) / 2)));
         if (t + 1e-9 < S.nextEval) continue;
         S.nextEval = t + a.intervalS;
         const util = S.util;
         const booting = S.pending.reduce((x, p) => x + p.n, 0);
-        const desired = Math.min(a.max, Math.max(a.min, Math.ceil((S.live * util) / a.target - 1e-9)));
-        if (desired > S.live + booting && fx[id].noScaleOut) {
+        const desired = Math.min(a.max, Math.max(a.min, Math.ceil((Math.max(ready, 1) * util) / a.target - 1e-9)));
+        if (desired > ready + booting && fx[id].noScaleOut) {
           if (!S.blockedSaid) out.events.push({ t: traffic.start + t, what: `${id}: wants ${desired} replicas but cannot launch any` });
           S.blockedSaid = true;
-        } else if (desired > S.live + booting) {
+        } else if (desired > ready + booting) {
           S.blockedSaid = false;
-          let add = desired - S.live - booting;
+          let add = desired - ready - booting;
           let wait = 0;
           // on a cluster the new pods need room: on an autoscaled pool, a node that isn't there yet is
           // waited for; on a fixed pool, pods that don't fit stay Pending
@@ -665,13 +676,17 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
               rc += pods * q.requests.cpu;
               rm += pods * q.requests.memoryGb;
             }
-            const fits = (k: number) => Math.max((rc + k * s.requests!.cpu) / cl.node.cpu, (rm + k * s.requests!.memoryGb) / cl.node.memoryGb) * (cl.autoscaled ? cl.packing : 1) <= CS.nodes + 1e-9;
+            // a node added in the last provisionS isn't up yet: pods for it wait like the first ones did
+            const usable = CS.nodes - CS.adds.filter((at) => at > t - cl.provisionS).length;
+            const fits = (k: number) => Math.max((rc + k * s.requests!.cpu) / cl.node.cpu, (rm + k * s.requests!.memoryGb) / cl.node.memoryGb) * (cl.autoscaled ? cl.packing : 1) <= usable + 1e-9;
             if (cl.autoscaled) {
               if (!fits(add)) wait = cl.provisionS;
             } else {
               let room = add;
               while (room > 0 && !fits(room)) room--;
-              if (room < add) out.events.push({ t: traffic.start + t, what: `${id}: ${add - room} of ${add} new replicas stay Pending — the ${CS.nodes} fixed nodes have no room for their requests` });
+              // said once per episode, not at every evaluation
+              if (room < add && !S.pendingSaid) out.events.push({ t: traffic.start + t, what: `${id}: ${add - room} of ${add} new replicas stay Pending — the ${CS.nodes} fixed nodes have no room for their requests` });
+              S.pendingSaid = room < add;
               add = room;
             }
           }
@@ -680,9 +695,9 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
             S.lastScale = t;
             out.events.push({ t: traffic.start + t, what: `${id}: scale out ${S.live + booting} → ${S.live + booting + add} (load ${(util * 100).toFixed(0)}% of target ${(a.target * 100).toFixed(0)}%)${wait ? `, waiting ${wait} s for a new node` : ''}` });
           }
-        } else if (desired < S.live && !booting && t - S.lastScale >= a.cooldownS) {
-          out.events.push({ t: traffic.start + t, what: `${id}: scale in ${S.live} → ${desired}` });
-          S.live = desired;
+        } else if (desired < ready && !booting && t - S.lastScale >= a.cooldownS) {
+          out.events.push({ t: traffic.start + t, what: `${id}: scale in ${ready} → ${desired}` });
+          S.live = desired + lost;
           S.lastScale = t;
         }
       }
@@ -716,7 +731,7 @@ export function basePlan(model: Model, observed?: Record<string, Num[] | undefin
       loadExponent: s.loadExponent,
       cpu: s.cpu ? { base: s.cpu.base, perReq: s.cpu.perReq } : null,
       cpuLimit: s.cpuLimit,
-      ...(s.memory?.limit ? { memory: { base: s.memory.base, perReq: s.memory.perReq, spike: s.memory.spike, limit: s.memory.limit } } : {}),
+      ...(s.memory?.limit ? { memory: { base: s.memory.base, perReq: s.memory.perReq, spike: s.memory.spike, limit: s.memory.limit, peak: s.memory.peak, seenTo: s.memory.seenTo } } : {}),
       ...(s.requests ? { requests: { ...s.requests } } : {}),
       replicaHour: s.cost.perReplicaHour,
       perRequest: s.cost.perRequest,

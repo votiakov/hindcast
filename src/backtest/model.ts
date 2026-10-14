@@ -54,7 +54,7 @@ export interface ServiceModel {
   memoryGb: number | null;
   /** the largest container's peak working set = base + perReq × req/s per replica, + up to spike
    *  above that line (the worst the history showed); GiB. An OOM kill compares it with the limit */
-  memory?: { base: number; perReq: number; spike: number; peak: number; limit: number | null; r2: number };
+  memory?: { base: number; perReq: number; spike: number; peak: number; limit: number | null; r2: number; /** the busiest req/s per replica the history saw */ seenTo?: number };
   /** what each replica asks the scheduler for (Kubernetes requests): cores, GiB */
   requests?: { cpu: number; memoryGb: number };
   /** pods per node at the end of the history (Kubernetes) */

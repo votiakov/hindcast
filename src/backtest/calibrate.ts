@@ -100,7 +100,10 @@ function clusterOf(d: Dataset, services: Record<string, ServiceModel>, replicasO
   const nodes = Math.round(median(nodesV));
   const minNodes = Math.min(...nodesV);
   const maxNodes = Math.max(...nodesV);
-  const autoscaled = hint?.autoscaled ?? maxNodes > minNodes;
+  // a node replaced once (or a surge during a rollout) isn't autoscaling: the count has to have been
+  // away from its typical value for a twentieth of the history
+  const away = nodesV.filter((x) => Math.abs(x - median(nodesV)) >= 1).length;
+  const autoscaled = hint?.autoscaled ?? (maxNodes > minNodes && away >= 0.05 * nodesV.length);
   const pk = packing.length ? Math.max(1, median(packing)) : 1;
   notes.push(`${nodes} node${nodes === 1 ? '' : 's'} of ${+node.cpu.toFixed(2)} cores + ${node.memoryGb.toFixed(1)} GiB allocatable, $${perHour.toFixed(3)}/node-hour (${hint?.nodePriceHour ? 'given' : NODE_PRICES.source})`);
   notes.push(autoscaled ? `the node count followed demand (${minNodes}–${maxNodes}): requests that need fewer nodes save money, at ${pk.toFixed(2)}× the nodes requests would fill exactly` : `a fixed pool: ${nodes} nodes the whole history. Smaller requests leave room on them but save nothing until the pool shrinks`);
@@ -450,7 +453,7 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
       const base = follows ? Math.max(0, fit!.intercept) : median(ys);
       const perReq = follows ? fit!.slope : 0;
       const spike = Math.max(0, ...ys.map((y, k) => y - (base + perReq * xs[k])));
-      memory = { base, perReq, spike, peak: Math.max(...ys), limit: memLimit, r2: fit?.r2 ?? 0 };
+      memory = { base, perReq, spike, peak: Math.max(...ys), limit: memLimit, r2: fit?.r2 ?? 0, seenTo: Math.max(...xs) };
       if (memLimit) notes.push(`memory: peaks at ${Math.round(memory.peak * 1024)} MiB per container against a ${Math.round(memLimit * 1024)} MiB limit (${Math.round((memory.peak / memLimit) * 100)}%)${follows ? `, +${(perReq * 1024 * 100).toFixed(1)} MiB per 100 req/s per replica` : ', flat with load'}`);
     }
 
@@ -494,7 +497,8 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
         if (err >= 0.01 || (vals(s.p99Ms, i) ?? 0) >= timeoutMs * 0.5) broke++;
       }
       // …and one the history saw failing while throttled that hard was held back by it
-      throttleBound = broke >= 1;
+      // a stray bucket of errors with another cause shouldn't cap it: a tenth of them, two at least
+      throttleBound = broke >= Math.max(2, 0.1 * hard);
       if (hard >= 3 && healthy >= hard * 0.8) notes.push(`throttled in ${Math.round(THROTTLE_COLLAPSE * 100)}%+ of CPU periods for ${hard} buckets of the history without slowing down: the quota does not limit it`);
       else if (fit && fit.slope > 0 && fit.r2 >= 0.3) {
         const knee = (Math.log(THROTTLE_COLLAPSE) - fit.intercept) / fit.slope;

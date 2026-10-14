@@ -151,7 +151,7 @@ export function applyStrategy(model: Model, base: Plan, input: unknown): Applied
       }
       if (ch.memoryGb !== undefined) {
         if (m.memory) {
-          s.memory = { base: m.memory.base, perReq: m.memory.perReq, spike: m.memory.spike, limit: ch.memoryGb };
+          s.memory = { base: m.memory.base, perReq: m.memory.perReq, spike: m.memory.spike, limit: ch.memoryGb, peak: m.memory.peak, seenTo: m.memory.seenTo };
           const head = ch.memoryGb - m.memory.peak;
           notes.push(`${ch.service}: memory limit ${m.memory.limit ? `${Math.round(m.memory.limit * 1024)} → ` : ''}${Math.round(ch.memoryGb * 1024)} MiB; the history's peak working set was ${Math.round(m.memory.peak * 1024)} MiB per container (${head >= 0 ? `${Math.round(head * 1024)} MiB of headroom` : `${Math.round(-head * 1024)} MiB over: it would be OOM-killed`})`);
         } else notes.push(`${ch.service}: memory ${ch.memoryGb} GiB — no memory usage in the history, so OOM kills can't be checked`);

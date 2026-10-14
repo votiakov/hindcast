@@ -207,8 +207,15 @@ export async function collect(ws: Workspace, o: CollectOptions = {}, progress?: 
         (by[id] ??= {})[r.metric.node] = Number(r.value[1]);
       }
       if (Object.keys(by).length) dataset.podsByNode = by;
-      // the zone of each node, from its provider id (AWS and GCP put it there)
-      const ni = (await (await fetch(`${src.prometheus.url.replace(/\/$/, '')}/api/v1/query?query=${encodeURIComponent('kube_node_info')}&time=${end}`, { headers: authHeaders(src.prometheus) })).json()) as { data?: { result?: { metric: Record<string, string> }[] } };
+      // the zone of each node, from its provider id (AWS and GCP put it there); without it only
+      // zone loss is unavailable
+      const ni = await (async () => {
+        try {
+          return (await (await fetch(`${src.prometheus!.url.replace(/\/$/, '')}/api/v1/query?query=${encodeURIComponent('kube_node_info')}&time=${end}`, { headers: authHeaders(src.prometheus) })).json()) as { data?: { result?: { metric: Record<string, string> }[] } };
+        } catch {
+          return { data: { result: [] } };
+        }
+      })();
       const zones: Record<string, string> = {};
       for (const r of ni.data?.result ?? []) {
         const z = zoneOfProviderId(r.metric.provider_id);
