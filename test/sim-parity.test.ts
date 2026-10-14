@@ -230,3 +230,8 @@ describe('the failure audit in Rust matches TypeScript', () => {
     same(progressTs, progressRs, 'progress');
   });
 });
+
+it("the native CLI's catalogue is the app's (npx tsx scripts/catalog-json.ts --write)", async () => {
+  const { catalogJson } = await import('../scripts/catalog-json');
+  expect(readFileSync('engine-rs/src/cli/catalog.json', 'utf8')).toBe(catalogJson());
+});

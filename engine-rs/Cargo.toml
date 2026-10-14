@@ -11,7 +11,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 indexmap = { version = "2", features = ["serde"] }
-serde_json = { version = "1", features = ["preserve_order"] }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 regex-lite = "0.1"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

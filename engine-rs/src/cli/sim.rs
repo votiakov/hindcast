@@ -122,7 +122,7 @@ pub fn command(cmd: &str, f: &Flags, out: &mut Out) -> Result<Option<i32>, Strin
 }
 
 /// opt.x is truthy: a flag given a value (an empty string or "0" still counts, as `opt.p99 ?` does)
-fn truthy_flag(f: &Flags, k: &str) -> bool {
+pub(super) fn truthy_flag(f: &Flags, k: &str) -> bool {
     f.opt.get(k).map(|v| v.as_deref() != Some("")).unwrap_or(false)
 }
 
@@ -154,7 +154,7 @@ fn imported(r: &crate::convert::ImportResult, f: &Flags, out: &mut Out, what: &s
 }
 
 /// a scenario file with --rps, --duration and --traffic laid over it
-fn scenario_from(path: Option<&str>, f: &Flags, out: &mut Out) -> Result<Value, String> {
+pub(super) fn scenario_from(path: Option<&str>, f: &Flags, out: &mut Out) -> Result<Value, String> {
     let mut base = match path {
         Some(p) => match load(p)? {
             Value::Object(o) => o,
@@ -181,7 +181,7 @@ fn scenario_from(path: Option<&str>, f: &Flags, out: &mut Out) -> Result<Value, 
     Ok(Value::Object(base))
 }
 
-fn variants_file(path: &str) -> Result<(Vec<Value>, Option<Value>), String> {
+pub(super) fn variants_file(path: &str) -> Result<(Vec<Value>, Option<Value>), String> {
     match load(path)? {
         Value::Array(a) => Ok((a, None)),
         Value::Object(o) => {

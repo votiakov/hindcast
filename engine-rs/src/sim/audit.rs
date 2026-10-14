@@ -410,7 +410,9 @@ fn candidate_fixes(inc: &Incident, a: &Architecture, nm: &dyn Fn(&str) -> String
             out.push(Cand { title: format!("Bypass {} when it is down", nm(&id)), why: "Callers fail over to the origin instead of failing — the cache is an optimisation, not a dependency.".into(), changes });
         } else if kind != "client" {
             let twin = unique_id(a, &format!("{}-b", id));
+            // { ...rest, id: twin, name }: id moves to the end, a name keeps its place
             let mut comp = c.clone();
+            comp.shift_remove("id");
             comp.insert("id".into(), json!(twin));
             comp.insert("name".into(), json!(format!("{}-standby", nm(&id))));
             let mut changes = vec![json!({ "op": "add", "component": Value::Object(comp) })];
@@ -503,11 +505,12 @@ pub fn audit(input: &Architecture, o: &AuditOptions, progress: &mut dyn FnMut(f6
     let nm: &dyn Fn(&str) -> String = &name_of;
 
     let scenario_for = |inc: &Incident| -> Value {
-        let mut s = json!({ "name": inc.title, "duration": END, "readRatio": read_ratio, "slo": slo_v, "events": inc.events });
+        let mut s = json!({ "name": inc.title, "duration": END, "readRatio": read_ratio, "slo": slo_v });
         match &inc.traffic {
             Some(t) => s["traffic"] = Value::Array(t.iter().map(|(at, r)| json!({ "at": at, "rps": r })).collect()),
             None => s["rps"] = json!(rps),
         }
+        s["events"] = json!(inc.events);
         s
     };
     let base = sim(&spec, json!({ "name": "expected load", "duration": 30, "rps": rps, "readRatio": read_ratio, "slo": slo_v }))?;

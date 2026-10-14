@@ -11,7 +11,7 @@ const out = mkdtempSync(join(tmpdir(), 'cli-parity-'));
 const ex = 'examples';
 const fx = 'test/cli-fixtures';
 /** cases whose stderr is a YAML parser's syntax message: only the exit code has to agree */
-const PARSER_MESSAGE = new Set([`validate ${ex}/kubernetes/shop.yaml`]);
+const PARSER_MESSAGE = new Set([`validate ${ex}/kubernetes/shop.yaml`, `audit ${ex}/kubernetes/shop.yaml`]);
 export const CASES: string[][] = [
   [],
   ['nonsense'],
@@ -50,6 +50,19 @@ export const CASES: string[][] = [
   ['import-k8s', `${ex}/kubernetes/shop.yaml`],
   ['import-k8s', `${ex}/kubernetes/shop.yaml`, 'reference/k8s/shop/shop.yaml', '--name', 'Both'],
   ['import-k8s', `${ex}/kubernetes/shop.yaml`, '--json'],
+  ['catalog'],
+  ['link', `${ex}/shop.yaml`],
+  ['link', `${ex}/shop.yaml`, `${ex}/shop-variants.yaml`],
+  ['link', `${ex}/terraform/shop.yaml`],
+  ['analyze', `${ex}/shop.yaml`, '--runs', '6', '--duration', '20'],
+  ['analyze', `${ex}/shop.yaml`, `${ex}/black-friday.yaml`, '--runs', '4', '--seed', '3', '--json'],
+  ['optimize', `${ex}/shop.yaml`],
+  ['optimize', `${ex}/shop.yaml`, `${ex}/black-friday.yaml`, '--runtimes', '--out', `${out}/OUT/opt.yaml`],
+  ['optimize', `${ex}/shop.yaml`, '--p99', '200', '--json'],
+  ['audit', `${ex}/shop.yaml`],
+  ['audit', `${ex}/shop.yaml`, '--rps', '1500', '--cost-per-min', '2000', '--md', `${out}/OUT/a.md`, '--html', `${out}/OUT/a.html`],
+  ['audit', `${ex}/terraform/shop.yaml`, '--json'],
+  ['audit', `${ex}/kubernetes/shop.yaml`],
 ];
 
 /** wall-clock numbers differ run to run */
