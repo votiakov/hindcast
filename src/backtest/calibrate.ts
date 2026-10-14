@@ -52,6 +52,11 @@ export const FARGATE_PRICES: ListPrices = {
 const SERVER_GRID = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 128, 256];
 
 const vals = (a: Num[] | undefined, i: number) => (a && a[i] !== null && a[i] !== undefined && isFinite(a[i] as number) ? (a[i] as number) : null);
+/** share of CFS periods throttled at which a service stops keeping up under sustained load: the
+ *  threshold of kube-prometheus's CPUThrottlingHigh alert. (The Kubernetes reference's single-threaded
+ *  frontend read 44% at the top of a 60-second load-test step, but collapsed under hours of real traffic
+ *  15–20% below that load — reference/k8s/README.md) */
+const THROTTLE_COLLAPSE = 0.25;
 const median = (xs: number[]) => (xs.length ? quantile([...xs].sort((a, b) => a - b), 0.5) : NaN);
 
 function mape(pred: number[], obs: (number | null)[], floor = 1): number | undefined {
@@ -361,6 +366,59 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
       }
     }
 
+    // CFS quota throttling: a runtime that runs on one thread (Node, Python) or bursts across several
+    // spends its quota early in each 100 ms period and waits out the rest, so it stops keeping up well
+    // before its CPU reaches the limit. The share of throttled periods grows roughly exponentially with
+    // CPU use; where that curve reaches THROTTLE_COLLAPSE is the share of the limit it can really use.
+    let throttle: Capacity['throttle'];
+    let throttleBound = false;
+    /** capacity capped below loads the history held briefly (load-test steps): the latency fit is
+     *  scored on the loads it can sustain */
+    let throttleCapped = false;
+    if (s.cpuThrottled && cpuLimit && !hostedBy[id]) {
+      const us: number[] = [];
+      const ls: number[] = [];
+      for (let i = 0; i < d.n; i++) {
+        const c = vals(s.cpuCores, i);
+        const th = vals(s.cpuThrottled, i);
+        const r = vals(reps, i) ?? replicas;
+        if (c === null || th === null || r <= 0 || th < 0.002 || th >= 0.98) continue;
+        us.push(c / (r * cpuLimit));
+        ls.push(Math.log(th));
+      }
+      const fit = us.length >= 12 ? regress(us, ls) : null;
+      const maxU = us.length ? Math.max(...us) : 0;
+      // a service the history saw throttled that hard while it kept its latency is not held back by
+      // its quota (bursty multi-threaded runtimes: throttling costs them milliseconds, not throughput)
+      const own = s.selfP99Ms ?? s.p99Ms;
+      const p99s = (own ?? []).map((x) => x).filter((x): x is number => x !== null && x > 0).sort((a, b) => a - b);
+      const calmP99 = p99s.length ? quantile(p99s, 0.25) : NaN;
+      let hard = 0;
+      let healthy = 0;
+      let broke = 0;
+      for (let i = 0; i < d.n; i++) {
+        const th = vals(s.cpuThrottled, i);
+        if (th === null || th < THROTTLE_COLLAPSE) continue;
+        hard++;
+        const p = vals(own, i);
+        const err = vals(s.errorRate, i) ?? 0;
+        if (p !== null && isFinite(calmP99) && p <= Math.max(calmP99 * 2, calmP99 + 50) && err < 0.01) healthy++;
+        if (err >= 0.01 || (vals(s.p99Ms, i) ?? 0) >= timeoutMs * 0.5) broke++;
+      }
+      // …and one the history saw failing while throttled that hard was held back by it
+      throttleBound = broke >= 1;
+      if (hard >= 3 && healthy >= hard * 0.8) notes.push(`throttled in ${Math.round(THROTTLE_COLLAPSE * 100)}%+ of CPU periods for ${hard} buckets of the history without slowing down: the quota does not limit it`);
+      else if (fit && fit.slope > 0 && fit.r2 >= 0.3) {
+        const knee = (Math.log(THROTTLE_COLLAPSE) - fit.intercept) / fit.slope;
+        if (knee < 0.97) {
+          throttle = { knee: Math.max(0.3, knee), atZero: Math.exp(fit.intercept), growth: fit.slope, r2: fit.r2, seenTo: maxU };
+          notes.push(
+            `CPU quota throttling: ${(Math.exp(fit.intercept + fit.slope * Math.min(maxU, 1)) * 100).toFixed(0)}% of periods throttled at ${Math.round(Math.min(maxU, 1) * 100)}% of the limit, rising ×${Math.exp(fit.slope * 0.1).toFixed(2)} per 10 points (R² ${fit.r2.toFixed(2)}); it reaches ${Math.round(THROTTLE_COLLAPSE * 100)}% at ${Math.round(throttle.knee * 100)}% of the limit, so that is the CPU it can use${knee > maxU + 0.2 ? ' (extrapolated)' : ''}`,
+          );
+        }
+      }
+    }
+
     // low-load self time
     const withData = lam.map((l, i) => ({ i, l: perRep[i], ok: l !== null && selfObs[i] !== null })).filter((x) => x.ok);
     const sortedByLoad = [...withData].sort((a, b) => a.l - b.l);
@@ -384,7 +442,8 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
       // every busy bucket with what follows it, and a thin sample of the quiet ones (see compactFit)
       const F = compactFit(perRep, selfObs, selfP99Obs, maxLam, S);
       const none = logErr(replayQueue(F.lam, d.stepS, 1, Infinity, S, S99, 1).mean, F.obs);
-      const cpuK = cpu && cpuLimit && cpu.perReq > 0 ? (cpuLimit - cpu.base) / cpu.perReq : Infinity;
+      const usable = cpuLimit ? cpuLimit * (throttle?.knee ?? 1) : null;
+      const cpuK = cpu && usable && cpu.perReq > 0 ? Math.max(0, usable - cpu.base) / cpu.perReq : Infinity;
       const cpuC = cpuLimit ? Math.max(1, Math.round(cpuLimit)) : 1;
       let cpuFit: Fitted = { c: cpuC, K: cpuK, S, v: 1, err: Infinity };
       if (isFinite(cpuK)) for (const v of VARIABILITY) {
@@ -547,6 +606,22 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
         chosen = cpuFit;
         notes.push('load never approached capacity; the CPU limit is extrapolated');
       }
+      // where the history shows it breaking while throttled, the quota is the ceiling whatever the
+      // latency fit says (a ramp step reads a higher limit than the load can sustain)
+      if (throttle && throttleBound && isFinite(cpuK) && capacity.perReplicaRps > cpuK * 1.05 && !ov?.perReplicaRps) {
+        notes.push(`the latency history reads ${capacity.perReplicaRps.toFixed(0)} req/s per replica, but the CPU quota throttles it at ${cpuK.toFixed(0)}: capped there`);
+        capacity = { limit: 'cpu', servers: cpuC, perReplicaRps: cpuK };
+        // the CPU fit's variability, refitted on the loads it can sustain (the history replayed whole,
+        // scored only there)
+        const obs = F.obs.map((x, i) => (F.lam[i] > cpuK ? null : x));
+        cpuFit = { c: cpuC, K: cpuK, S, v: 1, err: Infinity };
+        for (const v of VARIABILITY) {
+          const err = logErr(replayQueue(F.lam, d.stepS, cpuC, cpuK, S, S99, 1, v).mean, obs);
+          if (err < cpuFit.err) cpuFit = { c: cpuC, K: cpuK, S, v, err };
+        }
+        chosen = cpuFit;
+        throttleCapped = true;
+      }
       if (chosen) {
         variability = isFinite(chosen.err) ? chosen.v : 1;
         selfMean = chosen.S;
@@ -570,7 +645,7 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
         for (let b = 0; b < B; b++) {
           const z = Math.sqrt(-2 * Math.log(Math.max(1e-12, rand()))) * Math.cos(2 * Math.PI * rand());
           const slope = Math.max(cpu!.perReq * 0.2, cpu!.perReq + z * cpuSe);
-          draws.push((cpuLimit! - cpu!.base) / slope);
+          draws.push(Math.max(0, (usable ?? cpuLimit!) - cpu!.base) / slope);
         }
         draws.sort((a, b) => a - b);
         capacity.band = [quantile(draws, 0.1), quantile(draws, 0.9)];
@@ -629,8 +704,11 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
       tail = bestTail.t;
       const r = replayQueue(perRep, d.stepS, capacity.servers, capacity.perReplicaRps, selfMean, selfP99, tail, variability);
       // errors below a few ms don't matter to anyone's p99: floor the denominator
-      latencyMape = mape(r.mean, selfObs, 5);
-      p99Mape = mape(r.p99, selfP99Obs, 5);
+      const sustained = (xs: (number | null)[]) => (throttleCapped ? xs.map((x, i) => (perRep[i] > capacity.perReplicaRps ? null : x)) : xs);
+      latencyMape = mape(r.mean, sustained(selfObs), 5);
+      p99Mape = mape(r.p99, sustained(selfP99Obs), 5);
+      if (throttleCapped) notes.push(`latency fit scored on the ${perRep.filter((x, i) => x <= capacity.perReplicaRps && selfObs[i] !== null).length} buckets at or below that capacity: above it the history only held for load-test steps`);
+      if (throttle && capacity.limit === 'cpu') capacity.throttle = throttle;
     } else if (shape) notes.push('too little load data to fit capacity; using trace averages');
 
     let cpuMape: number | undefined;

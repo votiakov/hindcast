@@ -95,6 +95,12 @@ A summary; every rule, and the recording that taught it, is in [calibration.md](
   pools, worker pools — with servers and capacity fitted). Overloads in the history are replayed with
   a fluid backlog, so they inform the fit instead of breaking it. A block bootstrap over the history
   gives a 10th–90th percentile band for the capacity.
+- **CPU quota throttling** (Kubernetes, from CFS throttled periods): the share of throttled periods is
+  fitted against CPU use, and CPU-bound capacity stops where it reaches 25% (the `CPUThrottlingHigh`
+  alert's threshold) instead of at 100% of the limit. A single-threaded runtime under a limit
+  collapses well before the limit. Where the history shows the service failing while throttled, this
+  caps a capacity read from latency too. Where it shows the service throttled that hard and healthy,
+  throttling is ignored.
 - **Latency** — self time at low load (mean, p99) plus queueing; a tail multiplier fitted on the p99s.
 - **Endpoints** — critical-path weight per service, network/proxy overhead (measured minus the
   path), baseline errors, its own SLO, a tail multiplier fitted on its measured p99.

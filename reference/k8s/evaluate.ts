@@ -13,7 +13,7 @@
  *   npx tsx reference/k8s/evaluate.ts [system]     → <system>/validation/validation.json, the README's table,
  *                                                   public/reference/k8s-<system>.json for the app
  */
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
@@ -71,18 +71,30 @@ async function telemetryOf(runs: string[], out: string, settle = false): Promise
   const key = runs.join('+') + (settle ? ':settled' : '');
   if (collected.has(key)) return collected.get(key)!;
   let d: Dataset;
+  const fresh = `${out}.new`;
   try {
-    rmSync(out, { recursive: true, force: true });
-    mkdirSync(out, { recursive: true });
-    cpSync(join(runDir(runs[0]), 'workspace', 'sources.json'), join(out, 'sources.json'));
-    const ws = new Workspace(out);
+    rmSync(fresh, { recursive: true, force: true });
+    mkdirSync(fresh, { recursive: true });
+    cpSync(join(runDir(runs[0]), 'workspace', 'sources.json'), join(fresh, 'sources.json'));
+    const ws = new Workspace(fresh);
     // calibration histories leave out the same settling minutes the scoring leaves out
     const w = runs.map((r) => ({ start: meta(r).start + (settle ? SETTLE_S : 0), end: meta(r).end }));
     await collect(ws, w.length > 1 ? { windows: w, stepS: STEP, maxTraces: 6000 * w.length } : { ...w[0], stepS: STEP, maxTraces: 6000 });
     d = ws.readJson<Dataset>('dataset.json');
+    rmSync(out, { recursive: true, force: true });
+    renameSync(fresh, out);
   } catch (e) {
+    rmSync(fresh, { recursive: true, force: true });
+    const why = (e as Error).message.slice(0, 120);
+    // the cluster is gone (it only lives as long as the study): the last collection from it stands
+    if (existsSync(join(out, 'dataset.json'))) {
+      console.warn(`(${runs.join('+')}: live telemetry unavailable — ${why}; using the last collection, ${out})`);
+      d = JSON.parse(readFileSync(join(out, 'dataset.json'), 'utf8')) as Dataset;
+      collected.set(key, d);
+      return d;
+    }
     if (runs.length > 1) throw e;
-    console.warn(`(${runs[0]}: live telemetry unavailable — ${(e as Error).message.slice(0, 120)}; using the recorded files)`);
+    console.warn(`(${runs[0]}: live telemetry unavailable — ${why}; using the recorded files)`);
     const mp = join(runDir(runs[0]), 'workspace', 'telemetry', 'bottleneck.import.yaml');
     d = importBundle(parse(readFileSync(mp, 'utf8')), fileAccess(mp)).dataset;
   }
@@ -247,8 +259,9 @@ async function main() {
   const cfg = parse(readFileSync(join(SYS, 'reference.yaml'), 'utf8')) as K8sReference;
   if (!recorded('history')) throw new Error('record the history run first');
   const evalDir = join(SYS, 'validation');
-  rmSync(evalDir, { recursive: true, force: true });
+  // models are rebuilt every time; collected telemetry is kept (refreshed when the cluster is up)
   mkdirSync(evalDir, { recursive: true });
+  for (const f of readdirSync(evalDir)) if (f !== 'collected' && f !== 'runs') rmSync(join(evalDir, f), { recursive: true, force: true });
   const base = resolve(SYS, 'shop.yaml');
 
   const calm = await calibrated('calm', ['history'], evalDir, cfg.slo);

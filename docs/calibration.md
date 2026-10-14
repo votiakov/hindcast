@@ -82,6 +82,30 @@ Least squares over the buckets: CPU cores per replica = `base` + `perReq` × req
 fit's R² and the slope's standard error are kept. R² under 0.3 adds the note *"CPU barely follows
 load — capacity is not CPU-bound or CPU data is noisy"*.
 
+### CPU quota throttling
+
+Kubernetes enforces a CPU limit as a quota per 100 ms CFS period. A runtime that does its work on
+one thread (Node.js), or that bursts across several, uses its quota early in a period and waits out
+the rest. It stops keeping up well before its average CPU reaches the limit. In the Kubernetes
+reference, a Node.js frontend at half a core broke at 79% of its limit in a load test, and lower
+under real traffic.
+
+Where the history has `cpuThrottled` (throttled periods / periods), calibration fits
+`ln(throttled share) = a + b × (CPU / limit)` over the buckets with some throttling and none
+saturated. It needs at least 12 buckets, b > 0 and R² ≥ 0.3. The **knee** is where the curve
+reaches 25%, the threshold of kube-prometheus's `CPUThrottlingHigh` alert. CPU-bound capacity is
+then `(limit × knee − base) / perReq` instead of `(limit − base) / perReq`, and resizing the limit
+keeps the knee.
+
+Two guards:
+
+- **Failing while throttled:** if the service failed while throttled past the threshold (errors
+  ≥ 1% or p99 at half the client timeout), the throttled capacity also caps one read from latency.
+  A load-test step holds for a minute what hours of traffic can't. The latency fit is then scored
+  only on the loads the capped capacity can sustain.
+- **Healthy while throttled:** if the history shows it throttled past the threshold for 3+ buckets
+  with its latency within 2× of normal and no errors, the quota does not limit it: no knee.
+
 ### Self time at low load
 
 The median self time (mean and p99) over the 30% least-loaded buckets: what a request costs when

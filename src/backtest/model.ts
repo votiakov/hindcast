@@ -35,6 +35,9 @@ export interface Capacity {
   /** metastable: once overloaded, it only finishes this many req/s per replica until the backlog
    *  is gone (garbage collection, thread and pool thrash) */
   overloadedRps?: number;
+  /** CFS quota throttling fitted from the history: ln(share of periods throttled) = ln(atZero) +
+   *  growth × (CPU / limit); knee is the share of the limit where throttling stops it keeping up */
+  throttle?: { knee: number; atZero: number; growth: number; r2: number; seenTo: number };
 }
 
 export interface ServiceModel {

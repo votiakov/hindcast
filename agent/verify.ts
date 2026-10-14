@@ -388,11 +388,15 @@ export function judge(m: Model, r: BacktestResult, s: StrategyResult, spec: Stra
     .filter(([id, e]) => e.minutesOutOfSlo > (r.baseline.endpoints[id]?.minutesOutOfSlo ?? 0) + gate)
     .map(([id, e]) => ({ endpoint: id, minutesOutOfSlo: r1(e.minutesOutOfSlo), asBuilt: r1(r.baseline.endpoints[id]?.minutesOutOfSlo ?? 0), slo: e.slo }));
   if (worse.length) reasons.push(`worse for ${worse.map((w) => w.endpoint).join(', ')} against their own SLOs`);
-  if (after.rps < before.rps * 0.9) reasons.push(`headroom drops from ${r1(before.rps)} to ${r1(after.rps)} req/s${m.traffic ? ` (the history peaked at ${r1(m.traffic.peak)})` : ''}`);
-  // the change itself cuts headroom below traffic the system has already seen
-  if (after.rps < before.rps * 0.9 && after.rps < (m.traffic?.peak ?? 0) && verdict === 'pass') {
+  // the traffic this verdict is about: the replayed window at its load — not a load test elsewhere in
+  // the history, which pushed past the limit on purpose
+  const peak = r.peakRps ?? m.traffic?.peak ?? 0;
+  const of = r.load ? `the replayed traffic peaks at ${r1(peak)}` : `the history peaked at ${r1(peak)}`;
+  if (after.rps < before.rps * 0.9) reasons.push(`headroom drops from ${r1(before.rps)} to ${r1(after.rps)} req/s (${of})`);
+  // the change itself cuts headroom below the traffic it has to serve
+  if (after.rps < before.rps * 0.9 && after.rps < peak && verdict === 'pass') {
     verdict = 'inconclusive';
-    reasons.push(`after the change the system sustains ${r1(after.rps)} req/s, below the history's peak of ${r1(m.traffic!.peak)}`);
+    reasons.push(`after the change the system sustains ${r1(after.rps)} req/s, below the peak it has to serve (${r1(peak)})`);
   }
 
   return {
@@ -412,7 +416,7 @@ export function judge(m: Model, r: BacktestResult, s: StrategyResult, spec: Stra
       incidents: s.incidents.slice(0, 5).map((x) => ({ start: iso(x.start), minutes: r1(x.minutes), peakP99Ms: Math.round(x.peakP99Ms), why: x.why })),
       endpointsWorse: worse,
     },
-    headroom: { beforeRps: r1(before.rps), afterRps: r1(after.rps), limitedBy: after.limitedBy, historyPeakRps: m.traffic ? r1(m.traffic.peak) : null },
+    headroom: { beforeRps: r1(before.rps), afterRps: r1(after.rps), limitedBy: after.limitedBy, historyPeakRps: m.traffic ? r1(m.traffic.peak) : null, replayedPeakRps: r1(peak) },
     confidence: { level, services, warnings },
     notes: s.notes,
     howToRead: `${money(s.delta.monthly.p50)}/month; ${verdict === 'pass' ? 'safe on this history' : verdict === 'fail' ? 'would have broken the SLO' : 'not proven either way'}; confidence ${level}`,

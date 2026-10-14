@@ -76,6 +76,8 @@ export interface BacktestResult {
   draws: number;
   /** the history was replayed at another load (absent: as recorded) */
   load?: { factor: number; peakRps: number };
+  /** the busiest moment of the traffic replayed, req/s (all endpoints) */
+  peakRps: number;
 }
 
 const rangeOf = (xs: number[]): Ranged => {
@@ -359,5 +361,6 @@ export function backtest(model: Model, d: Dataset, strategies: unknown[], opts: 
     accuracy: model.accuracy,
     draws,
     ...(load ? { load } : {}),
+    peakRps: scaleTraffic(traffic, { scale: 1 }).peakRps,
   };
 }
