@@ -2,6 +2,8 @@
 //! kind, sizes, runtimes, and the pricing profiles' prices. The words (labels, descriptions, SKU names,
 //! sources) stay with the app.
 
+#[allow(unused_imports)]
+use crate::fmath::JsMath;
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Clone, Debug, Default)]
@@ -200,7 +202,7 @@ fn tier_index(t: &str) -> usize {
 pub fn cache_warmth(cold_at: Option<f64>, now: f64, warmup_s: Option<f64>) -> f64 {
     match cold_at {
         None => 1.0,
-        Some(c) => 1.0 - (-(now - c).max(0.0) / warmup_s.unwrap_or(CACHE_WARMUP_S).max(0.1)).exp(),
+        Some(c) => 1.0 - (-(now - c).max(0.0) / warmup_s.unwrap_or(CACHE_WARMUP_S).max(0.1)).js_exp(),
     }
 }
 

@@ -8,6 +8,8 @@
 //! are ordered by (time, push order) and random draws happen in the same order, so a seed gives the
 //! same run in both.
 
+#[allow(unused_imports)]
+use crate::fmath::JsMath;
 use super::catalog::*;
 use super::engine::{NodeStats, Scaling, SimEdge, SimNode};
 use super::headless::{explain, node_view};
@@ -78,20 +80,20 @@ impl Rng {
             u = self.next();
         }
         let v = self.next();
-        let r = (-2.0 * u.ln()).sqrt();
-        self.spare = Some(r * (2.0 * std::f64::consts::PI * v).sin());
-        r * (2.0 * std::f64::consts::PI * v).cos()
+        let r = (-2.0 * u.js_ln()).sqrt();
+        self.spare = Some(r * (2.0 * std::f64::consts::PI * v).js_sin());
+        r * (2.0 * std::f64::consts::PI * v).js_cos()
     }
     pub fn exp(&mut self, mean: f64) -> f64 {
-        -(1.0 - self.next()).ln() * mean
+        -(1.0 - self.next()).js_ln() * mean
     }
     /// log-normal with the given mean and coefficient of variation
     pub fn lognormal(&mut self, mean: f64, cv: f64) -> f64 {
         if cv <= 0.0 {
             return mean;
         }
-        let s2 = (1.0 + cv * cv).ln();
-        (mean.ln() - s2 / 2.0 + s2.sqrt() * self.normal()).exp()
+        let s2 = (1.0 + cv * cv).js_ln();
+        (mean.js_ln() - s2 / 2.0 + s2.sqrt() * self.normal()).js_exp()
     }
 }
 
@@ -101,7 +103,7 @@ const MIN_MS: f64 = 0.05;
 const GROWTH: f64 = 1.025;
 
 fn buckets() -> usize {
-    ((1_000_000.0f64 / MIN_MS).ln() / GROWTH.ln()).ceil() as usize + 1
+    ((1_000_000.0f64 / MIN_MS).js_ln() / GROWTH.js_ln()).ceil() as usize + 1
 }
 
 #[derive(Clone)]
@@ -115,11 +117,11 @@ pub struct Histogram {
 
 impl Histogram {
     pub fn new() -> Histogram {
-        Histogram { counts: vec![0; buckets()], total: 0, sum: 0.0, max: 0.0, log_g: GROWTH.ln() }
+        Histogram { counts: vec![0; buckets()], total: 0, sum: 0.0, max: 0.0, log_g: GROWTH.js_ln() }
     }
     pub fn record(&mut self, ms: f64) {
         let v = ms.max(MIN_MS);
-        let i = ((v / MIN_MS).ln() / self.log_g).floor().min((self.counts.len() - 1) as f64) as usize;
+        let i = ((v / MIN_MS).js_ln() / self.log_g).floor().min((self.counts.len() - 1) as f64) as usize;
         self.counts[i] += 1;
         self.total += 1;
         self.sum += ms;
@@ -137,7 +139,7 @@ impl Histogram {
         for (i, c) in self.counts.iter().enumerate() {
             acc += *c as f64;
             if acc >= target {
-                return self.max.min(MIN_MS * GROWTH.powf((i + 1) as f64));
+                return self.max.min(MIN_MS * GROWTH.js_pow((i + 1) as f64));
             }
         }
         self.max
@@ -825,7 +827,7 @@ impl<'a> Des<'a> {
         if budget {
             self.nodes[n].retry_tokens -= 1.0;
         }
-        let delay = if backoff { BACKOFF_CAP.min(BACKOFF_BASE_MS * 2f64.powf(k)) * (0.5 + self.rng.next()) } else { 1.0 };
+        let delay = if backoff { BACKOFF_CAP.min(BACKOFF_BASE_MS * 2f64.js_pow(k)) * (0.5 + self.rng.next()) } else { 1.0 };
         self.at(delay, Ev::Attempt { call, k: k + 1.0 });
     }
 
@@ -1057,7 +1059,7 @@ impl<'a> Des<'a> {
             }
             let n = &mut self.nodes[i];
             if n.data.kind == "function" {
-                n.warm = n.busy.max(n.warm * (-win_s / 60.0).exp());
+                n.warm = n.busy.max(n.warm * (-win_s / 60.0).js_exp());
             }
             n.last_stats = Some(stats);
             n.win = new_win();

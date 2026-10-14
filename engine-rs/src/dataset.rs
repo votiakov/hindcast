@@ -6,9 +6,12 @@ use crate::types::{Map, Num};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-#[derive(Deserialize, Serialize, Clone, Debug, Default)]
+#[derive(Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceSeries {
+    /// the order the series were first seen in (an importer's); written in that order, the rest after
+    #[serde(skip)]
+    pub order: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rps: Option<Vec<Num>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -66,9 +69,11 @@ pub struct ClusterSeries {
     pub cluster_requested_memory_bytes: Option<Vec<Num>>,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug, Default)]
+#[derive(Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct EndpointSeries {
+    #[serde(skip)]
+    pub order: Vec<String>,
     #[serde(default)]
     pub service: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -121,12 +126,12 @@ pub struct EndpointShape {
     pub critical_ms: Map<f64>,
     #[serde(deserialize_with = "num", default)]
     pub mean_ms: f64,
-    #[serde(deserialize_with = "num", default)]
-    pub p99_ms: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub p50_ms: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub p90_ms: Option<f64>,
+    #[serde(deserialize_with = "num", default)]
+    pub p99_ms: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub low_mean_ms: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -159,9 +164,9 @@ pub struct Topology {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sampling: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub sampling_check: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub rate_corrected: Option<Map<f64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sampling_check: Option<f64>,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, Default)]
@@ -263,23 +268,23 @@ pub struct Dataset {
     #[serde(default)]
     pub endpoints: Map<EndpointSeries>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub cluster: Option<ClusterSeries>,
+    #[serde(default)]
+    pub sources: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub topology: Option<Topology>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bill: Option<Bill>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub placement: Option<Map<Placement>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub cluster: Option<ClusterSeries>,
+    pub hints: Option<Hints>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pods_by_node: Option<Map<Map<f64>>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub node_zones: Option<Map<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hpa: Option<Map<Hpa>>,
-    #[serde(default)]
-    pub sources: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub hints: Option<Hints>,
 }
 fn one() -> f64 {
     1.0
@@ -299,5 +304,67 @@ pub fn mean_of(a: Option<&Vec<Num>>) -> Option<f64> {
         Some(s / k as f64)
     } else {
         None
+    }
+}
+
+fn write_series<S: serde::Serializer>(s: S, head: Option<(&str, &String)>, all: &[(&'static str, &Option<Vec<Num>>)], order: &[String]) -> Result<S::Ok, S::Error> {
+    use serde::ser::SerializeMap;
+    let mut m = s.serialize_map(None)?;
+    if let Some((k, v)) = head {
+        m.serialize_entry(k, v)?;
+    }
+    for name in order {
+        if let Some((k, Some(v))) = all.iter().find(|(k, _)| *k == name.as_str()) {
+            m.serialize_entry(k, v)?;
+        }
+    }
+    for (k, v) in all {
+        if let Some(v) = v {
+            if !order.iter().any(|o| o == k) {
+                m.serialize_entry(k, v)?;
+            }
+        }
+    }
+    m.end()
+}
+
+impl Serialize for ServiceSeries {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        let all = [
+            ("rps", &self.rps),
+            ("doneRps", &self.done_rps),
+            ("errorRate", &self.error_rate),
+            ("p50Ms", &self.p50_ms),
+            ("p95Ms", &self.p95_ms),
+            ("p99Ms", &self.p99_ms),
+            ("meanMs", &self.mean_ms),
+            ("selfMeanMs", &self.self_mean_ms),
+            ("selfP99Ms", &self.self_p99_ms),
+            ("cpuCores", &self.cpu_cores),
+            ("cpuLimitCores", &self.cpu_limit_cores),
+            ("replicas", &self.replicas),
+            ("netTxBps", &self.net_tx_bps),
+            ("netRxBps", &self.net_rx_bps),
+            ("memoryBytes", &self.memory_bytes),
+            ("memoryMaxBytes", &self.memory_max_bytes),
+            ("memoryLimitBytes", &self.memory_limit_bytes),
+            ("cpuRequestCores", &self.cpu_request_cores),
+            ("memoryRequestBytes", &self.memory_request_bytes),
+            ("cpuThrottled", &self.cpu_throttled),
+        ];
+        write_series(s, None, &all, &self.order)
+    }
+}
+
+impl Serialize for EndpointSeries {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        let all = [
+            ("rps", &self.rps),
+            ("errorRate", &self.error_rate),
+            ("p50Ms", &self.p50_ms),
+            ("p99Ms", &self.p99_ms),
+            ("meanMs", &self.mean_ms),
+        ];
+        write_series(s, Some(("service", &self.service)), &all, &self.order)
     }
 }

@@ -127,6 +127,7 @@ impl DatasetBuilder {
             let mut o = ServiceSeries::default();
             for (metric, pts) in m {
                 set_service(&mut o, metric, grid(pts));
+                o.order.push(metric.clone());
             }
             services.insert(id.clone(), o);
         }
@@ -135,6 +136,7 @@ impl DatasetBuilder {
             let mut o = EndpointSeries { service: service.clone(), ..Default::default() };
             for (metric, pts) in m {
                 let g = Some(grid(pts));
+                o.order.push(metric.clone());
                 match metric.as_str() {
                     "rps" => o.rps = g,
                     "errorRate" => o.error_rate = g,

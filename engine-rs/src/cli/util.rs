@@ -174,13 +174,18 @@ pub fn loc(x: f64) -> String {
 // ---- JSON.stringify(v, null, 2) ----
 
 pub fn pretty(v: &Value) -> String {
+    pretty_indent(v, 2)
+}
+
+/// JSON.stringify(v, null, indent)
+pub fn pretty_indent(v: &Value, indent: usize) -> String {
     let mut out = String::new();
-    write_pretty(v, 0, &mut out);
+    write_pretty(v, 0, indent, &mut out);
     out
 }
 
-fn write_pretty(v: &Value, depth: usize, out: &mut String) {
-    let pad = |d: usize| "  ".repeat(d);
+fn write_pretty(v: &Value, depth: usize, indent: usize, out: &mut String) {
+    let pad = |d: usize| " ".repeat(d * indent);
     match v {
         Value::Array(a) if a.is_empty() => out.push_str("[]"),
         Value::Object(m) if m.is_empty() => out.push_str("{}"),
@@ -188,7 +193,7 @@ fn write_pretty(v: &Value, depth: usize, out: &mut String) {
             out.push_str("[\n");
             for (i, x) in a.iter().enumerate() {
                 out.push_str(&pad(depth + 1));
-                write_pretty(x, depth + 1, out);
+                write_pretty(x, depth + 1, indent, out);
                 if i + 1 < a.len() {
                     out.push(',');
                 }
@@ -203,7 +208,7 @@ fn write_pretty(v: &Value, depth: usize, out: &mut String) {
                 out.push_str(&pad(depth + 1));
                 out.push_str(&serde_json::to_string(k).unwrap_or_default());
                 out.push_str(": ");
-                write_pretty(x, depth + 1, out);
+                write_pretty(x, depth + 1, indent, out);
                 if i + 1 < m.len() {
                     out.push(',');
                 }

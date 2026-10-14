@@ -1,6 +1,8 @@
 //! Queueing and latency-distribution maths of src/backtest/queueing.ts and engine.ts, and number
 //! formatting the way JavaScript prints it (the replay's events are text).
 
+#[allow(unused_imports)]
+use crate::fmath::JsMath;
 /// Erlang C: probability an arrival has to wait (`a` Erlangs offered to `c` servers)
 pub fn erlang_c(c: f64, a: f64) -> f64 {
     if a <= 0.0 {
@@ -39,7 +41,7 @@ pub fn mmc_wait(lambda: f64, c: f64, k: f64) -> Wait {
     let cc = erlang_c(n, lambda / mu);
     let gap = k - lambda;
     let mean_ms = (cc / gap) * 1000.0;
-    let p99_ms = if cc > 0.01 { ((cc / 0.01).ln() / gap) * 1000.0 } else { 0.0 };
+    let p99_ms = if cc > 0.01 { ((cc / 0.01).js_ln() / gap) * 1000.0 } else { 0.0 };
     Wait { mean_ms, p99_ms, rho }
 }
 
@@ -50,15 +52,15 @@ pub fn exceed(mean: f64, p99: f64, t: f64) -> f64 {
     }
     let ex = (p99 - mean).max(1e-6);
     if t >= mean {
-        return 0.01_f64.powf((t - mean) / ex).min(1.0);
+        return 0.01_f64.js_pow((t - mean) / ex).min(1.0);
     }
-    (1.0 - 0.5 * (-(mean - t) / ex).exp()).min(1.0)
+    (1.0 - 0.5 * (-(mean - t) / ex).js_exp()).min(1.0)
 }
 
 /// standard normal upper tail (Abramowitz–Stegun 7.1.26 via erfc)
 pub fn normal_tail(z: f64) -> f64 {
     let t = 1.0 / (1.0 + 0.3275911 * (z / std::f64::consts::SQRT_2).abs());
-    let y = t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429)))) * (-(z * z) / 2.0).exp();
+    let y = t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429)))) * (-(z * z) / 2.0).js_exp();
     if z >= 0.0 {
         y / 2.0
     } else {
@@ -88,17 +90,17 @@ pub fn survival(p: &Part, x: f64) -> f64 {
     if let (Some(p50), Some(p90)) = (truthy(p.p50), truthy(p.p90)) {
         if p50 > 0.0 && p90 > p50 * 1.01 && p.p99 > p90 * 1.01 && x > 0.0 {
             if x <= p90 {
-                let sigma = (p90.ln() - p50.ln()) / 1.2816;
-                return normal_tail((x.ln() - p50.ln()) / sigma);
+                let sigma = (p90.js_ln() - p50.js_ln()) / 1.2816;
+                return normal_tail((x.js_ln() - p50.js_ln()) / sigma);
             }
-            let slope = (0.01_f64.ln() - 0.1_f64.ln()) / (p.p99.ln() - p90.ln());
-            return (0.1_f64.ln() + slope * (x.ln() - p90.ln())).exp().min(0.1);
+            let slope = (0.01_f64.js_ln() - 0.1_f64.js_ln()) / (p.p99.js_ln() - p90.js_ln());
+            return (0.1_f64.js_ln() + slope * (x.js_ln() - p90.js_ln())).js_exp().min(0.1);
         }
     }
     if let Some(p50) = truthy(p.p50) {
         if p50 > 0.0 && p.p99 > p50 * 1.01 && x > 0.0 {
-            let sigma = (p.p99.ln() - p50.ln()) / 2.3263;
-            return normal_tail((x.ln() - p50.ln()) / sigma);
+            let sigma = (p.p99.js_ln() - p50.js_ln()) / 2.3263;
+            return normal_tail((x.js_ln() - p50.js_ln()) / sigma);
         }
     }
     exceed(p.mean, p.p99, x)
@@ -175,14 +177,52 @@ pub fn js_num(x: f64) -> String {
         return "0".into();
     }
     let a = x.abs();
+    let (digits, e) = shortest_digits(a);
+    let neg = if x < 0.0 { "-" } else { "" };
+    let k = digits.len() as i32;
     if a >= 1e21 || a < 1e-6 {
-        // exponent form: shortest digits, as JS writes 1e+21 / 1.5e-7
-        let s = format!("{:e}", x);
-        let (m, e) = s.split_once('e').unwrap();
-        let e: i32 = e.parse().unwrap();
-        return format!("{}e{}{}", m, if e >= 0 { "+" } else { "-" }, e.abs());
+        // exponent form, as JS writes 1e+21 / 1.5e-7
+        let m = if k == 1 { digits.clone() } else { format!("{}.{}", &digits[..1], &digits[1..]) };
+        let ex = e + k - 1;
+        return format!("{}{}e{}{}", neg, m, if ex >= 0 { "+" } else { "-" }, ex.abs());
     }
-    format!("{}", x)
+    // value = 0.digits × 10^(e + k)
+    let point = e + k;
+    let body = if point <= 0 {
+        format!("0.{}{}", "0".repeat((-point) as usize), digits)
+    } else if point >= k {
+        format!("{}{}", digits, "0".repeat((point - k) as usize))
+    } else {
+        format!("{}.{}", &digits[..point as usize], &digits[point as usize..])
+    };
+    format!("{}{}", neg, body)
+}
+
+/// the shortest digits that read back as x (x > 0), with x ≈ digits × 10^e. Where two candidates are
+/// equally short and equally close, JavaScript takes the even one (Number::toString); Rust's
+/// formatter rounds the tie up
+fn shortest_digits(x: f64) -> (String, i32) {
+    let s = format!("{:e}", x);
+    let (m, ex) = s.split_once('e').unwrap();
+    let ex: i32 = ex.parse().unwrap();
+    let mut digits: String = m.chars().filter(|c| *c != '.').collect();
+    let e = ex - (digits.len() as i32 - 1);
+    let last = digits.as_bytes()[digits.len() - 1] - b'0';
+    if last % 2 == 1 {
+        let n = digits.len();
+        let below = format!("{}{}", &digits[..n - 1], last - 1);
+        // both read back as x: then x lies exactly halfway only if its exact expansion says so
+        if format!("{}e{}", below, e).parse::<f64>().map(|c| c == x).unwrap_or(false) {
+            let exact = format!("{:.800e}", x);
+            let (em, _) = exact.split_once('e').unwrap();
+            let ed: String = em.chars().filter(|c| *c != '.').collect();
+            let tail = &ed[n..];
+            if ed[..n] == below[..] && tail.starts_with('5') && tail[1..].bytes().all(|c| c == b'0') {
+                digits = below;
+            }
+        }
+    }
+    (digits, e)
 }
 
 /// JavaScript's Number.prototype.toFixed (exact decimal value, ties to the larger magnitude)
@@ -291,5 +331,35 @@ pub fn js_locale(x: f64) -> String {
         format!("-{}", out)
     } else {
         out
+    }
+}
+
+#[cfg(test)]
+mod js_num_tests {
+    #[test]
+    fn like_javascript() {
+        for (x, s) in [(0.20331192016601562, "0.20331192016601562"), (0.1, "0.1"), (1e21, "1e+21"), (1.5e-7, "1.5e-7"), (123456789012.0, "123456789012"), (-2.5, "-2.5"), (1e-6, "0.000001"), (5e-324, "5e-324"), (1.7976931348623157e308, "1.7976931348623157e+308"), (0.30000000000000004, "0.30000000000000004"), (86.69231982197918, "86.69231982197918"), (100.0, "100"), (1e20, "100000000000000000000")] {
+            assert_eq!(super::js_num(x), s);
+        }
+    }
+}
+
+#[cfg(test)]
+mod js_num_fuzz {
+    /// JSNUM=<file of "bits String(x)" from node>: every value printed identically
+    #[test]
+    fn matches_node() {
+        let Ok(p) = std::env::var("JSNUM") else { return };
+        let text = std::fs::read_to_string(p).unwrap();
+        let mut bad = vec![];
+        for l in text.lines() {
+            let (b, want) = l.split_once(' ').unwrap();
+            let x = f64::from_bits(b.parse().unwrap());
+            let got = super::js_num(x);
+            if got != want {
+                bad.push(format!("{} → {} (js {})", b, got, want));
+            }
+        }
+        assert!(bad.is_empty(), "{} differ, e.g. {:?}", bad.len(), &bad[..bad.len().min(5)]);
     }
 }

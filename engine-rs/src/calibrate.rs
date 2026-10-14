@@ -8,6 +8,8 @@
 //!  - cost from the bill: $ per replica-hour, per request, per GB
 //!  - fit quality per component; anything the model cannot explain is flagged
 
+#[allow(unused_imports)]
+use crate::fmath::JsMath;
 use crate::backtest::{base_plan, js_max, js_sort_by, quantile, rng, traffic_of};
 use crate::dataset::{mean_of, Dataset, EndpointShape, ServiceHint, ServiceSeries};
 use crate::engine::{cfs_stall_ms, run_plan};
@@ -244,7 +246,7 @@ fn log_err(pred: &[f64], obs: &[Num], w: Option<&[f64]>) -> f64 {
         };
         let p = pred[i].min(1e7).max(1e-3);
         let wi = w.map(|w| w[i]).unwrap_or(1.0);
-        let l = (p / o).ln();
+        let l = (p / o).js_ln();
         s += wi * l * l;
         k += wi;
     }
@@ -272,7 +274,7 @@ fn fit_free(per_rep: &[f64], obs: &[Num], step_s: f64, s: f64, s99: f64, max_lam
     let lo = (max_lam * 0.3).max(1e-3);
     for &c in servers.unwrap_or(&SERVER_GRID) {
         for j in 0..=48 {
-            let k = lo * 200f64.powf(j as f64 / 48.0);
+            let k = lo * 200f64.js_pow(j as f64 / 48.0);
             let w = queue_waits(per_rep, c, k);
             for &v in &VARIABILITY {
                 let err = log_err(&replay_waits(per_rep, &w, step_s, k, s, s99, 1.0, v).0, obs, None);
@@ -284,7 +286,7 @@ fn fit_free(per_rep: &[f64], obs: &[Num], step_s: f64, s: f64, s99: f64, max_lam
     }
     // refine K around the best
     for j in -10..=10 {
-        let k = best.k * 1.06f64.powf(j as f64 / 2.0);
+        let k = best.k * 1.06f64.js_pow(j as f64 / 2.0);
         let err = log_err(&replay_queue(per_rep, step_s, best.c, k, s, s99, 1.0, best.v).0, obs, None);
         if err < best.err {
             best = Fitted { k, err, ..best };
@@ -743,7 +745,7 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
                         _ => continue,
                     };
                     us.push(c / (r * cl));
-                    ls.push(th.ln());
+                    ls.push(th.js_ln());
                 }
                 let fit = if us.len() >= 12 { regress(&us, &ls) } else { None };
                 let max_u = if us.is_empty() { 0.0 } else { js_max(f64::NEG_INFINITY, us.iter().copied()) };
@@ -784,14 +786,14 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
                 if hard >= 3 && healthy as f64 >= hard as f64 * 0.8 {
                     notes.push(format!("throttled in {}%+ of CPU periods for {} buckets of the history without slowing down: the quota does not limit it", js_num(js_round(THROTTLE_COLLAPSE * 100.0)), hard));
                 } else if let Some(fit) = fit.filter(|f| f.slope > 0.0 && f.r2 >= 0.3) {
-                    let knee = (THROTTLE_COLLAPSE.ln() - fit.intercept) / fit.slope;
+                    let knee = (THROTTLE_COLLAPSE.js_ln() - fit.intercept) / fit.slope;
                     if knee < 0.97 {
-                        let t = Throttle { knee: knee.max(0.3), at_zero: fit.intercept.exp(), growth: fit.slope, r2: fit.r2, seen_to: max_u };
+                        let t = Throttle { knee: knee.max(0.3), at_zero: fit.intercept.js_exp(), growth: fit.slope, r2: fit.r2, seen_to: max_u };
                         notes.push(format!(
                             "CPU quota throttling: {}% of periods throttled at {}% of the limit, rising ×{} per 10 points (R² {}); it reaches {}% at {}% of the limit, so that is the CPU it can use{}",
-                            js_to_fixed((fit.intercept + fit.slope * max_u.min(1.0)).exp() * 100.0, 0),
+                            js_to_fixed((fit.intercept + fit.slope * max_u.min(1.0)).js_exp() * 100.0, 0),
                             js_num(js_round(max_u.min(1.0) * 100.0)),
-                            js_to_fixed((fit.slope * 0.1).exp(), 2),
+                            js_to_fixed((fit.slope * 0.1).js_exp(), 2),
                             js_to_fixed(fit.r2, 2),
                             js_num(js_round(THROTTLE_COLLAPSE * 100.0)),
                             js_num(js_round(t.knee * 100.0)),
@@ -1111,7 +1113,7 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
                 for _ in 0..b_draws {
                     let u1 = rand();
                     let u2 = rand();
-                    let z = (-2.0 * u1.max(1e-12).ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos();
+                    let z = (-2.0 * u1.max(1e-12).js_ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).js_cos();
                     let slope = (c.per_req * 0.2).max(c.per_req + z * cpu_se);
                     draws.push((usable.unwrap_or(cpu_limit.unwrap()) - c.base).max(0.0) / slope);
                 }
@@ -1137,7 +1139,7 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
                 // (K, replayed mean) in the order the draws try them
                 let mut grid: Vec<(f64, Vec<f64>)> = vec![];
                 for &c in &cs {
-                    let ks: Vec<f64> = (-12..=12).map(|j| capacity.per_replica_rps * 1.04f64.powf(j as f64) * (if tied_k { c / capacity.servers } else { 1.0 })).collect();
+                    let ks: Vec<f64> = (-12..=12).map(|j| capacity.per_replica_rps * 1.04f64.js_pow(j as f64) * (if tied_k { c / capacity.servers } else { 1.0 })).collect();
                     let waits: Vec<Vec<(f64, f64)>> = ks.iter().map(|&k| queue_waits(&f.lam, c, k)).collect();
                     for &v in &VARIABILITY {
                         for (jj, &k) in ks.iter().enumerate() {
@@ -1179,8 +1181,8 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
             if capacity.per_replica_rps.is_finite() && cpu_k.is_finite() && !cpu_saturated && max_lam < capacity.per_replica_rps * 0.85 && (cpu_k - capacity.per_replica_rps).abs() / capacity.per_replica_rps > 0.1 && b_draws > 0 {
                 let lo = cpu_k.min(capacity.per_replica_rps).min(capacity.band.map(|b| b[0]).unwrap_or(f64::INFINITY));
                 let hi = js_max(cpu_k, [capacity.per_replica_rps, capacity.band.map(|b| b[1]).unwrap_or(0.0)]);
-                capacity.samples = Some((0..b_draws).map(|_| lo * (hi / lo).powf(rand())).collect());
-                capacity.band = Some([lo * (hi / lo).powf(0.1), lo * (hi / lo).powf(0.9)]);
+                capacity.samples = Some((0..b_draws).map(|_| lo * (hi / lo).js_pow(rand())).collect());
+                capacity.band = Some([lo * (hi / lo).js_pow(0.1), lo * (hi / lo).js_pow(0.9)]);
                 capacity.per_replica_rps = (lo * hi).sqrt();
                 notes.push(format!(
                     "never loaded past {}% of capacity: CPU ({}) and latency ({}) read the limit differently, the band spans both",

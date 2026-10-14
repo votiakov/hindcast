@@ -5,6 +5,8 @@
 //!
 //! The same definitions are used for predicted and measured series, so they compare like for like.
 
+#[allow(unused_imports)]
+use crate::fmath::JsMath;
 use crate::backtest::{base_plan, draw_plan, js_max, js_sort_by, observed_replicas, quantile, rng, traffic_of};
 use crate::calibrate::{calibrate, CalibrateOptions};
 use crate::dataset::{Dataset, ServiceSeries};
@@ -247,8 +249,8 @@ pub fn crossing(input: &[Plateau]) -> f64 {
     }
     let a = p[(first - 1) as usize];
     let b = p[first as usize];
-    let la = a.score.max(1e-6).ln();
-    let lb = b.score.max(1e-6).ln();
+    let la = a.score.max(1e-6).js_ln();
+    let lb = b.score.max(1e-6).js_ln();
     let f = if lb > la { (0.0 - la) / (lb - la) } else { 0.0 };
     a.rps + f.min(1.0).max(0.0) * (b.rps - a.rps)
 }
@@ -523,6 +525,7 @@ pub fn slice_dataset(d: &Dataset, from: usize, to: usize) -> Dataset {
             (
                 id.clone(),
                 ServiceSeries {
+                    order: s.order.clone(),
                     rps: cut(&s.rps),
                     done_rps: cut(&s.done_rps),
                     error_rate: cut(&s.error_rate),
@@ -550,7 +553,7 @@ pub fn slice_dataset(d: &Dataset, from: usize, to: usize) -> Dataset {
     out.endpoints = d
         .endpoints
         .iter()
-        .map(|(id, e)| (id.clone(), crate::dataset::EndpointSeries { service: e.service.clone(), rps: cut(&e.rps), error_rate: cut(&e.error_rate), p50_ms: cut(&e.p50_ms), p99_ms: cut(&e.p99_ms), mean_ms: cut(&e.mean_ms) }))
+        .map(|(id, e)| (id.clone(), crate::dataset::EndpointSeries { order: e.order.clone(), service: e.service.clone(), rps: cut(&e.rps), error_rate: cut(&e.error_rate), p50_ms: cut(&e.p50_ms), p99_ms: cut(&e.p99_ms), mean_ms: cut(&e.mean_ms) }))
         .collect();
     // the bill's totals follow the slice: each component's spend scales with its share of the series
     if let Some(b) = &d.bill {

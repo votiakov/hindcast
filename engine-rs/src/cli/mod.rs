@@ -1,7 +1,10 @@
 //! The `hindcast` command line, natively (cli/bottleneck.ts): the same commands, flags and output as the
 //! Node CLI, on the engine without WebAssembly or Node.
 
+mod bt;
 mod design;
+mod files;
+mod reports;
 mod sim;
 pub mod util;
 
@@ -56,6 +59,9 @@ fn run(args: &[String], out: &mut Out) -> Result<i32, String> {
     let cmd = args.first().map(|s| s.as_str()).unwrap_or("");
     let rest = if args.is_empty() { &[][..] } else { &args[1..] };
     let f = flags(rest);
+    if let Some(code) = bt::command(cmd, &f, out)? {
+        return Ok(code);
+    }
     if let Some(code) = sim::command(cmd, &f, out)? {
         return Ok(code);
     }

@@ -5,6 +5,8 @@
 //! pool run on their own clocks. Expressions keep the TypeScript order of operations so the two
 //! engines agree to the last few bits.
 
+#[allow(unused_imports)]
+use crate::fmath::JsMath;
 use crate::math::{exceed, js_num, js_round, js_to_fixed, mixture_quantile, mmc_wait, Part};
 use crate::types::*;
 use indexmap::IndexMap;
@@ -346,7 +348,7 @@ pub fn run_plan(plan: &Plan, traffic: &Traffic, opts: &Opts) -> RunResult {
                         let mut extra: f64 = 0.0;
                         let mut a = 1.0;
                         while a <= r.attempts {
-                            extra += f.powf(a);
+                            extra += f.js_pow(a);
                             a += 1.0;
                         }
                         amp = 1.0 + extra.min(r.budget);
@@ -394,7 +396,7 @@ pub fn run_plan(plan: &Plan, traffic: &Traffic, opts: &Opts) -> RunResult {
                         };
                         if ws > m.limit {
                             ss.ooms += 1.0;
-                            ss.oom_until = now + 300.0_f64.min(10.0 * 2.0_f64.powf(ss.ooms - 1.0)) + OOM_RESTART_S;
+                            ss.oom_until = now + 300.0_f64.min(10.0 * 2.0_f64.js_pow(ss.ooms - 1.0)) + OOM_RESTART_S;
                             say(
                                 traffic.start + now,
                                 format!(
@@ -436,7 +438,7 @@ pub fn run_plan(plan: &Plan, traffic: &Traffic, opts: &Opts) -> RunResult {
                     let drain = (ss.backlog / k_cap) * 1000.0;
                     // x^0 is 1 for every x (NaN included), as in JavaScript: no pow without a load exponent
                     let le = s.load_exponent.unwrap_or(1.0) - 1.0;
-                    let v = s.variability.unwrap_or(1.0) * if le == 0.0 { 1.0 } else { w.rho.min(1.0).powf(le) };
+                    let v = s.variability.unwrap_or(1.0) * if le == 0.0 { 1.0 } else { w.rho.min(1.0).js_pow(le) };
                     wait_mean = v * w.mean_ms + drain;
                     wait_p99 = v * w.p99_ms + drain;
                 }
@@ -505,7 +507,7 @@ pub fn run_plan(plan: &Plan, traffic: &Traffic, opts: &Opts) -> RunResult {
                     if let Some(s) = s {
                         let e = lat[s].err;
                         if e != 0.0 && !e.is_nan() {
-                            ok *= (1.0 - e).powf(v.max(1.0));
+                            ok *= (1.0 - e).js_pow(v.max(1.0));
                         }
                     }
                 }
@@ -708,7 +710,7 @@ pub fn run_plan(plan: &Plan, traffic: &Traffic, opts: &Opts) -> RunResult {
                 };
                 {
                     let ss = &mut st[id];
-                    ss.util += (util_now - ss.util) * (1.0 - (-dt / dt.max(a.metric_window_s.unwrap_or(30.0) / 2.0)).exp());
+                    ss.util += (util_now - ss.util) * (1.0 - (-dt / dt.max(a.metric_window_s.unwrap_or(30.0) / 2.0)).js_exp());
                     if t + 1e-9 < ss.next_eval {
                         continue;
                     }

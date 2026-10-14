@@ -5,6 +5,8 @@
 //! behaviour is a match on the kind; routing (split | fanout | failover), retries, circuit breakers,
 //! caller deadlines, autoscalers, cost and the global SLO numbers apply to any node.
 
+#[allow(unused_imports)]
+use crate::fmath::JsMath;
 use super::catalog::*;
 use crate::backtest::{js_max, js_sort_by};
 use crate::math::js_num;
@@ -238,7 +240,7 @@ fn fresh() -> NodeState {
 }
 
 fn ema(prev: f64, next: f64, dt: f64, tau: f64) -> f64 {
-    prev + (next - prev) * (1.0 - (-dt / tau).exp())
+    prev + (next - prev) * (1.0 - (-dt / tau).js_exp())
 }
 
 /// node data with dynamic effects applied: autoscaled instance count, and the throughput lost to
@@ -259,7 +261,7 @@ pub fn retry_amp(f: f64, retries: f64, policy: &str) -> f64 {
     let mut sum = 0.0;
     let mut k = 0.0;
     while k <= retries {
-        sum += f.powf(k);
+        sum += f.js_pow(k);
         k += 1.0;
     }
     match policy {
@@ -275,7 +277,7 @@ fn retry_success(s: f64, retries: f64, policy: &str, amp: f64) -> f64 {
     if policy == "budget" {
         return s + f.min(amp - 1.0) * s;
     }
-    1.0 - f.powf(retries + 1.0)
+    1.0 - f.js_pow(retries + 1.0)
 }
 
 /// expected max of N long-tailed latencies relative to one
@@ -283,7 +285,7 @@ pub fn fanout_tail(n: f64) -> f64 {
     if n <= 1.0 {
         1.0
     } else {
-        1.0 + 0.6 * (2.0 * n.ln()).sqrt()
+        1.0 + 0.6 * (2.0 * n.js_ln()).sqrt()
     }
 }
 
@@ -468,7 +470,7 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
             let cap = capacity_of(c.d, None) * c.dt;
             let processed = c.arrivals.min(cap);
             let demand = c.arrivals / c.dt;
-            let k = |tau: f64| 1.0 - (-c.dt / tau).exp();
+            let k = |tau: f64| 1.0 - (-c.dt / tau).js_exp();
             st.warm += (demand - st.warm) * k(if demand > st.warm { 4.0 } else { 1.0 });
             st.cold_frac = if demand > 0.5 { ((demand - st.warm) / demand).max(0.0) } else { 0.0 };
             res(processed, c.arrivals - processed, processed, c.arrivals / cap, true)
@@ -921,10 +923,10 @@ impl Engine {
             // scatter-gather: every partition must answer, and the caller waits for the slowest
             let degree = d.fanout.unwrap_or(1.0).max(1.0);
             if degree > 1.0 && has_kids {
-                succ = succ.powf(degree);
+                succ = succ.js_pow(degree);
                 let kd = &data[l.routes[0].t];
                 let p = kd.stall_rate.unwrap_or(0.0);
-                lat = lat * fanout_tail(degree) + (1.0 - (1.0 - p).powf(degree) - p) * kd.stall_ms.unwrap_or(0.0);
+                lat = lat * fanout_tail(degree) + (1.0 - (1.0 - p).js_pow(degree) - p) * kd.stall_ms.unwrap_or(0.0);
             }
             let billed = self.scalers.get(id).map(|s| s.live + s.pending.len() as f64);
             let st = &mut self.nodes[sidx[i]];

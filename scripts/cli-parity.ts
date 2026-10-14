@@ -54,6 +54,24 @@ export const CASES: string[][] = [
   ['link', `${ex}/shop.yaml`],
   ['link', `${ex}/shop.yaml`, `${ex}/shop-variants.yaml`],
   ['link', `${ex}/terraform/shop.yaml`],
+  ['import', 'reference/hotrod/runs/history/bottleneck.import.yaml', '--out', `${out}/OUT/hotrod.dataset.json`],
+  ['import', 'reference/k8s/shop/runs/normal-1/workspace/telemetry/bottleneck.import.yaml', '--out', `${out}/OUT/k8s.dataset.json`, '--json'],
+  ['import', 'demos/ws/telemetry/bottleneck.import.yaml', '--out', `${out}/OUT/ws.dataset.json`],
+  ['calibrate', 'reference/hotrod/dataset.json', '--out', `${out}/OUT/hotrod.model.json`],
+  ['calibrate', 'reference/hotrod/dataset.json', '--out', `${out}/OUT/hotrod2.model.json`, '--holdout', '0.3', '--p99', '400'],
+  ['calibrate', 'demos/ws/dataset.json', '--out', `${out}/OUT/ws.model.json`, '--json'],
+  ['backtest', 'reference/hotrod/model.json', 'reference/hotrod/dataset.json', 'reference/hotrod/strategies/1-customer-replicas.yaml', 'reference/hotrod/strategies/2-graviton.yaml', '--draws', '8'],
+  ['backtest', 'reference/hotrod/model.json', 'reference/hotrod/dataset.json', 'reference/hotrod/strategies/3-autoscale-customer.yaml', '--draws', '6', '--md', `${out}/OUT/bt.md`, '--html', `${out}/OUT/bt.html`, '--comment', `${out}/OUT/pr.md`, '--card', `${out}/OUT/card.json`, '--out', `${out}/OUT/bt.json`],
+  ['backtest', 'reference/petclinic/model.json', 'reference/petclinic/dataset.json', 'reference/petclinic/strategies/1-app-replicas.yaml', '--draws', '5', '--scale', '2', '--gate'],
+  ['backtest', 'demos/ws/model.json', 'demos/ws/dataset.json', '--draws', '4', '--last', '1h', '--json'],
+  ['headroom', 'reference/hotrod/model.json'],
+  ['headroom', 'reference/petclinic/model.json', 'reference/petclinic/strategies/4-read-replica.yaml', '--json'],
+  ['accuracy', 'reference/shop/model.json'],
+  ['accuracy', 'demos/ws/model.json', '--json'],
+  ['outage', 'reference/shop/model.json', 'list'],
+  ['outage', 'reference/shop/model.json', 'aws-use1-2025-10-20'],
+  ['outage', 'reference/shop/model.json', 'slack-2021-01-04', 'reference/shop/strategies/1-autoscale-frontend.yaml', '--md', `${out}/OUT/o.md`],
+  ['outage', 'reference/hotrod/model.json', 'github-2018-10-21', '--rps', '50', '--json'],
   ['analyze', `${ex}/shop.yaml`, '--runs', '6', '--duration', '20'],
   ['analyze', `${ex}/shop.yaml`, `${ex}/black-friday.yaml`, '--runs', '4', '--seed', '3', '--json'],
   ['optimize', `${ex}/shop.yaml`],
@@ -66,13 +84,13 @@ export const CASES: string[][] = [
 ];
 
 /** wall-clock numbers differ run to run */
-const mask = (s: string) => s.replace(/(in |· )\d+ ms/g, '$1# ms').replace(/"wallMs": \d+(\.\d+)?/g, '"wallMs": #').replace(/cli-parity-\w+/g, 'cli-parity-X').replace(/\/OUT[12]\//g, '/OUT/');
+const mask = (s: string) => s.replace(/(in |· )\d+ ms/g, '$1# ms').replace(/"wallMs": \d+(\.\d+)?/g, '"wallMs": #').replace(/"measuredAt": "[^"]*"/g, '"measuredAt": #').replace(/cli-parity-\w+/g, 'cli-parity-X').replace(/\/OUT[12]\//g, '/OUT/');
 
 function run(cmd: string, args: string[], tag: string) {
   const a = args.map((x) => x.replace('/OUT/', `/OUT${tag}/`));
   for (const x of a) if (x.includes(`/OUT${tag}/`)) spawnSync('mkdir', ['-p', x.slice(0, x.lastIndexOf('/'))]);
   const r = spawnSync(cmd, cmd === 'npx' ? ['tsx', 'cli/bottleneck.ts', ...a] : a, { encoding: 'utf8', env: { ...process.env, NO_COLOR: '' } });
-  const files = a.filter((x) => x.includes(`/OUT${tag}/`) && existsSync(x)).map((x) => readFileSync(x, 'utf8'));
+  const files = a.filter((x) => x.includes(`/OUT${tag}/`) && existsSync(x)).map((x) => mask(readFileSync(x, 'utf8')));
   return { stdout: mask(r.stdout), stderr: mask(r.stderr), code: r.status, files };
 }
 
@@ -96,7 +114,12 @@ for (const c of CASES) {
     const lb = b.split('\n');
     let i = 0;
     while (la[i] === lb[i]) i++;
-    console.log(`  ${k} line ${i + 1}:\n    node: ${JSON.stringify(la.slice(i, i + 3))}\n    rust: ${JSON.stringify(lb.slice(i, i + 3))}`);
+    const x = la[i] ?? '';
+    const y = lb[i] ?? '';
+    let j = 0;
+    while (j < x.length && x[j] === y[j]) j++;
+    const cut = (t: string) => (j > 120 ? '…' : '') + t.slice(Math.max(0, j - 120), j + 120);
+    console.log(`  ${k} line ${i + 1}, column ${j + 1}:\n    node: ${JSON.stringify(cut(x))}\n    rust: ${JSON.stringify(cut(y))}`);
   }
 }
 console.log(failed ? `\n${failed} differ` : '\nall match');
