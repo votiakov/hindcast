@@ -83,10 +83,10 @@ export const lesson1: Lesson = {
       id: 'chaos',
       title: 'Chaos Monday',
       story:
-        'Monday morning: 2,400 req/s, a little more than last week. And servers die — it is not a question of if. ' +
+        'Monday morning: 2,700 req/s, a little more than last week. And servers die — it is not a question of if. ' +
         'In a few seconds one of your API instances is going down. Will the system stay within SLO without it?',
-      objective: 'Survive an instance failure at 2,400 req/s: <1% errors, p99 < 300ms for 15s.',
-      traffic: { from: 2000, to: 2400, rampSeconds: 2 },
+      objective: 'Survive an instance failure at 2,700 req/s: <1% errors, p99 < 300ms for 15s.',
+      traffic: { from: 2000, to: 2700, rampSeconds: 2 },
       goal: { maxErrorRate: 0.01, maxP99: 300, holdSeconds: 15 },
       chaos: [{ at: 4, action: { type: 'kill', kind: 'server', pick: 'busiest' }, message: 'Instance failure!' }],
       hintAfter: 8,
@@ -94,7 +94,7 @@ export const lesson1: Lesson = {
         'Run N+1: keep enough spare instances that losing one keeps the rest below ~80% CPU. ' +
         'Health checks already route around the dead instance — you just need room for its traffic.',
       solution: { note: 'Spare instances: N+1', changes: [{ op: 'set', id: 'api-1', fields: { instances: 14 } }] },
-      takeaway: 'Instances die. Size for the load you have plus a spare: losing one of fourteen leaves the rest below 80% busy, and the health checks route around the dead one.',
+      takeaway: 'Instances die. Size for the load you have plus a spare: losing one of fourteen leaves the other thirteen about 83% busy, and the health checks route around the dead one.',
     },
   ],
 };

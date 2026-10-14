@@ -9,7 +9,7 @@
 use crate::fmath::JsMath;
 use super::catalog::*;
 use crate::backtest::{js_max, js_sort_by};
-use crate::math::js_num;
+use crate::math::{js_num, js_round};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -187,6 +187,11 @@ pub struct NodeState {
     pub util: f64,
     pub success: f64,
     pub latency_ms: f64,
+    /// p99 − mean of the answers this component gives (its own tail and what it waits on)
+    pub tail_ms: f64,
+    /// the latency of this component's successful answers as a small mixture of (weight, mean, p99 − mean):
+    /// a cache's hits and misses, a fast branch and a slow one
+    pub dist: Vec<[f64; 3]>,
     pub drop_ratio: f64,
     pub history: VecDeque<f64>,
     pub overloaded: bool,
@@ -217,6 +222,8 @@ fn fresh() -> NodeState {
         util: 0.0,
         success: 1.0,
         latency_ms: 0.0,
+        tail_ms: 0.0,
+        dist: vec![],
         drop_ratio: 0.0,
         history: VecDeque::new(),
         overloaded: false,
@@ -289,8 +296,18 @@ pub fn fanout_tail(n: f64) -> f64 {
     }
 }
 
-fn late_frac(lat: f64, deadline: f64) -> f64 {
-    ((lat - 0.8 * deadline) / (0.4 * deadline)).max(0.0).min(1.0)
+/// share of answers slower than a deadline, for answers with this mean and p99 − mean: right-skewed,
+/// about 40% above the mean, 1% above the p99, decaying exponentially in between and beyond
+fn late_share(mean: f64, tail: f64, deadline: f64) -> f64 {
+    if !mean.is_finite() {
+        return 1.0;
+    }
+    let x = (deadline - mean) / tail.max(1e-6).max(mean * 0.05);
+    if x >= 0.0 {
+        0.4 * 0.025_f64.js_pow(x)
+    } else {
+        1.0 - 0.6 * (3.0 * x).js_exp()
+    }
 }
 
 /// an outgoing connection: edge index, target node index, target up
@@ -339,10 +356,83 @@ fn queue_stage(st: &mut NodeState, arrivals: f64, cap_per_s: f64, dt: f64, queue
     (processed, failed, if cap_per_s > 0.0 { arrivals / cap } else { 0.0 })
 }
 
-/// M/M/1-style service time inflation plus time spent waiting in the queue
+/// service time plus the wait in front of it: a component is a pool of workers (capacity × service
+/// time of them, as the discrete-event engine runs it), waiting as M/M/c; past saturation, the backlog
 fn service_latency(d: &NodeData, st: &NodeState) -> f64 {
-    let rho = st.util.min(0.95);
-    base_latency_of(d) / (1.0 - rho) + (st.queue / capacity_of(d, Some(st.reachable)).max(1.0)) * 1000.0 + d.stall_rate.unwrap_or(0.0) * d.stall_ms.unwrap_or(0.0)
+    let base = base_latency_of(d);
+    let cap = capacity_of(d, Some(st.reachable)).max(1e-6);
+    let workers = js_round(cap * (base.max(0.05) / 1000.0)).max(1.0);
+    let wait = crate::math::mmc_wait(st.util.min(0.98) * cap, workers, cap).mean_ms * WAIT_SCALE;
+    base + wait + (st.queue / cap.max(1.0)) * 1000.0 + d.stall_rate.unwrap_or(0.0) * d.stall_ms.unwrap_or(0.0)
+}
+
+/// share of a mixture's answers slower than a deadline
+fn mix_late(dist: &[[f64; 3]], deadline: f64) -> f64 {
+    let w: f64 = dist.iter().map(|c| c[0]).sum();
+    if w <= 0.0 {
+        return 0.0;
+    }
+    dist.iter().map(|c| c[0] * late_share(c[1], c[2], deadline)).sum::<f64>() / w
+}
+
+/// a mixture's mean and 99th percentile
+fn mix_mean_p99(dist: &[[f64; 3]]) -> (f64, f64) {
+    let w: f64 = dist.iter().map(|c| c[0]).sum();
+    if w <= 0.0 {
+        return (0.0, 0.0);
+    }
+    let mean = dist.iter().map(|c| c[0] * c[1]).sum::<f64>() / w;
+    let (mut lo, mut hi) = (0.0, dist.iter().map(|c| c[1] + 4.0 * c[2] + 1.0).fold(0.0, f64::max));
+    for _ in 0..40 {
+        let mid = (lo + hi) / 2.0;
+        if mix_late(dist, mid) > 0.01 {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    (mean, hi)
+}
+
+/// at most four components: the two closest in mean merge until it fits
+fn mix_merge(mut dist: Vec<[f64; 3]>) -> Vec<[f64; 3]> {
+    dist.retain(|c| c[0] > 1e-12 && c[1].is_finite());
+    dist.sort_by(|a, b| a[1].partial_cmp(&b[1]).unwrap_or(std::cmp::Ordering::Equal));
+    while dist.len() > 4 {
+        let k = (0..dist.len() - 1).min_by(|&a, &b| (dist[a + 1][1] - dist[a][1]).partial_cmp(&(dist[b + 1][1] - dist[b][1])).unwrap_or(std::cmp::Ordering::Equal)).unwrap();
+        let (x, y) = (dist[k], dist[k + 1]);
+        let w = x[0] + y[0];
+        let m = (x[0] * x[1] + y[0] * y[1]) / w;
+        let p = (x[0] * (x[1] + x[2]) + y[0] * (y[1] + y[2])) / w;
+        dist[k] = [w, m, (p - m).max(0.0)];
+        dist.remove(k + 1);
+    }
+    dist
+}
+
+/// a mixture whose every answer also spends `mean` (spread `tail`) here
+fn mix_then(dist: &[[f64; 3]], mean: f64, tail: f64, weight: f64) -> Vec<[f64; 3]> {
+    let w: f64 = dist.iter().map(|c| c[0]).sum::<f64>().max(1e-12);
+    dist.iter().map(|c| [c[0] / w * weight, c[1] + mean, (c[2] * c[2] + tail * tail).sqrt()]).collect()
+}
+
+/// lognormal service times (cv 0.6, as the discrete-event engine samples them): p99 ≈ 3.1 × mean
+const SERVICE_P99: f64 = 3.11;
+/// waits under Poisson arrivals and service of that variability, relative to M/M/c (Allen–Cunneen):
+/// (1 + cv²) / 2
+const WAIT_SCALE: f64 = 0.68;
+
+/// p99 − mean of a component's own part of an answer: service-time spread, the M/M/c wait's tail,
+/// and stalls once they reach 1% of requests
+fn service_tail(d: &NodeData, st: &NodeState) -> f64 {
+    let base = base_latency_of(d);
+    let cap = capacity_of(d, Some(st.reachable)).max(1e-6);
+    let workers = js_round(cap * (base.max(0.05) / 1000.0)).max(1.0);
+    let w = crate::math::mmc_wait(st.util.min(0.98) * cap, workers, cap);
+    let stall = if d.stall_rate.unwrap_or(0.0) >= 0.01 { d.stall_ms.unwrap_or(0.0) } else { 0.0 };
+    // service time and wait are independent: their spreads add in quadrature
+    let (svc, wait) = ((SERVICE_P99 - 1.0) * base, (w.p99_ms - w.mean_ms).max(0.0) * WAIT_SCALE);
+    (svc * svc + wait * wait).sqrt() + stall
 }
 
 struct Ctx<'a> {
@@ -487,7 +577,14 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
             let processed = c.arrivals.min(cap);
             res(processed, c.arrivals - processed, processed, c.arrivals / cap, true)
         }
-        // app servers, workers, storage, replicas, GPU pools
+        // a read replica is a data store: it answers, it does not call on (as a primary only reaches its replicas)
+        "replica" => {
+            let mut r = process_through(c, st);
+            r.forward = 0.0;
+            r.routes = Some(vec![]);
+            r
+        }
+        // app servers, workers, storage, GPU pools
         _ => process_through(c, st),
     }
 }
@@ -906,37 +1003,69 @@ impl Engine {
             let l = local[i].take().unwrap();
             let has_kids = !l.routes.is_empty();
             // aggregate one downstream attempt according to the routing policy
-            let (mut succ, mut lat) = (1.0, 0.0);
+            let (mut succ, mut lat, mut tail) = (1.0, 0.0, 0.0);
+            // the caller's deadline judged branch by branch: a slow branch's answers are late, a fast one's are not
+            let tmo = d.timeout_ms.filter(|t| *t != 0.0 && !t.is_nan());
+            let mut late: Option<f64> = None;
+            let mut kids_mix: Vec<[f64; 3]> = vec![];
             if has_kids {
                 let kid = |k: &Route| {
                     let s = &self.nodes[sidx[k.t]];
                     let f = l.flows.iter().find(|x| x.0 == k.e).map(|x| x.1).unwrap_or(0.0);
-                    (s.success, s.latency_ms + edge_lat[k.e], f)
+                    (s.success, s.latency_ms + edge_lat[k.e], f, s.tail_ms)
+                };
+                // a kid's answers as a mixture (its own one, or its mean and tail), the link's latency added
+                let kid_dist = |k: &Route| -> Vec<[f64; 3]> {
+                    let s = &self.nodes[sidx[k.t]];
+                    if s.dist.is_empty() {
+                        vec![[1.0, s.latency_ms + edge_lat[k.e], s.tail_ms]]
+                    } else {
+                        mix_then(&s.dist, edge_lat[k.e], 0.0, 1.0)
+                    }
                 };
                 if l.mode == "fanout" {
                     succ = l.routes.iter().fold(1.0, |p, k| p * kid(k).0);
                     lat = js_max(f64::NEG_INFINITY, l.routes.iter().map(|k| kid(k).1));
+                    // the slowest answer's 99th percentile
+                    let p99 = js_max(f64::NEG_INFINITY, l.routes.iter().map(|k| kid(k).1 + kid(k).3));
+                    tail = (p99 - lat).max(0.0);
+                    if let Some(t) = tmo {
+                        late = Some(1.0 - l.routes.iter().fold(1.0, |p, k| p * (1.0 - late_share(kid(k).1, kid(k).3, t))));
+                    }
                 } else if l.mode == "failover" {
                     let mut miss = 1.0;
+                    let mut p99 = 0.0;
                     for k in &l.routes {
-                        let (s, la, f) = kid(k);
+                        let (s, la, f, t) = kid(k);
                         if f > 0.0 {
                             lat += miss * la;
+                            p99 += miss * (la + t);
                             miss *= 1.0 - s;
                         }
                     }
                     succ = 1.0 - miss;
+                    tail = (p99 - lat).max(0.0);
                 } else {
-                    let (mut w, mut s) = (0.0, 0.0);
+                    let (mut w, mut s, mut p99, mut lt) = (0.0, 0.0, 0.0, 0.0);
                     for k in &l.routes {
-                        let (ks, kl, f) = kid(k);
+                        let (ks, kl, f, t) = kid(k);
                         let wk = if f > 0.0 { f } else { 1e-9 };
                         w += wk;
                         s += ks * wk;
                         lat += kl * wk;
+                        p99 += (kl + t) * wk;
+                        let kd = kid_dist(k);
+                        if let Some(dl) = tmo {
+                            lt += mix_late(&kd, dl) * wk;
+                        }
+                        kids_mix.extend(mix_then(&kd, 0.0, 0.0, wk));
                     }
                     succ = s / w;
                     lat /= w;
+                    tail = (p99 / w - lat).max(0.0);
+                    if tmo.is_some() {
+                        late = Some(lt / w);
+                    }
                 }
             }
             // scatter-gather: every partition must answer, and the caller waits for the slowest
@@ -946,13 +1075,15 @@ impl Engine {
                 let kd = &data[l.routes[0].t];
                 let p = kd.stall_rate.unwrap_or(0.0);
                 lat = lat * fanout_tail(degree) + (1.0 - (1.0 - p).js_pow(degree) - p) * kd.stall_ms.unwrap_or(0.0);
+                tail *= fanout_tail(degree);
+                late = None;
+                kids_mix.clear();
             }
             let billed = self.scalers.get(id).map(|s| s.live + s.pending.len() as f64);
             let st = &mut self.nodes[sidx[i]];
             // caller deadline: answers slower than timeoutMs are failures to the caller
-            let tmo = d.timeout_ms.filter(|t| *t != 0.0 && !t.is_nan());
             st.late_frac = match tmo {
-                Some(t) if has_kids => late_frac(lat, t),
+                Some(t) if has_kids => late.unwrap_or_else(|| late_share(lat, tail, t)),
                 _ => 0.0,
             };
             let attempt = succ * (1.0 - st.late_frac);
@@ -981,8 +1112,93 @@ impl Engine {
                     latency += fl;
                 }
             }
+            // the answer's tail: this component's own and what it waits on, independent spreads adding
+            // in quadrature, each weighted by the share of requests that take that part
+            let tail_total = if !l.up {
+                0.0
+            } else {
+                let (own_share, kid_share) = match d.kind.as_str() {
+                    "client" => (0.0, 1.0),
+                    "queue" => (0.0, 0.0),
+                    "cache" | "cdn" | "db" => (1.0, 1.0 - l.local_share),
+                    _ => (1.0, 1.0),
+                };
+                let own = match d.kind.as_str() {
+                    "client" | "queue" | "gateway" => 0.0,
+                    "function" | "llmapi" => (SERVICE_P99 - 1.0) * base_latency_of(d),
+                    _ => service_tail(d, st),
+                };
+                let kids = if has_kids { tail * if retries > 0.0 { st.retry_amp } else { 1.0 } } else { 0.0 };
+                let t = (own_share * own * own + kid_share * kids * kids).sqrt();
+                match tmo {
+                    Some(tm) if has_kids => t.min((tm - latency).max(0.0)),
+                    _ => t,
+                }
+            };
+            // the answers as a mixture: what this component answers itself, and what it waits on downstream
+            // (only answers within the deadline count; retries add the failed attempts' time)
+            let dist = if !l.up {
+                vec![]
+            } else {
+                let own_mean = fold(&FoldCtx { d, keep, local_share: 1.0, child_succ: 1.0, child_lat: 0.0, has_kids: false, cfg }, st).1 + d.fault_latency_ms.filter(|x| !x.is_nan()).unwrap_or(0.0);
+                let own_tail = match d.kind.as_str() {
+                    "client" | "queue" | "gateway" => 0.0,
+                    "function" | "llmapi" => (SERVICE_P99 - 1.0) * base_latency_of(d),
+                    _ => service_tail(d, st),
+                };
+                let own_mean = if d.kind == "client" { 0.0 } else { own_mean };
+                let mut kids = if !has_kids {
+                    vec![]
+                } else if kids_mix.is_empty() {
+                    vec![[1.0, lat, tail]]
+                } else {
+                    kids_mix.clone()
+                };
+                if let (Some(t), false) = (tmo, kids.is_empty()) {
+                    for c in kids.iter_mut() {
+                        c[0] *= 1.0 - late_share(c[1], c[2], t);
+                        c[1] = c[1].min(t);
+                    }
+                }
+                if retries > 0.0 && !kids.is_empty() {
+                    let extra = (child_lat - lat).max(0.0);
+                    for c in kids.iter_mut() {
+                        c[1] += extra;
+                    }
+                }
+                let (own_share, kid_share) = match d.kind.as_str() {
+                    "client" => (0.0, 1.0),
+                    "queue" => (1.0, 0.0),
+                    "cache" | "cdn" | "db" => (l.local_share, 1.0 - l.local_share),
+                    _ => (if has_kids { 0.0 } else { 1.0 }, 1.0),
+                };
+                let mut out: Vec<[f64; 3]> = vec![];
+                if own_share > 0.0 || kids.is_empty() {
+                    out.push([own_share.max(if kids.is_empty() { 1.0 } else { 0.0 }), own_mean, own_tail]);
+                }
+                if kid_share > 0.0 && !kids.is_empty() {
+                    out.extend(mix_then(&kids, own_mean, own_tail, kid_share));
+                }
+                if st.breaker_pass < 1.0 && d.fallback == Some(true) {
+                    let p = st.breaker_pass;
+                    for c in out.iter_mut() {
+                        c[0] *= p;
+                    }
+                    out.push([1.0 - p, 2.0, 0.0]);
+                }
+                mix_merge(out)
+            };
+            // the tail the users see is the mixture's: a cache's misses are its 99th percentile
+            let tail_total = if dist.is_empty() {
+                tail_total
+            } else {
+                let (_, p99) = mix_mean_p99(&dist);
+                (p99 - latency).max(0.0)
+            };
+            st.dist = dist;
             st.success = ema(st.success, success, dt, 0.3);
             st.latency_ms = ema(st.latency_ms, latency, dt, 0.3);
+            st.tail_ms = ema(st.tail_ms, tail_total, dt, 0.3);
             let usage = usage_cost(d, st, profile);
             let fixed = match billed {
                 Some(b) => cost_of(&NodeData { instances: Some(b), ..d.clone() }, profile),
@@ -1043,7 +1259,7 @@ impl Engine {
             let st = &self.nodes[sidx[c]];
             rps += st.in_rps;
             ok += st.in_rps * st.success;
-            lat += st.in_rps * st.latency_ms;
+            lat += st.in_rps * (st.latency_ms + st.tail_ms);
         }
         if self.nodes.len() != n {
             self.nodes.retain(|k, _| by_id.contains_key(k.as_str()));
@@ -1055,7 +1271,7 @@ impl Engine {
         g.rps = rps;
         g.error_rate = if rps > 0.5 { (1.0 - ok / rps).max(0.0) } else { 0.0 };
         // failed requests count as timeouts: with ≥1% failures the 99th percentile *is* a failure
-        let ok_lat = if ok > 0.0 { (lat / rps) * 1.8 } else { 0.0 };
+        let ok_lat = if ok > 0.0 { lat / rps } else { 0.0 };
         g.p99 = if rps < 0.5 { 0.0 } else if g.error_rate >= 0.01 { ok_lat.max(cfg.timeout_s * 1000.0) } else { ok_lat };
         g.cost = cost;
         self.since_history += dt;

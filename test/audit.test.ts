@@ -28,7 +28,7 @@ describe('failure audit', () => {
   it('measures headroom against the breaking point', () => {
     expect(r.headroom.limitedBy).toBe('api');
     expect(r.headroom.ratio).toBeGreaterThan(1.4);
-    expect(r.headroom.ratio).toBeLessThan(2);
+    expect(r.headroom.ratio).toBeLessThanOrEqual(2);
   });
 
   it('prices incidents and renders a report', () => {

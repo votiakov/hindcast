@@ -7,7 +7,7 @@ actions) and different jobs:
 |---|---|---|
 | unit | request *volume* per 50 ms tick | every individual request |
 | speed | ~1 ms per simulated second | ~2 M events/s (≈ 0.1–0.5 s per simulated minute at 1–3 k req/s) |
-| latency | mean + estimated p99 (mean × 1.8) | real p50/p90/p99/p99.9 from histograms |
+| latency | mean + p99 from each component's latency mixture (M/M/c waits, lognormal service) | real p50/p90/p99/p99.9 from histograms |
 | feedback loops | approximated from last tick's failure rate | emergent (retries, timeouts, breakers act per request) |
 | randomness | optional jitter | seeded PRNG, Monte Carlo across seeds |
 | used by | the live app, lessons, studio, optimizer search, breaking point | Analysis panel, `analyze`, optimizer verification, CLI/MCP `--engine des` |
@@ -80,10 +80,14 @@ Every tick (`dt` = 50 ms of simulated time):
 4. **Backward pass** (reverse topological order) — aggregate the children per routing mode
    (split: flow-weighted mean; fanout: product of successes, max latency; failover:
    `1 − Π(1 − sᵢ)`), apply the caller **deadline** (responses later than `timeoutMs` count as failures,
-   with a smooth ramp from 0.8× to 1.2× the deadline), then retries' effect on success
+   judged branch by branch: each child's answers are a small latency mixture, so a fast branch's answers
+   are on time and a slow one's are late), then retries' effect on success
    (`1 − f^(R+1)`, budget-limited), then the breaker, then the kind's `Behavior.fold()`:
-   - own latency = `base / (1 − ρ)` (ρ capped at 0.95) + queue wait.
-5. **Global**: error rate from client success; p99 ≈ mean × 1.8, and once errors reach 1 % it is at
+   - own latency = service time + the M/M/c wait of a pool of capacity × service-time workers (as the
+     DES runs it), scaled for lognormal service (Allen–Cunneen, cv 0.6) + backlog past saturation;
+   - each answer's latency is kept as a mixture of up to four (weight, mean, spread) parts — a cache's
+     hits and misses, a fast and a slow branch — combined down the call graph.
+5. **Global**: error rate from client success; p99 from the users' latency mixture, and once errors reach 1 % it is at
    least the timeout (failed requests count as timeouts); cost; 0.25 s history samples.
 
 All rates are smoothed with an exponential moving average (τ ≈ 0.3–0.6 s) so visuals don't flicker.
@@ -152,12 +156,9 @@ icon in `canvas/icons.tsx`, colours in `theme/themes.ts`, and (if it has new kno
 
 - **Refactor parity (fluid).** The component/behaviour refactor was checked against a baseline of
   all six comparison scenarios (error, p99, cost on both sides every 5 s, jitter off): 0 mismatches.
-- **Overload agreement.** Web-shop spec (4 × S API, M DB): at 1,200 req/s the DES gives 14.0 % errors,
-  the fluid engine 12.8 %.
-- **Near saturation the engines differ on purpose.** At 900 req/s (90 % utilised) the fluid engine's
-  single-server approximation gives p99 ≈ 450 ms; the DES, modelling the real 24-worker pool, gives
-  p99 ≈ 98 ms. Large pools queue far less until right at saturation (M/M/c vs M/M/1). Prefer the DES
-  for latency claims.
+- **Near saturation.** At 900 req/s (90 % utilised) the fluid engine gives p99 ≈ 99 ms and the DES
+  98 ms; at 1,200 req/s both give 14.8 % errors. Across 200 generated boards the two engines' error
+  rates agree within 5 points on 194 (test/sandbox.test.ts checks the core cases on every change).
 - **Metastable failure emerges.** 700 req/s with a 6 s spike to 1,600, client timeout 1 s, API queue 3 s:
 
   | client | errors during spike | errors 20–30 s | errors 50–60 s |
@@ -192,9 +193,8 @@ Shared code keeps the engines consistent (`src/sim/autoscale.ts`, `cacheWarmth` 
 - Load balancing is perfectly even (no hot instances); caches have a fixed hit rate (no cold cache /
   stampede dynamics yet); queues are single FIFO with unlimited consumers' patience.
 - Numbers are illustrative defaults (see catalog.md) — calibrate for real-system claims.
-- The fluid engine's single-server latency term (`base / (1 − ρ)`) is very pessimistic for pools with
-  long service times (GPU inference at 1.2 s): above ~80 % utilisation it can report tens of seconds
-  where the DES (modelling the real pool) reports a few. Size such pools for ≤ 70 % or use the DES.
+- The fluid engine is deterministic: exactly at capacity (ρ = 1) it holds where the DES's random
+  arrivals overflow. Treat anything above ~95 % utilised as failing, or use the DES.
 - Fan-out: the DES issues N parallel calls and waits for all (exact max-of-N). The fluid engine
   multiplies load by N, success by `s^N`, and latency by `1 + 0.6·√(2 ln N)` plus the probability that
   any partition stalls (`1 − (1 − p)^N`) × stall duration.

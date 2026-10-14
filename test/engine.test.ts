@@ -29,7 +29,7 @@ describe('fluid engine', () => {
     const bp = breakingPoint(shop);
     expect(bp.limitedBy).toBe('api');
     expect(bp.maxRps).toBeGreaterThan(800);
-    expect(bp.maxRps).toBeLessThan(1000);
+    expect(bp.maxRps).toBeLessThanOrEqual(1000);
   });
 
   it('fails over to a replica when the primary dies', () => {

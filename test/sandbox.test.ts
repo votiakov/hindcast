@@ -60,8 +60,11 @@ describe('one component at a time, against queueing arithmetic', () => {
       expect(low.nodeStats.x.success).toBeCloseTo(1, 3);
       expect(low.nodeStats.x.dropRps).toBeLessThan(cap * 0.001);
       expect(low.nodeStats.x.util).toBeCloseTo(0.5, 2);
-      // M/M/1-style: base latency / (1 − ρ)
-      expect(low.nodeStats.x.latencyMs).toBeCloseTo(baseLatencyOf(data(b, 'x')) / 0.5, 0);
+      // a pool of workers (M/M/c): its own service time plus a wait no longer than one server's (M/M/1)
+      const base = baseLatencyOf(data(b, 'x'));
+      expect(low.nodeStats.x.latencyMs).toBeGreaterThanOrEqual(base * 0.999);
+      expect(low.nodeStats.x.latencyMs).toBeLessThanOrEqual(base / 0.5);
+      expect(run(b, cap * 0.9).nodeStats.x.latencyMs).toBeGreaterThan(low.nodeStats.x.latencyMs);
       const high = run(b, cap * 2);
       expect(high.nodeStats.x.success).toBeCloseTo(0.5, 2);
       expect(high.nodeStats.x.dropRps).toBeCloseTo(cap, -Math.log10(cap * 0.01));
@@ -232,9 +235,13 @@ describe('generated boards', () => {
 describe('resilience behaviours', () => {
   const U = { id: 'users', kind: 'client' as Kind };
   it("a caller's timeout fails answers slower than it, and only those", () => {
-    const slow = (timeoutMs: number) => run(board([U, { id: 'api', kind: 'server', timeoutMs }, { id: 'dep', kind: 'server', latencyMs: 800 }], [['users', 'api'], ['api', 'dep']]), 20).global.errorRate;
-    expect(slow(500)).toBeGreaterThan(0.99);
-    expect(slow(3000)).toBeLessThan(0.001);
+    const spec = (timeoutMs: number) => ({ components: [U, { id: 'api', kind: 'server' as Kind, timeoutMs }, { id: 'dep', kind: 'server' as Kind, latencyMs: 800 }], connections: [['users', 'api'], ['api', 'dep']] as [string, string][] });
+    const slow = (timeoutMs: number) => run(board(spec(timeoutMs).components, spec(timeoutMs).connections), 20).global.errorRate;
+    // service times vary (lognormal): an 800 ms dependency answers within 500 ms about a quarter of the time
+    const des = simulateDes(spec(500), { duration: 60, rps: 20 }, { seed: 1 }).summary.meanErrorRate;
+    expect(des).toBeGreaterThan(0.6);
+    expect(Math.abs(slow(500) - des)).toBeLessThan(0.1);
+    expect(slow(3000)).toBeLessThan(0.01);
   });
 
   it('an open breaker with a fallback keeps users served while the dependency fails', () => {
