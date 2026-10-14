@@ -21,6 +21,7 @@ import { backtestCommand } from './backtest';
 import { explainError, runTool, TOOLS } from '../agent/tools';
 import { isMainThread } from 'node:worker_threads';
 import { startReplayThreads } from '../src/backtest/parallel';
+import { loadNativeEngine } from '../src/backtest/native';
 import { HOSTS, setup, type Host } from '../agent/setup';
 
 const USAGE = `Hindcast CLI — the simulation engine without the UI. (In a checkout of the repository, use "npm run sim --" in place of "hindcast".)
@@ -145,7 +146,7 @@ const REPLAYS = new Set(['agent', 'backtest', 'calibrate', 'accuracy', 'outage']
 
 async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
-  if (REPLAYS.has(cmd) && !(cmd === 'agent' && (!rest[0] || rest[0] === 'list' || rest[0] === 'setup'))) await startReplayThreads();
+  if (REPLAYS.has(cmd) && !(cmd === 'agent' && (!rest[0] || rest[0] === 'list' || rest[0] === 'setup'))) await Promise.all([loadNativeEngine(), startReplayThreads()]);
   if (cmd === 'agent') return agentCommand(rest);
   const { pos, opt } = flags(rest);
   if (cmd && (await backtestCommand(cmd, pos, opt))) return;

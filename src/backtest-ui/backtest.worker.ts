@@ -2,6 +2,10 @@
 import { backtest, type BacktestOptions } from '../backtest/backtest';
 import type { Dataset } from '../backtest/dataset';
 import type { Model } from '../backtest/model';
+import { loadNativeEngine } from '../backtest/native';
+
+// the compiled replay engine, loaded once per worker before the first share is replayed
+const ready = loadNativeEngine();
 
 /**
  * One share of a backtest off the main thread: the baseline and some of the strategies. A strategy
@@ -15,7 +19,8 @@ export interface BacktestRequest {
   opts: BacktestOptions;
 }
 
-self.onmessage = (e: MessageEvent<BacktestRequest>) => {
+self.onmessage = async (e: MessageEvent<BacktestRequest>) => {
+  await ready;
   const { id, model, dataset, strategies, opts } = e.data;
   try {
     const errors: { index: number; message: string }[] = [];

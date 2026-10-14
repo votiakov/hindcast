@@ -11,6 +11,7 @@ import { MessageChannel, Worker, isMainThread, parentPort, receiveMessageOnPort,
 import { availableParallelism } from 'node:os';
 import { runPlan, type Plan, type RunResult, type Traffic, type Fault } from './engine';
 import { setReplayRunner } from './backtest';
+import { loadNativeEngine } from './native';
 
 const ROLE = 'hindcast-replay';
 
@@ -24,7 +25,8 @@ interface Job {
 
 // ---- the worker side: replay what it is handed, post the runs back, count itself done
 if (!isMainThread && (workerData as { role?: string } | null)?.role === ROLE) {
-  parentPort!.postMessage('ready');
+  // the compiled engine first, then ready
+  void loadNativeEngine().finally(() => parentPort!.postMessage('ready'));
   parentPort!.on('message', (job: Job) => {
     let out: { runs?: RunResult[]; error?: string };
     const moved: ArrayBuffer[] = [];

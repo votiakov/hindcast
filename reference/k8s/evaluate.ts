@@ -33,6 +33,9 @@ import { PRESETS, podsByNodeQuery, WORKLOAD_RE } from '../../src/backtest/import
 import { nodeLoss } from '../../src/backtest/resilience';
 import { fileAccess } from '../../cli/files';
 import type { K8sReference } from './record';
+import { loadNativeEngine } from '../../src/backtest/native';
+
+await loadNativeEngine();
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const STEP = 30;
