@@ -3,6 +3,7 @@
 //! reference: test/engine-parity.test.ts runs both on the same plans and compares every series.
 
 pub mod backtest;
+pub mod dataset;
 pub mod engine;
 pub mod math;
 pub mod model;
@@ -60,7 +61,7 @@ mod wasm {
     #[wasm_bindgen]
     pub fn backtest(model: JsValue, dataset: JsValue, strategies: JsValue, opts: JsValue) -> Result<JsValue, JsValue> {
         let model: crate::model::Model = serde_wasm_bindgen::from_value(model)?;
-        let dataset: crate::model::Dataset = serde_wasm_bindgen::from_value(dataset)?;
+        let dataset: crate::dataset::Dataset = serde_wasm_bindgen::from_value(dataset)?;
         let strategies: Vec<serde_json::Value> = serde_wasm_bindgen::from_value(strategies)?;
         let opts: crate::backtest::BacktestOptions = if opts.is_undefined() || opts.is_null() { Default::default() } else { serde_wasm_bindgen::from_value(opts)? };
         let out = crate::backtest::backtest(&model, &dataset, &strategies, &opts).map_err(|e| JsValue::from(js_sys::Error::new(&e)))?;

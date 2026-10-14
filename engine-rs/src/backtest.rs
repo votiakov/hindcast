@@ -4,7 +4,8 @@
 
 use crate::engine::run_plan;
 use crate::math::{js_num, js_round, js_to_fixed};
-use crate::model::{Dataset, Model, Slo};
+use crate::dataset::Dataset;
+use crate::model::{Model, Slo};
 use crate::strategy::{apply_strategy, locale_int, parse_strategy};
 use crate::types::*;
 use serde::{Deserialize, Serialize};
@@ -236,7 +237,7 @@ pub fn base_plan(model: &Model, observed: Option<&Map<Option<Vec<Num>>>>) -> Pla
         scale_down_s: 600.0,
         provision_s: c.provision_s.unwrap_or(90.0),
     });
-    Plan { services, endpoints, cluster, transfer: model.transfer.clone(), unattributed_per_hour: model.unattributed_per_hour, slo: Some(model.slo.clone()) }
+    Plan { services, endpoints, cluster, transfer: model.transfer.plan(), unattributed_per_hour: model.unattributed_per_hour, slo: Some(model.slo.clone()) }
 }
 
 /// a plan with every capacity drawn from its bootstrap samples (draw 0 = point estimate)
@@ -814,7 +815,7 @@ pub fn backtest(model: &Model, d: &Dataset, strategies: &[Value], o: &BacktestOp
         baseline,
         strategies: results,
         ranking,
-        accuracy: model.accuracy.clone(),
+        accuracy: Value::Null,
         draws: draws as f64,
         load,
         peak_rps,
