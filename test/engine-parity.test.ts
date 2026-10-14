@@ -57,6 +57,11 @@ beforeAll(() => {
 });
 afterAll(() => setNativeEngine(null));
 
+it('the committed WebAssembly is built from the committed Rust (npm run engine:build)', async () => {
+  const { engineSourceHash } = await import('../scripts/engine-stamp.mjs');
+  expect(readFileSync('src/backtest/wasm/source.sha256', 'utf8').trim()).toBe(engineSourceHash());
+});
+
 const bundles = existsSync('public/reference') ? readdirSync('public/reference').filter((f) => f.endsWith('.json') && f !== 'index.json') : [];
 
 describe.each(bundles)('Rust engine matches TypeScript on %s', (file) => {
