@@ -11,6 +11,8 @@
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { isMainThread } from 'node:worker_threads';
+import { startReplayThreads } from '../src/backtest/parallel';
 import { z } from 'zod';
 import { breakingPoint, catalog, compare, simulate } from '../src/sim/headless';
 import { validateSpec } from '../src/spec/validate';
@@ -471,4 +473,8 @@ server.registerPrompt(
   }),
 );
 
-await server.connect(new StdioServerTransport());
+// in a build, replay threads load this same file: only the main thread serves
+if (isMainThread) {
+  void startReplayThreads();
+  await server.connect(new StdioServerTransport());
+}

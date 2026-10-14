@@ -19,6 +19,8 @@ import { applyVariant, encodePayload } from '../src/spec/convert';
 import { ArchitectureSpec, VariantSpec } from '../src/spec/schema';
 import { backtestCommand } from './backtest';
 import { explainError, runTool, TOOLS } from '../agent/tools';
+import { isMainThread } from 'node:worker_threads';
+import { startReplayThreads } from '../src/backtest/parallel';
 import { HOSTS, setup, type Host } from '../agent/setup';
 
 const USAGE = `Hindcast CLI — the simulation engine without the UI. (In a checkout of the repository, use "npm run sim --" in place of "hindcast".)
@@ -138,8 +140,12 @@ function variantsFile(path: string): { variants: VariantSpec[]; scenario?: unkno
   return { variants: o.variants.map((v) => VariantSpec.parse(v)), scenario: o.scenario };
 }
 
+/** commands that replay histories get every core (see src/backtest/parallel.ts) */
+const REPLAYS = new Set(['agent', 'backtest', 'calibrate', 'accuracy', 'outage']);
+
 async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
+  if (REPLAYS.has(cmd) && !(cmd === 'agent' && (!rest[0] || rest[0] === 'list' || rest[0] === 'setup'))) await startReplayThreads();
   if (cmd === 'agent') return agentCommand(rest);
   const { pos, opt } = flags(rest);
   if (cmd && (await backtestCommand(cmd, pos, opt))) return;
@@ -288,7 +294,9 @@ async function agentCommand([tool, arg, ...more]: string[]) {
   }
 }
 
-main().catch((e) => {
-  console.error(e instanceof Error ? e.message : e);
-  process.exitCode = 1;
-});
+// in a build, replay threads load this same file: only the main thread runs the command
+if (isMainThread)
+  main().catch((e) => {
+    console.error(e instanceof Error ? e.message : e);
+    process.exitCode = 1;
+  });
