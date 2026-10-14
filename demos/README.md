@@ -10,4 +10,8 @@ OpenTelemetry Collector and Jaeger.
   every recorded run: the recorded day, four changes, the same day at twice the traffic, and the
   accuracy record (Playwright: `node demos/app.mjs`).
 
+- `nodeloss.mjs` — losing a Kubernetes node at the busiest moment: what Hindcast predicts from the
+  recorded day and the pod placement, and (once `normal-nodeloss` is recorded and scored) what was
+  measured when the node was stopped for real (Playwright: `node demos/nodeloss.mjs`).
+
 Outputs go to `demos/out/` (not committed).
