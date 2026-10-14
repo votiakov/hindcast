@@ -90,6 +90,8 @@
 .bt-worstbox:hover { border-color: var(--bt-dim); }
 .bt-link { color: var(--bt-amber); margin-top: 2px; }
 .bt-acc { font: 12.5px var(--bt-mono); display: grid; gap: 3px; margin-bottom: 6px; }
+.bt-nodes { font: 12.5px var(--bt-mono); display: grid; gap: 3px; margin-bottom: 10px; }
+.bt-nodes > div:first-child { display: flex; justify-content: space-between; gap: 8px; }
 .bt-acc > div { display: grid; grid-template-columns: 1fr auto 44px; gap: 8px; }
 .bt-acc > div > span:nth-child(n + 2) { text-align: right; }
 

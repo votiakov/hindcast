@@ -422,6 +422,24 @@ function Watch() {
           </div>
         </>
       )}
+      {w.model.cluster && (
+        <>
+          <h4>Nodes</h4>
+          <div className="bt-nodes" title={w.model.cluster.notes.join('\n')}>
+            <div>
+              <span>{w.model.cluster.autoscaled ? `${w.model.cluster.minNodes}–${w.model.cluster.maxNodes}` : w.model.cluster.nodes} × {+w.model.cluster.node.cpu.toFixed(2)} cores, {w.model.cluster.node.memoryGb.toFixed(1)} GiB</span>
+              <span className="bt-dim">${w.model.cluster.node.perHour.toFixed(3)}/h</span>
+            </div>
+            {focused && focused.cluster && r.baseline.cluster && w.model.cluster.autoscaled ? (
+              <div className="bt-dim small">
+                {focused.name}: {focused.cluster.meanNodes.toFixed(1)} nodes on average, as built {r.baseline.cluster.meanNodes.toFixed(1)}
+              </div>
+            ) : (
+              <div className="bt-dim small">{w.model.cluster.autoscaled ? 'autoscaled: smaller requests save whole nodes' : 'a fixed pool: smaller requests free room on these nodes but save nothing until the pool shrinks'}</div>
+            )}
+          </div>
+        </>
+      )}
       <h4>Model accuracy</h4>
       {checks.length ? (
         r.accuracy.map((a, k) => (
