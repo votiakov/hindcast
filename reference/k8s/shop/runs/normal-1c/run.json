@@ -1,0 +1,13 @@
+{
+  "system": "shop",
+  "run": "normal-1c",
+  "start": 1791961398,
+  "end": 1791963799,
+  "day": "12/Jul/1995",
+  "minutes": 40,
+  "scale": "x83",
+  "steps": null,
+  "manifests": "variants/frontend-1-1cpu.yaml",
+  "note": null,
+  "recordedAt": "2026-10-14T07:44:05.247Z"
+}
