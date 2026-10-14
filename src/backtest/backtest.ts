@@ -275,6 +275,14 @@ export function mergeBacktests(parts: BacktestResult[]): BacktestResult {
   return { ...parts[0], strategies, ranking: rankStrategies(strategies) };
 }
 
+/** replays a batch of plans over one traffic: in this thread, unless a host (the CLI, the MCP server)
+ *  installs a parallel runner — src/backtest/parallel.ts, Node only */
+export type ReplayRunner = (plans: Plan[], traffic: Traffic, opts: { faults?: Fault[] }) => RunResult[];
+let replayRunner: ReplayRunner = (plans, traffic, opts) => plans.map((p) => runPlan(p, traffic, opts));
+export function setReplayRunner(r: ReplayRunner | null) {
+  replayRunner = r ?? ((plans, traffic, opts) => plans.map((p) => runPlan(p, traffic, opts)));
+}
+
 export function backtest(model: Model, d: Dataset, strategies: unknown[], opts: BacktestOptions = {}): BacktestResult {
   const draws = Math.max(1, opts.draws ?? 30);
   let traffic = opts.traffic ?? trafficOf(d, model);
@@ -289,13 +297,16 @@ export function backtest(model: Model, d: Dataset, strategies: unknown[], opts: 
   const applied = parsed.map((s) => ({ spec: s, ...applyStrategy(model, base, s) }));
   const slo = model.slo;
 
-  const runAll = (plan: Plan) => {
+  // every draw of every plan, drawn here (each plan's draws from the same seed, in order), then
+  // replayed in one batch — on worker threads when the host installed a parallel runner
+  const drawn = (plan: Plan) => {
     const rnd = rng(opts.seed ?? 7);
-    const runs: RunResult[] = [];
-    for (let k = 0; k < draws; k++) runs.push(runPlan(drawPlan(plan, model, k, rnd), traffic, { faults: opts.faults }));
-    return runs;
+    return Array.from({ length: draws }, (_, k) => drawPlan(plan, model, k, rnd));
   };
-  const baseRuns = runAll(base);
+  const batch = [drawn(base), ...applied.map((a) => drawn(a.plan))];
+  const replayed = replayRunner(batch.flat(), traffic, { faults: opts.faults });
+  const runsOf = (k: number) => replayed.slice(k * draws, (k + 1) * draws);
+  const baseRuns = runsOf(0);
   const baseSums = baseRuns.map((r) => summarise(r, slo, traffic.stepS));
 
   const pack = (name: string, description: string | undefined, notes: string[], plan: Plan, runs: RunResult[]): StrategyResult => {
@@ -370,7 +381,7 @@ export function backtest(model: Model, d: Dataset, strategies: unknown[], opts: 
   };
 
   const baseline = pack('As built', 'the calibrated model with nothing changed', [], base, baseRuns);
-  const results = applied.map((a) => pack(a.spec.name, a.spec.description, a.notes, a.plan, runAll(a.plan)));
+  const results = applied.map((a, k) => pack(a.spec.name, a.spec.description, a.notes, a.plan, runsOf(k + 1)));
   const ranking = rankStrategies(results);
 
   return {
