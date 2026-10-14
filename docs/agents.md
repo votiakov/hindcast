@@ -313,7 +313,9 @@ pool with no room for them leaves them Pending. It returns, per node:
 It also lists the services one node failure takes out entirely. With a `strategy`, the strategy's
 new replica counts are spread evenly over the nodes, as the default scheduler does.
 
-`suggest_changes` runs the same check and proposes the fix, then replays the loss of every node again
+`verify_change` runs it too, whenever the model knows the pod placement. It says when a change
+leaves a service on one node, and compares the node that holds most of what the change touches,
+lost at the busiest moment, as built and with the change. `suggest_changes` runs the same check and proposes the fix, then replays the loss of every node again
 to prove it. The fix adds a second replica, spread over the nodes, for every service on a
 request's path that one node takes down. Each degraded service gets enough replicas that what
 survives the busiest node carries its peak at 85% of capacity. In a manifest, `spread: even` is

@@ -359,7 +359,7 @@ export function backtest(model: Model, d: Dataset, strategies: unknown[], opts: 
       ...(point.cluster && plan.cluster
         ? {
             cluster: {
-              peakNodes: Math.max(...point.cluster.nodes),
+              peakNodes: Math.round(Math.max(...point.cluster.nodes)),
               meanNodes: point.cluster.nodes.reduce((a, x) => a + x, 0) / Math.max(1, point.cluster.nodes.length),
               autoscaled: plan.cluster.autoscaled,
               peakRequestedCpu: Math.max(...point.cluster.requestedCpu),

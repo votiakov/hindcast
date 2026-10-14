@@ -39,6 +39,8 @@ export interface NodeLossResult {
   failedRequests: number;
   worst: string;
   recovered: boolean;
+  /** with the node lost: the whole replay's minutes out of SLO and failed requests (not the difference) */
+  total: { minutesOutOfSlo: number; failedRequests: number };
 }
 
 const RECOVER_S = 50 + 300 + 30;
@@ -80,7 +82,7 @@ export function nodeLoss(model: Model, d: Dataset, o: NodeLossOptions = {}) {
     const r = backtest(model, d, strategies, { draws, traffic, faults, seed: 11 });
     const s = o.strategy ? r.strategies[0] : r.baseline;
     const added = s.summary.minutesOutOfSlo.p50 - ref.summary.minutesOutOfSlo.p50;
-    results.push({ node, lost, verdict: added > gate ? 'fails' : 'survives', minutesOutOfSlo: Math.round(added * 10) / 10, failedRequests: Math.round(s.summary.failedRequests.p50 - ref.summary.failedRequests.p50), worst: s.worst.why, recovered: !roomless });
+    results.push({ node, lost, verdict: added > gate ? 'fails' : 'survives', minutesOutOfSlo: Math.round(added * 10) / 10, failedRequests: Math.round(s.summary.failedRequests.p50 - ref.summary.failedRequests.p50), worst: s.worst.why, recovered: !roomless, total: { minutesOutOfSlo: Math.round(s.summary.minutesOutOfSlo.p50 * 10) / 10, failedRequests: Math.round(s.summary.failedRequests.p50) } });
   }
   results.sort((a, b) => b.minutesOutOfSlo - a.minutesOutOfSlo || b.failedRequests - a.failedRequests);
   // services one node failure takes out entirely

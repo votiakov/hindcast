@@ -4,6 +4,7 @@ import { parse as parseYaml, stringify as toYaml } from 'yaml';
 import { sliceDataset, type Dataset } from '../src/backtest/dataset';
 import { calibrate, type CalibrateOptions } from '../src/backtest/calibrate';
 import { holdoutAccuracy, modelBreakingPoint } from '../src/backtest/accuracy';
+import { nodeLoss, podsPerNode } from '../src/backtest/resilience';
 import { backtest, replayConcurrency, type BacktestResult, type Ranged, type StrategyResult } from '../src/backtest/backtest';
 import { basePlan, runPlan } from '../src/backtest/engine';
 import { observedReplicas, trafficOf } from '../src/backtest/calibrate';
@@ -293,7 +294,7 @@ export function verifyChange(ws: Workspace, inputs: ChangeInput[], o: VerifyOpti
   }
   const base = basePlan(m);
   const before = modelBreakingPoint(m, base);
-  const results = r.strategies.map((s, i) => judge(m, r, s, strategies[i], cal, gate, before, modelBreakingPoint(m, applyStrategy(m, base, strategies[i]).plan)));
+  const results = r.strategies.map((s, i) => judge(m, r, s, strategies[i], cal, gate, before, modelBreakingPoint(m, applyStrategy(m, base, strategies[i]).plan), d));
 
   let reports: { html: string; markdown: string; bundle: string } | undefined;
   if (o.report !== false) {
@@ -330,7 +331,7 @@ export function sliceLast(d: Dataset, buckets: number): Partial<Dataset> {
   return { start: d.start + k * d.stepS, n: buckets, services: services as Dataset['services'], endpoints: endpoints as Dataset['endpoints'], ...(cluster ? { cluster } : {}) };
 }
 
-export function judge(m: Model, r: BacktestResult, s: StrategyResult, spec: StrategySpec, cal: Calibration | null, gate: number, before: { rps: number; limitedBy: string | null }, after: { rps: number; limitedBy: string | null }) {
+export function judge(m: Model, r: BacktestResult, s: StrategyResult, spec: StrategySpec, cal: Calibration | null, gate: number, before: { rps: number; limitedBy: string | null }, after: { rps: number; limitedBy: string | null }, d?: Dataset) {
   const dm = s.delta.minutesOutOfSlo;
   const touched = new Set(spec.changes.flatMap((c) => ('service' in c ? [c.service] : [])));
   const histPeak = cal?.historyPeakUtil ?? r.baseline.peakUtil;
@@ -406,6 +407,27 @@ export function judge(m: Model, r: BacktestResult, s: StrategyResult, spec: Stra
     }
   }
 
+  // losing a node (Kubernetes, placement known): does the change leave a service on one node, and
+  // what does losing the node that holds most of what it touched cost, as built and with it
+  let nodeLossCheck: { node: string; asBuilt: { minutesOutOfSlo: number; failedRequests: number }; withChange: { minutesOutOfSlo: number; failedRequests: number }; newSinglePoints: string[] } | null = null;
+  if (d && Object.values(m.services).some((x) => x.pods)) {
+    const was = podsPerNode(m);
+    const now = podsPerNode(m, spec);
+    const newSinglePoints = [...touched].filter((id) => was[id] && now[id] && Object.keys(was[id]).length > 1 && Object.keys(now[id]).length === 1);
+    const weight = new Map<string, number>();
+    for (const id of touched) for (const [n, k] of Object.entries(now[id] ?? {})) weight.set(n, (weight.get(n) ?? 0) + k / Math.max(1, Object.values(now[id]).reduce((a, x) => a + x, 0)));
+    const node = [...weight.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+    if (node) {
+      const a = nodeLoss(m, d, { nodes: [node], draws: 4 }).results[0];
+      const b = nodeLoss(m, d, { nodes: [node], draws: 4, strategy: spec }).results[0];
+      // whole-replay totals with the node lost: each plan's own trouble counts too
+      nodeLossCheck = { node, asBuilt: a.total, withChange: b.total, newSinglePoints };
+      if (newSinglePoints.length) reasons.push(`${newSinglePoints.join(', ')} would run on one node: losing ${node} takes ${newSinglePoints.length === 1 ? 'it' : 'them'} down`);
+      if (b.total.minutesOutOfSlo > a.total.minutesOutOfSlo + gate) reasons.push(`losing ${node} at the busiest moment: ${r1(a.total.minutesOutOfSlo)} min out of SLO as built, ${r1(b.total.minutesOutOfSlo)} with the change (${Math.round(b.total.failedRequests).toLocaleString('en-US')} failed requests)`);
+      else if (a.total.minutesOutOfSlo > gate && b.total.minutesOutOfSlo < a.total.minutesOutOfSlo - gate) reasons.push(`losing ${node} at the busiest moment: ${r1(a.total.minutesOutOfSlo)} → ${r1(b.total.minutesOutOfSlo)} min out of SLO`);
+    }
+  }
+
   // the traffic this verdict is about: the replayed window at its load — not a load test elsewhere in
   // the history, which pushed past the limit on purpose
   const peak = r.peakRps ?? m.traffic?.peak ?? 0;
@@ -434,6 +456,7 @@ export function judge(m: Model, r: BacktestResult, s: StrategyResult, spec: Stra
       incidents: s.incidents.slice(0, 5).map((x) => ({ start: iso(x.start), minutes: r1(x.minutes), peakP99Ms: Math.round(x.peakP99Ms), why: x.why })),
       endpointsWorse: worse,
     },
+    ...(nodeLossCheck ? { nodeLoss: nodeLossCheck } : {}),
     headroom: { beforeRps: r1(before.rps), afterRps: r1(after.rps), limitedBy: after.limitedBy, historyPeakRps: m.traffic ? r1(m.traffic.peak) : null, replayedPeakRps: r1(peak) },
     confidence: { level, services, warnings },
     notes: s.notes,
