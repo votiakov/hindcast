@@ -102,6 +102,29 @@ export function nodeLoss(model: Model, d: Dataset, o: NodeLossOptions = {}) {
   };
 }
 
+/** the faults one node's loss puts on a history: from `atS` seconds in (default a minute before its
+ *  busiest moment) until the pods are replaced (`recoverS`, null: never) */
+export function nodeLossFaults(model: Model, d: Dataset, node: string, o: { atS?: number; recoverS?: number | null; pods?: Record<string, Record<string, number>> } = {}) {
+  const spread = o.pods ?? podsPerNode(model);
+  const traffic = trafficOf(d, model);
+  let peak = 0;
+  let at = 0;
+  for (let i = 0; i < traffic.n; i++) {
+    const t = Object.values(traffic.endpoints).reduce((a, s) => a + (s[i] ?? 0), 0);
+    if (t > peak) (peak = t), (at = i);
+  }
+  const start = o.atS ?? Math.max(0, at * traffic.stepS - 60);
+  const recoverS = o.recoverS === undefined ? RECOVER_S : o.recoverS;
+  const lost = Object.entries(spread)
+    .filter(([id, p]) => (p[node] ?? 0) > 0 && model.services[id] && !model.services[id].hostedBy)
+    .map(([service, p]) => {
+      const of = Object.values(p).reduce((a, x) => a + x, 0);
+      return { service, pods: p[node], of, down: p[node] >= of };
+    });
+  const faults: Fault[] = lost.map((l) => ({ service: l.service, at: start, ...(recoverS !== null ? { until: start + recoverS } : {}), ...(l.down ? { down: true } : { replicasLost: l.pods }), note: `${node} lost: ${l.service} ${l.down ? 'has no replica left' : `down to ${l.of - l.pods} of ${l.of} replicas`}` }));
+  return { faults, lost, atS: start, at: traffic.start + start, recoverS, peakRps: peak };
+}
+
 /** pods per node per service: as collected, or for a strategy's new replica counts spread evenly */
 export function podsPerNode(model: Model, strategy?: unknown): Record<string, Record<string, number>> {
   const out: Record<string, Record<string, number>> = {};

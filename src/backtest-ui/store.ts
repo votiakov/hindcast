@@ -31,7 +31,7 @@ export interface Workspace {
   model: Model;
   strategies: StrategyFile[];
   /** a public-outage replay against this workspace's model */
-  outage?: { outage: Outage; faults: Fault[]; roles: Record<string, string[]>; warnings: string[]; baseRps: number; parent: Workspace };
+  outage?: { outage: Outage; faults: Fault[]; roles: Record<string, string[]>; warnings: string[]; baseRps: number; parent: Workspace; /** replayed over the workspace's own history (a node loss), not a synthetic day */ ownHistory?: boolean };
 }
 
 export type Tab = 'overview' | 'incidents' | 'endpoints' | 'changes' | 'model';
@@ -144,7 +144,7 @@ export const useBacktest = create<State>((set, get) => ({
       }
     });
     const load = get().load;
-    const opts = { draws: get().draws, ...(w.outage ? { faults: w.outage.faults, observed: false } : {}), ...(load !== 1 && !w.outage ? { load: { scale: load } } : {}) };
+    const opts = { draws: get().draws, ...(w.outage ? { faults: w.outage.faults, ...(w.outage.ownHistory ? {} : { observed: false }) } : {}), ...(load !== 1 && !w.outage ? { load: { scale: load } } : {}) };
     const done = (result: BacktestResult, errors: Map<number, string>) => {
       // a strategy the model could not apply (an unknown service, say): report it on that strategy
       for (const [k, msg] of errors) strategies[okIndex[k]] = { ...strategies[okIndex[k]], error: msg };

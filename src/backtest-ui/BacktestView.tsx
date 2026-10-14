@@ -3,7 +3,7 @@ import { useBacktest, strategyName, type Tab } from './store';
 import { AXIS_W, Pane, TimeAxis, bandPath, candles, makeScale, path, useSize, yScale } from './chart';
 import { headline } from '../backtest/report';
 import type { StrategyResult } from '../backtest/backtest';
-import { closeOutage, loadReference, loadReferenceIndex, openOutage, REFERENCES, openWorkspaceFiles } from './workspace';
+import { closeOutage, loadReference, loadReferenceIndex, nodesOf, openNodeLoss, openOutage, REFERENCES, openWorkspaceFiles } from './workspace';
 import { OUTAGES } from '../backtest/outages';
 import { openMomentOnBoard } from './bridge';
 import { cardData } from '../backtest/card';
@@ -25,6 +25,7 @@ const when = (t: number) => new Date(t * 1000).toISOString().slice(5, 16).replac
 
 function Bar() {
   const w = useBacktest((s) => s.workspace);
+  const nodes = w ? nodesOf((w.outage?.parent ?? w).model) : [];
   const r = useBacktest((s) => s.result);
   const view = useBacktest((s) => s.view);
   const setView = useBacktest((s) => s.setView);
@@ -89,13 +90,24 @@ function Bar() {
           Card ↗
         </button>
       )}
-      <select className="bt-select" aria-label="Replay a public outage" value={w?.outage?.outage.id ?? ''} onChange={(e) => (e.target.value ? openOutage(e.target.value) : closeOutage())}>
+      <select className="bt-select" aria-label="Replay a public outage" value={w?.outage?.outage.id ?? ''} onChange={(e) => (!e.target.value ? closeOutage() : e.target.value.startsWith('node:') ? openNodeLoss(e.target.value.slice(5)) : openOutage(e.target.value))}>
         <option value="">{w?.outage ? '← back to the history' : 'Replay an outage…'}</option>
-        {OUTAGES.map((o) => (
-          <option key={o.id} value={o.id}>
-            {o.title.split(' — ')[0]}
-          </option>
-        ))}
+        {nodes.length > 0 && (
+          <optgroup label="Lose a Kubernetes node at the peak">
+            {nodes.map((n) => (
+              <option key={n} value={`node:${n}`}>
+                {n}
+              </option>
+            ))}
+          </optgroup>
+        )}
+        <optgroup label="Public outages">
+          {OUTAGES.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.title.split(' — ')[0]}
+            </option>
+          ))}
+        </optgroup>
       </select>
       <a className="bt-chip" href="docs/backtest.html" target="_blank" rel="noopener" title="How the backtest works, explained screen by screen">
         Docs ↗
@@ -166,7 +178,7 @@ function OutageBanner() {
         ))}
       </div>
       <div className="bt-dim small">
-        Replayed at {o.baseRps.toFixed(1)} req/s normal load · roles: {Object.entries(o.roles).map(([role, ids]) => `${role} → ${ids.join(', ') || 'nothing'}`).join(' · ')} · assumptions: {o.outage.assumptions.join(' ')} · source:{' '}
+        {o.ownHistory ? `Replayed over the recorded history (peak ${o.baseRps.toFixed(1)} req/s) ·` : `Replayed at ${o.baseRps.toFixed(1)} req/s normal load · roles:`} {Object.entries(o.roles).map(([role, ids]) => `${role} → ${ids.join(', ') || 'nothing'}`).join(' · ')} · assumptions: {o.outage.assumptions.join(' ')} · source:{' '}
         {o.outage.sources.map((x) => (
           <a key={x.url} href={x.url} target="_blank" rel="noreferrer">
             {x.label}

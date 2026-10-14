@@ -141,6 +141,7 @@ export function explainMoment(r: RunResult, plan: Plan, i: number): { why: strin
   const p = plan.services[worst.id];
   const util = s.util[i];
   const reps = Math.round(s.replicas[i] * 10) / 10;
+  if (reps === 0 && s.rps[i] > 0) return { why: `${worst.id} has no replica serving (${Math.round(s.rps[i] * 10) / 10} req/s refused)`, service: worst.id };
   if (util < 0.5 && s.waitMs[i] < 50) return { why: `no component near its limit (busiest: ${worst.id} at ${Math.round(util * 100)}%)`, service: null };
   // capacity actually available at that moment (faults can cut it below the plan's)
   // rate ÷ utilisation only says something when a fault cut capacity below the plan's; past saturation

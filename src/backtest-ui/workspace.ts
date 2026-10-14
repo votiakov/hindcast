@@ -6,7 +6,8 @@ import { holdoutAccuracy } from '../backtest/accuracy';
 import type { Dataset } from '../backtest/dataset';
 import { reviveModel, type Model } from '../backtest/model';
 import { useSim } from '../sim/store';
-import { outageById, outageScenario } from '../backtest/outages';
+import { outageById, outageScenario, type Outage } from '../backtest/outages';
+import { nodeLossFaults } from '../backtest/resilience';
 
 /** Reference systems recorded under real load (see reference/README.md), served from /reference/. */
 export const REFERENCES: { id: string; label: string }[] = [
@@ -153,6 +154,49 @@ export function openOutage(id: string) {
     strategies: base.strategies.map((x) => ({ ...x })),
     outage: { outage: o, faults: r.faults, roles: r.roles, warnings: r.warnings, baseRps: r.baseRps, parent: base },
   });
+}
+
+/** losing one Kubernetes node at the history's busiest moment, replayed over the history itself */
+export function openNodeLoss(node: string) {
+  const st = useBacktest.getState();
+  const base = st.workspace?.outage?.parent ?? st.workspace;
+  if (!base) return;
+  const r = nodeLossFaults(base.model, base.dataset, node);
+  const hhmm = (t: number) => new Date(t * 1000).toISOString().slice(11, 16);
+  const down = r.lost.filter((l) => l.down).map((l) => l.service);
+  const thinned = r.lost.filter((l) => !l.down).map((l) => `${l.service} (${l.of - l.pods} of ${l.of} left)`);
+  const outage: Outage = {
+    id: `node:${node}`,
+    title: `Losing ${node} at the busiest moment`,
+    what: `Every pod on ${node} goes at once. ${down.length ? `${down.join(', ')} ${down.length === 1 ? 'has' : 'have'} no replica left` : 'Every service keeps a replica'}${thinned.length ? `; ${thinned.join(', ')}` : ''}.`,
+    start: new Date(base.dataset.start * 1000).toISOString(),
+    minutes: Math.round((base.dataset.n * base.dataset.stepS) / 60),
+    stepS: base.dataset.stepS,
+    traffic: [],
+    steps: [],
+    timeline: [
+      { at: hhmm(r.at), text: `${node} goes (NotReady ~50 s later)` },
+      ...(r.recoverS !== null ? [{ at: hhmm(r.at + r.recoverS), text: 'pods replaced: the 300 s eviction toleration ran out, they started elsewhere' }] : []),
+    ],
+    sources: [],
+    assumptions: ['placement as kube_pod_info showed it at the end of the history;', 'nothing else fails.'],
+  };
+  st.setWorkspace({
+    id: `${base.id}:node:${node}`,
+    name: base.name,
+    source: outage.title,
+    dataset: base.dataset,
+    model: base.model,
+    strategies: base.strategies.map((x) => ({ ...x })),
+    outage: { outage, faults: r.faults, roles: { 'no replica left': down, 'fewer replicas': r.lost.filter((l) => !l.down).map((l) => l.service) }, warnings: [], baseRps: r.peakRps, parent: base, ownHistory: true },
+  });
+}
+
+/** the nodes the model knows pods on, busiest first */
+export function nodesOf(model: Workspace['model']): string[] {
+  const count = new Map<string, number>();
+  for (const s of Object.values(model.services)) for (const [n, k] of Object.entries(s.pods ?? {})) count.set(n, (count.get(n) ?? 0) + k);
+  return [...count.entries()].sort((a, b) => b[1] - a[1]).map(([n]) => n);
 }
 
 export function closeOutage() {
