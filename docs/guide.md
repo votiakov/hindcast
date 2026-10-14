@@ -157,8 +157,8 @@ Undo/redo with ⌘Z / ⇧⌘Z.
 directions. Reference: [spec.md](spec.md).
 
 **Failure audit**: replays a minute at your expected load once per thing that goes wrong in
-production — every component dying, every dependency turning slow, caches restarting cold, zones
-going dark, a traffic surge — and grades each by what users would have seen. The result is a risk
+production — every component dying, every dependency turning slow, caches restarting cold, a hot key
+on a sharded database, zones going dark, a traffic surge — and grades each by what users would have seen. The result is a risk
 register with blast radius, recovery time and $ at risk; replay any incident on the board; each fix
 is verified by re-running the same incident and priced in $/month; apply it with one click
 (undoable); **Backtest** a fix against real history when the board came from a backtest; copy the

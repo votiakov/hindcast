@@ -226,6 +226,10 @@ pub struct NodeState {
     pub wb_flushed: f64,
     /// a replica's replication lag behind its primary, s
     pub repl_lag: f64,
+    /// a sharded database: the busiest shard's backlog (`queue` and `util` are the busiest shard's
+    /// utilisation and the rest's backlog), and the other shards' utilisation
+    pub hot_queue: f64,
+    pub cold_util: f64,
 }
 
 /// how much faster than real time a replica catches up once it can reach its primary again
@@ -269,6 +273,8 @@ fn fresh() -> NodeState {
         wb_buffer: 0.0,
         wb_flushed: 0.0,
         repl_lag: 0.0,
+        hot_queue: 0.0,
+        cold_util: 0.0,
     }
 }
 
@@ -364,12 +370,14 @@ struct ProcessResult {
     write_fail: f64,
     /// what every write waits on beyond the component itself (synchronous replicas), ms
     write_extra_ms: f64,
+    /// a sharded database: the shards other than the busiest one
+    cold_util: Option<f64>,
     util: f64,
     up: bool,
 }
 
 fn res(processed: f64, failed: f64, forward: f64, util: f64, up: bool) -> ProcessResult {
-    ProcessResult { processed, failed, forward, routes: None, shares: None, local_share: None, hits: None, failed_processed: 0.0, fwd_read_share: None, local_r: None, local_w: None, write_fail: 0.0, write_extra_ms: 0.0, util, up }
+    ProcessResult { processed, failed, forward, routes: None, shares: None, local_share: None, hits: None, failed_processed: 0.0, fwd_read_share: None, local_r: None, local_w: None, write_fail: 0.0, write_extra_ms: 0.0, cold_util: None, util, up }
 }
 
 fn queue_seconds(d: &NodeData, cfg: &EngineConfig) -> f64 {
@@ -378,15 +386,19 @@ fn queue_seconds(d: &NodeData, cfg: &EngineConfig) -> f64 {
 
 /// bounded FIFO queue in front of a fixed capacity: work beyond `queue_s` seconds of capacity is shed
 fn queue_stage(st: &mut NodeState, arrivals: f64, cap_per_s: f64, dt: f64, queue_s: f64) -> (f64, f64, f64) {
+    queue_on(&mut st.queue, arrivals, cap_per_s, dt, queue_s)
+}
+
+fn queue_on(queue: &mut f64, arrivals: f64, cap_per_s: f64, dt: f64, queue_s: f64) -> (f64, f64, f64) {
     let cap = (cap_per_s * dt).max(1e-9);
-    st.queue += arrivals;
-    let processed = st.queue.min(cap);
-    st.queue -= processed;
+    *queue += arrivals;
+    let processed = queue.min(cap);
+    *queue -= processed;
     let max_q = cap_per_s * queue_s;
     let mut failed = 0.0;
-    if st.queue > max_q {
-        failed = st.queue - max_q;
-        st.queue = max_q;
+    if *queue > max_q {
+        failed = *queue - max_q;
+        *queue = max_q;
     }
     (processed, failed, if cap_per_s > 0.0 { arrivals / cap } else { 0.0 })
 }
@@ -394,11 +406,36 @@ fn queue_stage(st: &mut NodeState, arrivals: f64, cap_per_s: f64, dt: f64, queue
 /// service time plus the wait in front of it: a component is a pool of workers (capacity × service
 /// time of them, as the discrete-event engine runs it), waiting as M/M/c; past saturation, the backlog
 fn service_latency(d: &NodeData, st: &NodeState) -> f64 {
+    shard_parts(d, st).iter().map(|p| p.0 * p.1).sum()
+}
+
+/// a component's own answer time as (weight, mean, p99 − mean) parts: one for most, and for a sharded
+/// database the busiest shard and the rest, each a pool of workers of its own
+fn shard_parts(d: &NodeData, st: &NodeState) -> Vec<(f64, f64, f64)> {
+    let n = shards_of(d);
+    let total = capacity_of(d, Some(st.reachable)).max(1e-6);
+    if n <= 1.0 {
+        let (m, t) = pool_latency(d, total, st.util, st.queue);
+        return vec![(1.0, m, t)];
+    }
+    let s = hot_shard_share(d);
+    let one = total / n;
+    let (hm, ht) = pool_latency(d, one, st.util, st.hot_queue);
+    let (cm, ct) = pool_latency(d, one * (n - 1.0), st.cold_util, st.queue);
+    vec![(s, hm, ht), (1.0 - s, cm, ct)]
+}
+
+/// mean and p99 − mean of an answer from a pool of workers at a utilisation, with a backlog
+fn pool_latency(d: &NodeData, cap: f64, util: f64, queue: f64) -> (f64, f64) {
     let base = base_latency_of(d);
-    let cap = capacity_of(d, Some(st.reachable)).max(1e-6);
+    let cap = cap.max(1e-6);
     let workers = js_round(cap * (base.max(0.05) / 1000.0)).max(1.0);
-    let wait = crate::math::mmc_wait(st.util.min(0.98) * cap, workers, cap).mean_ms * WAIT_SCALE;
-    base + wait + (st.queue / cap.max(1.0)) * 1000.0 + d.stall_rate.unwrap_or(0.0) * d.stall_ms.unwrap_or(0.0)
+    let w = crate::math::mmc_wait(util.min(0.98) * cap, workers, cap);
+    let mean = base + w.mean_ms * WAIT_SCALE + (queue / cap.max(1.0)) * 1000.0 + d.stall_rate.unwrap_or(0.0) * d.stall_ms.unwrap_or(0.0);
+    let stall = if d.stall_rate.unwrap_or(0.0) >= 0.01 { d.stall_ms.unwrap_or(0.0) } else { 0.0 };
+    // service time and wait are independent: their spreads add in quadrature
+    let (svc, wait) = ((SERVICE_P99 - 1.0) * base, (w.p99_ms - w.mean_ms).max(0.0) * WAIT_SCALE);
+    (mean, (svc * svc + wait * wait).sqrt() + stall)
 }
 
 /// share of a mixture's answers slower than a deadline
@@ -460,14 +497,13 @@ const WAIT_SCALE: f64 = 0.68;
 /// p99 − mean of a component's own part of an answer: service-time spread, the M/M/c wait's tail,
 /// and stalls once they reach 1% of requests
 fn service_tail(d: &NodeData, st: &NodeState) -> f64 {
-    let base = base_latency_of(d);
-    let cap = capacity_of(d, Some(st.reachable)).max(1e-6);
-    let workers = js_round(cap * (base.max(0.05) / 1000.0)).max(1.0);
-    let w = crate::math::mmc_wait(st.util.min(0.98) * cap, workers, cap);
-    let stall = if d.stall_rate.unwrap_or(0.0) >= 0.01 { d.stall_ms.unwrap_or(0.0) } else { 0.0 };
-    // service time and wait are independent: their spreads add in quadrature
-    let (svc, wait) = ((SERVICE_P99 - 1.0) * base, (w.p99_ms - w.mean_ms).max(0.0) * WAIT_SCALE);
-    (svc * svc + wait * wait).sqrt() + stall
+    let parts = shard_parts(d, st);
+    if parts.len() == 1 {
+        return parts[0].2;
+    }
+    let dist: Vec<[f64; 3]> = parts.iter().map(|p| [p.0, p.1, p.2]).collect();
+    let (mean, p99) = mix_mean_p99(&dist);
+    (p99 - mean).max(0.0)
 }
 
 struct Ctx<'a> {
@@ -587,10 +623,12 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
             }
             if !d.alive && st.failover == Failover::None {
                 st.queue = 0.0;
+                st.hot_queue = 0.0;
                 return res(0.0, c.arrivals, 0.0, 0.0, false);
             }
             if st.failover == Failover::Promoted {
                 st.queue = 0.0;
+                st.hot_queue = 0.0;
                 let mut r = res(0.0, 0.0, c.arrivals, 0.0, true);
                 r.routes = Some(replicas);
                 r.shares = shares;
@@ -604,8 +642,22 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
             let local_share = if electing { write_ratio } else { write_ratio + c.read_ratio / (replicas.len() as f64 + 1.0) };
             let to_replicas = c.arrivals * (1.0 - local_share);
             let cap = if st.failover == Failover::Electing { 0.0 } else { capacity_of(d, None) };
-            let (processed, failed, util) = queue_stage(st, c.arrivals - to_replicas, cap, c.dt, queue_seconds(d, c.cfg));
+            let n = shards_of(d);
+            let own = c.arrivals - to_replicas;
+            let mut cold_util = None;
+            let (processed, failed, util) = if n > 1.0 {
+                // the busiest shard (the hot key's) and the rest, each with its own queue
+                let s = hot_shard_share(d);
+                let qs = queue_seconds(d, c.cfg);
+                let (hp, hf, hu) = queue_on(&mut st.hot_queue, own * s, cap / n, c.dt, qs);
+                let (cp, cf, cu) = queue_on(&mut st.queue, own * (1.0 - s), cap * (n - 1.0) / n, c.dt, qs);
+                cold_util = Some(cu);
+                (hp + cp, hf + cf, hu)
+            } else {
+                queue_stage(st, own, cap, c.dt, queue_seconds(d, c.cfg))
+            };
             let mut r = res(processed, failed, to_replicas, util, true);
+            r.cold_util = cold_util;
             r.routes = Some(replicas);
             r.local_share = Some(local_share);
             // what goes to the replicas is reads; writes stay on the primary
@@ -1220,6 +1272,7 @@ impl Engine {
             st.drop_rps = ema(st.drop_rps, r.failed / dt, dt, 0.6);
             st.hit_rps = ema(st.hit_rps, r.hits.unwrap_or(0.0) / dt, dt, 0.6);
             st.util = ema(st.util, r.util, dt, 0.4);
+            st.cold_util = ema(st.cold_util, r.cold_util.unwrap_or(r.util), dt, 0.4);
             let local_share = r.local_share.unwrap_or(1.0);
             let own = if d.kind == "db" { arrivals * local_share } else { arrivals };
             st.drop_ratio = ema(st.drop_ratio, if own > 0.0 { r.failed / own } else { 0.0 }, dt, 0.6);

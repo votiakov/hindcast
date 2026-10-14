@@ -95,6 +95,10 @@ export interface SystemNodeData extends Record<string, unknown> {
   workingSetGb?: number;
   /** cache: Zipf exponent of key popularity (default 1) */
   skew?: number;
+  /** db: horizontal partitions (capacity and cost × shards) */
+  shards?: number;
+  /** db: share of its traffic on one key — all of it on one shard */
+  hotKeyShare?: number;
   /** set by a network partition: links between components on different sides are cut */
   side?: string;
   /** cache / cdn: bumped by the flush action — the engine empties the cache when it changes */
@@ -267,9 +271,18 @@ export function capacityOf(d: SystemNodeData, reachable = instancesUp(d)): numbe
     const tier = spec.tiered ? TIERS[d.tier].capacity : 1;
     const batch = d.kind === 'llm' && d.batching ? BATCHING.capacity : 1;
     const rt = d.runtime ? RUNTIMES[d.runtime].throughput : 1;
-    cap = (d.capacity ?? spec.capacity) * tier * batch * rt * (spec.scalable ? Math.max(1, reachable) : 1);
+    cap = (d.capacity ?? spec.capacity) * tier * batch * rt * (spec.scalable ? Math.max(1, reachable) : 1) * shardsOf(d);
   }
   return cap * (d.degraded ?? 1);
+}
+
+/** a database's shard count (1 for everything else) */
+export const shardsOf = (d: SystemNodeData): number => (d.kind === 'db' ? Math.max(1, Math.floor(d.shards ?? 1)) : 1);
+
+/** the share of a database's traffic on its busiest shard: the hot key, plus an even share of the rest */
+export function hotShardShare(d: SystemNodeData): number {
+  const h = d.kind === 'db' ? Math.min(1, Math.max(0, d.hotKeyShare ?? 0)) : 0;
+  return h + (1 - h) / shardsOf(d);
 }
 
 export function baseLatencyOf(d: SystemNodeData): number {
@@ -287,7 +300,7 @@ export function fnCostPerRequest(d: SystemNodeData): number {
 /** fixed hourly cost (usage cost is added by the engine) — follows the active pricing profile */
 export function costOf(d: SystemNodeData): number {
   const spec = KINDS[d.kind];
-  const n = d.instances ?? 1;
+  const n = (d.instances ?? 1) * shardsOf(d);
   const p = d.costPerHour === undefined ? kindPricing(d.kind) : undefined;
   if (p?.tiers) return p.tiers[spec.tiered ? d.tier : 'S'].hourly * n;
   if (p?.fixed) return p.fixed.hourly * n;

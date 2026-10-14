@@ -192,6 +192,10 @@ Shared code keeps the engines consistent (`src/sim/autoscale.ts`, `cacheWarmth` 
 - **Link latency** — a connection's `latencyMs` is added to every call over it (DES: on the request
   hop; fluid: to the child's latency in the backward pass).
 
+- **Shards and hot keys** — a sharded database is a pool of workers and a queue per shard. Each
+  request lands on the hot key's shard with probability `hotKeyShare`, otherwise on one picked by
+  hash (DES); the fluid engine runs the busiest shard and the rest as two queues. The utilisation the
+  board shows is the busiest shard's.
 - **Replication and partitions** — a `partition` between two zones cuts every link between their
   members (calls over it fail at once). An async replica cut off from its primary accumulates lag
   (one second per second; it catches up at 10× once healed); reads it serves meanwhile count as
@@ -202,8 +206,9 @@ Shared code keeps the engines consistent (`src/sim/autoscale.ts`, `cacheWarmth` 
 ### Limitations (both engines)
 
 - No slow dependencies other than via `degrade`/`inject-latency`, or memory/GC modelling.
-- Load balancing is perfectly even (no hot instances); caches have a fixed hit rate (no cold cache /
-  stampede dynamics yet); queues are single FIFO with unlimited consumers' patience.
+- Load balancing across instances is perfectly even (hot spots are modelled only as a database's hot
+  key); a cache does not know which keys are hot, so it lowers a hot shard's load in proportion to
+  its hit rate; queues are single FIFO with unlimited consumers' patience.
 - Numbers are illustrative defaults (see catalog.md) — calibrate for real-system claims.
 - The fluid engine is deterministic: exactly at capacity (ρ = 1) it holds where the DES's random
   arrivals overflow. Treat anything above ~95 % utilised as failing, or use the DES.

@@ -1,6 +1,6 @@
 import { NodeToolbar, Position } from '@xyflow/react';
 import { HeartPulse, Minus, Plus, Skull, Trash2 } from 'lucide-react';
-import { KINDS, RUNTIME_KINDS, RUNTIMES, TIERS, cacheHitRate, isUp, type RetryPolicy, type RouteMode, type Runtime, type SystemNodeData, type Tier } from '../sim/catalog';
+import { KINDS, RUNTIME_KINDS, RUNTIMES, TIERS, cacheHitRate, hotShardShare, isUp, type RetryPolicy, type RouteMode, type Runtime, type SystemNodeData, type Tier } from '../sim/catalog';
 import { useSim } from '../sim/store';
 import { useBoardId } from './BoardContext';
 import { fmt } from './nodeModel';
@@ -95,6 +95,13 @@ export function NodeControls({ id, data, selected }: { id: string; data: SystemN
             </button>
           </div>
         )}
+        {data.kind === 'db' && (
+          <div className="tb-group">
+            <span className="tb-label" title="Horizontal partitions: each shard is a full database holding part of the keys — capacity and cost × shards. A hot key still lands on one shard.">shards</span>
+            <input className="tb-num" type="number" min={1} max={256} step={1} value={data.shards ?? 1} onChange={(e) => set({ shards: Math.round(+e.target.value) > 1 ? Math.min(256, Math.round(+e.target.value)) : undefined })} />
+            {data.hotKeyShare ? <span className="tb-count" title="Share of traffic on the busiest shard: the hot key plus its even share of the rest">hot shard {Math.round(hotShardShare(data) * 100)}%</span> : null}
+          </div>
+        )}
         {(data.kind === 'cache' || data.kind === 'cdn') && (
           <div className="tb-group">
             <span className="tb-label">hit</span>
@@ -151,6 +158,7 @@ export function NodeControls({ id, data, selected }: { id: string; data: SystemN
                 const v = e.target.value;
                 if (v === 'restore') apply(b, { type: 'restore', id });
                 else if (v === 'flush') apply(b, { type: 'flush-cache', id });
+                else if (v.startsWith('hot')) apply(b, { type: 'hot-key', id, share: +v.slice(3) });
                 else if (v.startsWith('err')) apply(b, { type: 'inject-errors', id, rate: +v.slice(3) });
                 else if (v.startsWith('lat')) apply(b, { type: 'inject-latency', id, ms: +v.slice(3) });
                 else if (v.startsWith('deg')) apply(b, { type: 'degrade', id, factor: +v.slice(3) });
@@ -166,6 +174,7 @@ export function NodeControls({ id, data, selected }: { id: string; data: SystemN
               <option value="lat2000">+2 s</option>
               <option value="deg0.5">50% capacity</option>
               {(data.kind === 'cache' || data.kind === 'cdn') && <option value="flush">flush cache</option>}
+              {data.kind === 'db' && <option value={data.hotKeyShare ? 'hot0' : 'hot0.3'}>{data.hotKeyShare ? 'cool the hot key' : 'hot key (30% on one key)'}</option>}
               {(data.faultRate || data.faultLatencyMs || data.degraded !== undefined) && <option value="restore">restore</option>}
             </select>
           )}

@@ -7,7 +7,7 @@ use crate::math::js_num;
 use serde_json::{json, Map as JMap, Value};
 
 const KINDS: [&str; 14] = ["client", "cdn", "lb", "gateway", "server", "worker", "function", "cache", "db", "replica", "storage", "queue", "llm", "llmapi"];
-const DATA_KEYS: [&str; 24] = ["tier", "instances", "runtime", "hitRate", "limit", "batching", "retries", "retryPolicy", "timeoutMs", "breaker", "fallback", "routing", "fanout", "stallRate", "stallMs", "queueS", "capacity", "latencyMs", "costPerHour", "autoscale", "warmupS", "writePolicy", "workingSetGb", "skew"];
+const DATA_KEYS: [&str; 26] = ["tier", "instances", "runtime", "hitRate", "limit", "batching", "retries", "retryPolicy", "timeoutMs", "breaker", "fallback", "routing", "fanout", "stallRate", "stallMs", "queueS", "capacity", "latencyMs", "costPerHour", "autoscale", "warmupS", "writePolicy", "workingSetGb", "skew", "shards", "hotKeyShare"];
 
 #[derive(Clone, Debug, Default)]
 pub struct Issue {
@@ -172,6 +172,8 @@ fn check_component(c: &JMap<String, Value>, path: Vec<Value>, issues: &mut Vec<I
     v.one_of("writePolicy", &["through", "behind"], false);
     v.number("workingSetGb", false, Some((0.0, false)), None, false);
     v.number("skew", false, Some((0.1, true)), Some(3.0), false);
+    v.number("shards", false, Some((1.0, true)), Some(256.0), true);
+    v.number("hotKeyShare", false, Some((0.0, true)), Some(1.0), false);
     v.number("capacity", false, Some((0.0, false)), None, false);
     v.number("latencyMs", false, Some((0.0, true)), None, false);
     v.number("costPerHour", false, Some((0.0, true)), None, false);
@@ -660,6 +662,8 @@ pub enum Action {
     InjectErrors(String, f64),
     InjectLatency(String, f64),
     FlushCache(String),
+    /// a database: this share of its traffic goes to one key (0 ends it)
+    HotKey(String, f64),
     /// cut every link between two zones; both sides keep running
     Partition(String, String),
     HealPartition,
@@ -679,13 +683,14 @@ impl Action {
             Action::InjectErrors(..) => "inject-errors",
             Action::InjectLatency(..) => "inject-latency",
             Action::FlushCache(_) => "flush-cache",
+            Action::HotKey(..) => "hot-key",
             Action::Partition(..) => "partition",
             Action::HealPartition => "heal-partition",
         }
     }
     pub fn id(&self) -> Option<&str> {
         match self {
-            Action::KillId(i) | Action::ReviveId(i) | Action::FailZone(i) | Action::RestoreZone(i) | Action::Degrade(i, _) | Action::Restore(i) | Action::InjectErrors(i, _) | Action::InjectLatency(i, _) | Action::FlushCache(i) => Some(i),
+            Action::KillId(i) | Action::ReviveId(i) | Action::FailZone(i) | Action::RestoreZone(i) | Action::Degrade(i, _) | Action::Restore(i) | Action::InjectErrors(i, _) | Action::InjectLatency(i, _) | Action::FlushCache(i) | Action::HotKey(i, _) => Some(i),
             _ => None,
         }
     }
@@ -750,6 +755,10 @@ pub fn parse_action(v: &Value, path: Vec<Value>, issues: &mut Vec<Issue>) -> Opt
             Action::InjectLatency(i, frac("ms", None, issues)?)
         }
         "flush-cache" => Action::FlushCache(need_id(issues)?),
+        "hot-key" => {
+            let i = need_id(issues)?;
+            Action::HotKey(i, frac("share", Some(1.0), issues)?)
+        }
         "partition" => {
             let zone = |k: &str, issues: &mut Vec<Issue>| -> Option<String> {
                 let r = o.get(k).and_then(|x| x.as_str()).map(String::from);
@@ -768,7 +777,7 @@ pub fn parse_action(v: &Value, path: Vec<Value>, issues: &mut Vec<Issue>) -> Opt
         x => {
             let mut p = path.clone();
             p.push(json!("type"));
-            issues.push(Issue { path: p, message: format!("unknown action \"{}\" (kill-id, revive-id, kill, revive-all, fail-zone, restore-zone, degrade, restore, inject-errors, inject-latency, flush-cache, partition, heal-partition)", x), ..Default::default() });
+            issues.push(Issue { path: p, message: format!("unknown action \"{}\" (kill-id, revive-id, kill, revive-all, fail-zone, restore-zone, degrade, restore, inject-errors, inject-latency, flush-cache, hot-key, partition, heal-partition)", x), ..Default::default() });
             return None;
         }
     })

@@ -14,7 +14,7 @@ component to calibrate to a real system. `npm run sim -- catalog` prints the liv
 | `worker` | Worker | 100 req/s | 80 ms | $0.08/h | ✓ | ✓ | background jobs; runtime-aware |
 | `function` | Serverless Fn | concurrency limit (default 3,000) | 35 ms | $0.60 / 1M req | | | cold starts; runtime-aware pricing |
 | `cache` | Cache | 20,000 req/s | 1 ms | $0.15/h | ✓ | | default hit rate 85 % |
-| `db` | Database | 1,000 req/s | 10 ms | $0.40/h | ✓ | | writes stay here; reads shared with replicas; failover |
+| `db` | Database | 1,000 req/s | 10 ms | $0.40/h | ✓ | | writes stay here; reads shared with replicas; failover; `shards` × capacity and cost |
 | `replica` | Read Replica | 1,000 req/s | 10 ms | $0.35/h | ✓ | | connect from a db |
 | `storage` | Object Storage | 50,000 req/s | 40 ms | $0.03/h | | | |
 | `queue` | Queue | 50,000 req/s ingest | 3 ms ack | $0.06/h | | | backlog ≤ 200,000; consumers pull |

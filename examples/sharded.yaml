@@ -1,0 +1,10 @@
+# A write-heavy app past the biggest database: three shards of size L.
+# hindcast audit examples/sharded.yaml --rps 9000   →  includes "30% of traffic on one key"
+version: 1
+name: Sharded posts
+components:
+  - { id: users, kind: client }
+  - { id: lb, kind: lb }
+  - { id: api, kind: server, instances: 48 }
+  - { id: db, kind: db, tier: L, shards: 3, name: posts db }
+connections: [users -> lb, lb -> api, api -> db]

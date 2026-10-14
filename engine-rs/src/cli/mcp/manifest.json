@@ -260,6 +260,18 @@
            "minimum": 0.1,
            "maximum": 3
           },
+          "shards": {
+           "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 256
+          },
+          "hotKeyShare": {
+           "description": "db: share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which saturates first",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -620,6 +632,18 @@
            "type": "number",
            "minimum": 0.1,
            "maximum": 3
+          },
+          "shards": {
+           "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 256
+          },
+          "hotKeyShare": {
+           "description": "db: share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which saturates first",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -1018,6 +1042,29 @@
              "properties": {
               "type": {
                "type": "string",
+               "const": "hot-key"
+              },
+              "id": {
+               "type": "string"
+              },
+              "share": {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 1
+              }
+             },
+             "required": [
+              "type",
+              "id",
+              "share"
+             ],
+             "description": "database: this share of its traffic goes to one key — a celebrity, a hot counter — all on one shard (0 ends it)"
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
                "const": "partition"
               },
               "a": {
@@ -1329,6 +1376,18 @@
            "type": "number",
            "minimum": 0.1,
            "maximum": 3
+          },
+          "shards": {
+           "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 256
+          },
+          "hotKeyShare": {
+           "description": "db: share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which saturates first",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -1680,6 +1739,18 @@
               "minimum": 0.1,
               "maximum": 3
              },
+             "shards": {
+              "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 256
+             },
+             "hotKeyShare": {
+              "description": "db: share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which saturates first",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+             },
              "capacity": {
               "description": "override: req/s per size-S instance",
               "type": "number",
@@ -1984,6 +2055,18 @@
                 "minimum": 0.1,
                 "maximum": 3
                },
+               "shards": {
+                "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 256
+               },
+               "hotKeyShare": {
+                "description": "db: share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which saturates first",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+               },
                "capacity": {
                 "description": "override: req/s per size-S instance",
                 "type": "number",
@@ -2206,6 +2289,18 @@
                 "type": "number",
                 "minimum": 0.1,
                 "maximum": 3
+               },
+               "shards": {
+                "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 256
+               },
+               "hotKeyShare": {
+                "description": "db: share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which saturates first",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
                },
                "capacity": {
                 "description": "override: req/s per size-S instance",
@@ -2603,6 +2698,29 @@
              "properties": {
               "type": {
                "type": "string",
+               "const": "hot-key"
+              },
+              "id": {
+               "type": "string"
+              },
+              "share": {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 1
+              }
+             },
+             "required": [
+              "type",
+              "id",
+              "share"
+             ],
+             "description": "database: this share of its traffic goes to one key — a celebrity, a hot counter — all on one shard (0 ends it)"
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
                "const": "partition"
               },
               "a": {
@@ -2898,6 +3016,18 @@
            "type": "number",
            "minimum": 0.1,
            "maximum": 3
+          },
+          "shards": {
+           "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 256
+          },
+          "hotKeyShare": {
+           "description": "db: share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which saturates first",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -3276,6 +3406,18 @@
            "minimum": 0.1,
            "maximum": 3
           },
+          "shards": {
+           "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 256
+          },
+          "hotKeyShare": {
+           "description": "db: share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which saturates first",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -3667,6 +3809,29 @@
               "type",
               "id"
              ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "hot-key"
+              },
+              "id": {
+               "type": "string"
+              },
+              "share": {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 1
+              }
+             },
+             "required": [
+              "type",
+              "id",
+              "share"
+             ],
+             "description": "database: this share of its traffic goes to one key — a celebrity, a hot counter — all on one shard (0 ends it)"
             },
             {
              "type": "object",
@@ -3974,6 +4139,18 @@
            "minimum": 0.1,
            "maximum": 3
           },
+          "shards": {
+           "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 256
+          },
+          "hotKeyShare": {
+           "description": "db: share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which saturates first",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -4365,6 +4542,29 @@
               "type",
               "id"
              ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "hot-key"
+              },
+              "id": {
+               "type": "string"
+              },
+              "share": {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 1
+              }
+             },
+             "required": [
+              "type",
+              "id",
+              "share"
+             ],
+             "description": "database: this share of its traffic goes to one key — a celebrity, a hot counter — all on one shard (0 ends it)"
             },
             {
              "type": "object",
@@ -4680,6 +4880,18 @@
            "type": "number",
            "minimum": 0.1,
            "maximum": 3
+          },
+          "shards": {
+           "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 256
+          },
+          "hotKeyShare": {
+           "description": "db: share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which saturates first",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -5126,6 +5338,18 @@
            "minimum": 0.1,
            "maximum": 3
           },
+          "shards": {
+           "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 256
+          },
+          "hotKeyShare": {
+           "description": "db: share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which saturates first",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -5473,6 +5697,18 @@
              "minimum": 0.1,
              "maximum": 3
             },
+            "shards": {
+             "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 256
+            },
+            "hotKeyShare": {
+             "description": "db: share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which saturates first",
+             "type": "number",
+             "minimum": 0,
+             "maximum": 1
+            },
             "capacity": {
              "description": "override: req/s per size-S instance",
              "type": "number",
@@ -5777,6 +6013,18 @@
                "minimum": 0.1,
                "maximum": 3
               },
+              "shards": {
+               "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 256
+              },
+              "hotKeyShare": {
+               "description": "db: share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which saturates first",
+               "type": "number",
+               "minimum": 0,
+               "maximum": 1
+              },
               "capacity": {
                "description": "override: req/s per size-S instance",
                "type": "number",
@@ -5999,6 +6247,18 @@
                "type": "number",
                "minimum": 0.1,
                "maximum": 3
+              },
+              "shards": {
+               "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 256
+              },
+              "hotKeyShare": {
+               "description": "db: share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which saturates first",
+               "type": "number",
+               "minimum": 0,
+               "maximum": 1
               },
               "capacity": {
                "description": "override: req/s per size-S instance",
@@ -6389,6 +6649,29 @@
               "type",
               "id"
              ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "hot-key"
+              },
+              "id": {
+               "type": "string"
+              },
+              "share": {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 1
+              }
+             },
+             "required": [
+              "type",
+              "id",
+              "share"
+             ],
+             "description": "database: this share of its traffic goes to one key — a celebrity, a hot counter — all on one shard (0 ends it)"
             },
             {
              "type": "object",
@@ -6690,6 +6973,18 @@
            "minimum": 0.1,
            "maximum": 3
           },
+          "shards": {
+           "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 256
+          },
+          "hotKeyShare": {
+           "description": "db: share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which saturates first",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -7037,6 +7332,18 @@
              "minimum": 0.1,
              "maximum": 3
             },
+            "shards": {
+             "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 256
+            },
+            "hotKeyShare": {
+             "description": "db: share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which saturates first",
+             "type": "number",
+             "minimum": 0,
+             "maximum": 1
+            },
             "capacity": {
              "description": "override: req/s per size-S instance",
              "type": "number",
@@ -7341,6 +7648,18 @@
                "minimum": 0.1,
                "maximum": 3
               },
+              "shards": {
+               "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 256
+              },
+              "hotKeyShare": {
+               "description": "db: share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which saturates first",
+               "type": "number",
+               "minimum": 0,
+               "maximum": 1
+              },
               "capacity": {
                "description": "override: req/s per size-S instance",
                "type": "number",
@@ -7563,6 +7882,18 @@
                "type": "number",
                "minimum": 0.1,
                "maximum": 3
+              },
+              "shards": {
+               "description": "db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 256
+              },
+              "hotKeyShare": {
+               "description": "db: share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which saturates first",
+               "type": "number",
+               "minimum": 0,
+               "maximum": 1
               },
               "capacity": {
                "description": "override: req/s per size-S instance",
@@ -7953,6 +8284,29 @@
               "type",
               "id"
              ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "hot-key"
+              },
+              "id": {
+               "type": "string"
+              },
+              "share": {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 1
+              }
+             },
+             "required": [
+              "type",
+              "id",
+              "share"
+             ],
+             "description": "database: this share of its traffic goes to one key — a celebrity, a hot counter — all on one shard (0 ends it)"
             },
             {
              "type": "object",

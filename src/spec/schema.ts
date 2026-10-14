@@ -42,6 +42,8 @@ export const ComponentSpec = z
     writePolicy: z.enum(['through', 'behind']).optional().describe('cache/cdn: writes go on to the origin (through, default), or are acknowledged at the cache and flushed ~5 s later — fast, but lost if the cache dies first (behind)'),
     workingSetGb: z.number().positive().optional().describe('cache: the data it fronts, GB — with it the hit rate follows from the cache size (S 6.4, M 13, L 26 GB) and `skew`'),
     skew: z.number().min(0.1).max(3).optional().describe('cache: how concentrated reads are on popular keys (Zipf exponent, default 1)'),
+    shards: z.number().int().min(1).max(256).optional().describe('db: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash'),
+    hotKeyShare: z.number().min(0).max(1).optional().describe('db: share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which saturates first'),
     capacity: z.number().positive().optional().describe('override: req/s per size-S instance'),
     latencyMs: z.number().nonnegative().optional().describe('override: base service time'),
     costPerHour: z.number().nonnegative().optional().describe('override: $/h per size-S instance'),
@@ -95,6 +97,7 @@ export const ActionSpec = z.discriminatedUnion('type', [
   z.object({ type: z.literal('inject-errors'), id: z.string(), rate: z.number().min(0).max(1) }),
   z.object({ type: z.literal('inject-latency'), id: z.string(), ms: z.number().min(0) }),
   z.object({ type: z.literal('flush-cache'), id: z.string() }),
+  z.object({ type: z.literal('hot-key'), id: z.string(), share: z.number().min(0).max(1) }).describe('database: this share of its traffic goes to one key — a celebrity, a hot counter — all on one shard (0 ends it)'),
   z.object({ type: z.literal('partition'), a: z.string().describe('zone id'), b: z.string().describe('zone id') }).describe('cut every link between two zones; both keep running'),
   z.object({ type: z.literal('heal-partition') }),
 ]);

@@ -464,6 +464,43 @@ describe('replication, partitions and failover (CAP)', () => {
   });
 });
 
+describe('sharded databases and hot keys', () => {
+  const U = { id: 'users', kind: 'client' as Kind };
+  const spec = (shards: number, hotKeyShare?: number) => ({ components: [U, { id: 'db', kind: 'db' as const, shards, ...(hotKeyShare === undefined ? {} : { hotKeyShare }) }], connections: [['users', 'db'] as [string, string]] });
+  const fluid = (shards: number, rps: number, hot?: number) => run(specToGraph(spec(shards, hot)), rps).global.errorRate;
+  const des = (shards: number, rps: number, hot?: number) => simulateDes(spec(shards, hot), { duration: 40, rps }, { seed: 1 }).summary.meanErrorRate;
+
+  it('N shards: N× the capacity and N× the cost', () => {
+    const one = defaultData('db', 'db');
+    const four = { ...one, shards: 4 };
+    expect(capacityOf(four)).toBeCloseTo(4 * capacityOf(one), 6);
+    expect(costOf(four)).toBeCloseTo(4 * costOf(one), 6);
+    expect(fluid(1, 3600)).toBeGreaterThan(0.6);
+    expect(fluid(4, 3600)).toBeLessThan(0.001);
+    expect(des(4, 3600)).toBeLessThan(0.005);
+  });
+
+  it('a hot key overloads its shard while the others idle, and more shards do not fix it', () => {
+    const cap = capacityOf(defaultData('db', 'db'));
+    // 4 shards, 30% on one key: that shard takes 0.3 + 0.7 / 4 = 47.5% of 3,000 req/s
+    const excess = (3000 * 0.475 - cap) / 3000;
+    expect(fluid(4, 3000)).toBeLessThan(0.001);
+    expect(Math.abs(fluid(4, 3000, 0.3) - excess)).toBeLessThan(0.02);
+    expect(Math.abs(des(4, 3000, 0.3) - excess)).toBeLessThan(0.03);
+    // twice the shards: the hot key is still one key on one shard
+    expect(fluid(8, 3000, 0.3)).toBeGreaterThan(0.03);
+    expect(des(8, 3000, 0.3)).toBeGreaterThan(0.03);
+  });
+
+  it('the hot shard is what the board shows: its utilisation, and the latency it adds', () => {
+    const even = run(specToGraph(spec(4)), 2000).nodeStats.db;
+    const hot = run(specToGraph(spec(4, 0.3)), 2000).nodeStats.db;
+    expect(even.util).toBeCloseTo(0.5, 1);
+    expect(hot.util).toBeCloseTo(0.95, 1);
+    expect(hot.latencyMs).toBeGreaterThan(even.latencyMs);
+  });
+});
+
 describe('what the board says about a component matches its numbers', () => {
   it('"Overloaded" only when more arrives than it can take; "hot" only when saturated or shedding', () => {
     const bad: string[] = [];

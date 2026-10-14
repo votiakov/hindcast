@@ -1,4 +1,4 @@
-import { KINDS, QUEUE_MAX_BACKLOG, capacityOf, costOf, instancesUp, isUp, skuOf, type SystemNodeData } from '../sim/catalog';
+import { KINDS, QUEUE_MAX_BACKLOG, capacityOf, costOf, hotShardShare, instancesUp, isUp, shardsOf, skuOf, type SystemNodeData } from '../sim/catalog';
 import type { NodeStats } from '../sim/engine';
 
 export type Health = 'idle' | 'ok' | 'warm' | 'hot' | 'down';
@@ -125,6 +125,7 @@ export function nodeView(d0: SystemNodeData, st: NodeStats | undefined, running:
   if (st?.breaker) tags.push({ text: `BREAKER ${st.breaker.toUpperCase()}${d.fallback ? ' +FALLBACK' : ''}`, tone: st.breaker === 'open' ? 'bad' : st.breaker === 'half' ? 'warn' : 'good' });
   if (d.routing && d.routing !== 'split') tags.push({ text: d.routing.toUpperCase() });
   if ((d.fanout ?? 1) > 1) tags.push({ text: `FAN-OUT ×${d.fanout}` });
+  if (shardsOf(d) > 1) tags.push({ text: `${shardsOf(d)} SHARDS${d.hotKeyShare ? ` · HOT ${Math.round(hotShardShare(d) * 100)}%` : ''}`, tone: d.hotKeyShare ? 'warn' : undefined });
   if (d.autoscale) tags.push({ text: `AUTOSCALE ${d.autoscale.min}–${d.autoscale.max}${st?.scaling && st.scaling.desired !== st.scaling.live ? ` · want ${st.scaling.desired}` : ''}`, tone: st?.scaling?.pending ? 'warn' : undefined });
   if (st && st.warmth < 0.98 && (d.kind === 'cache' || d.kind === 'cdn')) tags.push({ text: `COLD ${Math.round(st.warmth * 100)}%`, tone: 'bad' });
   if (d.faultRate) tags.push({ text: `FAULT ${Math.round(d.faultRate * 100)}% errors`, tone: 'bad' });
@@ -175,6 +176,10 @@ export function explain(d: SystemNodeData, st: NodeStats | undefined, v: NodeVie
   if (d.kind === 'replica' && (st.replLagS ?? 0) > 1) return { tone: 'warn', text: `${(st.replLagS ?? 0) >= 60 ? `${Math.round((st.replLagS ?? 0) / 60)} min` : `${Math.round(st.replLagS ?? 0)} s`} behind its primary: reads here miss the latest writes, and a failover now would lose them.` };
   if (v.noTargets && st.inRps > 0.01) return { tone: 'bad', text: `Nothing behind this ${d.kind === 'lb' ? 'load balancer' : 'gateway'}: the ${fmt(st.inRps)} req/s it receives have nowhere to go and fail. Connect it to what it fronts.` };
   if (v.noOrigin && st.dropRps > 0.01) return { tone: 'bad', text: `No origin behind this cache: its ${fmt(st.dropRps)} misses a second have nowhere to go and fail. Connect it to the store it caches, or make it a database if it is the store.` };
+  if (d.kind === 'db' && shardsOf(d) > 1 && d.hotKeyShare && (v.health === 'hot' || st.dropRps > 1)) {
+    const share = hotShardShare(d);
+    return { tone: 'bad', text: `Hot shard: ${Math.round(share * 100)}% of the traffic lands on one of ${shardsOf(d)} shards (${Math.round(d.hotKeyShare * 100)}% on one key), so it saturates while the others idle. More shards cannot split one key — cache it, or grow every shard.` };
+  }
   if (v.health === 'hot' && st.dropRps > 1 && st.inRps >= cap * 0.9) return { tone: 'bad', text: `Overloaded: ${fmt(st.inRps)} req/s offered vs ${fmt(cap)} req/s capacity. The excess queues, then gets dropped.` };
   // drops while the offered load is below capacity: a surge just passed (the averages lag it)
   if (v.health === 'hot' && st.dropRps > 1) return { tone: 'warn', text: `Recovering from a surge: load came in above its ${fmt(cap)} req/s capacity moments ago, and ${fmt(st.dropRps)} req/s are still being shed while its queue drains.` };

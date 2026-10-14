@@ -215,6 +215,11 @@ pub fn apply_action(nodes: &mut [SimNode], zones: &IndexMap<String, Vec<String>>
             set(nodes, id, &move |d| d.fault_rate = Some(r));
             Some(id.clone())
         }
+        Action::HotKey(id, h) => {
+            let h = *h;
+            set(nodes, id, &move |d| d.hot_key_share = if h > 0.0 { Some(h) } else { None });
+            Some(id.clone())
+        }
         Action::InjectLatency(id, ms) => {
             let ms = *ms;
             set(nodes, id, &move |d| d.fault_latency_ms = Some(ms));

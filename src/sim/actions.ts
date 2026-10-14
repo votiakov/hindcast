@@ -16,6 +16,8 @@ export type SimAction =
   | { type: 'inject-latency'; id: string; ms: number }
   /** cache / cdn: drop every key — hit rate starts again from zero */
   | { type: 'flush-cache'; id: string }
+  /** database: `share` of its traffic goes to one key, all on one shard (0 ends it) */
+  | { type: 'hot-key'; id: string; share: number }
   /** clears degrade and injected faults */
   | { type: 'restore'; id: string }
   /** network partition: every link between the two zones is cut; both sides keep running */
@@ -70,6 +72,12 @@ export function applyAction(nodes: AppNode[], a: SimAction, ctx: ActionContext):
       return { nodes: setData(nodes, a.id, { faultRate: a.rate }), notes: [{ tone: 'bad', text: `☣ ${a.id} fails ${Math.round(a.rate * 100)}% of requests` }], target: a.id };
     case 'inject-latency':
       return { nodes: setData(nodes, a.id, { faultLatencyMs: a.ms }), notes: [{ tone: 'bad', text: `🐌 ${a.id} +${a.ms} ms per request` }], target: a.id };
+    case 'hot-key':
+      return {
+        nodes: setData(nodes, a.id, { hotKeyShare: a.share > 0 ? a.share : undefined }),
+        notes: a.share > 0 ? [{ tone: 'bad', text: `🔥 ${a.id}: ${Math.round(a.share * 100)}% of traffic on one key` }] : [{ tone: 'good', text: `✅ ${a.id}: hot key cooled down` }],
+        target: a.id,
+      };
     case 'flush-cache': {
       const n = nodes.find((x) => x.id === a.id);
       if (!n || !isSystem(n)) return { nodes, notes: [], target: null };

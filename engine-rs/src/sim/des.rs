@@ -268,7 +268,11 @@ struct Job {
     t_in: f64,
     /// None: a queue's backlog entry (its producer was already answered)
     done: Option<ContId>,
+    /// a sharded database: the shard that holds the key (0 is the hot key's)
+    shard: u16,
 }
+
+const NO_SHARD: u16 = u16::MAX;
 
 /// a call to the children, with what the caller's data said when it began (retries see the same)
 struct Call {
@@ -296,10 +300,12 @@ struct Win {
     attempts: f64,
     late: f64,
     usage_reqs: f64,
+    /// a sharded database: shard 0's busy worker-seconds
+    hot_area: f64,
 }
 
 fn new_win() -> Win {
-    Win { arrivals: 0.0, drops: 0.0, hits: 0.0, busy_area: 0.0, calls: 0.0, attempts: 0.0, late: 0.0, usage_reqs: 0.0 }
+    Win { arrivals: 0.0, drops: 0.0, hits: 0.0, busy_area: 0.0, calls: 0.0, attempts: 0.0, late: 0.0, usage_reqs: 0.0, hot_area: 0.0 }
 }
 
 struct DNode {
@@ -317,6 +323,15 @@ struct DNode {
     workers: f64,
     svc_mean_ms: f64,
     busy: f64,
+    /// a sharded database: shards, workers and queue bound per shard (0: not sharded), each shard's
+    /// busy workers and queue, the hot key's share, and when shard 0's busy count last changed
+    sh_n: usize,
+    sh_workers: f64,
+    sh_qmax: f64,
+    sh_busy: Vec<f64>,
+    sh_queue: Vec<VecDeque<Job>>,
+    hot: f64,
+    hot_last_t: f64,
     queue: VecDeque<Job>,
     queue_max: f64,
     last_busy_t: f64,
@@ -544,6 +559,38 @@ impl<'a> Des<'a> {
         n.tokens = n.tokens.min(n.rate);
         // serverless throttles instead of queueing; unlimited pools never queue
         n.queue_max = if kind == "function" || !n.workers.is_finite() { 0.0 } else { (cap * d.queue_s.or(spec(kind).queue_s).unwrap_or(cfg_queue)).floor().max(1.0) };
+        // a sharded database: a pool and a queue per shard
+        let shards = shards_of(d);
+        if shards > 1.0 {
+            let k = shards as usize;
+            let one = cap / shards;
+            n.sh_n = k;
+            n.sh_workers = js_round(one * (lat / 1000.0)).max(1.0);
+            n.svc_mean_ms = (n.sh_workers / one) * 1000.0;
+            n.workers = n.sh_workers * shards;
+            n.sh_qmax = (one * d.queue_s.or(spec(kind).queue_s).unwrap_or(cfg_queue)).floor().max(1.0);
+            n.hot = d.hot_key_share.unwrap_or(0.0).clamp(0.0, 1.0);
+            if n.sh_busy.len() < k {
+                n.sh_busy.resize(k, 0.0);
+                n.sh_queue.resize_with(k, VecDeque::new);
+            }
+        } else {
+            n.sh_n = 1;
+            n.sh_workers = 0.0;
+        }
+    }
+
+    fn shard_busy(&mut self, n: usize, s: usize, delta: f64) {
+        let now = self.now;
+        let x = &mut self.nodes[n];
+        if s >= x.sh_busy.len() {
+            return;
+        }
+        if s == 0 {
+            x.win.hot_area += x.sh_busy[0] * (now - x.hot_last_t);
+            x.hot_last_t = now;
+        }
+        x.sh_busy[s] += delta;
     }
 
     /// run a continuation now
@@ -634,7 +681,7 @@ impl<'a> Des<'a> {
             if self.nodes[i].backlog.len() >= QUEUE_BACKLOG_MAX {
                 return self.fail(Some(i), done, 0.5);
             }
-            self.nodes[i].backlog.push_back(Job { read, t_in: now, done: None });
+            self.nodes[i].backlog.push_back(Job { read, t_in: now, done: None, shard: NO_SHARD });
             let ack = base_latency_of(&self.nodes[i].data);
             self.at(ack, Ev::Deliver { done, ok: true }); // the producer gets the ack
             self.pump(i);
@@ -650,7 +697,7 @@ impl<'a> Des<'a> {
             self.at(svc, Ev::LlmDone { n: i, done, fault });
             return;
         }
-        self.enqueue(i, Job { read, t_in: now, done: Some(done) });
+        self.enqueue(i, Job { read, t_in: now, done: Some(done), shard: NO_SHARD });
     }
 
     fn arrive_db(&mut self, i: usize, read: bool, done: ContId) {
@@ -673,7 +720,17 @@ impl<'a> Des<'a> {
                 }
             }
             let now = self.now;
-            return self.enqueue(i, Job { read, t_in: now, done: Some(done) });
+            // a sharded database: the hot key's shard, or one picked by the key's hash
+            let shard = {
+                let x = &self.nodes[i];
+                if x.sh_workers > 0.0 {
+                    let (hot, k) = (x.hot, x.sh_n as f64);
+                    if self.rng.next() < hot { 0 } else { (self.rng.next() * k).floor().min(k - 1.0) as u16 }
+                } else {
+                    NO_SHARD
+                }
+            };
+            return self.enqueue(i, Job { read, t_in: now, done: Some(done), shard });
         }
         if self.nodes[i].down_since.is_none() {
             self.nodes[i].down_since = Some(self.now);
@@ -718,6 +775,17 @@ impl<'a> Des<'a> {
 
     fn enqueue(&mut self, n: usize, job: Job) {
         let x = &self.nodes[n];
+        if x.sh_workers > 0.0 {
+            let s = (job.shard as usize).min(x.sh_n - 1);
+            if x.sh_busy[s] < x.sh_workers {
+                return self.start(n, Job { shard: s as u16, ..job });
+            }
+            if x.sh_queue[s].len() as f64 >= x.sh_qmax {
+                return self.fail(Some(n), job.done.unwrap(), 0.5);
+            }
+            self.nodes[n].sh_queue[s].push_back(Job { shard: s as u16, ..job });
+            return;
+        }
         if x.busy < x.workers {
             return self.start(n, job);
         }
@@ -729,6 +797,9 @@ impl<'a> Des<'a> {
 
     fn start(&mut self, n: usize, job: Job) {
         self.set_busy(n, 1.0);
+        if job.shard != NO_SHARD {
+            self.shard_busy(n, job.shard as usize, 1.0);
+        }
         let (mean, cv) = (self.nodes[n].svc_mean_ms, self.cfg.service_cv);
         let mut svc = self.rng.lognormal(mean, cv);
         if let Some(sr) = self.nodes[n].data.stall_rate.filter(|x| *x != 0.0) {
@@ -760,6 +831,18 @@ impl<'a> Des<'a> {
             let d = &self.nodes[n].data;
             d.queue_s.or(spec(&d.kind).queue_s).unwrap_or(self.cfg.queue_s) * 1000.0
         };
+        if job.shard != NO_SHARD {
+            let s = job.shard as usize;
+            self.shard_busy(n, s, -1.0);
+            while s < self.nodes[n].sh_queue.len() && !self.nodes[n].sh_queue[s].is_empty() && self.nodes[n].sh_busy[s] < self.nodes[n].sh_workers {
+                let next = self.nodes[n].sh_queue[s].pop_front().unwrap();
+                if (self.now - next.t_in) * 1000.0 > bound {
+                    self.fail(Some(n), next.done.unwrap(), 0.5);
+                    continue;
+                }
+                self.start(n, next);
+            }
+        }
         while !self.nodes[n].queue.is_empty() && self.nodes[n].busy < self.nodes[n].workers {
             let next = self.nodes[n].queue.pop_front().unwrap();
             if (self.now - next.t_in) * 1000.0 > bound {
@@ -1106,11 +1189,12 @@ impl<'a> Des<'a> {
         let mut cost = 0.0;
         for i in 0..self.nodes.len() {
             self.set_busy(i, 0.0);
+            self.shard_busy(i, 0, 0.0);
             let fo = self.cfg.failover_s;
             let n = &self.nodes[i];
             let w = &n.win;
             let workers = if n.workers.is_finite() { n.workers } else { 1.0 };
-            let util = if n.data.kind == "queue" { n.backlog.len() as f64 / QUEUE_BACKLOG_MAX as f64 } else if n.rate.is_finite() { w.arrivals / (n.rate * win_s).max(1e-9) } else { w.busy_area / (workers * win_s) };
+            let util = if n.sh_workers > 0.0 { w.hot_area / (n.sh_workers * win_s) } else if n.data.kind == "queue" { n.backlog.len() as f64 / QUEUE_BACKLOG_MAX as f64 } else if n.rate.is_finite() { w.arrivals / (n.rate * win_s).max(1e-9) } else { w.busy_area / (workers * win_s) };
             let billed = if n.data.kind == "function" || n.data.kind == "llmapi" { w.usage_reqs } else if n.data.kind == "client" { 0.0 } else { w.arrivals };
             let usage = billed * request_price(&n.data, &self.pricing) * 3600.0;
             let cost_h = match &n.scaler {
@@ -1122,7 +1206,7 @@ impl<'a> Des<'a> {
                 in_rps: w.arrivals / win_s,
                 drop_rps: w.drops / win_s,
                 util,
-                queue: if n.data.kind == "queue" { n.backlog.len() as f64 } else { n.queue.len() as f64 },
+                queue: if n.data.kind == "queue" { n.backlog.len() as f64 } else { (n.queue.len() + n.sh_queue.iter().map(|q| q.len()).sum::<usize>()) as f64 },
                 latency_ms: 0.0,
                 success: if w.arrivals != 0.0 { 1.0 - w.drops / w.arrivals } else { 1.0 },
                 hit_rps: w.hits / win_s,
@@ -1277,6 +1361,13 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
             workers: 1.0,
             svc_mean_ms: 1.0,
             busy: 0.0,
+            sh_n: 1,
+            sh_workers: 0.0,
+            sh_qmax: 0.0,
+            sh_busy: vec![],
+            sh_queue: vec![],
+            hot: 0.0,
+            hot_last_t: 0.0,
             queue: VecDeque::new(),
             queue_max: 0.0,
             last_busy_t: 0.0,

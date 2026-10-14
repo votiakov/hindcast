@@ -454,6 +454,20 @@ fn candidate_fixes(inc: &Incident, a: &Architecture, nm: &dyn Fn(&str) -> String
             }
         }
     }
+    if inc.kind == "hot-key" {
+        // the hot key's reads answered from memory: a cache between the callers and the database
+        let cache = unique_id(a, &format!("{}-cache", id));
+        let mut changes = vec![json!({ "op": "add", "component": { "id": cache, "kind": "cache", "name": format!("{}-cache", nm(&id)) } })];
+        for p in &ps {
+            changes.push(json!({ "op": "disconnect", "from": p, "to": id }));
+            changes.push(json!({ "op": "connect", "from": p, "to": cache }));
+        }
+        changes.push(json!({ "op": "connect", "from": cache, "to": id }));
+        out.push(Cand { title: format!("Cache in front of {}", nm(&id)), why: "A hot key is one key: more shards cannot split it, but a cache answers its reads from memory.".into(), changes });
+        for f in capacity_fixes(Some(c), nm) {
+            out.push(Cand { why: format!("{} Every shard grows, so the hot one does too.", f.why), ..f });
+        }
+    }
     if inc.kind == "cold-cache" {
         for k in &ks {
             for f in capacity_fixes(by_id(k), nm) {
@@ -537,6 +551,9 @@ pub fn audit(input: &Architecture, o: &AuditOptions, progress: &mut dyn FnMut(f6
         }
         if kind == "cache" || kind == "cdn" {
             incidents.push(Incident { id: format!("cold:{}", id), kind: "cold-cache", target: id.clone(), title: format!("{} restarts cold", nm(&id)), events: vec![json!({ "at": FAULT_AT, "action": { "type": "flush-cache", "id": id } })], traffic: None });
+        }
+        if kind == "db" && get_num(c, "shards").unwrap_or(1.0) > 1.0 {
+            incidents.push(Incident { id: format!("hot:{}", id), kind: "hot-key", target: id.clone(), title: format!("{}: 30% of traffic on one key", nm(&id)), events: fault(json!({ "type": "hot-key", "id": id, "share": 0.3 }), json!({ "type": "hot-key", "id": id, "share": 0 })), traffic: None });
         }
         if kind != "lb" && kind != "queue" {
             incidents.push(Incident { id: format!("slow:{}", id), kind: "slow", target: id.clone(), title: format!("{} turns slow (+250 ms)", nm(&id)), events: fault(json!({ "type": "inject-latency", "id": id, "ms": 250 }), json!({ "type": "restore", "id": id })), traffic: None });

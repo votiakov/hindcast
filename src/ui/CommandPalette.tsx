@@ -94,6 +94,7 @@ function buildCommands(q: string): Cmd[] {
       else cmds.push({ id: `revive-${nd.id}`, group: 'Chaos', label: `Revive ${name}`, run: () => s.reviveNode('main', nd.id) });
       cmds.push({ id: `slow-${nd.id}`, group: 'Chaos', label: `Slow down ${name} (+250 ms)`, run: () => s.apply('main', { type: 'inject-latency', id: nd.id, ms: 250 }) });
       cmds.push({ id: `err-${nd.id}`, group: 'Chaos', label: `${name} fails 20% of requests`, run: () => s.apply('main', { type: 'inject-errors', id: nd.id, rate: 0.2 }) });
+      if (nd.data.kind === 'db') cmds.push({ id: `hot-${nd.id}`, group: 'Chaos', label: nd.data.hotKeyShare ? `Cool the hot key on ${name}` : `Hot key on ${name} (30% of traffic)`, run: () => s.apply('main', { type: 'hot-key', id: nd.id, share: nd.data.hotKeyShare ? 0 : 0.3 }) });
       if (nd.data.kind === 'cache' || nd.data.kind === 'cdn') cmds.push({ id: `flush-${nd.id}`, group: 'Chaos', label: `Flush ${name}`, run: () => s.apply('main', { type: 'flush-cache', id: nd.id }) });
     }
   cmds.push(

@@ -11,7 +11,8 @@ import { mint } from './mint';
 import { scale201 } from './scale201';
 import { sizeCache } from './sizeCache';
 import { cap } from './cap';
+import { sharding } from './sharding';
 
 /** all lessons, in the order the picker shows them */
-export const LESSONS: Lesson[] = [lesson1, scale201, pastebin, mint, sizeCache, queues, retryStorm, elastic, zones, cap, aiServing, runtimes];
+export const LESSONS: Lesson[] = [lesson1, scale201, pastebin, mint, sizeCache, queues, retryStorm, elastic, zones, cap, sharding, aiServing, runtimes];
 export const lessonById = (id: string) => LESSONS.find((l) => l.id === id) ?? LESSONS[0];

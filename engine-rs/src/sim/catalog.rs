@@ -86,6 +86,12 @@ pub struct NodeData {
     /// cache: how concentrated requests are on popular keys (Zipf exponent; 1 is typical of web traffic)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skew: Option<f64>,
+    /// db: horizontal partitions, each a full-size database of its own (capacity and cost × shards)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shards: Option<f64>,
+    /// db: share of its traffic that goes to one key (a celebrity, a hot counter) — all of it on one shard
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hot_key_share: Option<f64>,
     /// a network partition's side this component is on (set by the partition action): links between
     /// components on different sides are cut
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -279,9 +285,25 @@ pub fn capacity_of(d: &NodeData, reachable: Option<f64>) -> f64 {
         let t = if sp.tiered { tier(&d.tier).0 } else { 1.0 };
         let batch = if d.kind == "llm" && d.batching == Some(true) { BATCHING_CAPACITY } else { 1.0 };
         let rt = d.runtime.as_deref().filter(|r| !r.is_empty()).map(|r| runtime(r).0).unwrap_or(1.0);
-        d.capacity.unwrap_or(sp.capacity) * t * batch * rt * (if sp.scalable { reachable.max(1.0) } else { 1.0 })
+        d.capacity.unwrap_or(sp.capacity) * t * batch * rt * (if sp.scalable { reachable.max(1.0) } else { 1.0 }) * shards_of(d)
     };
     cap * d.degraded.unwrap_or(1.0)
+}
+
+/// a database's shard count (1 for everything else)
+pub fn shards_of(d: &NodeData) -> f64 {
+    if d.kind == "db" {
+        d.shards.unwrap_or(1.0).max(1.0).floor()
+    } else {
+        1.0
+    }
+}
+
+/// the share of a database's traffic on its busiest shard: the hot key, plus an even share of the rest
+pub fn hot_shard_share(d: &NodeData) -> f64 {
+    let n = shards_of(d);
+    let h = if d.kind == "db" { d.hot_key_share.unwrap_or(0.0).clamp(0.0, 1.0) } else { 0.0 };
+    h + (1.0 - h) / n
 }
 
 /// capacity of one healthy instance (for autoscaling decisions)
@@ -308,7 +330,7 @@ pub fn fn_cost_per_request(d: &NodeData, profile: &str) -> f64 {
 /// fixed hourly cost under a pricing profile (usage cost is added by the engine)
 pub fn cost_of(d: &NodeData, profile: &str) -> f64 {
     let sp = spec(&d.kind);
-    let n = d.instances.unwrap_or(1.0);
+    let n = d.instances.unwrap_or(1.0) * shards_of(d);
     let p = if d.cost_per_hour.is_none() { kind_pricing(profile, &d.kind) } else { None };
     if let Some(p) = p {
         if let Some(t) = p.tiers {

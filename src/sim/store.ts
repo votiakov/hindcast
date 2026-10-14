@@ -579,7 +579,7 @@ export const useSim = create<State>()((set, get) => {
       const r = applyAction(nodes, a, { inRps: (id) => nodeStats[id]?.inRps ?? 0, zoneMembers: (zid) => nodesInZone(nodes, zid) });
       patch(b, { nodes: r.nodes });
       // zone/global notes come from the caller's own message; per-node ones become toasts
-      if (a.type === 'kill' || a.type === 'kill-id' || a.type === 'inject-errors' || a.type === 'inject-latency' || a.type === 'flush-cache' || a.type === 'degrade') for (const n of r.notes) get().toast(n.tone, `${label(b)}${n.text}`);
+      if (a.type === 'kill' || a.type === 'kill-id' || a.type === 'inject-errors' || a.type === 'inject-latency' || a.type === 'flush-cache' || a.type === 'hot-key' || a.type === 'degrade') for (const n of r.notes) get().toast(n.tone, `${label(b)}${n.text}`);
       return r.target;
     },
     loadGraph: (b, g, title) => {
