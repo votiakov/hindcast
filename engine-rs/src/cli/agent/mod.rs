@@ -4,6 +4,7 @@
 pub mod collect;
 pub mod connect;
 pub mod review;
+pub mod setup;
 pub mod sources;
 pub mod suggest;
 pub mod verify;
@@ -284,6 +285,17 @@ pub fn dispatch(name: &str, parsed: &Value) -> Result<Value, String> {
 /// `hindcast agent <tool> <json | @file | ->`
 pub fn command(rest: &[String], out: &mut Out) -> Result<i32, String> {
     let tool = rest.first().map(|s| s.as_str()).unwrap_or("");
+    if tool == "setup" {
+        let f = flags(&rest[1..]);
+        let host = f.pos.first().map(|s| s.as_str());
+        if let Some(h) = host.filter(|h| !setup::HOSTS.contains(h)) {
+            return Err(format!("unknown host \"{}\": one of {}", h, setup::HOSTS.join(", ")));
+        }
+        if f.has("write") && host.is_none() {
+            return Err("--write needs a host: hindcast agent setup cursor --write".into());
+        }
+        return setup::setup(host, f.has("write"), f.get("project").as_deref(), f.get("workspace").as_deref(), out);
+    }
     if tool.is_empty() || tool == "list" {
         for t in tools() {
             out.log(&format!("{} {}", pad_end(t["name"].as_str().unwrap_or(""), 20), t["title"].as_str().unwrap_or("")));
