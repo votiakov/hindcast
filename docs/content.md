@@ -41,6 +41,8 @@ export const myLesson: Lesson = {
       maxCost?: 2.5,       // $/h at every moment of the hold
       maxAvgCost?: 1.85,   // $/h averaged over the level (a bill), checked when the hold completes
       maxLagS?: 5,         // seconds of backlog any queue may hold
+      maxLostWrites?: 0,   // acknowledged writes a failover or a write-behind cache may lose over the level
+      maxTotalErrorRate?: 0.035, // failed share of every request since startAfter (the whole incident, not the hold)
     },
     chaos: [{ at: 3, action: { type: 'degrade', id: 'db', factor: 0.05 }, message: '…' }],
     hint: '…', hintAfter: 6,            // hint appears after 6 s of failing the goal

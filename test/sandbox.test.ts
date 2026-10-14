@@ -372,8 +372,10 @@ describe('resilience behaviours', () => {
     };
     expect(step(400).global.errorRate).toBeLessThan(0.001);
     patch(b, 'db', { alive: false });
-    // electing (3 s): writes and the primary's share of reads fail — 20% + 80%/2 of everything
-    expect(step(58).global.errorRate).toBeGreaterThan(0.5);
+    // electing (3 s): writes fail (20% of everything); reads go to the replica
+    const electing = step(58).global.errorRate;
+    expect(electing).toBeGreaterThan(0.15);
+    expect(electing).toBeLessThan(0.25);
     expect(step(400).global.errorRate).toBeLessThan(0.01); // promoted
   });
 
@@ -406,6 +408,59 @@ describe('resilience behaviours', () => {
     for (let i = 0; i < 400; i++) e.step(b.nodes as never, b.edges as never, 10, 0.8, 0.05, DEFAULT_ENGINE_CONFIG);
     for (let i = 0; i < 4; i++) e.step(b.nodes as never, b.edges as never, 90, 0.8, 0.05, DEFAULT_ENGINE_CONFIG);
     expect(e.snapshot(b.nodes as never, b.edges as never).nodeStats.fn.coldFrac).toBeGreaterThan(0.3);
+  });
+});
+
+describe('replication, partitions and failover (CAP)', () => {
+  // a primary in one zone and its replica in another, 70 ms apart
+  const spec = (replication: 'sync' | 'async') => ({
+    components: [{ id: 'users', kind: 'client' as Kind }, { id: 'api', kind: 'server' as Kind }, { id: 'db', kind: 'db' as Kind }, { id: 'rep', kind: 'replica' as Kind }],
+    connections: [['users', 'api'], ['api', 'db'], { from: 'db', to: 'rep', latencyMs: 70, replication }] as never,
+    zones: [{ id: 'east', members: ['db'] }, { id: 'west', members: ['rep'] }],
+  });
+  const partition = { type: 'partition', a: 'east', b: 'west' } as const;
+
+  it('a synchronous replica adds its round trip to every write, and stops writes when it is cut off', () => {
+    const plain = simulate(spec('async'), { duration: 30, rps: 100, readRatio: 0.5 }).summary;
+    const sync = simulate(spec('sync'), { duration: 30, rps: 100, readRatio: 0.5 }).summary;
+    // every write (half the requests) waits 70 ms + the replica: the middle of the distribution moves most
+    expect(sync.meanP99Ms).toBeGreaterThan(plain.meanP99Ms + 10);
+    const [dPlain, dSync] = (['async', 'sync'] as const).map((m) => simulateDes(spec(m), { duration: 30, rps: 100, readRatio: 0.5 }, { seed: 1 }).summary);
+    expect(dSync.p50Ms - dPlain.p50Ms).toBeGreaterThan(50);
+    const cut = simulate(spec('sync'), { duration: 30, rps: 100, readRatio: 0.5, events: [{ at: 5, action: partition }] }).timeline.at(-1)!;
+    // half the requests are writes: they all fail; reads keep working on the primary
+    expect(cut.errorRate).toBeCloseTo(0.5, 1);
+    const des = simulateDes(spec('sync'), { duration: 30, rps: 100, readRatio: 0.5, events: [{ at: 0, action: partition }] }, { seed: 1 }).summary.meanErrorRate;
+    expect(des).toBeCloseTo(0.5, 1);
+  });
+
+  it('an asynchronous replica keeps writes working through a partition, and falls behind', () => {
+    // the app reads the replica directly (writes go to the primary): cut off, it serves stale reads
+    const direct = {
+      ...spec('async'),
+      connections: [['users', 'api'], { from: 'api', to: 'db', carries: 'writes' }, { from: 'api', to: 'rep', carries: 'reads' }, { from: 'db', to: 'rep', latencyMs: 70 }] as never,
+    };
+    const r = simulate(direct, { duration: 40, rps: 100, readRatio: 0.5, events: [{ at: 10, action: partition }] }).summary;
+    expect(r.meanErrorRate).toBeLessThan(0.01);
+    // cut off for 30 s: 30 s behind, and the reads it served meanwhile were stale
+    expect(r.maxReplicaLagS ?? 0).toBeGreaterThan(28);
+    expect(r.staleReads ?? 0).toBeGreaterThan(500);
+    const d = simulateDes(direct, { duration: 40, rps: 100, readRatio: 0.5, events: [{ at: 10, action: partition }] }, { seed: 1 }).summary;
+    expect(d.maxReplicaLagS ?? 0).toBeGreaterThan(27);
+    expect(d.staleReads ?? 0).toBeGreaterThan(500);
+  });
+
+  it('failing over to a replica that fell behind loses the writes it never received', () => {
+    const events = [{ at: 5, action: partition }, { at: 25, action: { type: 'kill-id', id: 'db' } }, { at: 25.01, action: { type: 'heal-partition' } }];
+    // 20 s behind × 50 writes/s ≈ 1,000 writes lost when the replica is promoted
+    const f = simulate(spec('async'), { duration: 40, rps: 100, readRatio: 0.5, events }).summary.lostWrites ?? 0;
+    expect(f).toBeGreaterThan(800);
+    expect(f).toBeLessThan(1200);
+    const d = simulateDes(spec('async'), { duration: 40, rps: 100, readRatio: 0.5, events }, { seed: 1 }).summary.lostWrites ?? 0;
+    expect(d).toBeGreaterThan(700);
+    expect(d).toBeLessThan(1300);
+    // synchronous: nothing lost
+    expect(simulate(spec('sync'), { duration: 40, rps: 100, readRatio: 0.5, events: [{ at: 25, action: { type: 'kill-id', id: 'db' } }] }).summary.lostWrites ?? 0).toBe(0);
   });
 });
 

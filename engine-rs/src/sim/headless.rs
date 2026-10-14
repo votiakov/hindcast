@@ -220,6 +220,23 @@ pub fn apply_action(nodes: &mut [SimNode], zones: &IndexMap<String, Vec<String>>
             set(nodes, id, &move |d| d.fault_latency_ms = Some(ms));
             Some(id.clone())
         }
+        Action::Partition(a, b) => {
+            let (za, zb) = (zones.get(a).cloned().unwrap_or_default(), zones.get(b).cloned().unwrap_or_default());
+            for n in nodes.iter_mut() {
+                if za.contains(&n.id) {
+                    n.data.side = Some(a.clone());
+                } else if zb.contains(&n.id) {
+                    n.data.side = Some(b.clone());
+                }
+            }
+            Some(format!("{} | {}", a, b))
+        }
+        Action::HealPartition => {
+            for n in nodes.iter_mut() {
+                n.data.side = None;
+            }
+            Some("all".into())
+        }
         Action::FlushCache(id) => {
             let n = nodes.iter_mut().find(|n| n.id == *id)?;
             n.data.flushes = Some(n.data.flushes.unwrap_or(0.0) + 1.0);
@@ -290,6 +307,12 @@ pub struct Summary {
     /// writes a write-behind cache acknowledged and then lost
     #[serde(skip_serializing_if = "is_zero")]
     pub lost_writes: f64,
+    /// reads answered by a replica more than a second behind its primary
+    #[serde(skip_serializing_if = "is_zero")]
+    pub stale_reads: f64,
+    /// the furthest any replica fell behind its primary, s
+    #[serde(skip_serializing_if = "is_zero")]
+    pub max_replica_lag_s: f64,
     pub worst_moment_s: f64,
 }
 
@@ -401,6 +424,7 @@ pub fn simulate_parsed(spec: &Architecture, sc: &Scenario, o: &SimOptions) -> Si
     let zones: IndexMap<String, Vec<String>> = spec.zones.iter().map(|z| (z.0.clone(), z.2.clone())).collect();
     let (mut nodes, edges) = graph_of(spec);
     let mut engine = Engine::new();
+    let mut max_lag: f64 = 0.0;
     let mut pending = sc.events.clone();
     js_sort_by(&mut pending, |a, b| a.0 - b.0);
     let mut pending: std::collections::VecDeque<_> = pending.into_iter().collect();
@@ -449,6 +473,7 @@ pub fn simulate_parsed(spec: &Architecture, sc: &Scenario, o: &SimOptions) -> Si
             events.push(Event { t: round(t + dt, 2), what: format!("{}: {}{}", e.kind, e.name, e.detail.map(|d| format!(" {}", d)).unwrap_or_default()) });
         }
         let snap = engine.snapshot_with(&nodes, &edges, false);
+        max_lag = max_lag.max(engine.replica_lag());
         let gl = snap.global;
         requests += gl.rps * dt;
         failed += gl.rps * gl.error_rate * dt;
@@ -537,6 +562,8 @@ pub fn simulate_parsed(spec: &Architecture, sc: &Scenario, o: &SimOptions) -> Si
             requests: js_round(requests),
             failed_requests: js_round(failed),
             lost_writes: js_round(engine.lost_writes()),
+            stale_reads: js_round(engine.stale_reads()),
+            max_replica_lag_s: round(max_lag, 1),
             worst_moment_s: round(worst_t, 1),
         },
         slo: SloOut { max_error_rate: max_err, max_p99_ms: max_p99 },

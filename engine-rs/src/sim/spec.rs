@@ -202,6 +202,8 @@ pub struct Architecture {
     pub calls: std::collections::HashMap<(String, String), f64>,
     /// links that carry only reads or only writes (from, to) → "reads" | "writes"
     pub carries: std::collections::HashMap<(String, String), String>,
+    /// database → replica links replicated synchronously (from, to)
+    pub sync: std::collections::HashSet<(String, String)>,
     pub zones: Vec<(String, Option<String>, Vec<String>)>,
 }
 
@@ -240,6 +242,11 @@ fn connection_of(c: &Value) -> Option<(String, String, Option<f64>)> {
             }
             if let Some(v) = o.get("carries") {
                 if !matches!(v.as_str(), Some("reads") | Some("writes")) {
+                    return None;
+                }
+            }
+            if let Some(v) = o.get("replication") {
+                if !matches!(v.as_str(), Some("sync") | Some("async")) {
                     return None;
                 }
             }
@@ -284,6 +291,11 @@ fn connection_issues(c: &Value, i: usize) -> Vec<Issue> {
                     object.push(type_issue(vec![json!(k)], "string", o.get(k)));
                     object_aborted = true;
                 }
+            }
+            match o.get("replication") {
+                None | Some(Value::Null) => {}
+                Some(Value::String(c)) if c == "sync" || c == "async" => {}
+                Some(_) => object.push(Issue { path: vec![json!("replication")], message: "Invalid option: expected one of \"sync\"|\"async\"".into(), code: "invalid_value", values: Some(vec![json!("sync"), json!("async")]), head: h(&[("code", json!("invalid_value")), ("values", json!(["sync", "async"]))]), ..Default::default() }),
             }
             match o.get("carries") {
                 None | Some(Value::Null) => {}
@@ -385,6 +397,7 @@ pub fn check_architecture(v: &Value) -> (Option<Architecture>, Vec<Issue>) {
     let mut connections = vec![];
     let mut calls = std::collections::HashMap::new();
     let mut carries = std::collections::HashMap::new();
+    let mut sync = std::collections::HashSet::new();
     match o.get("connections") {
         Some(Value::Array(a)) => {
             for (i, c) in a.iter().enumerate() {
@@ -395,6 +408,9 @@ pub fn check_architecture(v: &Value) -> (Option<Architecture>, Vec<Issue>) {
                         }
                         if let Some(k) = c.get("carries").and_then(|v| v.as_str()) {
                             carries.insert((x.0.clone(), x.1.clone()), k.to_string());
+                        }
+                        if c.get("replication").and_then(|v| v.as_str()) == Some("sync") {
+                            sync.insert((x.0.clone(), x.1.clone()));
                         }
                         connections.push(x)
                     }
@@ -457,6 +473,7 @@ pub fn check_architecture(v: &Value) -> (Option<Architecture>, Vec<Issue>) {
         connections,
         calls,
         carries,
+        sync,
         zones,
     }), issues)
 }
@@ -491,8 +508,9 @@ pub fn graph_of(a: &Architecture) -> (Vec<SimNode>, Vec<SimEdge>) {
         .map(|(from, to, lat)| {
             let calls = a.calls.get(&(from.clone(), to.clone())).copied();
             let carries = a.carries.get(&(from.clone(), to.clone())).cloned();
+            let replication = if a.sync.contains(&(from.clone(), to.clone())) { Some("sync".to_string()) } else { None };
             let latency_ms = lat.filter(|l| *l != 0.0);
-            SimEdge { id: format!("e-{}-{}", from, to), source: from.clone(), target: to.clone(), data: if latency_ms.is_some() || calls.is_some() || carries.is_some() { Some(EdgeData { latency_ms, calls, carries }) } else { None } }
+            SimEdge { id: format!("e-{}-{}", from, to), source: from.clone(), target: to.clone(), data: if latency_ms.is_some() || calls.is_some() || carries.is_some() || replication.is_some() { Some(EdgeData { latency_ms, calls, carries, replication }) } else { None } }
         })
         .collect();
     (nodes, edges)
@@ -516,7 +534,8 @@ pub fn to_value(a: &Architecture) -> Value {
                 .map(|(f, t, l)| {
                     let calls = a.calls.get(&(f.clone(), t.clone()));
                     let carries = a.carries.get(&(f.clone(), t.clone()));
-                    if l.is_none() && calls.is_none() && carries.is_none() {
+                    let sync = a.sync.contains(&(f.clone(), t.clone()));
+                    if l.is_none() && calls.is_none() && carries.is_none() && !sync {
                         return json!([f, t]);
                     }
                     let mut o = JMap::new();
@@ -530,6 +549,9 @@ pub fn to_value(a: &Architecture) -> Value {
                     }
                     if let Some(c) = carries {
                         o.insert("carries".into(), json!(c));
+                    }
+                    if sync {
+                        o.insert("replication".into(), json!("sync"));
                     }
                     Value::Object(o)
                 })
@@ -594,7 +616,25 @@ pub fn apply_variant(base: &Architecture, v: &Value) -> Result<Architecture, Str
                 let (from, to) = (s("from"), s("to"));
                 find(&a, &from)?;
                 find(&a, &to)?;
-                a.connections.push((from, to, None));
+                // connecting an existing pair sets its link properties
+                a.connections.retain(|(f, t, _)| !(*f == from && *t == to));
+                let key = (from.clone(), to.clone());
+                if let Some(n) = ch.get("calls").and_then(|x| x.as_f64()).filter(|n| *n > 1.0) {
+                    a.calls.insert(key.clone(), n);
+                }
+                if let Some(k) = ch.get("carries").and_then(|x| x.as_str()) {
+                    a.carries.insert(key.clone(), k.to_string());
+                }
+                match ch.get("replication").and_then(|x| x.as_str()) {
+                    Some("sync") => {
+                        a.sync.insert(key.clone());
+                    }
+                    Some("async") => {
+                        a.sync.remove(&key);
+                    }
+                    _ => {}
+                }
+                a.connections.push((from, to, ch.get("latencyMs").and_then(|x| x.as_f64())));
             }
             "disconnect" => {
                 let (from, to) = (s("from"), s("to"));
@@ -620,6 +660,9 @@ pub enum Action {
     InjectErrors(String, f64),
     InjectLatency(String, f64),
     FlushCache(String),
+    /// cut every link between two zones; both sides keep running
+    Partition(String, String),
+    HealPartition,
 }
 
 impl Action {
@@ -636,6 +679,8 @@ impl Action {
             Action::InjectErrors(..) => "inject-errors",
             Action::InjectLatency(..) => "inject-latency",
             Action::FlushCache(_) => "flush-cache",
+            Action::Partition(..) => "partition",
+            Action::HealPartition => "heal-partition",
         }
     }
     pub fn id(&self) -> Option<&str> {
@@ -705,10 +750,25 @@ pub fn parse_action(v: &Value, path: Vec<Value>, issues: &mut Vec<Issue>) -> Opt
             Action::InjectLatency(i, frac("ms", None, issues)?)
         }
         "flush-cache" => Action::FlushCache(need_id(issues)?),
+        "partition" => {
+            let zone = |k: &str, issues: &mut Vec<Issue>| -> Option<String> {
+                let r = o.get(k).and_then(|x| x.as_str()).map(String::from);
+                if r.is_none() {
+                    let mut p = path.clone();
+                    p.push(json!(k));
+                    issues.push(Issue { path: p, message: "Invalid input: expected string, received undefined".into(), ..Default::default() });
+                }
+                r
+            };
+            let a = zone("a", issues);
+            let b = zone("b", issues);
+            Action::Partition(a?, b?)
+        }
+        "heal-partition" => Action::HealPartition,
         x => {
             let mut p = path.clone();
             p.push(json!("type"));
-            issues.push(Issue { path: p, message: format!("unknown action \"{}\" (kill-id, revive-id, kill, revive-all, fail-zone, restore-zone, degrade, restore, inject-errors, inject-latency, flush-cache)", x), ..Default::default() });
+            issues.push(Issue { path: p, message: format!("unknown action \"{}\" (kill-id, revive-id, kill, revive-all, fail-zone, restore-zone, degrade, restore, inject-errors, inject-latency, flush-cache, partition, heal-partition)", x), ..Default::default() });
             return None;
         }
     })

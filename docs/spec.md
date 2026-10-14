@@ -57,7 +57,7 @@ zones:                          # optional failure domains
 ### Connections and semantics
 
 - Three ways to write one: `users -> lb`, `[users, lb]`, `{ from: users, to: lb }`. Only the object
-  form carries link properties (`latencyMs`, `calls`, `carries`).
+  form carries link properties (`latencyMs`, `calls`, `carries`, `replication`).
 - Order matters for `routing: failover` (first child first).
 - `db → replica` connections define replicas (reads are shared, failover target).
 - `queue → worker` connections define consumers (pull model).
@@ -70,6 +70,12 @@ zones:                          # optional failure domains
 - `carries: reads | writes` on a connection: the link takes only that class (CQRS — reads to a cache
   or replica, writes to a queue). A component's reads and writes are spread over the links that
   carry them; a class with no link to take it fails there.
+- `replication: sync | async` on a `db → replica` connection. `async` (default): the primary
+  acknowledges a write at once and the replica receives it a link round-trip later; while it cannot
+  reach the primary (partition) its lag grows, and a failover promotes it with what it never
+  received missing (`lostWrites`), and its reads are stale (`staleReads`, `replicaLagS`).
+  `sync`: every write waits for that replica — no data lost on failover, and writes fail while it is
+  unreachable. CAP in one field: consistency or availability during a partition.
 
 ### Lint rules (warnings unless noted)
 
@@ -107,6 +113,8 @@ slo: { maxErrorRate: 0.01, maxP99Ms: 300 }      # defaults
 | `{ type: inject-latency, id, ms }` | gray failure: every request takes `ms` longer (and each worker is busy longer, so throughput drops too) |
 | `{ type: flush-cache, id }` | a cache/cdn loses every key — hit rate restarts from zero and re-warms over `warmupS` |
 | `{ type: restore, id }` | end a brownout and clear injected faults |
+| `{ type: partition, a, b }` | cut the network between zones `a` and `b`: every link between their members fails (both sides keep running) |
+| `{ type: heal-partition }` | restore the network between every zone |
 
 ## Variants (hypotheses)
 

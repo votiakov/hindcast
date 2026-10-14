@@ -325,6 +325,12 @@ struct DNode {
     last_refill: f64,
     warm: f64,
     down_since: Option<f64>,
+    /// a replica: replication lag behind its primary, s
+    repl_lag: f64,
+    /// a database: writes that arrived this second, and whether its promotion's loss was counted
+    writes_win: f64,
+    writes_rate: f64,
+    promoted_counted: bool,
     br: &'static str,
     br_until: f64,
     br_ok: f64,
@@ -364,6 +370,12 @@ pub struct DesSummary {
     /// writes a write-behind cache acknowledged and then lost
     #[serde(skip_serializing_if = "is_zero")]
     pub lost_writes: f64,
+    /// reads answered by a replica more than a second behind its primary
+    #[serde(skip_serializing_if = "is_zero")]
+    pub stale_reads: f64,
+    /// the furthest any replica fell behind its primary, s
+    #[serde(skip_serializing_if = "is_zero")]
+    pub max_replica_lag_s: f64,
     pub worst_moment_s: f64,
     pub events: f64,
     pub wall_ms: f64,
@@ -427,6 +439,12 @@ struct Des<'a> {
     link_calls: HashMap<(usize, usize), f64>,
     /// links that carry only reads (1) or only writes (2)
     link_carries: HashMap<(usize, usize), u8>,
+    /// database → replica links replicated synchronously
+    link_sync: std::collections::HashSet<(usize, usize)>,
+    /// each replica's primary
+    primary_of: HashMap<usize, usize>,
+    stale_reads: f64,
+    max_replica_lag: f64,
     conts: Vec<Cont>,
     free: Vec<ContId>,
     calls: Vec<Option<Call>>,
@@ -451,6 +469,11 @@ struct Des<'a> {
 }
 
 impl<'a> Des<'a> {
+    /// b is up and a network partition does not cut it off from a
+    fn reach(&self, a: usize, b: usize) -> bool {
+        up(&self.nodes[b]) && !cut(&self.nodes[a].data, &self.nodes[b].data)
+    }
+
     fn cont(&mut self, c: Cont) -> ContId {
         if let Some(i) = self.free.pop() {
             self.conts[i] = c;
@@ -582,6 +605,12 @@ impl<'a> Des<'a> {
     fn arrive(&mut self, i: usize, read: bool, done: ContId) {
         self.nodes[i].win.arrivals += 1.0;
         let kind = self.nodes[i].kind;
+        if kind == "replica" && read && self.nodes[i].repl_lag > 1.0 {
+            self.stale_reads += 1.0;
+        }
+        if kind == "db" && !read {
+            self.nodes[i].writes_win += 1.0;
+        }
         if kind == "db" {
             return self.arrive_db(i, read, done);
         }
@@ -625,9 +654,18 @@ impl<'a> Des<'a> {
     }
 
     fn arrive_db(&mut self, i: usize, read: bool, done: ContId) {
-        let replicas: Vec<usize> = self.nodes[i].children.iter().copied().filter(|&c| self.nodes[c].data.kind == "replica" && up(&self.nodes[c])).collect();
+        // a dead primary's replicas are chosen around it: the partition does not stop the failover
+        let primary_up = up(&self.nodes[i]);
+        let mut replicas: Vec<usize> = self.nodes[i].children.iter().copied().filter(|&c| self.nodes[c].data.kind == "replica" && if primary_up { self.reach(i, c) } else { up(&self.nodes[c]) }).collect();
+        // the replica furthest along is promoted first
+        replicas.sort_by(|a, b| self.nodes[*a].repl_lag.partial_cmp(&self.nodes[*b].repl_lag).unwrap_or(std::cmp::Ordering::Equal));
         if up(&self.nodes[i]) {
             self.nodes[i].down_since = None;
+            self.nodes[i].promoted_counted = false;
+            // a synchronous replica out of reach: the write cannot be acknowledged
+            if !read && self.nodes[i].children.iter().any(|&c| self.link_sync.contains(&(i, c)) && !self.reach(i, c)) {
+                return self.fail(Some(i), done, 0.5);
+            }
             if read && !replicas.is_empty() {
                 let pick = (self.rng.next() * (replicas.len() + 1) as f64).floor() as usize;
                 if pick > 0 {
@@ -656,6 +694,12 @@ impl<'a> Des<'a> {
 
     /// one call over the network: a hop plus the link's round trip, if it has one
     fn hop(&mut self, i: usize, read: bool, done: ContId, from: Option<usize>) {
+        // across a partition: no answer until the connection times out
+        if let Some(f) = from {
+            if cut(&self.nodes[f].data, &self.nodes[i].data) && !(self.nodes[f].data.kind == "db" && !up(&self.nodes[f])) {
+                return self.fail(None, done, 1000.0);
+            }
+        }
         let link = from.and_then(|f| self.link_ms.get(&(f, i)).copied()).unwrap_or(0.0);
         let ms = self.cfg.hop_ms + link;
         // a link that makes N calls per request: N in parallel, done when all have answered
@@ -752,6 +796,14 @@ impl<'a> Des<'a> {
                 return self.fail(Some(n), done, 0.0);
             }
         }
+        if kind == "db" && !job.read {
+            // every synchronous replica acknowledges before the write is answered
+            let wait = self.nodes[n].children.iter().filter(|&&c| self.link_sync.contains(&(n, c))).map(|&c| self.link_ms.get(&(n, c)).copied().unwrap_or(0.0) + self.cfg.hop_ms + self.nodes[c].svc_mean_ms).fold(0.0, f64::max);
+            if wait > 0.0 {
+                self.at(wait, Ev::Deliver { done, ok: true });
+                return;
+            }
+        }
         if kind == "db" || kind == "replica" {
             return self.deliver(done, true);
         }
@@ -763,7 +815,7 @@ impl<'a> Des<'a> {
 
     /// queue consumers (pull model)
     fn pump(&mut self, n: usize) {
-        let consumers: Vec<usize> = self.nodes[n].children.iter().copied().filter(|&c| up(&self.nodes[c])).collect();
+        let consumers: Vec<usize> = self.nodes[n].children.iter().copied().filter(|&c| self.reach(n, c)).collect();
         while !self.nodes[n].backlog.is_empty() {
             // pull when some consumer has a free worker
             let free = consumers.iter().copied().find(|&c| self.nodes[c].busy + (self.nodes[c].queue.len() as f64) < self.nodes[c].workers);
@@ -884,7 +936,7 @@ impl<'a> Des<'a> {
         }
         let mut kids = self.nodes[n].children.clone();
         if filter {
-            kids.retain(|&c| up(&self.nodes[c]));
+            kids.retain(|&c| self.reach(n, c));
         }
         if restricted {
             // only the links that carry this request's class
@@ -1007,6 +1059,50 @@ impl<'a> Des<'a> {
     fn sample(&mut self) {
         let win_s = 1.0;
         let now = self.now;
+        // replication: lag per replica, and the writes a promotion loses
+        let fo = self.cfg.failover_s;
+        for i in 0..self.nodes.len() {
+            if self.nodes[i].data.kind == "db" {
+                let promoted = matches!((fo, self.nodes[i].down_since), (Some(f), Some(t)) if now - t >= f);
+                if promoted && !self.nodes[i].promoted_counted {
+                    self.nodes[i].promoted_counted = true;
+                    let lag = self.nodes[i].children.iter().filter(|&&c| self.nodes[c].data.kind == "replica" && up(&self.nodes[c])).map(|&c| self.nodes[c].repl_lag).fold(f64::INFINITY, f64::min);
+                    if lag.is_finite() {
+                        self.lost_writes += self.nodes[i].writes_rate * lag;
+                    }
+                }
+                if up(&self.nodes[i]) {
+                    self.nodes[i].writes_rate = self.nodes[i].writes_win / win_s;
+                }
+                self.nodes[i].writes_win = 0.0;
+            }
+        }
+        let mut max_lag: f64 = 0.0;
+        for i in 0..self.nodes.len() {
+            if self.nodes[i].data.kind != "replica" {
+                continue;
+            }
+            if let Some(&p) = self.primary_of.get(&i) {
+                let primary_up = up(&self.nodes[p]);
+                let reachable = primary_up && !cut(&self.nodes[p].data, &self.nodes[i].data);
+                let base = self.link_ms.get(&(p, i)).copied().unwrap_or(0.0) / 1000.0;
+                let primary_promoted = !primary_up && matches!((fo, self.nodes[p].down_since), (Some(f), Some(t)) if now - t >= f);
+                let sync = self.link_sync.contains(&(p, i));
+                let x = &mut self.nodes[i];
+                if primary_promoted {
+                    x.repl_lag = 0.0;
+                } else if sync {
+                    // a synchronous replica never falls behind: the primary refuses what it cannot replicate
+                    x.repl_lag = 0.0;
+                } else if reachable {
+                    x.repl_lag = (x.repl_lag - win_s * super::engine::CATCH_UP).max(base);
+                } else if primary_up {
+                    x.repl_lag += win_s;
+                }
+            }
+            max_lag = max_lag.max(self.nodes[i].repl_lag);
+        }
+        self.max_replica_lag = self.max_replica_lag.max(max_lag);
         let mut cost = 0.0;
         for i in 0..self.nodes.len() {
             self.set_busy(i, 0.0);
@@ -1032,6 +1128,7 @@ impl<'a> Des<'a> {
                 hit_rps: w.hits / win_s,
                 reachable: if n.pooled { instances_up(&n.data) } else { instances_up(&n.data).min(1.0) },
                 lag_s: 0.0,
+                repl_lag_s: n.repl_lag,
                 cold_frac: 0.0,
                 failover: if n.data.kind == "db" && n.down_since.is_some() {
                     match fo {
@@ -1188,6 +1285,10 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
             last_refill: 0.0,
             warm: 0.0,
             down_since: None,
+            repl_lag: 0.0,
+            writes_win: 0.0,
+            writes_rate: 0.0,
+            promoted_counted: false,
             br: "closed",
             br_until: 0.0,
             br_ok: 0.0,
@@ -1208,6 +1309,8 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
     let mut link_ms = HashMap::new();
     let mut link_calls = HashMap::new();
     let mut link_carries = HashMap::new();
+    let mut link_sync = std::collections::HashSet::new();
+    let mut primary_of = HashMap::new();
     for e in &edges {
         let (a, b) = match (index.get(&e.source), index.get(&e.target)) {
             (Some(a), Some(b)) if a != b => (*a, *b),
@@ -1218,6 +1321,12 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
         }
         if let Some(c) = e.data.as_ref().and_then(|d| d.calls).filter(|c| *c > 1.0) {
             link_calls.insert((a, b), c);
+        }
+        if e.data.as_ref().and_then(|d| d.replication.as_deref()) == Some("sync") {
+            link_sync.insert((a, b));
+        }
+        if nodes[a].data.kind == "db" && nodes[b].data.kind == "replica" {
+            primary_of.insert(b, a);
         }
         match e.data.as_ref().and_then(|d| d.carries.as_deref()) {
             Some("reads") => {
@@ -1251,6 +1360,10 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
         link_ms,
         link_calls,
         link_carries,
+        link_sync,
+        primary_of,
+        stale_reads: 0.0,
+        max_replica_lag: 0.0,
         conts: vec![],
         free: vec![],
         calls: vec![],
@@ -1354,7 +1467,9 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
             slo_breach_seconds: des.breach,
             requests: des.total_reqs,
             failed_requests: des.total_fail,
-            lost_writes: des.lost_writes,
+            lost_writes: js_round(des.lost_writes),
+            stale_reads: des.stale_reads,
+            max_replica_lag_s: r3(des.max_replica_lag),
             worst_moment_s: r3(des.worst_t),
             events: processed,
             wall_ms,

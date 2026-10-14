@@ -276,6 +276,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .edge-link { font-family: var(--mono); font-size: 10px; padding: 1px 5px; border-radius: 4px; color: #93c5fd; background: rgba(15, 23, 42, 0.85); border: 1px dashed rgba(147, 197, 253, 0.5); }
 .edge-link-select { font-family: var(--mono); font-size: 11px; padding: 2px 4px; border-radius: 6px; background: var(--panel-solid); color: var(--text); border: 1px solid var(--border-strong); }
 :is([data-theme='reference'], [data-theme='terminal']) .edge-link { color: var(--r-ink-2); background: var(--r-surface); border-color: var(--r-line-strong); }
+.edge-link.cut, :is([data-theme='reference'], [data-theme='terminal']) .edge-link.cut { color: var(--red, #ef5b5b); border-color: currentColor; border-style: solid; }
 :is([data-theme='reference'], [data-theme='terminal']) .edge-link-select { background: var(--r-surface); color: var(--r-ink); border-color: var(--r-line-strong); border-radius: 4px; }
 .edge-x:hover { color: var(--red); border-color: var(--red); }
 .react-flow__connection-path { stroke: var(--cyan); stroke-width: 2; stroke-dasharray: 6 4; }

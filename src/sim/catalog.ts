@@ -95,6 +95,8 @@ export interface SystemNodeData extends Record<string, unknown> {
   workingSetGb?: number;
   /** cache: Zipf exponent of key popularity (default 1) */
   skew?: number;
+  /** set by a network partition: links between components on different sides are cut */
+  side?: string;
   /** cache / cdn: bumped by the flush action — the engine empties the cache when it changes */
   flushes?: number;
 

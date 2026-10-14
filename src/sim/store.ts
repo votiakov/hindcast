@@ -85,6 +85,9 @@ export interface LessonState {
   /** running $/h sum and count over the level, for average-bill goals */
   costSum: number;
   costN: number;
+  /** requests and failures since the level's goal started being checked */
+  winReq: number;
+  winFail: number;
 }
 
 export interface CompareState {
@@ -225,7 +228,7 @@ interface State {
   removeNode: (b: BoardId, id: string) => void;
   removeEdge: (b: BoardId, id: string) => void;
   /** link properties (network latency) */
-  updateEdge: (b: BoardId, id: string, data: { latencyMs?: number; calls?: number; carries?: 'reads' | 'writes' }) => void;
+  updateEdge: (b: BoardId, id: string, data: { latencyMs?: number; calls?: number; carries?: 'reads' | 'writes'; replication?: 'sync' | 'async' }) => void;
   killNode: (b: BoardId, id: string) => void;
   reviveNode: (b: BoardId, id: string) => void;
   setZoneFailed: (b: BoardId, id: string, failed: boolean) => void;
@@ -268,7 +271,7 @@ export const recorders: Record<BoardId, Recorder> = { main: new Recorder(), A: n
 
 export const engines: Record<BoardId, Engine> = { main: new Engine(), A: new Engine(), B: new Engine() };
 let toastSeq = 1;
-const emptyGlobal: GlobalStats = { t: 0, rps: 0, errorRate: 0, p99: 0, cost: 0, lostWrites: 0, history: [] };
+const emptyGlobal: GlobalStats = { t: 0, rps: 0, errorRate: 0, p99: 0, cost: 0, lostWrites: 0, staleReads: 0, replicaLagS: 0, history: [] };
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 
 export const activeBoards = (mode: Mode, episodeId?: string): BoardId[] =>
@@ -277,7 +280,7 @@ export const systemNodes = (nodes: AppNode[]) => nodes.filter(isSystem);
 export const scenarioById = (id: string | null): Scenario | undefined => findScenario(id);
 
 function freshLesson(lesson: Lesson): LessonState {
-  return { lesson, stepIndex: 0, stepT: 0, holdT: 0, failT: 0, passed: false, missed: false, firedChaos: [], finished: false, shown: false, costSum: 0, costN: 0 };
+  return { lesson, stepIndex: 0, stepT: 0, holdT: 0, failT: 0, passed: false, missed: false, firedChaos: [], finished: false, shown: false, costSum: 0, costN: 0, winReq: 0, winFail: 0 };
 }
 
 function freshStudio(episodeId: string, aspect: Aspect, brandId: string): StudioState {
@@ -639,7 +642,7 @@ export const useSim = create<State>()((set, get) => {
       if (s.mode === 'lesson' && !s.lesson.finished) {
         engines.main.reset();
         get().apply('main', { type: 'revive-all' });
-        set({ simT: 0, running: false, lesson: { ...s.lesson, stepT: 0, holdT: 0, failT: 0, passed: false, missed: false, firedChaos: [], costSum: 0, costN: 0 } });
+        set({ simT: 0, running: false, lesson: { ...s.lesson, stepT: 0, holdT: 0, failT: 0, passed: false, missed: false, firedChaos: [], costSum: 0, costN: 0, winReq: 0, winFail: 0 } });
         return;
       }
       if (s.mode === 'studio') get().loadEpisode(s.studio.episodeId);
@@ -663,7 +666,7 @@ export const useSim = create<State>()((set, get) => {
         set({ lesson: { ...ls, finished: true }, running: false });
         return;
       }
-      set({ lesson: { ...ls, stepIndex: ls.stepIndex + 1, stepT: 0, holdT: 0, failT: 0, passed: false, missed: false, firedChaos: [], shown: false, costSum: 0, costN: 0 } });
+      set({ lesson: { ...ls, stepIndex: ls.stepIndex + 1, stepT: 0, holdT: 0, failT: 0, passed: false, missed: false, firedChaos: [], shown: false, costSum: 0, costN: 0, winReq: 0, winFail: 0 } });
     },
     pickScenario: (id) => {
       if (id === null) {
@@ -794,7 +797,9 @@ export const useSim = create<State>()((set, get) => {
               const sys = systemNodes(nodes);
               return maxLag(sys, engines.main.snapshot(sys, edges).nodeStats) <= step.goal.maxLagS!;
             })();
+            ls = { ...ls, winReq: ls.winReq + g.rps * dt, winFail: ls.winFail + g.rps * g.errorRate * dt };
             const ok =
+              (step.goal.maxLostWrites === undefined || g.lostWrites <= step.goal.maxLostWrites) &&
               g.errorRate <= step.goal.maxErrorRate &&
               g.p99 <= step.goal.maxP99 &&
               (step.goal.maxCost === undefined || !s.settings.cost || g.cost <= step.goal.maxCost) &&
@@ -802,7 +807,8 @@ export const useSim = create<State>()((set, get) => {
               g.rps > 0;
             ls = ok ? { ...ls, holdT: ls.holdT + dt } : { ...ls, holdT: 0, failT: ls.failT + dt };
             const avgOk = step.goal.maxAvgCost === undefined || !s.settings.cost || ls.costSum / Math.max(1, ls.costN) <= step.goal.maxAvgCost;
-            if (ls.holdT >= step.goal.holdSeconds - 1e-9 && avgOk) {
+            const totalOk = step.goal.maxTotalErrorRate === undefined || ls.winFail / Math.max(1e-9, ls.winReq) <= step.goal.maxTotalErrorRate;
+            if (ls.holdT >= step.goal.holdSeconds - 1e-9 && avgOk && totalOk) {
               ls = { ...ls, passed: true };
               get().toast('good', `🏆 Objective complete: ${step.title}`);
             } else if (step.goal.deadline !== undefined && ls.stepT > step.goal.deadline) {
@@ -841,7 +847,7 @@ export const useSim = create<State>()((set, get) => {
           recorded =
             recorders[b].maybeRecord(simT, () => ({
               t: simT,
-              global: { t: nb.global.t, rps: nb.global.rps, errorRate: nb.global.errorRate, p99: nb.global.p99, cost: nb.global.cost, lostWrites: nb.global.lostWrites },
+              global: { t: nb.global.t, rps: nb.global.rps, errorRate: nb.global.errorRate, p99: nb.global.p99, cost: nb.global.cost, lostWrites: nb.global.lostWrites, staleReads: nb.global.staleReads, replicaLagS: nb.global.replicaLagS },
               nodeStats: lean(nb.nodeStats),
               edgeStats: nb.edgeStats,
               data: Object.fromEntries(systemNodes(nodes).map((n) => [n.id, n.data])),

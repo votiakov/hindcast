@@ -86,6 +86,10 @@ pub struct NodeData {
     /// cache: how concentrated requests are on popular keys (Zipf exponent; 1 is typical of web traffic)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skew: Option<f64>,
+    /// a network partition's side this component is on (set by the partition action): links between
+    /// components on different sides are cut
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub side: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fault_rate: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -243,6 +247,11 @@ pub fn cache_hit_rate(d: &NodeData) -> f64 {
         }
         None => d.hit_rate.unwrap_or(0.85),
     }
+}
+
+/// a link between two components that a network partition has cut
+pub fn cut(a: &NodeData, b: &NodeData) -> bool {
+    matches!((&a.side, &b.side), (Some(x), Some(y)) if x != y)
 }
 
 pub fn cache_warmth(cold_at: Option<f64>, now: f64, warmup_s: Option<f64>) -> f64 {

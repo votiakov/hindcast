@@ -12,6 +12,10 @@ export interface StepGoal {
   maxAvgCost?: number;
   /** queues: seconds of backlog (at the current drain rate) any queue may hold */
   maxLagS?: number;
+  /** acknowledged writes that may be lost over the level (a failover to a replica that fell behind, a write-behind cache that died) */
+  maxLostWrites?: number;
+  /** share of requests failed over the whole checked window (a brief election may spike; the window total may not) */
+  maxTotalErrorRate?: number;
   /** how long the system must stay within SLO to pass */
   holdSeconds: number;
   /** step time when the goal starts being checked (default: end of the traffic ramp) */

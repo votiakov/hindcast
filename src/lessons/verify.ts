@@ -16,7 +16,7 @@ export interface LevelResult {
   /** step time the goal was met for long enough, s */
   at: number | null;
   /** worst moment while the goal was checked */
-  worst: { errorRate: number; p99: number; cost: number; lagS?: number; avgCost?: number };
+  worst: { errorRate: number; p99: number; cost: number; lagS?: number; avgCost?: number; lostWrites?: number; totalErrorRate?: number };
 }
 
 /** the longest backlog any queue holds, in seconds of draining */
@@ -43,6 +43,8 @@ export function playLevel(board: Board, step: LessonStep, readRatio = 0.8, opts:
   const worst: LevelResult['worst'] = { errorRate: 0, p99: 0, cost: 0 };
   const cfg = { ...DEFAULT_ENGINE_CONFIG };
   let costSum = 0;
+  let winReq = 0;
+  let winFail = 0;
   let costN = 0;
   for (let t = 0; t < until; t += dt) {
     for (const [ci, c] of (step.chaos ?? []).entries()) {
@@ -63,10 +65,14 @@ export function playLevel(board: Board, step: LessonStep, readRatio = 0.8, opts:
     worst.cost = Math.max(worst.cost, g.cost);
     const lag = goal.maxLagS === undefined ? 0 : maxLag(sys, snap.nodeStats);
     worst.lagS = Math.max(worst.lagS ?? 0, lag);
-    const ok = g.errorRate <= goal.maxErrorRate && g.p99 <= goal.maxP99 && (goal.maxCost === undefined || g.cost <= goal.maxCost) && (goal.maxLagS === undefined || lag <= goal.maxLagS) && g.rps > 0;
+    winReq += g.rps * dt;
+    winFail += g.rps * g.errorRate * dt;
+    worst.lostWrites = g.lostWrites;
+    worst.totalErrorRate = winReq > 0 ? winFail / winReq : 0;
+    const ok = g.errorRate <= goal.maxErrorRate && g.p99 <= goal.maxP99 && (goal.maxCost === undefined || g.cost <= goal.maxCost) && (goal.maxLagS === undefined || lag <= goal.maxLagS) && (goal.maxLostWrites === undefined || g.lostWrites <= goal.maxLostWrites) && g.rps > 0;
     hold = ok ? hold + dt : 0;
     worst.avgCost = costSum / costN;
-    if (hold >= goal.holdSeconds - 1e-9 && (goal.maxAvgCost === undefined || costSum / costN <= goal.maxAvgCost)) return { passed: true, at: Math.round((t + dt) * 10) / 10, worst };
+    if (hold >= goal.holdSeconds - 1e-9 && (goal.maxAvgCost === undefined || costSum / costN <= goal.maxAvgCost) && (goal.maxTotalErrorRate === undefined || worst.totalErrorRate <= goal.maxTotalErrorRate)) return { passed: true, at: Math.round((t + dt) * 10) / 10, worst };
     if (goal.deadline !== undefined && t + dt > goal.deadline + 1e-9) return { passed: false, at: null, worst };
   }
   return { passed: !goal, at: null, worst };

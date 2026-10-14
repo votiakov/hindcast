@@ -320,6 +320,12 @@
              "minimum": 0,
              "maximum": 1000
             },
+            "calls": {
+             "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 1000
+            },
             "carries": {
              "description": "the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both",
              "type": "string",
@@ -328,11 +334,13 @@
               "writes"
              ]
             },
-            "calls": {
-             "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
-             "type": "integer",
-             "minimum": 1,
-             "maximum": 1000
+            "replication": {
+             "description": "database → replica: sync — every write waits for this replica (no data lost on failover, writes stop while it is unreachable); async (default) — the replica lags, a failover loses what it had not received",
+             "type": "string",
+             "enum": [
+              "sync",
+              "async"
+             ]
             }
            },
            "required": [
@@ -673,6 +681,12 @@
              "minimum": 0,
              "maximum": 1000
             },
+            "calls": {
+             "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 1000
+            },
             "carries": {
              "description": "the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both",
              "type": "string",
@@ -681,11 +695,13 @@
               "writes"
              ]
             },
-            "calls": {
-             "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
-             "type": "integer",
-             "minimum": 1,
-             "maximum": 1000
+            "replication": {
+             "description": "database → replica: sync — every write waits for this replica (no data lost on failover, writes stop while it is unreachable); async (default) — the replica lags, a failover loses what it had not received",
+             "type": "string",
+             "enum": [
+              "sync",
+              "async"
+             ]
             }
            },
            "required": [
@@ -995,6 +1011,41 @@
              "required": [
               "type",
               "id"
+             ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "partition"
+              },
+              "a": {
+               "type": "string",
+               "description": "zone id"
+              },
+              "b": {
+               "type": "string",
+               "description": "zone id"
+              }
+             },
+             "required": [
+              "type",
+              "a",
+              "b"
+             ],
+             "description": "cut every link between two zones; both keep running"
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "heal-partition"
+              }
+             },
+             "required": [
+              "type"
              ]
             }
            ]
@@ -1339,6 +1390,12 @@
              "minimum": 0,
              "maximum": 1000
             },
+            "calls": {
+             "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 1000
+            },
             "carries": {
              "description": "the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both",
              "type": "string",
@@ -1347,11 +1404,13 @@
               "writes"
              ]
             },
-            "calls": {
-             "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
-             "type": "integer",
-             "minimum": 1,
-             "maximum": 1000
+            "replication": {
+             "description": "database → replica: sync — every write waits for this replica (no data lost on failover, writes stop while it is unreachable); async (default) — the replica lags, a failover loses what it had not received",
+             "type": "string",
+             "enum": [
+              "sync",
+              "async"
+             ]
             }
            },
            "required": [
@@ -1681,6 +1740,12 @@
                 "minimum": 0,
                 "maximum": 1000
                },
+               "calls": {
+                "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+               },
                "carries": {
                 "description": "the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both",
                 "type": "string",
@@ -1689,11 +1754,13 @@
                  "writes"
                 ]
                },
-               "calls": {
-                "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 1000
+               "replication": {
+                "description": "database → replica: sync — every write waits for this replica (no data lost on failover, writes stop while it is unreachable); async (default) — the replica lags, a failover loses what it had not received",
+                "type": "string",
+                "enum": [
+                 "sync",
+                 "async"
+                ]
                }
               },
               "required": [
@@ -2200,13 +2267,38 @@
              },
              "to": {
               "type": "string"
+             },
+             "latencyMs": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1000
+             },
+             "calls": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+             },
+             "carries": {
+              "type": "string",
+              "enum": [
+               "reads",
+               "writes"
+              ]
+             },
+             "replication": {
+              "type": "string",
+              "enum": [
+               "sync",
+               "async"
+              ]
              }
             },
             "required": [
              "op",
              "from",
              "to"
-            ]
+            ],
+            "description": "add a link, or with link properties set them on an existing one"
            },
            {
             "type": "object",
@@ -2504,6 +2596,41 @@
              "required": [
               "type",
               "id"
+             ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "partition"
+              },
+              "a": {
+               "type": "string",
+               "description": "zone id"
+              },
+              "b": {
+               "type": "string",
+               "description": "zone id"
+              }
+             },
+             "required": [
+              "type",
+              "a",
+              "b"
+             ],
+             "description": "cut every link between two zones; both keep running"
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "heal-partition"
+              }
+             },
+             "required": [
+              "type"
              ]
             }
            ]
@@ -2832,6 +2959,12 @@
              "minimum": 0,
              "maximum": 1000
             },
+            "calls": {
+             "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 1000
+            },
             "carries": {
              "description": "the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both",
              "type": "string",
@@ -2840,11 +2973,13 @@
               "writes"
              ]
             },
-            "calls": {
-             "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
-             "type": "integer",
-             "minimum": 1,
-             "maximum": 1000
+            "replication": {
+             "description": "database → replica: sync — every write waits for this replica (no data lost on failover, writes stop while it is unreachable); async (default) — the replica lags, a failover loses what it had not received",
+             "type": "string",
+             "enum": [
+              "sync",
+              "async"
+             ]
             }
            },
            "required": [
@@ -3201,6 +3336,12 @@
              "minimum": 0,
              "maximum": 1000
             },
+            "calls": {
+             "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 1000
+            },
             "carries": {
              "description": "the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both",
              "type": "string",
@@ -3209,11 +3350,13 @@
               "writes"
              ]
             },
-            "calls": {
-             "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
-             "type": "integer",
-             "minimum": 1,
-             "maximum": 1000
+            "replication": {
+             "description": "database → replica: sync — every write waits for this replica (no data lost on failover, writes stop while it is unreachable); async (default) — the replica lags, a failover loses what it had not received",
+             "type": "string",
+             "enum": [
+              "sync",
+              "async"
+             ]
             }
            },
            "required": [
@@ -3523,6 +3666,41 @@
              "required": [
               "type",
               "id"
+             ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "partition"
+              },
+              "a": {
+               "type": "string",
+               "description": "zone id"
+              },
+              "b": {
+               "type": "string",
+               "description": "zone id"
+              }
+             },
+             "required": [
+              "type",
+              "a",
+              "b"
+             ],
+             "description": "cut every link between two zones; both keep running"
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "heal-partition"
+              }
+             },
+             "required": [
+              "type"
              ]
             }
            ]
@@ -3856,6 +4034,12 @@
              "minimum": 0,
              "maximum": 1000
             },
+            "calls": {
+             "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 1000
+            },
             "carries": {
              "description": "the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both",
              "type": "string",
@@ -3864,11 +4048,13 @@
               "writes"
              ]
             },
-            "calls": {
-             "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
-             "type": "integer",
-             "minimum": 1,
-             "maximum": 1000
+            "replication": {
+             "description": "database → replica: sync — every write waits for this replica (no data lost on failover, writes stop while it is unreachable); async (default) — the replica lags, a failover loses what it had not received",
+             "type": "string",
+             "enum": [
+              "sync",
+              "async"
+             ]
             }
            },
            "required": [
@@ -4178,6 +4364,41 @@
              "required": [
               "type",
               "id"
+             ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "partition"
+              },
+              "a": {
+               "type": "string",
+               "description": "zone id"
+              },
+              "b": {
+               "type": "string",
+               "description": "zone id"
+              }
+             },
+             "required": [
+              "type",
+              "a",
+              "b"
+             ],
+             "description": "cut every link between two zones; both keep running"
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "heal-partition"
+              }
+             },
+             "required": [
+              "type"
              ]
             }
            ]
@@ -4520,6 +4741,12 @@
              "minimum": 0,
              "maximum": 1000
             },
+            "calls": {
+             "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 1000
+            },
             "carries": {
              "description": "the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both",
              "type": "string",
@@ -4528,11 +4755,13 @@
               "writes"
              ]
             },
-            "calls": {
-             "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
-             "type": "integer",
-             "minimum": 1,
-             "maximum": 1000
+            "replication": {
+             "description": "database → replica: sync — every write waits for this replica (no data lost on failover, writes stop while it is unreachable); async (default) — the replica lags, a failover loses what it had not received",
+             "type": "string",
+             "enum": [
+              "sync",
+              "async"
+             ]
             }
            },
            "required": [
@@ -4957,6 +5186,12 @@
              "minimum": 0,
              "maximum": 1000
             },
+            "calls": {
+             "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 1000
+            },
             "carries": {
              "description": "the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both",
              "type": "string",
@@ -4965,11 +5200,13 @@
               "writes"
              ]
             },
-            "calls": {
-             "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
-             "type": "integer",
-             "minimum": 1,
-             "maximum": 1000
+            "replication": {
+             "description": "database → replica: sync — every write waits for this replica (no data lost on failover, writes stop while it is unreachable); async (default) — the replica lags, a failover loses what it had not received",
+             "type": "string",
+             "enum": [
+              "sync",
+              "async"
+             ]
             }
            },
            "required": [
@@ -5296,6 +5533,12 @@
                "minimum": 0,
                "maximum": 1000
               },
+              "calls": {
+               "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 1000
+              },
               "carries": {
                "description": "the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both",
                "type": "string",
@@ -5304,11 +5547,13 @@
                 "writes"
                ]
               },
-              "calls": {
-               "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
-               "type": "integer",
-               "minimum": 1,
-               "maximum": 1000
+              "replication": {
+               "description": "database → replica: sync — every write waits for this replica (no data lost on failover, writes stop while it is unreachable); async (default) — the replica lags, a failover loses what it had not received",
+               "type": "string",
+               "enum": [
+                "sync",
+                "async"
+               ]
               }
              },
              "required": [
@@ -5815,13 +6060,38 @@
             },
             "to": {
              "type": "string"
+            },
+            "latencyMs": {
+             "type": "number",
+             "minimum": 0,
+             "maximum": 1000
+            },
+            "calls": {
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 1000
+            },
+            "carries": {
+             "type": "string",
+             "enum": [
+              "reads",
+              "writes"
+             ]
+            },
+            "replication": {
+             "type": "string",
+             "enum": [
+              "sync",
+              "async"
+             ]
             }
            },
            "required": [
             "op",
             "from",
             "to"
-           ]
+           ],
+           "description": "add a link, or with link properties set them on an existing one"
           },
           {
            "type": "object",
@@ -6118,6 +6388,41 @@
              "required": [
               "type",
               "id"
+             ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "partition"
+              },
+              "a": {
+               "type": "string",
+               "description": "zone id"
+              },
+              "b": {
+               "type": "string",
+               "description": "zone id"
+              }
+             },
+             "required": [
+              "type",
+              "a",
+              "b"
+             ],
+             "description": "cut every link between two zones; both keep running"
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "heal-partition"
+              }
+             },
+             "required": [
+              "type"
              ]
             }
            ]
@@ -6445,6 +6750,12 @@
              "minimum": 0,
              "maximum": 1000
             },
+            "calls": {
+             "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 1000
+            },
             "carries": {
              "description": "the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both",
              "type": "string",
@@ -6453,11 +6764,13 @@
               "writes"
              ]
             },
-            "calls": {
-             "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
-             "type": "integer",
-             "minimum": 1,
-             "maximum": 1000
+            "replication": {
+             "description": "database → replica: sync — every write waits for this replica (no data lost on failover, writes stop while it is unreachable); async (default) — the replica lags, a failover loses what it had not received",
+             "type": "string",
+             "enum": [
+              "sync",
+              "async"
+             ]
             }
            },
            "required": [
@@ -6784,6 +7097,12 @@
                "minimum": 0,
                "maximum": 1000
               },
+              "calls": {
+               "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 1000
+              },
               "carries": {
                "description": "the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both",
                "type": "string",
@@ -6792,11 +7111,13 @@
                 "writes"
                ]
               },
-              "calls": {
-               "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
-               "type": "integer",
-               "minimum": 1,
-               "maximum": 1000
+              "replication": {
+               "description": "database → replica: sync — every write waits for this replica (no data lost on failover, writes stop while it is unreachable); async (default) — the replica lags, a failover loses what it had not received",
+               "type": "string",
+               "enum": [
+                "sync",
+                "async"
+               ]
               }
              },
              "required": [
@@ -7303,13 +7624,38 @@
             },
             "to": {
              "type": "string"
+            },
+            "latencyMs": {
+             "type": "number",
+             "minimum": 0,
+             "maximum": 1000
+            },
+            "calls": {
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 1000
+            },
+            "carries": {
+             "type": "string",
+             "enum": [
+              "reads",
+              "writes"
+             ]
+            },
+            "replication": {
+             "type": "string",
+             "enum": [
+              "sync",
+              "async"
+             ]
             }
            },
            "required": [
             "op",
             "from",
             "to"
-           ]
+           ],
+           "description": "add a link, or with link properties set them on an existing one"
           },
           {
            "type": "object",
@@ -7606,6 +7952,41 @@
              "required": [
               "type",
               "id"
+             ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "partition"
+              },
+              "a": {
+               "type": "string",
+               "description": "zone id"
+              },
+              "b": {
+               "type": "string",
+               "description": "zone id"
+              }
+             },
+             "required": [
+              "type",
+              "a",
+              "b"
+             ],
+             "description": "cut every link between two zones; both keep running"
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "heal-partition"
+              }
+             },
+             "required": [
+              "type"
              ]
             }
            ]

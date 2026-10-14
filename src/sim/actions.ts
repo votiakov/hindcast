@@ -17,7 +17,10 @@ export type SimAction =
   /** cache / cdn: drop every key — hit rate starts again from zero */
   | { type: 'flush-cache'; id: string }
   /** clears degrade and injected faults */
-  | { type: 'restore'; id: string };
+  | { type: 'restore'; id: string }
+  /** network partition: every link between the two zones is cut; both sides keep running */
+  | { type: 'partition'; a: string; b: string }
+  | { type: 'heal-partition' };
 
 import { KINDS, instancesUp, isSystem, type AppNode, type SystemNodeData } from './catalog';
 
@@ -86,6 +89,16 @@ export function applyAction(nodes: AppNode[], a: SimAction, ctx: ActionContext):
         target: a.id,
       };
     }
+    case 'partition': {
+      const [inA, inB] = [new Set(ctx.zoneMembers(a.a)), new Set(ctx.zoneMembers(a.b))];
+      return {
+        nodes: nodes.map((n) => (isSystem(n) && (inA.has(n.id) || inB.has(n.id)) ? { ...n, data: { ...n.data, side: inA.has(n.id) ? a.a : a.b } } : n)),
+        notes: [{ tone: 'bad', text: `✂ network partition: ${a.a} | ${a.b}` }],
+        target: a.a,
+      };
+    }
+    case 'heal-partition':
+      return { nodes: nodes.map((n) => (isSystem(n) && n.data.side ? { ...n, data: { ...n.data, side: undefined } } : n)), notes: [{ tone: 'good', text: '✅ partition healed' }], target: 'all' };
     case 'kill': {
       const candidates = nodes.filter((n): n is AppNode & { type: 'system' } => isSystem(n) && n.data.kind === a.kind && n.data.alive && instancesUp(n.data) > 0);
       if (!candidates.length) return { nodes, notes: [], target: null };

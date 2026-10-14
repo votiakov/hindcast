@@ -12,7 +12,7 @@ const DATA_KEYS = ['tier', 'instances', 'runtime', 'hitRate', 'limit', 'batching
 
 export const pairs = (spec: ArchitectureSpec): [string, string][] => spec.connections.map((c) => (Array.isArray(c) ? [c[0], c[1]] : [c.from, c.to]));
 /** connections with their link properties */
-export const links = (spec: ArchitectureSpec): { from: string; to: string; latencyMs?: number; calls?: number; carries?: 'reads' | 'writes' }[] =>
+export const links = (spec: ArchitectureSpec): { from: string; to: string; latencyMs?: number; calls?: number; carries?: 'reads' | 'writes'; replication?: 'sync' | 'async' }[] =>
   spec.connections.map((c) => (Array.isArray(c) ? { from: c[0], to: c[1] } : c));
 
 export function componentData(c: ComponentSpec): SystemNodeData {
@@ -80,7 +80,11 @@ export function specToGraph(input: unknown): Graph {
     nodes.push({ id: z.id, type: 'zone', position: { x: x0, y: y0 }, width: x1 - x0, height: y1 - y0, zIndex: -1, data: { label: z.label ?? z.id } });
   }
   for (const c of spec.components) nodes.push({ id: c.id, type: 'system', position: pos.get(c.id)!, data: componentData(c) });
-  const edges: SystemEdge[] = links(spec).map(({ from: source, to: target, latencyMs, calls, carries }) => ({ id: `e-${source}-${target}`, source, target, type: 'flow', ...(latencyMs || (calls ?? 1) > 1 || carries ? { data: { ...(latencyMs ? { latencyMs } : {}), ...((calls ?? 1) > 1 ? { calls } : {}), ...(carries ? { carries } : {}) } } : {}) }));
+  const edges: SystemEdge[] = links(spec).map(({ from: source, to: target, latencyMs, calls, carries, replication }) => {
+    const sync = replication === 'sync';
+    const has = latencyMs || (calls ?? 1) > 1 || carries || sync;
+    return { id: `e-${source}-${target}`, source, target, type: 'flow', ...(has ? { data: { ...(latencyMs ? { latencyMs } : {}), ...((calls ?? 1) > 1 ? { calls } : {}), ...(carries ? { carries } : {}), ...(sync ? { replication: 'sync' } : {}) } } : {}) };
+  });
   return { nodes, edges };
 }
 
@@ -118,7 +122,11 @@ export function graphToSpec(nodes: AppNode[], edges: SystemEdge[], name?: string
     components,
     connections: edges
       .filter((e) => ids.has(e.source) && ids.has(e.target))
-      .map((e) => (e.data?.latencyMs || Number(e.data?.calls ?? 1) > 1 || e.data?.carries ? { from: e.source, to: e.target, ...(e.data?.latencyMs ? { latencyMs: Number(e.data.latencyMs) } : {}), ...(Number(e.data?.calls ?? 1) > 1 ? { calls: Number(e.data!.calls) } : {}), ...(e.data?.carries ? { carries: e.data.carries as 'reads' | 'writes' } : {}) } : ([e.source, e.target] as [string, string]))),
+      .map((e) =>
+        e.data?.latencyMs || Number(e.data?.calls ?? 1) > 1 || e.data?.carries || e.data?.replication === 'sync'
+          ? { from: e.source, to: e.target, ...(e.data?.latencyMs ? { latencyMs: Number(e.data.latencyMs) } : {}), ...(Number(e.data?.calls ?? 1) > 1 ? { calls: Number(e.data!.calls) } : {}), ...(e.data?.carries ? { carries: e.data.carries as 'reads' | 'writes' } : {}), ...(e.data?.replication === 'sync' ? { replication: 'sync' as const } : {}) }
+          : ([e.source, e.target] as [string, string]),
+      ),
     ...(zones.length ? { zones } : {}),
   };
 }
@@ -156,11 +164,16 @@ function applyChange(spec: ArchitectureSpec, ch: ChangeSpec) {
       spec.connections = spec.connections.filter((c) => !(Array.isArray(c) ? c.includes(ch.id) : c.from === ch.id || c.to === ch.id));
       for (const z of spec.zones ?? []) z.members = z.members.filter((m) => m !== ch.id);
       break;
-    case 'connect':
+    case 'connect': {
       find(ch.from);
       find(ch.to);
-      spec.connections = [...spec.connections, [ch.from, ch.to]];
+      const { op: _op, from, to, ...props } = ch;
+      const has = Object.values(props).some((v) => v !== undefined && v !== 'async');
+      // connecting an existing pair sets its link properties
+      spec.connections = spec.connections.filter((c) => (Array.isArray(c) ? !(c[0] === from && c[1] === to) : !(c.from === from && c.to === to)));
+      spec.connections = [...spec.connections, has ? { from, to, ...Object.fromEntries(Object.entries(props).filter(([, v]) => v !== undefined && v !== 'async')) } : [from, to]];
       break;
+    }
     case 'disconnect':
       spec.connections = spec.connections.filter((c) => (Array.isArray(c) ? !(c[0] === ch.from && c[1] === ch.to) : !(c.from === ch.from && c.to === ch.to)));
       break;
@@ -207,9 +220,20 @@ export function applyChangesToGraph(nodes: AppNode[], edges: SystemEdge[], chang
         ns = ns.filter((n) => n.id !== ch.id);
         es = es.filter((e) => e.source !== ch.id && e.target !== ch.id);
         break;
-      case 'connect':
-        if (!es.some((e) => e.source === ch.from && e.target === ch.to)) es = [...es, { id: `e-${ch.from}-${ch.to}-${Date.now() % 1e6}-${es.length}`, source: ch.from, target: ch.to, type: 'flow' }];
+      case 'connect': {
+        const { op: _op, from, to, ...props } = ch;
+        const data = Object.fromEntries(Object.entries(props).filter(([, v]) => v !== undefined && v !== 'async'));
+        const has = Object.keys(data).length > 0;
+        if (!es.some((e) => e.source === from && e.target === to)) es = [...es, { id: `e-${from}-${to}-${Date.now() % 1e6}-${es.length}`, source: from, target: to, type: 'flow', ...(has ? { data } : {}) }];
+        else if (has || props.replication === 'async')
+          es = es.map((e) => {
+            if (e.source !== from || e.target !== to) return e;
+            const next: Record<string, unknown> = { ...e.data, ...data };
+            if (props.replication === 'async') delete next.replication;
+            return { ...e, data: next };
+          });
         break;
+      }
       case 'disconnect':
         es = es.filter((e) => !(e.source === ch.from && e.target === ch.to));
         break;

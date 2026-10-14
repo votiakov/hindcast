@@ -192,9 +192,16 @@ Shared code keeps the engines consistent (`src/sim/autoscale.ts`, `cacheWarmth` 
 - **Link latency** — a connection's `latencyMs` is added to every call over it (DES: on the request
   hop; fluid: to the child's latency in the backward pass).
 
+- **Replication and partitions** — a `partition` between two zones cuts every link between their
+  members (calls over it fail at once). An async replica cut off from its primary accumulates lag
+  (one second per second; it catches up at 10× once healed); reads it serves meanwhile count as
+  `staleReads`. When the primary dies the replica is promoted after the election, and the writes it
+  lagged behind are `lostWrites`. A sync replica never lags, but the primary's writes fail while the
+  replica is unreachable. During the election writes fail; reads are served by the replicas.
+
 ### Limitations (both engines)
 
-- No network partitions, slow dependencies other than via `degrade`, or memory/GC modelling.
+- No slow dependencies other than via `degrade`/`inject-latency`, or memory/GC modelling.
 - Load balancing is perfectly even (no hot instances); caches have a fixed hit rate (no cold cache /
   stampede dynamics yet); queues are single FIFO with unlimited consumers' patience.
 - Numbers are illustrative defaults (see catalog.md) — calibrate for real-system claims.

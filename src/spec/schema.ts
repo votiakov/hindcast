@@ -73,8 +73,9 @@ export const ArchitectureSpec = z.object({
           from: z.string(),
           to: z.string(),
           latencyMs: z.number().min(0).max(1000).optional().describe('network round trip added to every call over this link (cross-AZ ≈ 1, cross-region ≈ 60–150)'),
-          carries: z.enum(['reads', 'writes']).optional().describe('the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both'),
           calls: z.number().int().min(1).max(1000).optional().describe('calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)'),
+          carries: z.enum(['reads', 'writes']).optional().describe('the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both'),
+          replication: z.enum(['sync', 'async']).optional().describe('database → replica: sync — every write waits for this replica (no data lost on failover, writes stop while it is unreachable); async (default) — the replica lags, a failover loses what it had not received'),
         }),
       ]),
     )
@@ -94,6 +95,8 @@ export const ActionSpec = z.discriminatedUnion('type', [
   z.object({ type: z.literal('inject-errors'), id: z.string(), rate: z.number().min(0).max(1) }),
   z.object({ type: z.literal('inject-latency'), id: z.string(), ms: z.number().min(0) }),
   z.object({ type: z.literal('flush-cache'), id: z.string() }),
+  z.object({ type: z.literal('partition'), a: z.string().describe('zone id'), b: z.string().describe('zone id') }).describe('cut every link between two zones; both keep running'),
+  z.object({ type: z.literal('heal-partition') }),
 ]);
 
 export const ScenarioSpec = z.object({
@@ -110,7 +113,17 @@ export const ChangeSpec = z.discriminatedUnion('op', [
   z.object({ op: z.literal('set'), id: z.string(), fields: ComponentSpec.omit({ id: true, kind: true }).partial() }),
   z.object({ op: z.literal('add'), component: ComponentSpec, zone: z.string().optional().describe('place it in this zone (failure domain)') }),
   z.object({ op: z.literal('remove'), id: z.string() }),
-  z.object({ op: z.literal('connect'), from: z.string(), to: z.string() }),
+  z
+    .object({
+      op: z.literal('connect'),
+      from: z.string(),
+      to: z.string(),
+      latencyMs: z.number().min(0).max(1000).optional(),
+      calls: z.number().int().min(1).max(1000).optional(),
+      carries: z.enum(['reads', 'writes']).optional(),
+      replication: z.enum(['sync', 'async']).optional(),
+    })
+    .describe('add a link, or with link properties set them on an existing one'),
   z.object({ op: z.literal('disconnect'), from: z.string(), to: z.string() }),
 ]);
 

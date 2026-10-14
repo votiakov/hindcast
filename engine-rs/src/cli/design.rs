@@ -659,8 +659,28 @@ pub(crate) fn apply_variant(base: &Value, v: &Value) -> Result<Value, String> {
             "connect" => {
                 find(&st("from"))?;
                 find(&st("to"))?;
+                let (from, to) = (st("from"), st("to"));
+                let mut props = JMap::new();
+                for k in ["latencyMs", "calls", "carries", "replication"] {
+                    if let Some(v) = ch.get(k).filter(|v| !v.is_null() && v.as_str() != Some("async")) {
+                        props.insert(k.into(), v.clone());
+                    }
+                }
                 if let Some(Value::Array(a)) = spec.get_mut("connections") {
-                    a.push(json!([st("from"), st("to")]));
+                    // connecting an existing pair sets its link properties
+                    a.retain(|c| match c {
+                        Value::Array(p) => !(p.first().and_then(|x| x.as_str()) == Some(from.as_str()) && p.get(1).and_then(|x| x.as_str()) == Some(to.as_str())),
+                        x => !(x.get("from").and_then(|y| y.as_str()) == Some(from.as_str()) && x.get("to").and_then(|y| y.as_str()) == Some(to.as_str())),
+                    });
+                    if props.is_empty() {
+                        a.push(json!([from, to]));
+                    } else {
+                        let mut o = JMap::new();
+                        o.insert("from".into(), json!(from));
+                        o.insert("to".into(), json!(to));
+                        o.extend(props);
+                        a.push(Value::Object(o));
+                    }
                 }
             }
             "disconnect" => {

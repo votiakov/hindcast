@@ -20,12 +20,23 @@ export function LinkLatency({ id, selected }: { id: string; selected?: boolean }
   const ms = Number(data?.latencyMs ?? 0);
   const calls = Number(data?.calls ?? 1);
   const carries = data?.carries as 'reads' | 'writes' | undefined;
+  const edge = useSim((s) => s.boards[b].edges.find((e) => e.id === id));
+  const ends = useSim((s) => {
+    const nodes = s.boards[b].nodes;
+    const find = (nid?: string) => nodes.find((n) => n.id === nid)?.data as { kind?: string; side?: string } | undefined;
+    return [find(edge?.source), find(edge?.target)] as const;
+  });
+  const replicated = ends[0]?.kind === 'db' && ends[1]?.kind === 'replica';
+  const sync = data?.replication === 'sync';
+  const severed = !!ends[0]?.side && !!ends[1]?.side && ends[0]?.side !== ends[1]?.side;
   const updateEdge = useSim((s) => s.updateEdge);
   return (
     <>
       {ms > 0 && !selected && <span className="edge-link" title="Network round trip on this link">+{ms}ms</span>}
       {calls > 1 && !selected && <span className="edge-link" title="Calls per request over this link, in parallel: the caller needs every one">×{calls}</span>}
       {carries && !selected && <span className="edge-link" title={`This link carries only ${carries}`}>{carries}</span>}
+      {replicated && sync && !selected && <span className="edge-link" title="Synchronous replication: every write waits for this replica">sync</span>}
+      {severed && <span className="edge-link cut" title="A network partition cuts this link: nothing gets through">✂ cut</span>}
       {selected && (
         <>
           <select className="edge-link-select nodrag" value={ms} onChange={(e) => updateEdge(b, id, { latencyMs: +e.target.value || undefined })} title="Network round trip added to every call over this link">
@@ -36,6 +47,12 @@ export function LinkLatency({ id, selected }: { id: string; selected?: boolean }
               </option>
             ))}
           </select>
+          {replicated && (
+            <select className="edge-link-select nodrag" value={sync ? 'sync' : 'async'} onChange={(e) => updateEdge(b, id, { replication: e.target.value === 'sync' ? 'sync' : undefined })} title="sync: every write waits for this replica — nothing lost on failover, writes stop while it is out of reach. async: the replica lags; a failover loses what it had not received">
+              <option value="async">async replication</option>
+              <option value="sync">sync replication</option>
+            </select>
+          )}
           <select className="edge-link-select nodrag" value={carries ?? ''} onChange={(e) => updateEdge(b, id, { carries: (e.target.value || undefined) as 'reads' | 'writes' | undefined })} title="Which requests take this link: reads to a cache or replica, writes to a queue (CQRS)">
             <option value="">reads + writes</option>
             <option value="reads">reads only</option>

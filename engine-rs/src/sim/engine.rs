@@ -58,6 +58,8 @@ pub struct EdgeData {
     pub calls: Option<f64>,
     /// "reads" or "writes": the link carries only that class (CQRS); None: both
     pub carries: Option<String>,
+    /// database → replica: "sync" — every write waits for this replica's acknowledgement
+    pub replication: Option<String>,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -222,7 +224,12 @@ pub struct NodeState {
     pub wb_buffer: f64,
     /// write-behind: flushed to the origin this tick
     pub wb_flushed: f64,
+    /// a replica's replication lag behind its primary, s
+    pub repl_lag: f64,
 }
+
+/// how much faster than real time a replica catches up once it can reach its primary again
+pub const CATCH_UP: f64 = 10.0;
 
 /// write-behind: the mean wait before a buffered write is flushed to the origin, s
 pub const WRITE_BEHIND_S: f64 = 5.0;
@@ -261,6 +268,7 @@ fn fresh() -> NodeState {
         warmth: 1.0,
         wb_buffer: 0.0,
         wb_flushed: 0.0,
+        repl_lag: 0.0,
     }
 }
 
@@ -352,12 +360,16 @@ struct ProcessResult {
     /// shares of reads and of writes answered here (None: local_share for both)
     local_r: Option<f64>,
     local_w: Option<f64>,
+    /// share of writes failed here (a synchronous replica out of reach)
+    write_fail: f64,
+    /// what every write waits on beyond the component itself (synchronous replicas), ms
+    write_extra_ms: f64,
     util: f64,
     up: bool,
 }
 
 fn res(processed: f64, failed: f64, forward: f64, util: f64, up: bool) -> ProcessResult {
-    ProcessResult { processed, failed, forward, routes: None, shares: None, local_share: None, hits: None, failed_processed: 0.0, fwd_read_share: None, local_r: None, local_w: None, util, up }
+    ProcessResult { processed, failed, forward, routes: None, shares: None, local_share: None, hits: None, failed_processed: 0.0, fwd_read_share: None, local_r: None, local_w: None, write_fail: 0.0, write_extra_ms: 0.0, util, up }
 }
 
 fn queue_seconds(d: &NodeData, cfg: &EngineConfig) -> f64 {
@@ -468,6 +480,11 @@ struct Ctx<'a> {
     read_ratio: f64,
     routes: &'a [Route],
     pooled: bool,
+    /// per edge: replicated synchronously; its network round trip
+    edge_sync: &'a [bool],
+    edge_lat: &'a [f64],
+    /// every node's replication lag last tick, s
+    lags: &'a [f64],
 }
 
 fn reachable(c: &Ctx) -> f64 {
@@ -548,7 +565,9 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
         "db" => {
             let d = c.d;
             let write_ratio = 1.0 - c.read_ratio;
-            let replicas: Vec<Route> = c.routes.iter().filter(|k| c.data[k.t].kind == "replica" && k.up).cloned().collect();
+            let mut replicas: Vec<Route> = c.routes.iter().filter(|k| c.data[k.t].kind == "replica" && k.up).cloned().collect();
+            // the replica furthest along is the one promoted
+            replicas.sort_by(|a, b| c.lags[a.t].partial_cmp(&c.lags[b.t]).unwrap_or(std::cmp::Ordering::Equal));
             st.failover = Failover::None;
             let mut shares = None;
             if !d.alive {
@@ -580,7 +599,9 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
                 r.local_w = Some(0.0);
                 return r;
             }
-            let local_share = write_ratio + c.read_ratio / (replicas.len() as f64 + 1.0);
+            // electing: the replicas take every read; only writes wait (and fail) on the primary
+            let electing = st.failover == Failover::Electing;
+            let local_share = if electing { write_ratio } else { write_ratio + c.read_ratio / (replicas.len() as f64 + 1.0) };
             let to_replicas = c.arrivals * (1.0 - local_share);
             let cap = if st.failover == Failover::Electing { 0.0 } else { capacity_of(d, None) };
             let (processed, failed, util) = queue_stage(st, c.arrivals - to_replicas, cap, c.dt, queue_seconds(d, c.cfg));
@@ -589,8 +610,16 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
             r.local_share = Some(local_share);
             // what goes to the replicas is reads; writes stay on the primary
             r.fwd_read_share = Some(1.0);
-            r.local_r = Some(1.0 / (r.routes.as_ref().map(|x| x.len()).unwrap_or(0) as f64 + 1.0));
+            r.local_r = Some(if electing { 0.0 } else { 1.0 / (r.routes.as_ref().map(|x| x.len()).unwrap_or(0) as f64 + 1.0) });
             r.local_w = Some(1.0);
+            // synchronous replicas: every write waits for the slowest one's acknowledgement, and fails
+            // while any of them is out of reach
+            let sync: Vec<&Route> = c.routes.iter().filter(|k| c.edge_sync[k.e] && c.data[k.t].kind == "replica").collect();
+            if sync.iter().any(|k| !k.up) {
+                r.write_fail = 1.0;
+            } else if !sync.is_empty() {
+                r.write_extra_ms = sync.iter().map(|k| c.edge_lat[k.e] + base_latency_of(&c.data[k.t])).fold(0.0, f64::max);
+            }
             r
         }
         "queue" => {
@@ -690,8 +719,13 @@ pub struct GlobalStats {
     pub error_rate: f64,
     pub p99: f64,
     pub cost: f64,
-    /// writes acknowledged and then lost (a write-behind cache that died, or could not flush)
+    /// writes acknowledged and then lost (a write-behind cache that died, or could not flush; writes a
+    /// promoted replica never received)
     pub lost_writes: f64,
+    /// reads answered by a replica more than a second behind its primary
+    pub stale_reads: f64,
+    /// the furthest any replica is behind its primary, s
+    pub replica_lag_s: f64,
     pub history: Vec<HistoryPoint>,
 }
 
@@ -715,6 +749,8 @@ pub struct NodeStats {
     pub hit_rps: f64,
     pub reachable: f64,
     pub lag_s: f64,
+    /// a replica: how far behind its primary, s
+    pub repl_lag_s: f64,
     pub cold_frac: f64,
     pub failover: String,
     pub cost_per_hour: f64,
@@ -748,6 +784,8 @@ struct Local {
     local_w: f64,
     /// reads among what arrived
     rr: f64,
+    write_fail: f64,
+    write_extra_ms: f64,
     routes: Vec<Route>,
     /// (edge index, volume), in the order first sent
     flows: Vec<(usize, f64)>,
@@ -789,6 +827,16 @@ impl Engine {
     /// writes acknowledged and then lost so far
     pub fn lost_writes(&self) -> f64 {
         self.global.lost_writes
+    }
+
+    /// reads answered by a lagging replica so far
+    pub fn stale_reads(&self) -> f64 {
+        self.global.stale_reads
+    }
+
+    /// how far the furthest replica is behind its primary now, s
+    pub fn replica_lag(&self) -> f64 {
+        self.global.replica_lag_s
     }
 
     fn state(&mut self, id: &str) -> &mut NodeState {
@@ -880,10 +928,14 @@ impl Engine {
         // calls per request over each link: N in parallel, all must answer
         let edge_calls: Vec<f64> = edges.iter().map(|e| e.data.as_ref().and_then(|d| d.calls).filter(|c| *c > 1.0).unwrap_or(1.0)).collect();
         // which requests a link carries: 0 both, 1 reads only, 2 writes only
+        let edge_sync: Vec<bool> = edges.iter().map(|e| e.data.as_ref().and_then(|d| d.replication.as_deref()) == Some("sync")).collect();
         let edge_carries: Vec<u8> = edges.iter().map(|e| match e.data.as_ref().and_then(|d| d.carries.as_deref()) { Some("reads") => 1, Some("writes") => 2, _ => 0 }).collect();
         let mut out: Vec<Vec<Route>> = vec![vec![]; n];
         let mut indeg: Vec<i64> = vec![0; n];
         let mut pooled: Vec<bool> = vec![false; n];
+        // links a network partition has cut, and each replica's primary (edge, node)
+        let mut edge_cut = vec![false; edges.len()];
+        let mut primary_of: Vec<Option<(usize, usize)>> = vec![None; n];
         for (ei, e) in edges.iter().enumerate() {
             let (si, ti) = match (by_id.get(e.source.as_str()), by_id.get(e.target.as_str())) {
                 (Some(s), Some(t)) if e.source != e.target => (*s, *t),
@@ -894,7 +946,12 @@ impl Engine {
             if sd.kind == "lb" || sd.kind == "gateway" || sd.kind == "queue" || sd.fanout.unwrap_or(1.0) > 1.0 {
                 pooled[ti] = true;
             }
-            out[si].push(Route { e: ei, t: ti, up: is_up(&data[ti]) });
+            // a dead primary's links to its replicas are not the network's: failover is decided around it
+            edge_cut[ei] = cut(&data[si], &data[ti]) && !(sd.kind == "db" && !sd.alive);
+            if sd.kind == "db" && data[ti].kind == "replica" {
+                primary_of[ti] = Some((ei, si));
+            }
+            out[si].push(Route { e: ei, t: ti, up: is_up(&data[ti]) && !edge_cut[ei] });
             indeg[ti] += 1;
         }
 
@@ -921,6 +978,8 @@ impl Engine {
             }
         }
 
+        let lags: Vec<f64> = (0..n).map(|i| self.nodes[sidx[i]].repl_lag).collect();
+        let mut stale_now = 0.0;
         let mut inflow = vec![0.0; n];
         let mut done = vec![false; n];
         let mut carried: HashMap<String, (f64, f64)> = std::mem::take(&mut self.carry);
@@ -944,7 +1003,27 @@ impl Engine {
             let mut st = std::mem::replace(&mut self.nodes[sidx[i]], fresh());
             if d.kind == "replica" {
                 st.failover = if promoted[i] { Failover::Promoted } else { Failover::None };
+                // replication lag: none for a synchronous replica, the link's delay for a reachable
+                // asynchronous one (catching up after a cut), growing while it cannot reach a primary
+                // that keeps taking writes
+                if promoted[i] {
+                    st.repl_lag = 0.0;
+                } else if let Some((e, src)) = primary_of[i] {
+                    let reachable = !edge_cut[e] && is_up(&data[src]);
+                    // a synchronous replica never falls behind: the primary refuses what it cannot replicate
+                    if edge_sync[e] {
+                        st.repl_lag = 0.0;
+                    } else if reachable {
+                        st.repl_lag = (st.repl_lag - dt * CATCH_UP).max(edge_lat[e] / 1000.0);
+                    } else if is_up(&data[src]) {
+                        st.repl_lag += dt;
+                    }
+                }
+                if st.repl_lag > 1.0 {
+                    stale_now += arrivals * read_ratio;
+                }
             }
+            let was_promoted = st.failover == Failover::Promoted;
             if d.kind == "cache" || d.kind == "cdn" {
                 // a dead or flushed cache comes back empty and re-warms from misses; a dead one also loses
                 // the writes it had acknowledged but not flushed
@@ -964,7 +1043,7 @@ impl Engine {
                 st.queue = 0.0;
                 res(0.0, arrivals, 0.0, 0.0, false)
             } else {
-                let ctx = Ctx { d, data: &data, arrivals, dt, cfg, read_ratio, routes, pooled: pooled[i] };
+                let ctx = Ctx { d, data: &data, arrivals, dt, cfg, read_ratio, routes, pooled: pooled[i], edge_sync: &edge_sync, edge_lat: &edge_lat, lags: &lags };
                 process(&ctx, &mut st)
             };
             // gray failure: the node answers a share of what it handles with errors
@@ -981,6 +1060,10 @@ impl Engine {
             if d.kind == "db" && st.failover == Failover::Promoted {
                 if let Some(t) = r.routes.as_ref().and_then(|rs| rs.first()) {
                     promoted[t.t] = true;
+                    // the writes the promoted replica had not received are gone
+                    if !was_promoted {
+                        self.global.lost_writes += st.in_rps * (1.0 - read_ratio) * lags[t.t];
+                    }
                 }
             }
             // generic caller behaviour: breaker first, then retries on whatever passes
@@ -1051,6 +1134,9 @@ impl Engine {
                 for (e, vr, vw) in parts {
                     flows.push((e, vr + vw));
                     flows_r.push((e, vr));
+                    if edge_cut[e] {
+                        continue;
+                    }
                     let t = targets.iter().find(|x| x.e == e).unwrap().t;
                     let (v, v_r) = ((vr + vw) * edge_calls[e], vr * edge_calls[e]);
                     if done[t] {
@@ -1107,6 +1193,10 @@ impl Engine {
                     }
                 }
                 for &(e, v0) in &flows {
+                    // across a partition nothing arrives
+                    if edge_cut[e] {
+                        continue;
+                    }
                     let v = v0 * edge_calls[e];
                     let t = targets.iter().find(|x| x.e == e).unwrap().t;
                     if done[t] {
@@ -1134,7 +1224,7 @@ impl Engine {
             let own = if d.kind == "db" { arrivals * local_share } else { arrivals };
             st.drop_ratio = ema(st.drop_ratio, if own > 0.0 { r.failed / own } else { 0.0 }, dt, 0.6);
             self.nodes[sidx[i]] = st;
-            local[i] = Some(Local { local_share, local_r: r.local_r.unwrap_or(local_share), local_w: r.local_w.unwrap_or(local_share), rr: read_ratio, routes: targets, flows, flows_r, mode, up: r.up });
+            local[i] = Some(Local { local_share, local_r: r.local_r.unwrap_or(local_share), local_w: r.local_w.unwrap_or(local_share), rr: read_ratio, write_fail: r.write_fail, write_extra_ms: r.write_extra_ms, routes: targets, flows, flows_r, mode, up: r.up });
         }
 
         // ---- backward pass ----
@@ -1153,10 +1243,15 @@ impl Engine {
             let mut kids_mix: Vec<[f64; 3]> = vec![];
             if has_kids {
                 // a link that makes N calls per request: all must succeed, the caller waits for the slowest
+                let timeout_ms = cfg.timeout_s * 1000.0;
                 let kid = |k: &Route| {
                     let s = &self.nodes[sidx[k.t]];
                     let f = l.flows.iter().find(|x| x.0 == k.e).map(|x| x.1).unwrap_or(0.0);
                     let n = edge_calls[k.e];
+                    if edge_cut[k.e] {
+                        // across a partition: no answer, until the connection times out
+                        return (0.0, timeout_ms, f, 0.0);
+                    }
                     if n > 1.0 {
                         (s.success.js_pow(n), s.latency_ms * fanout_tail(n) + edge_lat[k.e], f, s.tail_ms * fanout_tail(n))
                     } else {
@@ -1167,6 +1262,9 @@ impl Engine {
                 let kid_dist = |k: &Route| -> Vec<[f64; 3]> {
                     let s = &self.nodes[sidx[k.t]];
                     let n = edge_calls[k.e];
+                    if edge_cut[k.e] {
+                        return vec![[1.0, timeout_ms, 0.0]];
+                    }
                     if n > 1.0 {
                         return vec![[1.0, s.latency_ms * fanout_tail(n) + edge_lat[k.e], s.tail_ms * fanout_tail(n)]];
                     }
@@ -1179,6 +1277,9 @@ impl Engine {
                 let kid_rw = |k: &Route| {
                     let s = &self.nodes[sidx[k.t]];
                     let n = edge_calls[k.e];
+                    if edge_cut[k.e] {
+                        return (0.0, 0.0);
+                    }
                     (s.success_r.js_pow(n), s.success_w.js_pow(n))
                 };
                 // each class's own flow over a link (links that carry only reads or only writes)
@@ -1317,7 +1418,12 @@ impl Engine {
                     fold(&FoldCtx { d, keep, local_share: local, child_succ: child, child_lat, has_kids, cfg }, st).0
                 }
             };
-            let (success_r, success_w) = (class(l.local_r, child_r), class(l.local_w, child_w));
+            let (success_r, mut success_w) = (class(l.local_r, child_r), class(l.local_w, child_w));
+            // a synchronous replica out of reach: writes cannot be acknowledged
+            success_w *= 1.0 - l.write_fail;
+            if l.write_extra_ms > 0.0 {
+                latency += (1.0 - l.rr) * l.write_extra_ms;
+            }
             let success = l.rr * success_r + (1.0 - l.rr) * success_w;
             if l.up {
                 if let Some(fl) = d.fault_latency_ms.filter(|x| *x != 0.0 && !x.is_nan()) {
@@ -1386,7 +1492,14 @@ impl Engine {
                 };
                 let mut out: Vec<[f64; 3]> = vec![];
                 if own_share > 0.0 || kids.is_empty() {
-                    out.push([own_share.max(if kids.is_empty() { 1.0 } else { 0.0 }), own_mean, own_tail]);
+                    let w = own_share.max(if kids.is_empty() { 1.0 } else { 0.0 });
+                    if l.write_extra_ms > 0.0 {
+                        // writes wait for synchronous replicas: a slower mode of their own
+                        out.push([w * l.rr, own_mean, own_tail]);
+                        out.push([w * (1.0 - l.rr), own_mean + l.write_extra_ms, own_tail]);
+                    } else {
+                        out.push([w, own_mean, own_tail]);
+                    }
                 }
                 if kid_share > 0.0 && !kids.is_empty() {
                     out.extend(mix_then(&kids, own_mean, own_tail, kid_share));
@@ -1441,6 +1554,8 @@ impl Engine {
         }
 
         self.global.lost_writes += lost_now;
+        self.global.stale_reads += stale_now;
+        self.global.replica_lag_s = (0..n).filter(|&i| data[i].kind == "replica").map(|i| self.nodes[sidx[i]].repl_lag).fold(0.0, f64::max);
 
         // autoscalers react to the demand they saw this tick
         for k in 0..self.scalers.len() {
@@ -1535,6 +1650,7 @@ impl Engine {
                     hit_rps: st.hit_rps,
                     reachable: st.reachable,
                     lag_s: if st.drain_rps > 0.0 { st.queue / st.drain_rps } else if st.queue > 1.0 { f64::INFINITY } else { 0.0 },
+                    repl_lag_s: st.repl_lag,
                     cold_frac: st.cold_frac,
                     failover: failover_name(st.failover).into(),
                     cost_per_hour: st.cost_per_hour,

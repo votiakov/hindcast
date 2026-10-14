@@ -35,6 +35,8 @@ const RETRY_BUDGET = 0.1;
 export type BreakerState = 'closed' | 'open' | 'half';
 
 export interface NodeStats {
+  /** a replica: how far behind its primary, s */
+  replLagS?: number;
   inRps: number;
   dropRps: number;
   util: number;
@@ -79,6 +81,10 @@ export interface GlobalStats {
   cost: number;
   /** writes acknowledged and then lost (a write-behind cache that died) */
   lostWrites: number;
+  /** reads answered by a replica more than a second behind its primary */
+  staleReads: number;
+  /** the furthest any replica is behind its primary, s */
+  replicaLagS: number;
   history: { rps: number; err: number; p99: number; cost: number }[];
 }
 
