@@ -234,14 +234,29 @@ export function survival(p: { mean: number; p99: number; p50?: number }, x: numb
 }
 
 /** p-quantile of a traffic-weighted mixture of endpoint latencies */
-export function mixtureQuantile(parts: { w: number; mean: number; p99: number; p50?: number }[], tail = 0.01): number {
-  const tot = parts.reduce((s, p) => s + p.w, 0);
+export function mixtureQuantile(input: { w: number; mean: number; p99: number; p50?: number }[], tail = 0.01): number {
+  // identical parts (the substeps of a steady bucket) are one part with their weights summed
+  const parts: { w: number; mean: number; p99: number; p50?: number }[] = [];
+  for (const p of input) {
+    const same = parts.find((q) => q.mean === p.mean && q.p99 === p.p99 && q.p50 === p.p50);
+    if (same) same.w += p.w;
+    else parts.push({ ...p });
+  }
+  let tot = 0;
+  for (const p of parts) tot += p.w;
   if (tot <= 0) return 0;
-  const f = (x: number) => parts.reduce((s, p) => s + (p.w / tot) * survival(p, x), 0) - tail;
+  const f = (x: number) => {
+    let s = 0;
+    for (const p of parts) s += (p.w / tot) * survival(p, x);
+    return s - tail;
+  };
   let lo = 0;
-  let hi = Math.max(1, ...parts.map((p) => (isFinite(p.p99) ? p.p99 : 1e7))) * 2;
+  let hi = 1;
+  for (const p of parts) hi = Math.max(hi, isFinite(p.p99) ? p.p99 : 1e7);
+  hi *= 2;
   if (f(hi) > 0) return hi;
-  for (let i = 0; i < 50; i++) {
+  // to a hundredth of a millisecond
+  for (let i = 0; i < 50 && hi - lo > 0.01; i++) {
     const mid = (lo + hi) / 2;
     if (f(mid) > 0) lo = mid;
     else hi = mid;
@@ -345,6 +360,17 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
     }),
   );
 
+  // fixed per run: what runs inside each host, and each endpoint's path as arrays
+  const hostGroup = Object.fromEntries(svcIds.map((id) => [id, svcIds.filter((x) => plan.services[x].hostedBy === id || x === id)]));
+  const weightsOf = Object.fromEntries(epIds.map((e) => [e, Object.entries(plan.endpoints[e].weights)]));
+  const visitsOf = Object.fromEntries(epIds.map((e) => [e, Object.entries(visits[e])]));
+  const noFaults = Object.fromEntries(svcIds.map((id) => [id, effect(id)]));
+  // per service, per endpoint (in epIds order): its own visits, and its host group's
+  const epShare = new Float64Array(epIds.length);
+  const epCost = epIds.map((e) => out.endpoints[e].cost);
+  const ownVisits = Object.fromEntries(svcIds.map((id) => [id, Float64Array.from(epIds, (e) => visits[e][id] ?? 0)]));
+  const hostVisits = Object.fromEntries(svcIds.map((id) => [id, Float64Array.from(epIds, (e) => hostGroup[id].reduce((a, x) => a + (visits[e][x] ?? 0), 0))]));
+
   const liveOf = (id: string): number => {
     const s = plan.services[id];
     if (s.hostedBy && plan.services[s.hostedBy]) return liveOf(s.hostedBy);
@@ -378,7 +404,7 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
           out.events.push({ t: traffic.start + now, what: `${f.service}: ${f.note ? `ends — ${f.note}` : 'fault ends'}` });
         }
       }
-      const fx = Object.fromEntries(svcIds.map((id) => [id, effect(id)]));
+      const fx = faultOn.size ? Object.fromEntries(svcIds.map((id) => [id, effect(id)])) : noFaults;
       // offered load per endpoint, including client retries of last substep's failures
       const lam: Record<string, number> = {};
       for (const id of epIds) {
@@ -396,7 +422,7 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
       // per-service demand
       const svcLam: Record<string, number> = {};
       for (const id of svcIds) svcLam[id] = 0;
-      for (const e of epIds) for (const [s, v] of Object.entries(visits[e])) if (s in svcLam) svcLam[s] += lam[e] * v;
+      for (const e of epIds) for (const [s, v] of visitsOf[e]) if (s in svcLam) svcLam[s] += lam[e] * v;
 
       // queues
       const lat: Record<string, { mean: number; p99: number; wait: number; err: number }> = {};
@@ -461,7 +487,7 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
         const ep = plan.endpoints[e];
         let mean = ep.overheadMs;
         let ex2 = 0;
-        for (const [s, w] of Object.entries(ep.weights)) {
+        for (const [s, w] of weightsOf[e]) {
           const l = lat[s];
           if (!l) continue;
           const keep = (visits[e][s] ?? 0) / Math.max(1e-9, ep.visits[s] ?? 1);
@@ -474,7 +500,7 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
         const late = exceed(mean, p99, ep.timeoutMs);
         // a failed call to any service on the request's path fails the request
         let ok = 1;
-        for (const [s, v] of Object.entries(visits[e])) if (lat[s]?.err) ok *= (1 - lat[s].err) ** Math.max(1, v);
+        for (const [s, v] of visitsOf[e]) if (lat[s]?.err) ok *= (1 - lat[s].err) ** Math.max(1, v);
         const base0 = Math.min(1, Math.max(0, ep.errorRate + (ep.errorSlope ?? 0) * (traffic.endpoints[e][i] ?? 0)));
         const fail = 1 - (1 - base0) * (1 - late) * ok;
         epFail[e] = fail;
@@ -504,11 +530,12 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
       const lamTot = epIds.reduce((a, e) => a + lam[e], 0);
       // each component's $/h is shared by the endpoints in proportion to the load they put on it
       // (idle or untraced components by traffic share)
-      const share = (id: string, e: string) => {
-        const host = svcIds.filter((x) => plan.services[x].hostedBy === id || x === id);
-        const load = host.reduce((a, x) => a + svcLam[x], 0);
-        if (load > 0) return host.reduce((a, x) => a + lam[e] * (visits[e][x] ?? 0), 0) / load;
-        return lamTot > 0 ? lam[e] / lamTot : 1 / Math.max(1, epIds.length);
+      // the load on a host (with what runs inside it): Σ endpoints λ × visits, from the fixed vectors
+      const hostLoad = (id: string) => {
+        const hv = hostVisits[id];
+        let a = 0;
+        for (let j = 0; j < epIds.length; j++) a += lam[epIds[j]] * hv[j];
+        return a;
       };
       // on a cluster, the nodes are the bill: as many as the requests need (autoscaled, removed only
       // after they've been unneeded a while) or the fixed pool. The services' share of them is the
@@ -556,6 +583,8 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
         oc.requestedCpu[i] += rc / sub;
         oc.requestedMemoryGb[i] += rm / sub;
       }
+      epShare.fill(0);
+      let idleOwn = 0;
       for (const id of svcIds) {
         const s = plan.services[id];
         const onNodes = !!cl && !!s.requests && !s.hostedBy;
@@ -563,7 +592,26 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
         const req = svcLam[id] * 3600 * s.perRequest;
         compute += own;
         requests += req;
-        if (own + req > 0) for (const e of epIds) out.endpoints[e].cost[i] += ((own * share(id, e) + req * (svcLam[id] > 0 ? (lam[e] * (visits[e][id] ?? 0)) / svcLam[id] : 0)) * dt) / 3600;
+        // an endpoint's share of it is λ_e × (own × hostVisits / load + req × visits / λ_service): the
+        // per-service factors are summed per endpoint here and multiplied by λ_e once, below
+        if (own > 0) {
+          const load = hostLoad(id);
+          if (load > 0) {
+            const c = own / load;
+            const hv = hostVisits[id];
+            for (let j = 0; j < epIds.length; j++) epShare[j] += c * hv[j];
+          } else idleOwn += own; // idle or untraced: by traffic share
+        }
+        if (req > 0 && svcLam[id] > 0) {
+          const c = req / svcLam[id];
+          const sv = ownVisits[id];
+          for (let j = 0; j < epIds.length; j++) epShare[j] += c * sv[j];
+        }
+      }
+      for (let j = 0; j < epIds.length; j++) {
+        const e = epIds[j];
+        const idle = idleOwn > 0 ? idleOwn * (lamTot > 0 ? lam[e] / lamTot : 1 / epIds.length) : 0;
+        epCost[j][i] += ((lam[e] * epShare[j] + idle) * dt) / 3600;
       }
       let transfer = 0;
       for (const e of epIds) {
