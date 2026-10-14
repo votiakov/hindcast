@@ -1,0 +1,4 @@
+version: 2
+components:
+  - { id: a, kind: client }
+connections: []

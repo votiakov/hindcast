@@ -19,11 +19,43 @@ pub struct Issue {
     pub values: Option<Vec<Value>>,
     pub minimum: Option<f64>,
     pub maximum: Option<f64>,
+    /// the schema library's fields before `path`, in its order (expected, origin, code, values, …)
+    pub head: Vec<(&'static str, Value)>,
+}
+
+fn h(pairs: &[(&'static str, Value)]) -> Vec<(&'static str, Value)> {
+    pairs.to_vec()
+}
+
+/// an issue as the schema library writes it
+pub fn issue_json(i: &Issue) -> Value {
+    let mut m = JMap::new();
+    if i.head.is_empty() {
+        m.insert("code".into(), json!(if i.code.is_empty() { "custom" } else { i.code }));
+    }
+    for (k, v) in &i.head {
+        m.insert((*k).into(), v.clone());
+    }
+    m.insert("path".into(), Value::Array(i.path.clone()));
+    m.insert("message".into(), json!(i.message));
+    Value::Object(m)
+}
+
+fn type_issue(path: Vec<Value>, expected: &str, got: Option<&Value>) -> Issue {
+    Issue { path, message: format!("Invalid input: expected {}, received {}", expected, received(got)), code: "invalid_type", head: h(&[("expected", json!(expected)), ("code", json!("invalid_type"))]), ..Default::default() }
 }
 
 pub fn issues_message(issues: &[Issue]) -> String {
-    let arr: Vec<Value> = issues.iter().map(|i| json!({ "code": "custom", "path": i.path, "message": i.message })).collect();
+    let arr: Vec<Value> = issues.iter().map(issue_json).collect();
     serde_json::to_string_pretty(&Value::Array(arr)).unwrap_or_default()
+}
+
+fn num_v(x: f64) -> Value {
+    if x.fract() == 0.0 && x.abs() < 1e15 {
+        json!(x as i64)
+    } else {
+        json!(x)
+    }
 }
 
 fn received(v: Option<&Value>) -> &'static str {
@@ -50,59 +82,64 @@ impl<'a> V<'a> {
         p.push(json!(k));
         p
     }
-    fn fail(&mut self, k: &str, m: String) {
-        self.fail_as(k, m, "invalid_type", None, None, None);
-    }
-    fn fail_as(&mut self, k: &str, m: String, code: &'static str, values: Option<Vec<Value>>, minimum: Option<f64>, maximum: Option<f64>) {
+    fn fail_type(&mut self, k: &str, expected: &str) {
         let path = self.at(k);
-        self.issues.push(Issue { path, message: m, code, values, minimum, maximum });
+        let got = self.o.get(k);
+        self.issues.push(type_issue(path, expected, got));
+    }
+    fn fail_as(&mut self, k: &str, m: String, code: &'static str, values: Option<Vec<Value>>, minimum: Option<f64>, maximum: Option<f64>, head: Vec<(&'static str, Value)>) {
+        let path = self.at(k);
+        self.issues.push(Issue { path, message: m, code, values, minimum, maximum, head });
     }
     fn string(&mut self, k: &str, required: bool, min: usize) {
         match self.o.get(k) {
             None if !required => {}
             Some(Value::String(s)) => {
-                if s.chars().count() < min {
-                    self.fail_as(k, format!("Too small: expected string to have >={} characters", min), "too_small", None, Some(min as f64), None);
+                if s.encode_utf16().count() < min {
+                    self.fail_as(k, format!("Too small: expected string to have >={} characters", min), "too_small", None, Some(min as f64), None, h(&[("origin", json!("string")), ("code", json!("too_small")), ("minimum", json!(min)), ("inclusive", json!(true))]));
                 }
             }
-            v => self.fail(k, format!("Invalid input: expected string, received {}", received(v))),
+            _ => self.fail_type(k, "string"),
         }
     }
     fn boolean(&mut self, k: &str) {
         match self.o.get(k) {
             None | Some(Value::Bool(_)) => {}
-            v => self.fail(k, format!("Invalid input: expected boolean, received {}", received(v))),
+            _ => self.fail_type(k, "boolean"),
         }
     }
     fn one_of(&mut self, k: &str, opts: &[&str], required: bool) {
         match self.o.get(k) {
             None if !required => {}
             Some(Value::String(s)) if opts.contains(&s.as_str()) => {}
-            _ => self.fail_as(k, format!("Invalid option: expected one of {}", opts.iter().map(|x| format!("\"{}\"", x)).collect::<Vec<_>>().join("|")), "invalid_value", Some(opts.iter().map(|x| json!(x)).collect()), None, None),
+            _ => {
+                let values: Vec<Value> = opts.iter().map(|x| json!(x)).collect();
+                self.fail_as(k, format!("Invalid option: expected one of {}", opts.iter().map(|x| format!("\"{}\"", x)).collect::<Vec<_>>().join("|")), "invalid_value", Some(values.clone()), None, None, h(&[("code", json!("invalid_value")), ("values", Value::Array(values))]))
+            }
         }
     }
     /// min: (value, inclusive)
     fn number(&mut self, k: &str, required: bool, min: Option<(f64, bool)>, max: Option<f64>, int: bool) {
         let v = match self.o.get(k) {
             None if !required => return,
-            None => return self.fail(k, "Invalid input: expected number, received undefined".into()),
+            None => return self.fail_type(k, "number"),
             Some(v) => v,
         };
         let x = match v.as_f64() {
             Some(x) => x,
-            None => return self.fail(k, format!("Invalid input: expected number, received {}", received(Some(v)))),
+            None => return self.fail_type(k, "number"),
         };
         if int && x.fract() != 0.0 {
-            return self.fail(k, "Invalid input: expected int, received number".into());
+            return self.fail_as(k, "Invalid input: expected int, received number".into(), "invalid_type", None, None, None, h(&[("expected", json!("int")), ("format", json!("safeint")), ("code", json!("invalid_type"))]));
         }
         if let Some((m, inc)) = min {
             if (inc && x < m) || (!inc && x <= m) {
-                self.fail_as(k, format!("Too small: expected number to be {}{}", if inc { ">=" } else { ">" }, js_num(m)), "too_small", None, Some(m), None);
+                self.fail_as(k, format!("Too small: expected number to be {}{}", if inc { ">=" } else { ">" }, js_num(m)), "too_small", None, Some(m), None, h(&[("origin", json!("number")), ("code", json!("too_small")), ("minimum", num_v(m)), ("inclusive", json!(inc))]));
             }
         }
         if let Some(m) = max {
             if x > m {
-                self.fail_as(k, format!("Too big: expected number to be <={}", js_num(m)), "too_big", None, None, Some(m));
+                self.fail_as(k, format!("Too big: expected number to be <={}", js_num(m)), "too_big", None, None, Some(m), h(&[("origin", json!("number")), ("code", json!("too_big")), ("maximum", num_v(m)), ("inclusive", json!(true))]));
             }
         }
     }
@@ -146,7 +183,7 @@ fn check_component(c: &JMap<String, Value>, path: Vec<Value>, issues: &mut Vec<I
             w.number("warmupS", false, Some((0.0, true)), Some(900.0), false);
             w.number("cooldownS", false, Some((0.0, true)), Some(3600.0), false);
         }
-        Some(x) => v.fail("autoscale", format!("Invalid input: expected object, received {}", received(Some(x)))),
+        Some(_) => v.fail_type("autoscale", "object"),
     }
 }
 
@@ -199,16 +236,84 @@ pub fn parse_architecture(v: &Value) -> Result<Architecture, String> {
     a.ok_or_else(|| issues_message(&issues))
 }
 
+
+/// a connection that fits none of the three shapes, as the schema's union reports it: one branch's
+/// issues when it alone failed only a bound, else every branch's
+fn connection_issues(c: &Value, i: usize) -> Vec<Issue> {
+    let mut tuple: Vec<Issue> = vec![];
+    match c {
+        Value::Array(a) if a.len() < 2 => tuple.push(Issue { path: vec![], message: "Too small: expected array to have >=2 items".into(), code: "too_small", head: h(&[("code", json!("too_small")), ("minimum", json!(2)), ("inclusive", json!(true)), ("origin", json!("array"))]), ..Default::default() }),
+        Value::Array(a) if a.len() > 2 => tuple.push(Issue { path: vec![], message: "Too big: expected array to have <=2 items".into(), code: "too_big", head: h(&[("code", json!("too_big")), ("maximum", json!(2)), ("inclusive", json!(true)), ("origin", json!("array"))]), ..Default::default() }),
+        Value::Array(a) => {
+            for (j, x) in a.iter().enumerate() {
+                if !x.is_string() {
+                    tuple.push(type_issue(vec![json!(j)], "string", Some(x)));
+                }
+            }
+        }
+        x => tuple.push(type_issue(vec![], "tuple", Some(x))),
+    }
+    let string = match c {
+        Value::String(_) => vec![Issue { path: vec![], message: "write a connection as \"from -> to\"".into(), code: "invalid_format", head: h(&[("origin", json!("string")), ("code", json!("invalid_format")), ("format", json!("regex")), ("pattern", json!("/^\\s*[^\\s>]+\\s*->\\s*[^\\s>]+\\s*$/"))]), ..Default::default() }],
+        x => vec![type_issue(vec![], "string", Some(x))],
+    };
+    let mut object: Vec<Issue> = vec![];
+    let mut object_aborted = false;
+    match c {
+        Value::Object(o) => {
+            for k in ["from", "to"] {
+                if !matches!(o.get(k), Some(Value::String(_))) {
+                    object.push(type_issue(vec![json!(k)], "string", o.get(k)));
+                    object_aborted = true;
+                }
+            }
+            match o.get("latencyMs") {
+                None => {}
+                Some(Value::Number(n)) => {
+                    let x = n.as_f64().unwrap_or(f64::NAN);
+                    if x < 0.0 {
+                        object.push(Issue { path: vec![json!("latencyMs")], message: "Too small: expected number to be >=0".into(), code: "too_small", minimum: Some(0.0), head: h(&[("origin", json!("number")), ("code", json!("too_small")), ("minimum", json!(0)), ("inclusive", json!(true))]), ..Default::default() });
+                    }
+                    if x > 1000.0 {
+                        object.push(Issue { path: vec![json!("latencyMs")], message: "Too big: expected number to be <=1000".into(), code: "too_big", maximum: Some(1000.0), head: h(&[("origin", json!("number")), ("code", json!("too_big")), ("maximum", json!(1000)), ("inclusive", json!(true))]), ..Default::default() });
+                    }
+                }
+                x => {
+                    object.push(type_issue(vec![json!("latencyMs")], "number", x));
+                    object_aborted = true;
+                }
+            }
+        }
+        x => {
+            object.push(type_issue(vec![], "object", Some(x)));
+            object_aborted = true;
+        }
+    }
+    let at = |p: &[Value]| {
+        let mut x = vec![json!("connections"), json!(i)];
+        x.extend_from_slice(p);
+        x
+    };
+    if !object_aborted {
+        return object.into_iter().map(|mut x| {
+            x.path = at(&x.path);
+            x
+        }).collect();
+    }
+    let errors: Vec<Value> = [tuple, string, object].iter().map(|b| Value::Array(b.iter().map(issue_json).collect())).collect();
+    vec![Issue { path: at(&[]), message: "Invalid input".into(), code: "invalid_union", head: h(&[("code", json!("invalid_union")), ("errors", Value::Array(errors))]), ..Default::default() }]
+}
+
 /// the spec checked against the schema: the architecture when it holds, and every issue found
 pub fn check_architecture(v: &Value) -> (Option<Architecture>, Vec<Issue>) {
     let mut issues = vec![];
     let o = match v {
         Value::Object(o) => o,
-        x => return (None, vec![Issue { path: vec![], message: format!("Invalid input: expected object, received {}", received(Some(x))), code: "invalid_type", ..Default::default() }]),
+        x => return (None, vec![type_issue(vec![], "object", Some(x))]),
     };
     if let Some(ver) = o.get("version") {
-        if ver.as_f64() != Some(1.0) {
-            issues.push(Issue { path: vec![json!("version")], message: "Invalid input: expected 1".into(), code: "invalid_value", values: Some(vec![json!(1)]), ..Default::default() });
+        if ver.as_f64() != Some(1.0) || !ver.is_number() {
+            issues.push(Issue { path: vec![json!("version")], message: "Invalid input: expected 1".into(), code: "invalid_value", values: Some(vec![json!(1)]), head: h(&[("code", json!("invalid_value")), ("values", json!([1]))]), ..Default::default() });
         }
     }
     {
@@ -221,7 +326,7 @@ pub fn check_architecture(v: &Value) -> (Option<Architecture>, Vec<Issue>) {
     match o.get("components") {
         Some(Value::Array(a)) => {
             if a.is_empty() {
-                issues.push(Issue { path: vec![json!("components")], message: "Too small: expected array to have >=1 items".into(), code: "too_small", minimum: Some(1.0), ..Default::default() });
+                issues.push(Issue { path: vec![json!("components")], message: "Too small: expected array to have >=1 items".into(), code: "too_small", minimum: Some(1.0), head: h(&[("origin", json!("array")), ("code", json!("too_small")), ("minimum", json!(1)), ("inclusive", json!(true))]), ..Default::default() });
             }
             for (i, c) in a.iter().enumerate() {
                 match c {
@@ -229,11 +334,11 @@ pub fn check_architecture(v: &Value) -> (Option<Architecture>, Vec<Issue>) {
                         check_component(co, vec![json!("components"), json!(i)], &mut issues, false);
                         components.push(co.clone());
                     }
-                    x => issues.push(Issue { path: vec![json!("components"), json!(i)], message: format!("Invalid input: expected object, received {}", received(Some(x))), code: "invalid_type", ..Default::default() }),
+                    x => issues.push(type_issue(vec![json!("components"), json!(i)], "object", Some(x))),
                 }
             }
         }
-        x => issues.push(Issue { path: vec![json!("components")], message: format!("Invalid input: expected array, received {}", received(x)), code: "invalid_type", ..Default::default() }),
+        x => issues.push(type_issue(vec![json!("components")], "array", x)),
     }
     let mut connections = vec![];
     match o.get("connections") {
@@ -241,27 +346,54 @@ pub fn check_architecture(v: &Value) -> (Option<Architecture>, Vec<Issue>) {
             for (i, c) in a.iter().enumerate() {
                 match connection_of(c) {
                     Some(x) => connections.push(x),
-                    None => issues.push(Issue { path: vec![json!("connections"), json!(i)], message: "write a connection as \"from -> to\", [\"from\", \"to\"] or { from, to, latencyMs? } (latencyMs 0–1000)".into(), code: "custom", ..Default::default() }),
+                    None => issues.extend(connection_issues(c, i)),
                 }
             }
         }
-        x => issues.push(Issue { path: vec![json!("connections")], message: format!("Invalid input: expected array, received {}", received(x)), code: "invalid_type", ..Default::default() }),
+        x => issues.push(type_issue(vec![json!("connections")], "array", x)),
     }
     let mut zones = vec![];
     match o.get("zones") {
         None => {}
         Some(Value::Array(a)) => {
             for (i, z) in a.iter().enumerate() {
-                let zo = z.as_object();
-                let id = zo.and_then(|z| z.get("id")).and_then(|x| x.as_str());
-                let members = zo.and_then(|z| z.get("members")).and_then(|x| x.as_array()).map(|m| m.iter().map(|x| x.as_str().map(String::from)).collect::<Option<Vec<_>>>());
-                match (id, members) {
-                    (Some(id), Some(Some(m))) => zones.push((id.to_string(), zo.and_then(|z| z.get("label")).and_then(|x| x.as_str()).map(String::from), m)),
-                    _ => issues.push(Issue { path: vec![json!("zones"), json!(i)], message: "a zone takes id, label? and members (component ids)".into(), code: "custom", ..Default::default() }),
+                let base = vec![json!("zones"), json!(i)];
+                let at = |k: &[Value]| {
+                    let mut p = base.clone();
+                    p.extend_from_slice(k);
+                    p
+                };
+                let zo = match z {
+                    Value::Object(zo) => zo,
+                    x => {
+                        issues.push(type_issue(base.clone(), "object", Some(x)));
+                        continue;
+                    }
+                };
+                let before = issues.len();
+                if !matches!(zo.get("id"), Some(Value::String(_))) {
+                    issues.push(type_issue(at(&[json!("id")]), "string", zo.get("id")));
+                }
+                if !matches!(zo.get("label"), None | Some(Value::String(_))) {
+                    issues.push(type_issue(at(&[json!("label")]), "string", zo.get("label")));
+                }
+                match zo.get("members") {
+                    Some(Value::Array(m)) => {
+                        for (j, x) in m.iter().enumerate() {
+                            if !x.is_string() {
+                                issues.push(type_issue(at(&[json!("members"), json!(j)]), "string", Some(x)));
+                            }
+                        }
+                    }
+                    x => issues.push(type_issue(at(&[json!("members")]), "array", x)),
+                }
+                if issues.len() == before {
+                    let m: Vec<String> = zo["members"].as_array().unwrap().iter().map(|x| x.as_str().unwrap().to_string()).collect();
+                    zones.push((zo["id"].as_str().unwrap().to_string(), zo.get("label").and_then(|x| x.as_str()).map(String::from), m));
                 }
             }
         }
-        x => issues.push(Issue { path: vec![json!("zones")], message: format!("Invalid input: expected array, received {}", received(x)), code: "invalid_type", ..Default::default() }),
+        x => issues.push(type_issue(vec![json!("zones")], "array", x)),
     }
     if !issues.is_empty() {
         return (None, issues);

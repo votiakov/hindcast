@@ -1,0 +1,27 @@
+name: lint
+components:
+  - id: users
+    kind: client
+  - id: lb
+    kind: lb
+  - id: api
+    kind: server
+    instances: 3
+    fallback: true
+  - id: api
+    kind: server
+  - id: cache
+    kind: cache
+  - id: rep
+    kind: replica
+  - id: lonely
+    kind: worker
+connections:
+  - users -> api
+  - api -> cache
+  - api -> api
+  - api -> ghost
+  - [cache, rep]
+zones:
+  - id: z1
+    members: [api, nowhere]

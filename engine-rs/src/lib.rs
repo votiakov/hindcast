@@ -5,6 +5,8 @@
 pub mod accuracy;
 pub mod backtest;
 pub mod calibrate;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod cli;
 pub mod config_diff;
 pub mod convert;
 pub mod dataset;
@@ -16,6 +18,7 @@ pub mod resilience;
 pub mod sim;
 pub mod strategy;
 pub mod terraform_diff;
+pub mod traffic_csv;
 pub mod types;
 pub mod yaml_out;
 

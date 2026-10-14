@@ -1,0 +1,17 @@
+version: 1
+name: broken
+components:
+  - id: users
+    kind: client
+  - id: api
+    kind: servr
+    instances: 0
+  - id: db
+    kind: db
+    hitRate: 2
+    autoscale: { min: 0 }
+  - kind: cache
+connections:
+  - users -> api
+  - "a b c"
+  - [api]

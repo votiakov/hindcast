@@ -1,0 +1,35 @@
+version: 1
+name: 5
+pricing: cheap
+components:
+  - id: ""
+    kind: client
+    instances: 1.5
+    limit: 0
+    batching: "y"
+    tier: XL
+    autoscale: 5
+  - 7
+  - id: a
+    kind: server
+    autoscale: { min: 1.5, max: 600, targetUtil: 0.01 }
+connections:
+  - [api]
+  - [a, b, c]
+  - [1, b]
+  - a b c
+  - ""
+  - null
+  - { from: 1 }
+  - { from: a, to: b, latencyMs: 2000 }
+  - { from: a, to: b, latencyMs: x }
+  - { to: b }
+  - true
+  - []
+  - {}
+zones:
+  - 5
+  - { id: z }
+  - { id: z, members: a }
+  - { id: z, members: [1, b] }
+  - { id: z, label: 3, members: [] }

@@ -475,7 +475,7 @@ export function verifyDesign(spec: unknown, o: { rps?: number; slo?: { maxP99Ms?
   const a: AuditResult = audit(input, { rps: o.rps, slo: o.slo, incidentCostPerMinute: o.incidentCostPerMinute });
   const problems: string[] = v.issues.map((i) => `${i.level}: ${i.message}`);
   if (!a.baseline.meetsSlo) problems.push(`at ${a.load.rps} req/s it already misses the SLO: ${(a.baseline.errorRate * 100).toFixed(2)}% errors, p99 ${Math.round(a.baseline.p99Ms)} ms`);
-  if (o.budgetMonthly !== undefined && a.baseline.monthly > o.budgetMonthly) problems.push(`costs $${a.baseline.monthly.toLocaleString()}/month, over the $${o.budgetMonthly.toLocaleString()} budget`);
+  if (o.budgetMonthly !== undefined && a.baseline.monthly > o.budgetMonthly) problems.push(`costs $${a.baseline.monthly.toLocaleString('en-US')}/month, over the $${o.budgetMonthly.toLocaleString('en-US')} budget`);
   if (o.rps && a.headroom.maxRps < o.rps * 1.5) problems.push(`headroom only ${a.headroom.ratio.toFixed(1)}× (${Math.round(a.headroom.maxRps)} req/s, then ${a.headroom.limitedBy ?? 'nothing'})`);
   const critical = a.findings.filter((f) => f.severity === 'critical');
   const verdict = !a.baseline.meetsSlo || critical.length || (o.budgetMonthly !== undefined && a.baseline.monthly > o.budgetMonthly) ? 'fail' : a.findings.some((f) => f.severity === 'major') || problems.length ? 'pass with risks' : 'pass';

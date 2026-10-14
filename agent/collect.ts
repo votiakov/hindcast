@@ -104,7 +104,7 @@ export async function collect(ws: Workspace, o: CollectOptions = {}, progress?: 
       traces += got.traces;
       requests += got.requests;
     }
-    traceNote = `${traces.toLocaleString()} traces from ${kind} through ${entry.join(', ')} (${requests} requests)`;
+    traceNote = `${traces.toLocaleString('en-US')} traces from ${kind} through ${entry.join(', ')} (${requests} requests)`;
     if (traces < 50) warnings.push(`only ${traces} traces in the window — topology and self times rest on few requests`);
   } else if (src.traceFiles?.length) {
     traceFiles = src.traceFiles.flatMap((p) => glob(p)).map((p) => resolve(p));
@@ -268,7 +268,7 @@ export async function collect(ws: Workspace, o: CollectOptions = {}, progress?: 
     endpoints: Object.keys(dataset.endpoints),
     coverage,
     emptyQueries: empty,
-    imported: log.map((l) => `${l.what}${l.points !== undefined ? ` (${l.points.toLocaleString()} points)` : ''}`),
+    imported: log.map((l) => `${l.what}${l.points !== undefined ? ` (${l.points.toLocaleString('en-US')} points)` : ''}`),
     bill: dataset.bill ? `$${dataset.bill.total.toFixed(2)} over the bill window` : null,
     warnings,
     files: { manifest: manifestPath, dataset: ws.path('dataset.json') },

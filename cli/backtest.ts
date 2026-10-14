@@ -89,11 +89,11 @@ function printBacktest(r: BacktestResult) {
   const f$ = (x: number) => `${x < 0 ? '−' : '+'}$${Math.abs(x).toFixed(Math.abs(x) < 100 ? 2 : 0)}`;
   console.log(`\n${c.bold(`Backtest — ${r.model}`)} ${c.dim(`· ${((r.window.end - r.window.start) / 3600).toFixed(1)} h of history · ${r.draws} draws`)}`);
   const b = r.baseline.summary;
-  console.log(`  ${c.bold('As built'.padEnd(30))} $${b.monthly.p50.toFixed(0)}/month   ${Math.round(b.minutesOutOfSlo.p50)} min out of SLO   ${Math.round(b.failedRequests.p50).toLocaleString()} failed`);
+  console.log(`  ${c.bold('As built'.padEnd(30))} $${b.monthly.p50.toFixed(0)}/month   ${Math.round(b.minutesOutOfSlo.p50)} min out of SLO   ${Math.round(b.failedRequests.p50).toLocaleString('en-US')} failed`);
   for (const k of r.ranking) {
     const s = r.strategies.find((x) => x.name === k.name)!;
     const good = k.minutesOutOfSloDelta <= 0.5;
-    console.log(`  ${(good ? c.green : c.yellow)(s.name.padEnd(30))} ${f$(s.delta.monthly.p50)}/month ${Math.abs(s.delta.monthly.hi - s.delta.monthly.lo) > 0.005 ? c.dim(`(${f$(s.delta.monthly.lo)} … ${f$(s.delta.monthly.hi)})`) : ''}   ${Math.round(s.summary.minutesOutOfSlo.p50)} min out of SLO   ${Math.round(s.summary.failedRequests.p50).toLocaleString()} failed`);
+    console.log(`  ${(good ? c.green : c.yellow)(s.name.padEnd(30))} ${f$(s.delta.monthly.p50)}/month ${Math.abs(s.delta.monthly.hi - s.delta.monthly.lo) > 0.005 ? c.dim(`(${f$(s.delta.monthly.lo)} … ${f$(s.delta.monthly.hi)})`) : ''}   ${Math.round(s.summary.minutesOutOfSlo.p50)} min out of SLO   ${Math.round(s.summary.failedRequests.p50).toLocaleString('en-US')} failed`);
     console.log(`  ${''.padEnd(30)} ${c.dim(headline(s, r.baseline))}`);
   }
   console.log(`\n${accuracyLine(r.accuracy)}\n`);
@@ -124,7 +124,7 @@ export async function backtestCommand(cmd: string, pos: string[], opt: Opt): Pro
       const out = String(opt.out ?? join(dirname(pos[0]), 'dataset.json'));
       writeFileSync(out, JSON.stringify(dataset));
       if (json) return console.log(JSON.stringify({ log, out }, null, 2)), true;
-      for (const l of log) console.log(`  ${c.green('✓')} ${l.what} ${c.dim(relative('.', l.file))}${l.points !== undefined ? c.dim(` · ${l.points.toLocaleString()} points`) : ''}`);
+      for (const l of log) console.log(`  ${c.green('✓')} ${l.what} ${c.dim(relative('.', l.file))}${l.points !== undefined ? c.dim(` · ${l.points.toLocaleString('en-US')} points`) : ''}`);
       console.log(`\n${c.bold(dataset.name)}: ${Object.keys(dataset.services).length} services, ${Object.keys(dataset.endpoints).length} endpoints, ${dataset.n} buckets of ${dataset.stepS}s (${((dataset.n * dataset.stepS) / 3600).toFixed(1)} h)${dataset.bill ? `, bill $${dataset.bill.total.toFixed(2)}` : ''} ${c.dim(`→ ${out} in ${Date.now() - t0} ms`)}\n`);
       return true;
     }
@@ -198,7 +198,7 @@ export async function backtestCommand(cmd: string, pos: string[], opt: Opt): Pro
       console.log(`\n  replayed against ${c.bold(m.name)} at ${replay.baseRps.toFixed(1)} req/s normal load${opt.rps ? '' : ' (p90 of its history)'}`);
       for (const [r, svcs] of Object.entries(replay.roles)) console.log(`  ${c.dim(`${r}:`.padEnd(14))} ${svcs.join(', ') || c.yellow('nothing in this model')}`);
       for (const w of replay.warnings) console.log(c.yellow(`  ${w}`));
-      const verdict = (s: { summary: { minutesOutOfSlo: { p50: number }; failedRequests: { p50: number } } }) => (s.summary.minutesOutOfSlo.p50 < 1 ? c.green('survives') : c.red(`${Math.round(s.summary.minutesOutOfSlo.p50)} min out of SLO, ${Math.round(s.summary.failedRequests.p50).toLocaleString()} failed requests`));
+      const verdict = (s: { summary: { minutesOutOfSlo: { p50: number }; failedRequests: { p50: number } } }) => (s.summary.minutesOutOfSlo.p50 < 1 ? c.green('survives') : c.red(`${Math.round(s.summary.minutesOutOfSlo.p50)} min out of SLO, ${Math.round(s.summary.failedRequests.p50).toLocaleString('en-US')} failed requests`));
       console.log(`\n  ${'As built'.padEnd(30)} ${verdict(result.baseline)}   ${c.dim(result.baseline.worst.why)}`);
       for (const st of result.strategies) console.log(`  ${st.name.padEnd(30)} ${verdict(st)}`);
       console.log(c.dim(`\n  assumptions: ${o.assumptions.join(' ')}\n  source: ${o.sources.map((x) => x.url).join(' ')}`));

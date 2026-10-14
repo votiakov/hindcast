@@ -255,3 +255,41 @@ mod tests {
         assert!((w.mean_ms - 0.7 / 30.0 * 1000.0).abs() < 1e-9);
     }
 }
+
+/// Number.prototype.toLocaleString('en-US'): grouped thousands, at most three fraction digits
+/// (rounded half away from zero), trailing zeros dropped
+pub fn js_locale(x: f64) -> String {
+    if x.is_nan() {
+        return "NaN".into();
+    }
+    if x.is_infinite() {
+        return if x < 0.0 { "-∞" } else { "∞" }.into();
+    }
+    let fixed = if x.abs() >= 1e21 { format!("{:.3}", x) } else { js_to_fixed(x, 3) };
+    let (neg, body) = match fixed.strip_prefix('-') {
+        Some(b) => (true, b.to_string()),
+        None => (false, fixed),
+    };
+    let (int, frac) = match body.split_once('.') {
+        Some((i, f)) => (i.to_string(), f.trim_end_matches('0').to_string()),
+        None => (body, String::new()),
+    };
+    let mut out = String::new();
+    let n = int.len();
+    for (i, ch) in int.chars().enumerate() {
+        if i > 0 && (n - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(ch);
+    }
+    if !frac.is_empty() {
+        out.push('.');
+        out += &frac;
+    }
+    // -0 and values that round to zero keep their sign, as Intl does
+    if neg || (x == 0.0 && x.is_sign_negative()) {
+        format!("-{}", out)
+    } else {
+        out
+    }
+}
