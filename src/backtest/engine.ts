@@ -294,7 +294,21 @@ export function linkPrice(a: ServicePlan | undefined, b: ServicePlan | undefined
 /** seconds an OOM-killed container takes to start serving again, on top of the backoff */
 const OOM_RESTART_S = 10;
 
-export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number; faults?: Fault[] } = {}): RunResult {
+export type RunOpts = { substepS?: number; faults?: Fault[] };
+type Runner = (plan: Plan, traffic: Traffic, opts: RunOpts) => RunResult;
+/** the compiled engine (engine-rs, WebAssembly) once loaded; the TypeScript one below until then */
+let native: Runner | null = null;
+export function setNativeEngine(run: Runner | null) {
+  native = run;
+}
+export const nativeEngineLoaded = () => native !== null;
+
+export function runPlan(plan: Plan, traffic: Traffic, opts: RunOpts = {}): RunResult {
+  return native ? native(plan, traffic, opts) : runPlanTs(plan, traffic, opts);
+}
+
+/** the replay in TypeScript: the reference the Rust engine is checked against */
+export function runPlanTs(plan: Plan, traffic: Traffic, opts: RunOpts = {}): RunResult {
   const { n, stepS } = traffic;
   const sub = Math.max(1, Math.ceil(stepS / (opts.substepS ?? 5)));
   const dt = stepS / sub;
@@ -732,10 +746,10 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
   return out;
 }
 
-/** a plan that reproduces the model as it was (observed replicas, no changes) */
 /** the wait a one-core burst sees once it has spent its CFS quota: the rest of the 100 ms period */
 export const cfsStallMs = (limit: number | null) => (limit && limit < 1 ? (1 - limit) * 100 : 0);
 
+/** a plan that reproduces the model as it was (observed replicas, no changes) */
 export function basePlan(model: Model, observed?: Record<string, Num[] | undefined>): Plan {
   const services: Record<string, ServicePlan> = {};
   for (const [id, s] of Object.entries(model.services)) {
