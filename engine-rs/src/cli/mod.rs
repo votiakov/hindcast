@@ -6,6 +6,7 @@ pub mod bt;
 pub mod design;
 pub mod files;
 pub mod http;
+pub mod mcp;
 pub mod reports;
 pub mod sim;
 pub mod util;
@@ -62,6 +63,10 @@ fn run(args: &[String], out: &mut Out) -> Result<i32, String> {
     let rest = if args.is_empty() { &[][..] } else { &args[1..] };
     if cmd == "agent" {
         return agent::command(rest, out);
+    }
+    if cmd == "mcp" {
+        out.flush();
+        return Ok(mcp::serve());
     }
     let f = flags(rest);
     if let Some(code) = bt::command(cmd, &f, out)? {

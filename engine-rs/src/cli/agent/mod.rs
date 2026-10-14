@@ -13,6 +13,27 @@ use crate::cli::util::*;
 use serde_json::{json, Map as JMap, Value};
 use workspace::Workspace;
 
+thread_local! {
+    static PROGRESS: std::cell::RefCell<Option<Box<dyn FnMut(&str, f64, f64)>>> = std::cell::RefCell::new(None);
+}
+
+/// a long tool's phase, reported when the caller asked for progress (MCP progress notifications)
+pub fn progress(message: &str, done: f64, total: f64) {
+    PROGRESS.with(|p| {
+        if let Some(f) = p.borrow_mut().as_mut() {
+            f(message, done, total);
+        }
+    });
+}
+
+/// run with progress reported to `f` (or with none: `None`), restoring the previous hook after
+pub fn with_progress<T>(f: Option<Box<dyn FnMut(&str, f64, f64)>>, run: impl FnOnce() -> T) -> T {
+    let prev = PROGRESS.with(|p| std::mem::replace(&mut *p.borrow_mut(), f));
+    let out = run();
+    PROGRESS.with(|p| *p.borrow_mut() = prev);
+    out
+}
+
 pub fn tools() -> Vec<Value> {
     serde_json::from_str(include_str!("tools.json")).unwrap_or_default()
 }
@@ -51,11 +72,35 @@ pub fn validate(schema: &Value, v: Option<&Value>, path: &[String], issues: &mut
         issues.push((p(), "Invalid input".into()));
         return None;
     }
+    // a discriminated union: the branch its tag names, or the tags it could have been
+    if let Some(one) = schema.get("oneOf").and_then(|a| a.as_array()) {
+        let o = match v {
+            Some(Value::Object(o)) => o,
+            x => {
+                issues.push((p(), format!("Invalid input: expected object, received {}", x.map(received).unwrap_or("undefined"))));
+                return None;
+            }
+        };
+        let tag = one.first().and_then(|b| b.get("properties")).and_then(|ps| ps.as_object()).and_then(|ps| ps.iter().find(|(_, s)| s.get("const").is_some()).map(|(k, _)| k.clone())).unwrap_or_default();
+        let tags: Vec<&Value> = one.iter().map(|b| &b["properties"][&tag]["const"]).collect();
+        return match one.iter().zip(&tags).find(|(_, t)| o.get(&tag) == Some(*t)) {
+            Some((b, _)) => validate(b, v, path, issues),
+            None => {
+                let mut pp = path.to_vec();
+                pp.push(tag.clone());
+                issues.push((pp.join("."), format!("Invalid discriminator value. Expected {}", tags.iter().map(|t| format!("'{}'", t.as_str().unwrap_or(""))).collect::<Vec<_>>().join(" | "))));
+                None
+            }
+        };
+    }
     let ty = schema.get("type").and_then(|t| t.as_str());
     let v = match v {
         Some(v) => v,
         None => {
-            issues.push((p(), format!("Invalid input: expected {}, received undefined", ty.map(|t| if t == "integer" { "number" } else { t }).unwrap_or("value"))));
+            issues.push((p(), match schema.get("enum").and_then(|e| e.as_array()) {
+                Some(e) => format!("Invalid option: expected one of {}", e.iter().map(crate::convert::js_stringify).collect::<Vec<_>>().join("|")),
+                None => format!("Invalid input: expected {}, received undefined", ty.map(|t| if t == "integer" { "number" } else { t }).unwrap_or("value")),
+            }));
             return None;
         }
     };
@@ -213,6 +258,12 @@ pub fn run_tool(name: &str, args: &Value) -> Result<Value, String> {
     if !issues.is_empty() {
         return Err(format!("invalid input:\n{}", issues.iter().map(|(p, m)| format!("- {}: {}", p, m)).collect::<Vec<_>>().join("\n")));
     }
+    dispatch(name, &parsed)
+}
+
+/// a tool on arguments already checked
+pub fn dispatch(name: &str, parsed: &Value) -> Result<Value, String> {
+    let parsed = parsed.clone();
     let ws = Workspace::new(parsed.get("workspace").and_then(|w| w.as_str()));
     match name {
         "connect_telemetry" => connect::connect_telemetry(&ws, &parsed),

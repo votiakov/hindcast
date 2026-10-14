@@ -40,7 +40,7 @@ fn query_prom(url: &str, h: &[(String, String)], expr: &str, at: f64) -> Result<
 }
 
 /// encodeURIComponent
-fn encode_uri_component(s: &str) -> String {
+pub(crate) fn encode_uri_component(s: &str) -> String {
     let mut o = String::new();
     for b in s.bytes() {
         match b {
@@ -170,6 +170,10 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
     let covered: f64 = parts.iter().map(|(a, b)| b - a).sum();
     let step_s = o.get("stepS").and_then(|x| x.as_f64()).unwrap_or_else(|| STEPS.iter().copied().find(|s| (end - start) / s <= 20_160.0).unwrap_or(3600.0));
     let rate_window = format!("{}s", js_num(step_s.max(60.0)));
+    super::progress(&match &windows {
+        Some(w) => format!("{} windows, {} … {}, in {} s buckets", w.len(), iso(start), iso(end), js_num(step_s)),
+        None => format!("window {} … {} in {} s buckets", iso(start), iso(end), js_num(step_s)),
+    }, 0.0, 4.0);
 
     // ---- traces first: they say which services requests enter through
     let tel = ws.path("telemetry");
@@ -199,6 +203,7 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
         if ent.is_empty() {
             return Err(format!("could not tell which services requests enter through from {}: give system.entry in connect_telemetry", kind));
         }
+        super::progress("fetching traces", 1.0, 4.0);
         let (mut traces, mut requests) = (0usize, 0usize);
         let max_traces = o.get("maxTraces").and_then(|x| x.as_f64()).unwrap_or(3000.0);
         for (k, (a, b)) in parts.iter().enumerate() {
@@ -252,6 +257,7 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
     }
 
     // ---- metrics
+    super::progress("querying Prometheus", 2.0, 4.0);
     let po = crate::prom_export::Opts {
         window: rate_window,
         selector: prom.get("selector").and_then(|x| x.as_str()).unwrap_or("").to_string(),
@@ -377,6 +383,7 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
     std::fs::write(&manifest_path, format!("# Written by Hindcast collect_telemetry, {}: {}\n{}", iso(now), parts.iter().map(|(a, b)| format!("{} … {}", iso(*a), iso(*b))).collect::<Vec<_>>().join(", "), crate::yaml_out::to_yaml(&manifest_v))).map_err(|e| e.to_string())?;
 
     // ---- import
+    super::progress("importing", 3.0, 4.0);
     let mut fs = DiskFiles::for_manifest(&manifest_path);
     let (dataset, log) = crate::import::manifest::import_bundle(&manifest_v, &mut fs)?;
     let mut d = crate::cli::util::to_json(&dataset);

@@ -592,7 +592,7 @@ pub fn encode_payload(v: &Value) -> String {
 }
 
 /// a variant applied to a (canonical) spec: a replacement spec, or its changes in order
-fn apply_variant(base: &Value, v: &Value) -> Result<Value, String> {
+pub(crate) fn apply_variant(base: &Value, v: &Value) -> Result<Value, String> {
     if let Some(spec) = v.get("spec").filter(|x| !x.is_null()) {
         let (a, issues) = crate::sim::spec::check_architecture(spec);
         if a.is_none() {

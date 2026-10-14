@@ -237,3 +237,8 @@ it("the native CLI's catalogue is the app's (npx tsx scripts/catalog-json.ts --w
   expect(readFileSync('engine-rs/src/cli/catalog.json', 'utf8')).toBe(catalogJson());
   expect(readFileSync('engine-rs/src/cli/outages.json', 'utf8')).toBe(outagesJson());
 });
+
+it("the native MCP server describes itself as the Node one does (npx tsx scripts/mcp-manifest.ts --write)", async () => {
+  const { mcpManifest } = await import('../scripts/mcp-manifest');
+  expect(readFileSync('engine-rs/src/cli/mcp/manifest.json', 'utf8')).toBe(await mcpManifest());
+}, 60_000);

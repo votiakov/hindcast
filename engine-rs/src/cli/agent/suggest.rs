@@ -196,8 +196,11 @@ pub fn suggest_changes(ws: &Workspace, o: &Value) -> Result<Value, String> {
     if savings.iter().any(|x| arr(x, &["changes"]).iter().any(|ch| ch.get("memoryGb").map(|v| !v.is_null()).unwrap_or(false))) {
         c.notes.push("memory cuts are judged on the working set the history showed: a heap sized to the old limit (JVM -Xmx or MaxRAMPercentage, GOMEMLIMIT, Node --max-old-space-size) can grow into the new one — set it below the new limit with the change".into());
     }
+    super::progress(&format!("backtesting {} fixes", fixes.len()), 0.0, 3.0);
     let fix_results = evaluate(&mut c, &fixes)?;
+    super::progress(&format!("backtesting {} savings", savings.len()), 1.0, 3.0);
     let save_results = evaluate(&mut c, &savings)?;
+    super::progress("trying the safe savings together", 2.0, 3.0);
 
     // the savings that pass, together
     let mut safe: Vec<&Value> = save_results.iter().filter(|x| s(x, &["verdict"]) == "pass" && n(x, &["monthlyDelta"]) < 0.0).collect();
@@ -232,6 +235,7 @@ pub fn suggest_changes(ws: &Workspace, o: &Value) -> Result<Value, String> {
     let mut resilience: Option<Value> = None;
     let has_pods = g(&mv, &["services"]).as_object().map(|x| x.values().any(|s| truthy(g(s, &["pods"])))).unwrap_or(false);
     if goal != "cost" && has_pods {
+        super::progress("losing each node at the busiest moment", 2.0, 3.0);
         let now = to_json(&crate::resilience::node_loss(&m, &d, &crate::resilience::NodeLossOptions { draws: Some(6.0), ..Default::default() })?);
         let spof: Vec<Value> = arr(&now, &["singlePointsOfFailure"]).iter().map(|x| g(x, &["service"]).clone()).collect();
         if !g(&now, &["survives"]).as_bool().unwrap_or(false) {

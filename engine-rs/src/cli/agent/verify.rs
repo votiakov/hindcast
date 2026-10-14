@@ -138,6 +138,7 @@ fn summary(m: &Value, cal: &Value, warnings: &[String]) -> Value {
 pub fn calibrate_model(ws: &Workspace, o: &Value) -> Result<Value, String> {
     let dv = ws.read_json("dataset.json")?;
     let d = dataset_of(&dv)?;
+    super::progress(&format!("fitting {} services on {} buckets", d.services.len(), js_num(d.n)), 0.0, 3.0);
     let src = ws.sources()?;
     let slo = o.get("slo").filter(|x| !x.is_null()).or_else(|| src.get("system").and_then(|s| s.get("slo")).filter(|x| !x.is_null())).cloned();
     let timeout = o.get("timeoutMs").and_then(|x| x.as_f64()).or_else(|| src.get("system").and_then(|s| s.get("timeoutMs")).and_then(|x| x.as_f64())).filter(|t| *t != 0.0);
@@ -151,6 +152,7 @@ pub fn calibrate_model(ws: &Workspace, o: &Value) -> Result<Value, String> {
     let mut mv = to_json(&m);
     let mut warnings: Vec<String> = vec![];
     let holdout = o.get("holdout").and_then(|x| x.as_f64()).unwrap_or(0.3);
+    super::progress("measuring accuracy on the held-back requests", 1.0, 3.0);
     if holdout > 0.0 && d.n >= 30.0 {
         let rec = crate::accuracy::holdout_accuracy(&d, &opts, Some(holdout), None);
         if let Some(Value::Array(a)) = mv.get_mut("accuracy") {
@@ -160,6 +162,7 @@ pub fn calibrate_model(ws: &Workspace, o: &Value) -> Result<Value, String> {
         warnings.push(format!("only {} buckets of history: too short to hold any back and measure accuracy", js_num(d.n)));
     }
     ws.write_json("model.json", &mv, true)?;
+    super::progress("replaying the history for the trust report", 2.0, 3.0);
     // replay the history once: how close each service came to its fitted capacity
     let replay = crate::backtest::backtest(&m, &d, &[], &crate::backtest::BacktestOptions { draws: Some(1.0), ..Default::default() })?;
     let rv = to_json(&replay);

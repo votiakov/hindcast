@@ -31,8 +31,10 @@ pub fn review_capacity(ws: &Workspace, o: &Value) -> Result<Value, String> {
     let dv = ws.read_json("dataset.json")?;
     let d: crate::dataset::Dataset = serde_json::from_value(dv.clone()).map_err(|e| format!("dataset: {}", e))?;
     let draws = o.get("draws").and_then(|x| x.as_f64()).unwrap_or(12.0);
+    super::progress("headroom", 0.0, 5.0);
     let head = crate::accuracy::model_breaking_point(&m, Some(&crate::backtest::base_plan(&m, None)), None, None, None);
     let peak = g(&mv, &["traffic", "peak"]).as_f64().unwrap_or(0.0);
+    super::progress("busier days", 1.0, 5.0);
     let busier: Vec<Value> = [1.5, 2.0]
         .iter()
         .map(|scale| -> Result<Value, String> {
@@ -42,6 +44,7 @@ pub fn review_capacity(ws: &Workspace, o: &Value) -> Result<Value, String> {
             Ok(json!({ "scale": num(*scale), "minutesOutOfSlo": num(r1(mo)), "failedRequests": num(js_round(n(b, &["summary", "failedRequests", "p50"]))), "worst": g(b, &["worst", "why"]), "holds": mo <= 0.5 }))
         })
         .collect::<Result<_, _>>()?;
+    super::progress("losing a node", 2.0, 5.0);
     let has_pods = g(&mv, &["services"]).as_object().map(|x| x.values().any(|s| truthy(g(s, &["pods"])))).unwrap_or(false);
     let nodes = if has_pods { Some(to_json(&crate::resilience::node_loss(&m, &d, &crate::resilience::NodeLossOptions { draws: Some(draws.min(8.0)), ..Default::default() })?)) } else { None };
     let svcs: Vec<Value> = g(&mv, &["services"]).as_object().map(|x| x.values().cloned().collect()).unwrap_or_default();
@@ -51,7 +54,9 @@ pub fn review_capacity(ws: &Workspace, o: &Value) -> Result<Value, String> {
         .filter(|x| truthy(g(x, &["memory", "limit"])) && n(x, &["memory", "peak"]) / n(x, &["memory", "limit"]) >= 0.75)
         .map(|x| json!({ "service": g(x, &["id"]), "peakMiB": num(js_round(n(x, &["memory", "peak"]) * 1024.0)), "limitMiB": num(js_round(n(x, &["memory", "limit"]) * 1024.0)), "share": num(js_round((n(x, &["memory", "peak"]) / n(x, &["memory", "limit"])) * 100.0) / 100.0) }))
         .collect();
-    let sug = super::suggest::suggest_changes(ws, &json!({ "draws": draws }))?;
+    super::progress("fixes and savings", 3.0, 5.0);
+    // suggest_changes reports no phases of its own here
+    let sug = super::with_progress(None, || super::suggest::suggest_changes(ws, &json!({ "draws": draws })))?;
     let c = g(&mv, &["cluster"]);
     let mut pool = Value::Null;
     if !c.is_null() {
@@ -93,6 +98,7 @@ pub fn review_capacity(ws: &Workspace, o: &Value) -> Result<Value, String> {
     out.insert("nodePool".into(), pool);
     let cs = g(&sug, &["combinedSavings"]);
     out.insert("combinedSavings".into(), if cs.is_null() { Value::Null } else { json!({ "name": g(cs, &["name"]), "monthlyDelta": g(cs, &["monthlyDelta"]), "verdict": g(cs, &["verdict"]) }) });
+    super::progress("writing the report", 4.0, 5.0);
     let out_v = Value::Object(out.clone());
     let md = review_markdown(&out_v);
     ws.ensure("reports");

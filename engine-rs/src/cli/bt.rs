@@ -16,20 +16,20 @@ fn pad_end(x: &str, n: usize) -> String {
     }
 }
 
-fn read_json(path: &str) -> Result<Value, String> {
+pub(crate) fn read_json(path: &str) -> Result<Value, String> {
     serde_json::from_str(&read(path)?).map_err(|e| e.to_string())
 }
-fn read_any(path: &str) -> Result<Value, String> {
+pub(crate) fn read_any(path: &str) -> Result<Value, String> {
     if path.ends_with(".json") {
         read_json(path)
     } else {
         parse_yaml(&read(path)?)
     }
 }
-fn model_of(v: &Value) -> Result<crate::model::Model, String> {
+pub(crate) fn model_of(v: &Value) -> Result<crate::model::Model, String> {
     serde_json::from_value(v.clone()).map_err(|e| format!("model: {}", e))
 }
-fn dataset_of(v: &Value) -> Result<crate::dataset::Dataset, String> {
+pub(crate) fn dataset_of(v: &Value) -> Result<crate::dataset::Dataset, String> {
     serde_json::from_value(v.clone()).map_err(|e| format!("dataset: {}", e))
 }
 
@@ -56,7 +56,7 @@ fn duration(x: &str) -> Result<f64, String> {
     Ok(crate::import::js_parse_float(num) * f)
 }
 
-fn last_window(d: crate::dataset::Dataset, span: &str) -> Result<crate::dataset::Dataset, String> {
+pub(crate) fn last_window(d: crate::dataset::Dataset, span: &str) -> Result<crate::dataset::Dataset, String> {
     let buckets = (duration(span)? / d.step_s).ceil();
     if buckets >= d.n {
         return Ok(d);
@@ -170,7 +170,7 @@ fn print_backtest(r: &Value, out: &mut Out) {
 }
 
 /// the result as JavaScript holds it: the model's accuracy record rides along
-fn result_json(r: &crate::backtest::BacktestResult, model: &Value) -> Value {
+pub(crate) fn result_json(r: &crate::backtest::BacktestResult, model: &Value) -> Value {
     let mut v = to_json(r);
     if let Value::Object(o) = &mut v {
         o.insert("accuracy".into(), g(model, &["accuracy"]).clone());
