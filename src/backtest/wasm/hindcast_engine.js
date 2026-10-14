@@ -15,6 +15,24 @@ function handleError(f, args) {
     }
 }
 
+const cachedTextDecoder = (typeof TextDecoder !== 'undefined' ? new TextDecoder('utf-8', { ignoreBOM: true, fatal: true }) : { decode: () => { throw Error('TextDecoder not available') } } );
+
+if (typeof TextDecoder !== 'undefined') { cachedTextDecoder.decode(); };
+
+let cachedUint8ArrayMemory0 = null;
+
+function getUint8ArrayMemory0() {
+    if (cachedUint8ArrayMemory0 === null || cachedUint8ArrayMemory0.byteLength === 0) {
+        cachedUint8ArrayMemory0 = new Uint8Array(wasm.memory.buffer);
+    }
+    return cachedUint8ArrayMemory0;
+}
+
+function getStringFromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return cachedTextDecoder.decode(getUint8ArrayMemory0().subarray(ptr, ptr + len));
+}
+
 function isLikeNone(x) {
     return x === undefined || x === null;
 }
@@ -95,15 +113,6 @@ function debugString(val) {
 
 let WASM_VECTOR_LEN = 0;
 
-let cachedUint8ArrayMemory0 = null;
-
-function getUint8ArrayMemory0() {
-    if (cachedUint8ArrayMemory0 === null || cachedUint8ArrayMemory0.byteLength === 0) {
-        cachedUint8ArrayMemory0 = new Uint8Array(wasm.memory.buffer);
-    }
-    return cachedUint8ArrayMemory0;
-}
-
 const cachedTextEncoder = (typeof TextEncoder !== 'undefined' ? new TextEncoder('utf-8') : { encode: () => { throw Error('TextEncoder not available') } } );
 
 const encodeString = (typeof cachedTextEncoder.encodeInto === 'function'
@@ -158,15 +167,6 @@ function passStringToWasm0(arg, malloc, realloc) {
     return ptr;
 }
 
-const cachedTextDecoder = (typeof TextDecoder !== 'undefined' ? new TextDecoder('utf-8', { ignoreBOM: true, fatal: true }) : { decode: () => { throw Error('TextDecoder not available') } } );
-
-if (typeof TextDecoder !== 'undefined') { cachedTextDecoder.decode(); };
-
-function getStringFromWasm0(ptr, len) {
-    ptr = ptr >>> 0;
-    return cachedTextDecoder.decode(getUint8ArrayMemory0().subarray(ptr, ptr + len));
-}
-
 function takeFromExternrefTable0(idx) {
     const value = wasm.__wbindgen_export_2.get(idx);
     wasm.__externref_table_dealloc(idx);
@@ -181,6 +181,22 @@ function takeFromExternrefTable0(idx) {
  */
 export function runPlan(plan, traffic, opts) {
     const ret = wasm.runPlan(plan, traffic, opts);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * backtest(model, dataset, strategies, opts) → BacktestResult (src/backtest/backtest.ts)
+ * @param {any} model
+ * @param {any} dataset
+ * @param {any} strategies
+ * @param {any} opts
+ * @returns {any}
+ */
+export function backtest(model, dataset, strategies, opts) {
+    const ret = wasm.backtest(model, dataset, strategies, opts);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -309,6 +325,16 @@ function __wbg_get_imports() {
         const ret = result;
         return ret;
     };
+    imports.wbg.__wbg_instanceof_Map_f3469ce2244d2430 = function(arg0) {
+        let result;
+        try {
+            result = arg0 instanceof Map;
+        } catch (_) {
+            result = false;
+        }
+        const ret = result;
+        return ret;
+    };
     imports.wbg.__wbg_instanceof_Uint8Array_17156bcf118086a9 = function(arg0) {
         let result;
         try {
@@ -359,6 +385,10 @@ function __wbg_get_imports() {
         const ret = new Uint8Array(arg0);
         return ret;
     };
+    imports.wbg.__wbg_new_c68d7209be747379 = function(arg0, arg1) {
+        const ret = new Error(getStringFromWasm0(arg0, arg1));
+        return ret;
+    };
     imports.wbg.__wbg_newwithbyteoffsetandlength_93c8e0c1a479fa1a = function(arg0, arg1, arg2) {
         const ret = new Float64Array(arg0, arg1 >>> 0, arg2 >>> 0);
         return ret;
@@ -394,6 +424,10 @@ function __wbg_get_imports() {
     };
     imports.wbg.__wbindgen_as_number = function(arg0) {
         const ret = +arg0;
+        return ret;
+    };
+    imports.wbg.__wbindgen_bigint_from_i64 = function(arg0) {
+        const ret = arg0;
         return ret;
     };
     imports.wbg.__wbindgen_bigint_from_u64 = function(arg0) {

@@ -2,9 +2,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { parse } from 'yaml';
 import { initSync } from '../src/backtest/wasm/hindcast_engine.js';
-import { runPlanNative } from '../src/backtest/native';
+import { runPlanNative, backtestNative } from '../src/backtest/native';
 import { runPlanTs, setNativeEngine, type Plan, type RunOpts, type Traffic } from '../src/backtest/engine';
-import { backtest } from '../src/backtest/backtest';
+import { backtest, backtestTs } from '../src/backtest/backtest';
 import { reviveModel, type Model } from '../src/backtest/model';
 import type { Dataset } from '../src/backtest/dataset';
 import { OUTAGES, replayOutage } from '../src/backtest/outages';
@@ -79,6 +79,33 @@ describe.each(bundles)('Rust engine matches TypeScript on %s', (file) => {
   it('every public outage', () => {
     for (const o of OUTAGES.slice(0, 6)) replayOutage(model, o, [], { draws: 1 });
     expect(diffs, JSON.stringify(diffs.slice(0, 5), null, 1)).toEqual([]);
+  });
+
+  it('the whole backtest in Rust: strategies, doubled load, an outage, no observed replicas', () => {
+    const specs = w.strategies.map((s) => parse(s));
+    const cases: [unknown[], Parameters<typeof backtestTs>[3]][] = [
+      [specs, { draws: 5 }],
+      [specs, { draws: 3, load: { scale: 2 } }],
+      [specs.slice(0, 2), { draws: 2, observed: false, seed: 11 }],
+      [[], { draws: 2, load: { peakRps: 500 } }],
+    ];
+    const outage = OUTAGES.map((o) => replayOutage(model, o, [], { draws: 1 })).find((x) => x.replay)?.replay;
+    void outage;
+    for (const [s, o] of cases) {
+      const out: Diff[] = [];
+      compare(backtestTs(model, w.dataset, s, o), backtestNative(model, w.dataset, s, o), 'backtest', out);
+      expect(out, JSON.stringify(out.slice(0, 5), null, 1)).toEqual([]);
+    }
+  });
+
+  it('a strategy the schema rejects fails the same way', () => {
+    const bad = { name: 'bad', changes: [{ endpoint: '*', retries: { budget: 2 } }] };
+    let a = '';
+    let b = '';
+    try { backtestTs(model, w.dataset, [bad], { draws: 1 }); } catch (e) { a = (e as Error).message; }
+    try { backtestNative(model, w.dataset, [bad], { draws: 1 }); } catch (e) { b = (e as Error).message; }
+    expect(b).toMatch(/an endpoint change takes endpoint, retries \{ attempts, budget\? \}/);
+    expect(JSON.parse(b).map((i: { message: string; path: unknown }) => [i.message, i.path])).toEqual(JSON.parse(a).map((i: { message: string; path: unknown }) => [i.message, i.path]));
   });
 
   it('losing each node', () => {

@@ -171,6 +171,7 @@ pub struct EndpointPlan {
     pub retries: Option<Retries>,
     #[serde(default, deserialize_with = "num")]
     pub timeout_ms: f64,
+    pub slo: Option<crate::model::Slo>,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -233,6 +234,7 @@ pub struct Plan {
     pub transfer: Transfer,
     #[serde(default, deserialize_with = "num")]
     pub unattributed_per_hour: f64,
+    pub slo: Option<crate::model::Slo>,
 }
 
 #[derive(Deserialize, Clone, Debug)]

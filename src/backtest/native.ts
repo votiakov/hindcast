@@ -1,5 +1,8 @@
-import init, { initSync, runPlanPacked } from './wasm/hindcast_engine.js';
+import init, { initSync, runPlanPacked, backtest as wasmBacktest } from './wasm/hindcast_engine.js';
 import { setNativeEngine, type Plan, type RunOpts, type RunResult, type Traffic } from './engine';
+import { setNativeBacktest, type BacktestOptions, type BacktestResult } from './backtest';
+import type { Model } from './model';
+import type { Dataset } from './dataset';
 
 /**
  * Loads the compiled replay engine (engine-rs, built to WebAssembly by `npm run engine:build`) and
@@ -42,7 +45,17 @@ export function runPlanNative(plan: Plan, traffic: Traffic, opts: RunOpts = {}):
   return out;
 }
 
-const use = () => setNativeEngine(runPlanNative);
+/** the whole backtest in the compiled engine: one crossing for every draw of every strategy */
+export function backtestNative(model: Model, d: Dataset, strategies: unknown[], opts: BacktestOptions = {}): BacktestResult {
+  const r = wasmBacktest(model, d, strategies, opts) as BacktestResult;
+  r.accuracy = model.accuracy;
+  return r;
+}
+
+const use = () => {
+  setNativeEngine(runPlanNative);
+  setNativeBacktest(backtestNative);
+};
 
 const wanted = () => typeof process === 'undefined' || process.env?.HINDCAST_ENGINE !== 'ts';
 

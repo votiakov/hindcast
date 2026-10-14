@@ -290,7 +290,20 @@ export function setReplayRunner(r: ReplayRunner | null, threads = 1) {
 /** how many replays run at once (time budgets divide by it) */
 export const replayConcurrency = () => replayThreads;
 
+type Backtester = (model: Model, d: Dataset, strategies: unknown[], opts: BacktestOptions) => BacktestResult;
+/** the compiled backtest (engine-rs) once loaded */
+let nativeBacktest: Backtester | null = null;
+export function setNativeBacktest(b: Backtester | null) {
+  nativeBacktest = b;
+}
+
 export function backtest(model: Model, d: Dataset, strategies: unknown[], opts: BacktestOptions = {}): BacktestResult {
+  // replay threads (CLI, MCP server) spread the replays over cores: the compiled backtest runs in one
+  return nativeBacktest && replayThreads <= 1 ? nativeBacktest(model, d, strategies, opts) : backtestTs(model, d, strategies, opts);
+}
+
+/** the backtest in TypeScript: the reference the Rust one is checked against */
+export function backtestTs(model: Model, d: Dataset, strategies: unknown[], opts: BacktestOptions = {}): BacktestResult {
   const draws = Math.max(1, opts.draws ?? 30);
   let traffic = opts.traffic ?? trafficOf(d, model);
   let load: BacktestResult['load'];

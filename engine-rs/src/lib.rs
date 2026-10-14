@@ -2,8 +2,11 @@
 //! WebAssembly for the browser, the CLI and the MCP server. The TypeScript engine stays as the
 //! reference: test/engine-parity.test.ts runs both on the same plans and compares every series.
 
+pub mod backtest;
 pub mod engine;
 pub mod math;
+pub mod model;
+pub mod strategy;
 pub mod types;
 
 pub use engine::run_plan;
@@ -49,7 +52,19 @@ mod wasm {
         let traffic: Traffic = serde_wasm_bindgen::from_value(traffic)?;
         let opts: Opts = if opts.is_undefined() || opts.is_null() { Opts::default() } else { serde_wasm_bindgen::from_value(opts)? };
         let out = crate::engine::run_plan(&plan, &traffic, &opts);
-        let ser = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+        let ser = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true).serialize_missing_as_null(true);
+        Ok(out.serialize(&ser)?)
+    }
+
+    /// backtest(model, dataset, strategies, opts) → BacktestResult (src/backtest/backtest.ts)
+    #[wasm_bindgen]
+    pub fn backtest(model: JsValue, dataset: JsValue, strategies: JsValue, opts: JsValue) -> Result<JsValue, JsValue> {
+        let model: crate::model::Model = serde_wasm_bindgen::from_value(model)?;
+        let dataset: crate::model::Dataset = serde_wasm_bindgen::from_value(dataset)?;
+        let strategies: Vec<serde_json::Value> = serde_wasm_bindgen::from_value(strategies)?;
+        let opts: crate::backtest::BacktestOptions = if opts.is_undefined() || opts.is_null() { Default::default() } else { serde_wasm_bindgen::from_value(opts)? };
+        let out = crate::backtest::backtest(&model, &dataset, &strategies, &opts).map_err(|e| JsValue::from(js_sys::Error::new(&e)))?;
+        let ser = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true).serialize_missing_as_null(true);
         Ok(out.serialize(&ser)?)
     }
 
@@ -83,7 +98,7 @@ mod wasm {
         let traffic = Traffic { start: meta.start, step_s: meta.step_s, n: meta.n, endpoints: eps };
         let out = crate::engine::run_plan(&plan, &traffic, &opts);
         let data = js_sys::Float64Array::from(&crate::pack(&out)[..]);
-        let ser = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+        let ser = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true).serialize_missing_as_null(true);
         let events = out.events.serialize(&ser)?;
         Ok(js_sys::Array::of2(&data, &events))
     }
