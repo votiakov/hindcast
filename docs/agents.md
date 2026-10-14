@@ -394,6 +394,7 @@ the system runs, calibrate it on telemetry for real numbers.
 | CPU quota throttling | cAdvisor `container_cpu_cfs_throttled_periods_total` / `container_cpu_cfs_periods_total` | capacity runs to 100% of the CPU limit, which a single-threaded runtime never reaches |
 | memory at its peak, against its limit | cAdvisor `container_memory_working_set_bytes` (`max_over_time` per bucket); kube-state-metrics `kube_pod_container_resource_limits{resource="memory"}` | memory cuts are priced but can't be checked for OOM kills |
 | nodes and requests | kube-state-metrics `kube_node_info`, `kube_node_status_allocatable`, `kube_node_role` (control-plane nodes left out), `kube_pod_container_resource_requests`, `kube_pod_status_phase` | Fargate list prices per replica; request cuts can't be told apart from savings |
+| HorizontalPodAutoscalers | kube-state-metrics `kube_horizontalpodautoscaler_info`, `_spec_min_replicas`, `_spec_max_replicas`, `_spec_target_metric` at the end of the window | the node-loss fix sets fixed replicas instead of raising an HPA's minimum |
 | pods per node, node zones | kube-state-metrics `kube_pod_info` (`node` label) at the end of the window; zones from `kube_node_info`'s `provider_id` on AWS and GCP | no node- or zone-loss checks |
 | topology, self time per service | **Jaeger** (`/api/traces`), **Tempo** (`/api/search` + `/api/traces/{id}`), or OTLP / Jaeger JSON files | no topology: which service calls which is unknown |
 | cost | AWS CUR or GCP billing export (file) | AWS Fargate list prices from CPU and memory limits |

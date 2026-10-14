@@ -171,7 +171,9 @@ export async function suggestChanges(ws: Workspace, o: SuggestOptions = {}, prog
           const need = isFinite(K) && K > 0 ? Math.max(1, Math.ceil(peakRps / (K * 0.85))) : 1;
           let r = Math.max(l.down ? 2 : l.of, 2);
           while (r - Math.ceil(r / now.nodes) < need && r < 64) r++;
-          if (l.down || r !== l.of || l.pods > Math.ceil(l.of / now.nodes)) changes.set(l.service, { service: l.service, ...(r !== l.of ? { replicas: r } : {}), spread: 'even' });
+          // an autoscaled service keeps its HPA: its floor rises instead
+          if (s.hpa && (l.down || r !== l.of || l.pods > Math.ceil(l.of / now.nodes))) changes.set(l.service, { service: l.service, autoscale: { min: Math.max(r, s.hpa.min), max: Math.max(s.hpa.max, r), ...(s.hpa.targetCpu ? { targetCpu: s.hpa.targetCpu } : {}) }, spread: 'even' });
+          else if (l.down || r !== l.of || l.pods > Math.ceil(l.of / now.nodes)) changes.set(l.service, { service: l.service, ...(r !== l.of ? { replicas: r } : {}), spread: 'even' });
         }
       const fix = { name: 'Survive a node failure', description: `replicas for what one node takes down, spread evenly over the ${now.nodes} nodes`, changes: [...changes.values()] } as StrategySpec;
       const after = changes.size ? nodeLoss(m, d, { draws: 6, strategy: fix }) : null;

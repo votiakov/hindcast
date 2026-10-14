@@ -59,6 +59,8 @@ export interface ServiceModel {
   requests?: { cpu: number; memoryGb: number };
   /** pods per node at the end of the history (Kubernetes) */
   pods?: Record<string, number>;
+  /** its HorizontalPodAutoscaler (Kubernetes): replicas, CPU target as a share */
+  hpa?: { min: number; max: number; targetCpu?: number };
   /** cores per replica = base + perReq × (req/s per replica) */
   cpu: { base: number; perReq: number; r2: number } | null;
   capacity: Capacity;

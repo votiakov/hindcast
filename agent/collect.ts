@@ -222,6 +222,10 @@ export async function collect(ws: Workspace, o: CollectOptions = {}, progress?: 
         if (z && r.metric.node) zones[r.metric.node] = z;
       }
       if (Object.keys(zones).length) dataset.nodeZones = zones;
+      // HorizontalPodAutoscalers, by the workload they scale
+      const hpa = await hpaSpecs(src.prometheus!.url, authHeaders(src.prometheus), end, src.prometheus!.namespaces);
+      for (const id of Object.keys(hpa)) if (!dataset.services[src.system.rename?.[id] ?? id]) delete hpa[id];
+      if (Object.keys(hpa).length) dataset.hpa = Object.fromEntries(Object.entries(hpa).map(([k, v]) => [src.system.rename?.[k] ?? k, v]));
     } catch {
       warnings.push('could not read which node each pod runs on (kube_pod_info): node-loss checks are unavailable');
     }
@@ -287,4 +291,25 @@ export function coverageOf(d: Dataset): Coverage[] {
       filled: rps.length ? Math.round((rps.filter((v) => v !== null).length / rps.length) * 100) / 100 : 0,
     };
   });
+}
+
+/** the HorizontalPodAutoscalers kube-state-metrics knows at one instant, by the workload they scale */
+export async function hpaSpecs(url: string, headers: Record<string, string>, at: number, namespaces?: string[]) {
+  const ns = namespaces?.length ? `{namespace=~"${namespaces.join('|')}"}` : '';
+  const q = async (expr: string) => {
+    try {
+      const j = (await (await fetch(`${url.replace(/\/$/, '')}/api/v1/query?query=${encodeURIComponent(expr)}&time=${at}`, { headers })).json()) as { data?: { result?: { metric: Record<string, string>; value: [number, string] }[] } };
+      return j.data?.result ?? [];
+    } catch {
+      return [];
+    }
+  };
+  const key = (m: Record<string, string>) => `${m.namespace}/${m.horizontalpodautoscaler}`;
+  const target = new Map((await q(`kube_horizontalpodautoscaler_info${ns}`)).map((r) => [key(r.metric), r.metric.scaletargetref_name]));
+  const min = new Map((await q(`kube_horizontalpodautoscaler_spec_min_replicas${ns}`)).map((r) => [key(r.metric), Number(r.value[1])]));
+  const max = new Map((await q(`kube_horizontalpodautoscaler_spec_max_replicas${ns}`)).map((r) => [key(r.metric), Number(r.value[1])]));
+  const cpu = new Map((await q(`kube_horizontalpodautoscaler_spec_target_metric${ns ? ns.replace('}', ',metric_name="cpu",metric_target_type="utilization"}') : '{metric_name="cpu",metric_target_type="utilization"}'}`)).map((r) => [key(r.metric), Number(r.value[1])]));
+  const out: Record<string, { min: number; max: number; targetCpu?: number }> = {};
+  for (const [k, w] of target) if (w && max.has(k)) out[w] = { min: min.get(k) ?? 1, max: max.get(k)!, ...(cpu.has(k) ? { targetCpu: cpu.get(k)! / 100 } : {}) };
+  return out;
 }

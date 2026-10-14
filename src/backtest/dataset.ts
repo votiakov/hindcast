@@ -189,6 +189,8 @@ export interface Dataset {
   podsByNode?: Record<string, Record<string, number>>;
   /** the zone of each node, where the provider id tells it (AWS, GCP) */
   nodeZones?: Record<string, string>;
+  /** HorizontalPodAutoscalers at the end of the window, by the workload they scale */
+  hpa?: Record<string, { min: number; max: number; targetCpu?: number }>;
   /** where each piece came from, for the report */
   sources: string[];
   /** modelling hints from the import manifest (SLO, client deadline, in-process dependencies…) */

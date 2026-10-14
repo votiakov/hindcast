@@ -838,6 +838,7 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
       ...(memory ? { memory } : {}),
       ...(requestsOfService(host) ? { requests: requestsOfService(host)! } : {}),
       ...(d.podsByNode?.[id] ? { pods: d.podsByNode[id] } : {}),
+      ...(d.hpa?.[id] ? { hpa: d.hpa[id] } : {}),
       cpu,
       capacity,
       self: { mean: selfMean, p99: Math.max(selfMean, selfP99) },
