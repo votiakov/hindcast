@@ -83,11 +83,28 @@ export async function suggestChanges(ws: Workspace, o: SuggestOptions = {}, prog
       if (s.cpuLimit && s.cpuLimit >= 0.5 && s.capacity.limit !== 'concurrency') add(savings, { name: `${id}: CPU ${s.cpuLimit} → ${r2(s.cpuLimit / 2)} per replica`, changes: [{ service: id, cpu: r2(s.cpuLimit / 2) }] });
       if (s.cost.arch !== 'arm') add(savings, { name: `${id} on Graviton`, changes: [{ service: id, arch: 'arm' }] });
     }
+  // memory: limits far above the working set are paid for and never used; limits the working set
+  // came close to are an OOM kill waiting for a busier day. The backtest's OOM check judges both
+  const mib = (gb: number) => Math.round(gb * 1024);
+  for (const [id, s] of Object.entries(m.services)) {
+    const mem = s.memory;
+    if (s.hostedBy || !mem?.limit || mem.peak <= 0) continue;
+    if (goal !== 'reliability' && mem.peak / mem.limit < 0.5 && s.cost.perReplicaHour > 0) {
+      const to = Math.ceil(((mem.peak + mem.spike) * 1.3 * 1024) / 64) * 64;
+      if (to < mib(mem.limit)) add(savings, { name: `${id}: memory ${mib(mem.limit)} → ${to} MiB per replica (peak ${mib(mem.peak)} MiB)`, changes: [{ service: id, memoryGb: to / 1024 }] });
+    }
+    if (goal !== 'cost' && mem.peak / mem.limit >= 0.9) {
+      const to = Math.ceil((mem.peak * 1.5 * 1024) / 64) * 64;
+      add(fixes, { name: `${id}: memory ${mib(mem.limit)} → ${to} MiB per replica (the history peaked at ${Math.round((mem.peak / mem.limit) * 100)}% of the limit)`, changes: [{ service: id, memoryGb: to / 1024 }] });
+    }
+  }
 
   const gate = o.gateMinutes ?? 0.5;
   const base = basePlan(m);
   const before = modelBreakingPoint(m, base);
   const notes: string[] = [];
+  if (savings.some((x) => x.changes.some((c) => 'memoryGb' in c && c.memoryGb !== undefined)))
+    notes.push('memory cuts are judged on the working set the history showed: a heap sized to the old limit (JVM -Xmx or MaxRAMPercentage, GOMEMLIMIT, Node --max-old-space-size) can grow into the new one — set it below the new limit with the change');
   const evaluate = (list: StrategySpec[]) => {
     if (!list.length) return [];
     const budget = o.draws ? { draws: o.draws } : drawsFor(m, d, list.length + 1, 12, 25_000);
