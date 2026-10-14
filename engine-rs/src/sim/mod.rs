@@ -2,3 +2,5 @@
 
 pub mod catalog;
 pub mod engine;
+pub mod headless;
+pub mod spec;

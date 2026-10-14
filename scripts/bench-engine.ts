@@ -51,3 +51,19 @@ for (const file of ['k8s-shop', 'shop']) {
     console.log(`${file}: calibration (${w.dataset.n} buckets) — TypeScript ${ts.toFixed(0)} ms, Rust/WASM ${rs.toFixed(0)} ms (${(ts / rs).toFixed(1)}×)`);
   }
 }
+
+// the design simulator: a breaking-point search and a black-friday run
+{
+  const { parse } = await import('yaml');
+  const { breakingPointTs, simulateTs } = await import('../src/sim/headless');
+  const wasm = await import('../src/backtest/wasm/hindcast_engine.js');
+  const shop = parse(readFileSync('examples/shop.yaml', 'utf8'));
+  const bf = parse(readFileSync('examples/black-friday.yaml', 'utf8'));
+  const t = (f: () => unknown) => { const a = performance.now(); f(); return performance.now() - a; };
+  const ts = t(() => breakingPointTs(shop));
+  const rs = Math.min(t(() => wasm.breakingPoint(shop, {})), t(() => wasm.breakingPoint(shop, {})));
+  console.log(`simulator: breaking point of examples/shop.yaml — TypeScript ${ts.toFixed(0)} ms, Rust/WASM ${rs.toFixed(0)} ms (${(ts / rs).toFixed(1)}×)`);
+  const ts2 = t(() => simulateTs(shop, bf));
+  const rs2 = Math.min(t(() => wasm.simulate(shop, bf, {})), t(() => wasm.simulate(shop, bf, {})));
+  console.log(`simulator: black friday on examples/shop.yaml — TypeScript ${ts2.toFixed(0)} ms, Rust/WASM ${rs2.toFixed(0)} ms (${(ts2 / rs2).toFixed(1)}×)`);
+}

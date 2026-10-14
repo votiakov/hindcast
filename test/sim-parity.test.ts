@@ -77,3 +77,63 @@ describe.each(SCENARIOS.map((s) => [s.id, s] as const))('Rust sim engine matches
     }
   });
 });
+
+import { parse as parseYaml } from 'yaml';
+import { breakingPoint as wBreakingPoint, compareVariants as wCompare, loadCurve as wLoadCurve, simulate as wSimulate } from '../src/backtest/wasm/hindcast_engine.js';
+import { breakingPointTs, compareTs, loadCurveTs, simulateTs } from '../src/sim/headless';
+import { graphToSpec } from '../src/spec/convert';
+import { TEMPLATES } from '../src/scenarios/templates';
+import { shop, shopWithReplica } from './fixtures';
+
+const yaml = (f: string) => parseYaml(readFileSync(f, 'utf8'));
+const same = (a: unknown, b: unknown, where: string) => {
+  const out: Diff[] = [];
+  compare(a, b, where, out);
+  expect(out, JSON.stringify(out.slice(0, 5), null, 1)).toEqual([]);
+};
+
+describe('the headless simulator in Rust matches TypeScript', () => {
+  const specs: [string, unknown][] = [
+    ['shop', shop],
+    ['shop + replica', shopWithReplica],
+    ['examples/shop.yaml', yaml('examples/shop.yaml')],
+    ...TEMPLATES.map((t) => [`template ${t.id}`, graphToSpec(t.graph.nodes, t.graph.edges, t.title)] as [string, unknown]),
+  ];
+  const chaos = (spec: { components: { id: string; kind: string }[]; zones?: { id: string }[] }) => {
+    const pick = (k: string) => spec.components.find((c) => c.kind === k)?.id ?? spec.components[1].id;
+    return {
+      name: 'chaos',
+      duration: 40,
+      traffic: [{ at: 0, rps: 300 }, { at: 20, rps: 1500 }, { at: 40, rps: 900 }],
+      events: [
+        { at: 5, action: { type: 'kill', kind: 'server', pick: 'busiest' } },
+        { at: 8, action: { type: 'degrade', id: pick('server'), factor: 0.5 } },
+        { at: 12, action: { type: 'inject-errors', id: pick('db'), rate: 0.1 } },
+        { at: 15, action: { type: 'inject-latency', id: pick('server'), ms: 80 } },
+        { at: 18, action: { type: 'flush-cache', id: pick('cache') } },
+        { at: 22, action: { type: 'restore', id: pick('server') } },
+        ...(spec.zones?.length ? [{ at: 25, action: { type: 'fail-zone', id: spec.zones[0].id } }, { at: 32, action: { type: 'restore-zone', id: spec.zones[0].id } }] : []),
+        { at: 28, action: { type: 'kill-id', id: pick('db') } },
+        { at: 35, action: { type: 'revive-all' }, note: 'all back' },
+      ],
+    };
+  };
+  it.each(specs)('simulate %s: steady, black friday, chaos', (_, spec) => {
+    for (const sc of [{ duration: 20, rps: 800, readRatio: 0.8 }, yaml('examples/black-friday.yaml'), chaos(spec as never)]) same(simulateTs(spec, sc), wSimulate(spec, sc, {}), 'simulate');
+  });
+  it('compare the example variants', () => {
+    const o = (x: unknown) => JSON.parse(JSON.stringify(x));
+    same(o(compareTs(yaml('examples/shop.yaml'), yaml('examples/shop-variants.yaml'), yaml('examples/black-friday.yaml'))), o(wCompare(yaml('examples/shop.yaml'), yaml('examples/shop-variants.yaml'), yaml('examples/black-friday.yaml'), {})), 'compare');
+  });
+  it('breaking point and load curve', () => {
+    for (const spec of [shop, shopWithReplica, yaml('examples/shop.yaml')]) {
+      same(breakingPointTs(spec), wBreakingPoint(spec, {}), 'breakingPoint');
+      same(loadCurveTs(spec, { maxRps: 3000, points: 6 }), wLoadCurve(spec, { maxRps: 3000, points: 6 }), 'loadCurve');
+    }
+  });
+  it('a broken spec is refused by both', () => {
+    const bad = { components: [{ id: 'x', kind: 'nope' }], connections: ['a ->'] };
+    expect(() => simulateTs(bad)).toThrow();
+    expect(() => wSimulate(bad, {}, {})).toThrow();
+  });
+});

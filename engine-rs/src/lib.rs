@@ -226,6 +226,66 @@ mod wasm {
         }
     }
 
+    fn jerr(e: String) -> JsValue {
+        err(e)
+    }
+
+    /// simulate(spec, scenario, opts) → SimResult (src/sim/headless.ts)
+    #[wasm_bindgen]
+    pub fn simulate(spec: JsValue, scenario: JsValue, opts: JsValue) -> Result<JsValue, JsValue> {
+        let spec: serde_json::Value = from(spec)?;
+        let sc: serde_json::Value = if scenario.is_undefined() || scenario.is_null() { serde_json::json!({}) } else { from(scenario)? };
+        let o: crate::sim::headless::SimOptions = opt(opts)?;
+        Ok(crate::sim::headless::simulate(&spec, &sc, &o).map_err(jerr)?.serialize(&ser())?)
+    }
+
+    /// compareVariants(base, variants, scenario, opts) → { ranked, results: [{ name, spec, result }] }
+    #[wasm_bindgen(js_name = compareVariants)]
+    pub fn compare_variants(base: JsValue, variants: JsValue, scenario: JsValue, opts: JsValue) -> Result<JsValue, JsValue> {
+        let base: serde_json::Value = from(base)?;
+        let variants: Vec<serde_json::Value> = from(variants)?;
+        let sc: serde_json::Value = if scenario.is_undefined() || scenario.is_null() { serde_json::json!({}) } else { from(scenario)? };
+        let o: crate::sim::headless::SimOptions = opt(opts)?;
+        let (ranked, results) = crate::sim::headless::compare(&base, &variants, &sc, &o).map_err(jerr)?;
+        #[derive(Serialize)]
+        struct Run {
+            name: String,
+            spec: serde_json::Value,
+            result: crate::sim::headless::SimResult,
+        }
+        #[derive(Serialize)]
+        struct Out {
+            ranked: Vec<crate::sim::headless::CompareRow>,
+            results: Vec<Run>,
+        }
+        Ok(Out { ranked, results: results.into_iter().map(|(name, a, result)| Run { name, spec: crate::sim::spec::to_value(&a), result }).collect() }.serialize(&ser())?)
+    }
+
+    /// breakingPoint(spec, opts) → { maxRps, firstFailingRps?, limitedBy, note, slo }
+    #[wasm_bindgen(js_name = breakingPoint)]
+    pub fn breaking_point(spec: JsValue, opts: JsValue) -> Result<JsValue, JsValue> {
+        let spec: serde_json::Value = from(spec)?;
+        let o: crate::sim::headless::BreakingOptions = opt(opts)?;
+        Ok(crate::sim::headless::breaking_point(&spec, &o).map_err(jerr)?.serialize(&ser())?)
+    }
+
+    /// loadCurve(spec, opts) → CurvePoint[]
+    #[wasm_bindgen(js_name = loadCurve)]
+    pub fn load_curve(spec: JsValue, opts: JsValue) -> Result<JsValue, JsValue> {
+        #[derive(serde::Deserialize, Default)]
+        #[serde(rename_all = "camelCase")]
+        struct O {
+            max_rps: f64,
+            points: Option<f64>,
+            read_ratio: Option<f64>,
+            hold_s: Option<f64>,
+            cfg: Option<serde_json::Value>,
+        }
+        let spec: serde_json::Value = from(spec)?;
+        let o: O = opt(opts)?;
+        Ok(crate::sim::headless::load_curve(&spec, o.max_rps, o.points, o.read_ratio, o.hold_s, o.cfg).map_err(jerr)?.serialize(&ser())?)
+    }
+
     /// the same replay with the long series packed: the plan without its observed replicas, the
     /// traffic without its series; `series` holds each endpoint's n values (null as 0), then each
     /// service's observed replicas (null as NaN) at the offsets in `observed`. Returns

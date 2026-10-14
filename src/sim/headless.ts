@@ -63,6 +63,18 @@ export interface SimResult {
 
 const round = (n: number, d = 3) => Math.round(n * 10 ** d) / 10 ** d;
 
+/** compiled implementations (src/backtest/native.ts sets them) */
+const native: {
+  simulate?: typeof simulateTs;
+  compare?: typeof compareTs;
+  breakingPoint?: typeof breakingPointTs;
+  loadCurve?: typeof loadCurveTs;
+} = {};
+export function setNativeHeadless(n: typeof native | null) {
+  for (const k of Object.keys(native) as (keyof typeof native)[]) delete native[k];
+  if (n) Object.assign(native, n);
+}
+
 /** a component whose every caller is a queue: it works off a backlog, users never wait on it */
 export function asyncOnly(id: string, nodes: { id: string; data: { kind: string } }[], edges: { source: string; target: string }[]): boolean {
   const callers = edges.filter((e) => e.target === id).map((e) => nodes.find((n) => n.id === e.source)?.data.kind);
@@ -79,6 +91,11 @@ function trafficFn(sc: ScenarioSpec): (t: number) => number {
 }
 
 export function simulate(specInput: unknown, scenarioInput: unknown = {}, opts: SimOptions = {}): SimResult {
+  return native.simulate ? native.simulate(specInput, scenarioInput, opts) : simulateTs(specInput, scenarioInput, opts);
+}
+
+/** the headless run in TypeScript: the reference the Rust one is checked against */
+export function simulateTs(specInput: unknown, scenarioInput: unknown = {}, opts: SimOptions = {}): SimResult {
   const spec = ArchitectureSpec.parse(specInput);
   return withPricing(spec.pricing, () => simulateParsed(spec, scenarioInput, opts));
 }
@@ -221,7 +238,11 @@ export interface CompareRow {
 }
 
 /** Run a baseline and variants under the same scenario; rank SLO-compliant variants by cost. */
-export function compare(baseInput: unknown, variants: VariantSpec[], scenario: unknown = {}, opts: SimOptions = {}) {
+export function compare(baseInput: unknown, variants: VariantSpec[], scenario: unknown = {}, opts: SimOptions = {}): ReturnType<typeof compareTs> {
+  return native.compare ? native.compare(baseInput, variants, scenario, opts) : compareTs(baseInput, variants, scenario, opts);
+}
+
+export function compareTs(baseInput: unknown, variants: VariantSpec[], scenario: unknown = {}, opts: SimOptions = {}) {
   const base = ArchitectureSpec.parse(baseInput);
   const runs = [{ name: 'baseline', spec: base }, ...variants.map((v) => ({ name: v.name, spec: applyVariant(base, v) }))];
   const results = runs.map((r) => ({ name: r.name, spec: r.spec, result: simulate(r.spec, scenario, opts) }));
@@ -244,7 +265,12 @@ export function compare(baseInput: unknown, variants: VariantSpec[], scenario: u
  * Highest constant load the architecture sustains within SLO (steady state).
  * Exponential search for an upper bound, then binary search.
  */
-export function breakingPoint(specInput: unknown, opts: { readRatio?: number; slo?: { maxErrorRate?: number; maxP99Ms?: number }; holdS?: number; maxRps?: number; cfg?: Partial<EngineConfig> } = {}) {
+type BreakingOpts = { readRatio?: number; slo?: { maxErrorRate?: number; maxP99Ms?: number }; holdS?: number; maxRps?: number; cfg?: Partial<EngineConfig> };
+export function breakingPoint(specInput: unknown, opts: BreakingOpts = {}): ReturnType<typeof breakingPointTs> {
+  return native.breakingPoint ? native.breakingPoint(specInput, opts) : breakingPointTs(specInput, opts);
+}
+
+export function breakingPointTs(specInput: unknown, opts: BreakingOpts = {}) {
   const spec = ArchitectureSpec.parse(specInput);
   const slo = { maxErrorRate: opts.slo?.maxErrorRate ?? 0.01, maxP99Ms: opts.slo?.maxP99Ms ?? 300 };
   const holdS = opts.holdS ?? 25;
@@ -315,7 +341,12 @@ export interface CurvePoint {
 }
 
 /** Steady-state behaviour across a range of loads: where latency bends, where errors start, what each request costs. */
-export function loadCurve(specInput: unknown, opts: { maxRps: number; points?: number; readRatio?: number; holdS?: number; cfg?: Partial<EngineConfig> }): CurvePoint[] {
+type CurveOpts = { maxRps: number; points?: number; readRatio?: number; holdS?: number; cfg?: Partial<EngineConfig> };
+export function loadCurve(specInput: unknown, opts: CurveOpts): CurvePoint[] {
+  return native.loadCurve ? native.loadCurve(specInput, opts) : loadCurveTs(specInput, opts);
+}
+
+export function loadCurveTs(specInput: unknown, opts: CurveOpts): CurvePoint[] {
   const spec = ArchitectureSpec.parse(specInput);
   const n = opts.points ?? 16;
   const out: CurvePoint[] = [];

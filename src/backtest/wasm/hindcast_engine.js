@@ -359,6 +359,65 @@ export function outageScenario(model, outage, base_rps, roles) {
     return takeFromExternrefTable0(ret[0]);
 }
 
+/**
+ * simulate(spec, scenario, opts) → SimResult (src/sim/headless.ts)
+ * @param {any} spec
+ * @param {any} scenario
+ * @param {any} opts
+ * @returns {any}
+ */
+export function simulate(spec, scenario, opts) {
+    const ret = wasm.simulate(spec, scenario, opts);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * compareVariants(base, variants, scenario, opts) → { ranked, results: [{ name, spec, result }] }
+ * @param {any} base
+ * @param {any} variants
+ * @param {any} scenario
+ * @param {any} opts
+ * @returns {any}
+ */
+export function compareVariants(base, variants, scenario, opts) {
+    const ret = wasm.compareVariants(base, variants, scenario, opts);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * breakingPoint(spec, opts) → { maxRps, firstFailingRps?, limitedBy, note, slo }
+ * @param {any} spec
+ * @param {any} opts
+ * @returns {any}
+ */
+export function breakingPoint(spec, opts) {
+    const ret = wasm.breakingPoint(spec, opts);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * loadCurve(spec, opts) → CurvePoint[]
+ * @param {any} spec
+ * @param {any} opts
+ * @returns {any}
+ */
+export function loadCurve(spec, opts) {
+    const ret = wasm.loadCurve(spec, opts);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
 function passArrayJsValueToWasm0(array, malloc) {
     const ptr = malloc(array.length * 4, 4) >>> 0;
     for (let i = 0; i < array.length; i++) {
