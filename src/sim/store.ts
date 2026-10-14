@@ -6,7 +6,7 @@ import { DEFAULT_ENGINE_CONFIG, Engine, type EdgeStats, type GlobalStats, type N
 import { lesson1 } from '../lessons/lesson1';
 import { goalStart, trafficAt, type Lesson } from '../lessons/types';
 import { lessonById } from '../lessons';
-import { maxLag, referenceBoard } from '../lessons/verify';
+import { jobErrorRate, maxLag, referenceBoard } from '../lessons/verify';
 import { nodesInZone } from './zones';
 import { SCENARIOS, findScenario, scenarioDuration, scenarioTraffic, type Scenario, type ScenarioAction } from '../scenarios/scenarios';
 import type { Graph } from '../scenarios/build';
@@ -797,6 +797,11 @@ export const useSim = create<State>()((set, get) => {
               const sys = systemNodes(nodes);
               return maxLag(sys, engines.main.snapshot(sys, edges).nodeStats) <= step.goal.maxLagS!;
             })();
+            const jobsOk = step.goal.maxJobErrorRate === undefined || (() => {
+              const { nodes, edges } = get().boards.main;
+              const sys = systemNodes(nodes);
+              return jobErrorRate(sys, edges, engines.main.snapshot(sys, edges).nodeStats) <= step.goal.maxJobErrorRate!;
+            })();
             ls = { ...ls, winReq: ls.winReq + g.rps * dt, winFail: ls.winFail + g.rps * g.errorRate * dt };
             const ok =
               (step.goal.maxLostWrites === undefined || g.lostWrites <= step.goal.maxLostWrites) &&
@@ -804,6 +809,7 @@ export const useSim = create<State>()((set, get) => {
               g.p99 <= step.goal.maxP99 &&
               (step.goal.maxCost === undefined || !s.settings.cost || g.cost <= step.goal.maxCost) &&
               lagOk &&
+              jobsOk &&
               g.rps > 0;
             ls = ok ? { ...ls, holdT: ls.holdT + dt } : { ...ls, holdT: 0, failT: ls.failT + dt };
             const avgOk = step.goal.maxAvgCost === undefined || !s.settings.cost || ls.costSum / Math.max(1, ls.costN) <= step.goal.maxAvgCost;

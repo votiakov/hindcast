@@ -15,6 +15,7 @@ function itemFor(k: Kind): Item {
     k === 'client' ? 'traffic source'
     : k === 'function' ? 'auto-scales · $0.60/1M req'
     : k === 'llmapi' ? `rate-limited · $${s.costPerRequest}/req`
+    : k === 'external' ? 'not yours · rate-limited'
     : `${fmtCap(s.capacity)}/s · $${(s.costPerHour * TIERS.S.cost).toFixed(2)}/h`;
   return { kind: k, label: s.label, meta, color: s.color, Icon: KIND_ICONS[k], description: s.description };
 }

@@ -153,6 +153,17 @@
       "costPerRequest": 0.002,
       "sizable": false,
       "scalesHorizontally": false
+    },
+    {
+      "kind": "external",
+      "label": "External API",
+      "description": "Someone else's service: a payment provider, a partner API, the websites a crawler fetches. You cannot size it — only respect its rate limit and live with its latency and errors.",
+      "capacityPerInstanceRps": 1000,
+      "baseLatencyMs": 200,
+      "costPerHour": 0,
+      "costPerRequest": null,
+      "sizable": false,
+      "scalesHorizontally": false
     }
   ],
   "tiers": {

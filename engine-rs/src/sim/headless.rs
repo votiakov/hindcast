@@ -143,7 +143,7 @@ pub fn explain(d: &NodeData, st: Option<&NodeStats>, v: &View) -> Option<String>
         format!("{}% of responses arrive after the {} timeout — the work was done, but the caller had already given up.", pct(st.late_frac), fmt_ms(d.timeout_ms.unwrap_or(0.0)))
     } else if d.kind == "queue" && st.lag_s > 5.0 {
         format!("Backlog of {} messages: consumers are {} behind. Producers are unaffected — work completes later.", fmt(st.queue), if st.lag_s.is_finite() { format!("{}s", js_to_fixed(st.lag_s, 0)) } else { "indefinitely".into() })
-    } else if (d.kind == "gateway" || d.kind == "llmapi") && st.drop_rps > 1.0 {
+    } else if (d.kind == "gateway" || d.kind == "llmapi" || d.kind == "external") && st.drop_rps > 1.0 {
         format!("Rate limit reached: {}/s rejected with HTTP 429 to protect what is behind it.", fmt(st.drop_rps))
     } else if d.kind == "function" && st.cold_frac > 0.05 {
         format!("{}% of invocations hit a cold start while new instances spin up.", pct(st.cold_frac))

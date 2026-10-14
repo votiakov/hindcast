@@ -14,7 +14,8 @@ export type Kind =
   | 'server' | 'worker' | 'function'
   | 'cache' | 'db' | 'replica' | 'storage'
   | 'queue'
-  | 'llm' | 'llmapi';
+  | 'llm' | 'llmapi'
+  | 'external';
 export type Tier = 'S' | 'M' | 'L';
 
 /** how a node spreads its outgoing calls across children */
@@ -216,6 +217,11 @@ export const KINDS: Record<Kind, KindSpec> = {
     capacity: 100, baseLatencyMs: 1500, costPerHour: 0, costPerRequest: 0.002, tiered: false,
     description: 'Hosted model API. Scales for you, but enforces a rate limit (429s) and bills per request (~$0.002).',
   },
+  external: {
+    kind: 'external', label: 'External API', prefix: 'ext', color: '#38bdf8',
+    capacity: 1000, baseLatencyMs: 200, costPerHour: 0, tiered: false,
+    description: 'Someone else\'s service: a payment provider, a partner API, the websites a crawler fetches. You cannot size it — only respect its rate limit and live with its latency and errors.',
+  },
 };
 
 export const TIERS: Record<Tier, { capacity: number; cost: number; label: string }> = {
@@ -231,6 +237,7 @@ export const CATEGORIES: { id: string; label: string; kinds: Kind[] }[] = [
   { id: 'data', label: 'Data', kinds: ['cache', 'db', 'replica', 'storage'] },
   { id: 'async', label: 'Messaging', kinds: ['queue'] },
   { id: 'ai', label: 'AI', kinds: ['llm', 'llmapi'] },
+  { id: 'outside', label: 'Third party', kinds: ['external'] },
 ];
 
 export const QUEUE_MAX_BACKLOG = 200_000;
@@ -248,6 +255,7 @@ export function defaultData(kind: Kind, name: string): SystemNodeData {
   if (kind === 'gateway') d.limit = 1500;
   if (kind === 'function') d.limit = 3000;
   if (kind === 'llmapi') d.limit = 100;
+  if (kind === 'external') d.limit = 1000;
   return d;
 }
 
@@ -266,7 +274,7 @@ export const cacheHitRate = (d: SystemNodeData): number => (d.kind === 'cache' &
 export function capacityOf(d: SystemNodeData, reachable = instancesUp(d)): number {
   const spec = KINDS[d.kind];
   let cap: number;
-  if (d.kind === 'function' || d.kind === 'llmapi' || d.kind === 'gateway') cap = d.limit ?? spec.capacity;
+  if (d.kind === 'function' || d.kind === 'llmapi' || d.kind === 'external' || d.kind === 'gateway') cap = d.limit ?? spec.capacity;
   else {
     const tier = spec.tiered ? TIERS[d.tier].capacity : 1;
     const batch = d.kind === 'llm' && d.batching ? BATCHING.capacity : 1;

@@ -20,6 +20,7 @@ component to calibrate to a real system. `npm run sim -- catalog` prints the liv
 | `queue` | Queue | 50,000 req/s ingest | 3 ms ack | $0.06/h | | | backlog ≤ 200,000; consumers pull |
 | `llm` | GPU Inference | 6 req/s per GPU | 800 ms | $4.00/h per GPU | | ✓ | batching ×4 capacity, +400 ms; queue 3 s |
 | `llmapi` | LLM Provider API | rate limit (default 100 req/s) | 1,500 ms | $0.002 / request | | | latency independent of your load |
+| `external` | External API | rate limit (default 1,000 req/s) | 200 ms | — | | | someone else's service (payments, partners, the web a crawler fetches): only its limit, latency and errors are yours to live with |
 
 ## Tiers
 

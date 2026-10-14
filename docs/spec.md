@@ -30,13 +30,13 @@ zones:                          # optional failure domains
 | field | applies to | meaning |
 |---|---|---|
 | `id` | all | unique id |
-| `kind` | all | `client cdn lb gateway server worker function cache db replica storage queue llm llmapi` |
+| `kind` | all | `client cdn lb gateway server worker function cache db replica storage queue llm llmapi external` |
 | `name` | all | display name |
 | `tier` | sizable kinds | `S` (×1 capacity, ×1 cost), `M` (×2, ×2.2), `L` (×4, ×4.8) |
 | `instances` | server, worker, llm | horizontal instances (1–500); reachable only behind lb/gateway/queue |
 | `runtime` | server, worker, function | `node python java go rust` (see catalog.md) |
 | `hitRate` | cache, cdn | 0–0.999 |
-| `limit` | gateway, llmapi, function | rate limit (req/s) or max concurrency |
+| `limit` | gateway, llmapi, external, function | rate limit (req/s) or max concurrency |
 | `batching` | llm | continuous batching: ×4 throughput, +400 ms |
 | `retries` | any caller | retries per failed downstream call (0–10) |
 | `retryPolicy` | any caller | `immediate` · `backoff` (exponential + jitter) · `budget` (≤ 10 % extra) |

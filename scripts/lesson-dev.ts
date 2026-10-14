@@ -8,7 +8,7 @@ await loadEngine();
 const want = process.argv[2];
 for (const lesson of LESSONS.filter((l) => !want || l.id === want)) {
   console.log(`\n${lesson.title}`);
-  const fmt = (r: { passed: boolean; at: number | null; worst: { errorRate: number; p99: number; cost: number; lagS?: number; avgCost?: number; lostWrites?: number; totalErrorRate?: number } }) =>
-    `${r.passed ? 'PASS' : 'fail'}${r.at !== null ? ` @${r.at}s` : ''} worst err ${(r.worst.errorRate * 100).toFixed(1)}% p99 ${Math.round(r.worst.p99)}ms cost $${r.worst.cost.toFixed(2)}${r.worst.lagS ? ` lag ${r.worst.lagS.toFixed(0)}s` : ''}${r.worst.avgCost ? ` avg $${r.worst.avgCost.toFixed(2)}` : ''}${r.worst.lostWrites ? ` lost ${Math.round(r.worst.lostWrites)}` : ''}${r.worst.totalErrorRate ? ` total ${(r.worst.totalErrorRate * 100).toFixed(1)}%` : ''}`;
+  const fmt = (r: { passed: boolean; at: number | null; worst: { errorRate: number; p99: number; cost: number; lagS?: number; avgCost?: number; lostWrites?: number; totalErrorRate?: number; jobErrorRate?: number } }) =>
+    `${r.passed ? 'PASS' : 'fail'}${r.at !== null ? ` @${r.at}s` : ''} worst err ${(r.worst.errorRate * 100).toFixed(1)}% p99 ${Math.round(r.worst.p99)}ms cost $${r.worst.cost.toFixed(2)}${r.worst.lagS ? ` lag ${r.worst.lagS.toFixed(0)}s` : ''}${r.worst.avgCost ? ` avg $${r.worst.avgCost.toFixed(2)}` : ''}${r.worst.lostWrites ? ` lost ${Math.round(r.worst.lostWrites)}` : ''}${r.worst.totalErrorRate ? ` total ${(r.worst.totalErrorRate * 100).toFixed(1)}%` : ''}${r.worst.jobErrorRate ? ` jobs ${(r.worst.jobErrorRate * 100).toFixed(1)}%` : ''}`;
   for (const r of playLesson(lesson)) console.log(`  ${r.step.padEnd(12)} before: ${fmt(r.before).padEnd(64)} after: ${fmt(r.after)}`);
 }

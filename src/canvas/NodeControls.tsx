@@ -20,7 +20,7 @@ export function NodeControls({ id, data, selected }: { id: string; data: SystemN
   const caller = CALLERS.has(data.kind);
   const routeModes: RouteMode[] = ['split', 'failover', 'fanout'];
   const [cal, setCal] = useState(false);
-  const calibratable = data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'function' && data.kind !== 'queue';
+  const calibratable = data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'external' && data.kind !== 'function' && data.kind !== 'queue';
 
   return (
     <NodeToolbar isVisible={selected} position={Position.Top} className="node-toolbar">
@@ -132,7 +132,7 @@ export function NodeControls({ id, data, selected }: { id: string; data: SystemN
             </select>
           </div>
         )}
-        {(data.kind === 'gateway' || data.kind === 'function' || data.kind === 'llmapi') && (
+        {(data.kind === 'gateway' || data.kind === 'function' || data.kind === 'llmapi' || data.kind === 'external') && (
           <div className="tb-group">
             <span className="tb-label">{data.kind === 'function' ? 'max conc.' : 'rate limit'}</span>
             <input type="range" min={data.kind === 'llmapi' ? 10 : 100} max={data.kind === 'llmapi' ? 1000 : 10000} step={data.kind === 'llmapi' ? 10 : 100} value={data.limit ?? 1000} onChange={(e) => set({ limit: +e.target.value })} />
@@ -262,7 +262,7 @@ export function NodeControls({ id, data, selected }: { id: string; data: SystemN
               </select>
             </div>
           )}
-          {data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'function' && data.kind !== 'queue' && (
+          {data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'external' && data.kind !== 'function' && data.kind !== 'queue' && (
             <div className="tb-group" title="Bounded queue: seconds of work this node will hold before shedding">
               <span className="tb-label">queue</span>
               <select className="tb-select" value={data.queueS ?? ''} onChange={(e) => set({ queueS: e.target.value === '' ? undefined : +e.target.value })}>

@@ -135,6 +135,8 @@ pub fn spec(kind: &str) -> KindSpec {
         "queue" => k(50000.0, 3.0, 0.06, false),
         "llm" => KindSpec { queue_s: Some(3.0), scalable: true, ..k(6.0, 800.0, 4.0, false) },
         "llmapi" => KindSpec { cost_per_request: Some(0.002), ..k(100.0, 1500.0, 0.0, false) },
+        // someone else's service: a payment API, the websites a crawler fetches
+        "external" => k(1000.0, 200.0, 0.0, false),
         _ => k(250.0, 25.0, 0.1, true),
     }
 }
@@ -279,7 +281,7 @@ pub fn is_up(d: &NodeData) -> bool {
 pub fn capacity_of(d: &NodeData, reachable: Option<f64>) -> f64 {
     let sp = spec(&d.kind);
     let reachable = reachable.unwrap_or_else(|| instances_up(d));
-    let cap = if d.kind == "function" || d.kind == "llmapi" || d.kind == "gateway" {
+    let cap = if d.kind == "function" || d.kind == "llmapi" || d.kind == "external" || d.kind == "gateway" {
         d.limit.unwrap_or(sp.capacity)
     } else {
         let t = if sp.tiered { tier(&d.tier).0 } else { 1.0 };
@@ -370,6 +372,7 @@ pub fn default_data(kind: &str, name: &str) -> NodeData {
         "gateway" => d.limit = Some(1500.0),
         "function" => d.limit = Some(3000.0),
         "llmapi" => d.limit = Some(100.0),
+        "external" => d.limit = Some(1000.0),
         _ => {}
     }
     d

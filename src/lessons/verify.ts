@@ -16,10 +16,25 @@ export interface LevelResult {
   /** step time the goal was met for long enough, s */
   at: number | null;
   /** worst moment while the goal was checked */
-  worst: { errorRate: number; p99: number; cost: number; lagS?: number; avgCost?: number; lostWrites?: number; totalErrorRate?: number };
+  worst: { errorRate: number; p99: number; cost: number; lagS?: number; avgCost?: number; lostWrites?: number; totalErrorRate?: number; jobErrorRate?: number };
 }
 
 /** the longest backlog any queue holds, in seconds of draining */
+/** the share of the jobs queue consumers take that fail, downstream included */
+export function jobErrorRate(sys: SystemNode[], edges: { source: string; target: string }[], stats: Record<string, NodeStats>): number {
+  const queues = new Set(sys.filter((n) => n.data.kind === 'queue').map((n) => n.id));
+  const consumers = new Set(edges.filter((e) => queues.has(e.source)).map((e) => e.target));
+  let jobs = 0;
+  let failed = 0;
+  for (const id of consumers) {
+    const st = stats[id];
+    if (!st) continue;
+    jobs += st.inRps;
+    failed += st.inRps * (1 - st.success);
+  }
+  return jobs > 0 ? failed / jobs : 0;
+}
+
 export const maxLag = (sys: SystemNode[], stats: Record<string, NodeStats>) => Math.max(0, ...sys.filter((n) => n.data.kind === 'queue').map((n) => stats[n.id]?.lagS ?? 0));
 
 export interface Board {
@@ -65,11 +80,13 @@ export function playLevel(board: Board, step: LessonStep, readRatio = 0.8, opts:
     worst.cost = Math.max(worst.cost, g.cost);
     const lag = goal.maxLagS === undefined ? 0 : maxLag(sys, snap.nodeStats);
     worst.lagS = Math.max(worst.lagS ?? 0, lag);
+    const jobErr = goal.maxJobErrorRate === undefined ? 0 : jobErrorRate(sys, edges, snap.nodeStats);
+    worst.jobErrorRate = Math.max(worst.jobErrorRate ?? 0, jobErr);
     winReq += g.rps * dt;
     winFail += g.rps * g.errorRate * dt;
     worst.lostWrites = g.lostWrites;
     worst.totalErrorRate = winReq > 0 ? winFail / winReq : 0;
-    const ok = g.errorRate <= goal.maxErrorRate && g.p99 <= goal.maxP99 && (goal.maxCost === undefined || g.cost <= goal.maxCost) && (goal.maxLagS === undefined || lag <= goal.maxLagS) && (goal.maxLostWrites === undefined || g.lostWrites <= goal.maxLostWrites) && g.rps > 0;
+    const ok = g.errorRate <= goal.maxErrorRate && g.p99 <= goal.maxP99 && (goal.maxCost === undefined || g.cost <= goal.maxCost) && (goal.maxLagS === undefined || lag <= goal.maxLagS) && (goal.maxJobErrorRate === undefined || jobErr <= goal.maxJobErrorRate) && (goal.maxLostWrites === undefined || g.lostWrites <= goal.maxLostWrites) && g.rps > 0;
     hold = ok ? hold + dt : 0;
     worst.avgCost = costSum / costN;
     if (hold >= goal.holdSeconds - 1e-9 && (goal.maxAvgCost === undefined || costSum / costN <= goal.maxAvgCost) && (goal.maxTotalErrorRate === undefined || worst.totalErrorRate <= goal.maxTotalErrorRate)) return { passed: true, at: Math.round((t + dt) * 10) / 10, worst };

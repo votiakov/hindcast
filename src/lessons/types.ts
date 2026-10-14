@@ -12,6 +12,9 @@ export interface StepGoal {
   maxAvgCost?: number;
   /** queues: seconds of backlog (at the current drain rate) any queue may hold */
   maxLagS?: number;
+  /** queues: share of the jobs their consumers take that fail — work lost behind the queue, which the
+   *  producers never see (they were acknowledged) */
+  maxJobErrorRate?: number;
   /** acknowledged writes that may be lost over the level (a failover to a replica that fell behind, a write-behind cache that died) */
   maxLostWrites?: number;
   /** share of requests failed over the whole checked window (a brief election may spike; the window total may not) */

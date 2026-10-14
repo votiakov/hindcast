@@ -25,6 +25,7 @@ const TRANSIT_KIND: Record<Kind, string> = {
   queue: '#7B2D8E',
   llm: '#C2410C',
   llmapi: '#A21CAF',
+  external: '#0E7490',
 };
 
 export function kindColor(theme: ThemeId, kind: Kind): string {

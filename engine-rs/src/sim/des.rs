@@ -542,10 +542,10 @@ impl<'a> Des<'a> {
         let cap = capacity_of(d, Some(reach)).max(1e-6);
         let lat = base_latency_of(d).max(0.05);
         let kind = d.kind.as_str();
-        if kind == "gateway" || kind == "llmapi" {
+        if kind == "gateway" || kind == "llmapi" || kind == "external" {
             n.rate = d.limit.unwrap_or(spec(kind).capacity);
             n.workers = f64::INFINITY;
-            n.svc_mean_ms = if kind == "llmapi" { d.latency_ms.unwrap_or(spec("llmapi").base_latency_ms) } else { lat };
+            n.svc_mean_ms = if kind == "llmapi" || kind == "external" { d.latency_ms.unwrap_or(spec(kind).base_latency_ms) } else { lat };
         } else if kind == "function" {
             n.rate = f64::INFINITY;
             n.workers = js_round(d.limit.unwrap_or(3000.0) * (lat / 1000.0)).max(1.0);
@@ -687,7 +687,7 @@ impl<'a> Des<'a> {
             self.pump(i);
             return;
         }
-        if kind == "llmapi" {
+        if kind == "llmapi" || kind == "external" {
             // provider capacity is not your problem — only its rate limit and latency are
             let n = &self.nodes[i];
             let (mean, fl) = (n.svc_mean_ms, n.data.fault_latency_ms.unwrap_or(0.0));
@@ -1195,7 +1195,7 @@ impl<'a> Des<'a> {
             let w = &n.win;
             let workers = if n.workers.is_finite() { n.workers } else { 1.0 };
             let util = if n.sh_workers > 0.0 { w.hot_area / (n.sh_workers * win_s) } else if n.data.kind == "queue" { n.backlog.len() as f64 / QUEUE_BACKLOG_MAX as f64 } else if n.rate.is_finite() { w.arrivals / (n.rate * win_s).max(1e-9) } else { w.busy_area / (workers * win_s) };
-            let billed = if n.data.kind == "function" || n.data.kind == "llmapi" { w.usage_reqs } else if n.data.kind == "client" { 0.0 } else { w.arrivals };
+            let billed = if n.data.kind == "function" || n.data.kind == "llmapi" || n.data.kind == "external" { w.usage_reqs } else if n.data.kind == "client" { 0.0 } else { w.arrivals };
             let usage = billed * request_price(&n.data, &self.pricing) * 3600.0;
             let cost_h = match &n.scaler {
                 Some(s) => cost_of(&NodeData { instances: Some(s.live + s.pending.len() as f64), ..n.data.clone() }, &self.pricing),
@@ -1589,6 +1589,7 @@ fn static_kind(k: &str) -> &'static str {
         "queue" => "queue",
         "llm" => "llm",
         "llmapi" => "llmapi",
+        "external" => "external",
         _ => "server",
     }
 }

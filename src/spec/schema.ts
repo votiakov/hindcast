@@ -5,7 +5,7 @@ import { z } from 'zod';
  * (app, CLI, MCP server, future engines). Plain data, JSON or YAML.
  */
 
-export const KIND_VALUES = ['client', 'cdn', 'lb', 'gateway', 'server', 'worker', 'function', 'cache', 'db', 'replica', 'storage', 'queue', 'llm', 'llmapi'] as const;
+export const KIND_VALUES = ['client', 'cdn', 'lb', 'gateway', 'server', 'worker', 'function', 'cache', 'db', 'replica', 'storage', 'queue', 'llm', 'llmapi', 'external'] as const;
 
 export const ComponentSpec = z
   .object({
@@ -16,7 +16,7 @@ export const ComponentSpec = z
     instances: z.number().int().min(1).max(500).optional().describe('server/worker/llm: horizontal instances (reachable only behind lb/gateway/queue)'),
     runtime: z.enum(['node', 'python', 'java', 'go', 'rust']).optional().describe('server/worker/function language runtime'),
     hitRate: z.number().min(0).max(0.999).optional().describe('cache/cdn hit ratio'),
-    limit: z.number().positive().optional().describe('gateway/llmapi rate limit or function max concurrency, req/s'),
+    limit: z.number().positive().optional().describe('gateway/llmapi/external rate limit or function max concurrency, req/s'),
     batching: z.boolean().optional().describe('llm: continuous batching (×4 throughput, +400ms)'),
     retries: z.number().int().min(0).max(10).optional().describe('retries per failed downstream call'),
     retryPolicy: z.enum(['immediate', 'backoff', 'budget']).optional(),

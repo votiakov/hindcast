@@ -24,8 +24,8 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
   const instances = data.instances ?? 1;
   const set = (patch: Partial<SystemNodeData>) => updateNode(b, id, patch);
   const caller = CALLERS.has(data.kind);
-  const bounded = data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'function' && data.kind !== 'queue';
-  const calibratable = data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'function' && data.kind !== 'queue';
+  const bounded = data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'external' && data.kind !== 'function' && data.kind !== 'queue';
+  const calibratable = data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'external' && data.kind !== 'function' && data.kind !== 'queue';
   const tuned = (data.retries ?? 0) > 0 || !!data.breaker || !!data.timeoutMs || (data.routing && data.routing !== 'split') || (data.fanout ?? 1) > 1 || data.queueS !== undefined;
   const [more, setMore] = useState(tuned);
   const [cal, setCal] = useState(false);
@@ -174,7 +174,7 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
           </select>
         </div>
       )}
-      {(data.kind === 'gateway' || data.kind === 'function' || data.kind === 'llmapi') && (
+      {(data.kind === 'gateway' || data.kind === 'function' || data.kind === 'llmapi' || data.kind === 'external') && (
         <div className="nc-row">
           <span className="nc-l">{data.kind === 'function' ? 'max conc.' : 'rate limit'}</span>
           <input type="range" min={data.kind === 'llmapi' ? 10 : 100} max={data.kind === 'llmapi' ? 1000 : 10000} step={data.kind === 'llmapi' ? 10 : 100} value={data.limit ?? 1000} onChange={(e) => set({ limit: +e.target.value })} />

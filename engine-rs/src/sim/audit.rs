@@ -47,6 +47,7 @@ fn label_of(kind: &str) -> &'static str {
         "queue" => "Queue",
         "llm" => "GPU Inference",
         "llmapi" => "LLM Provider API",
+        "external" => "External API",
         _ => "Component",
     }
 }
