@@ -1,0 +1,17 @@
+{
+  "system": "shop",
+  "run": "normal-nodeloss",
+  "start": 1791966843,
+  "end": 1791969243,
+  "day": "12/Jul/1995",
+  "minutes": 40,
+  "scale": "x83",
+  "steps": null,
+  "manifests": "shop.yaml",
+  "note": null,
+  "kill": {
+    "node": "bnk8s-worker",
+    "at": 1791968003
+  },
+  "recordedAt": "2026-10-14T09:14:51.791Z"
+}

@@ -16661,6 +16661,127 @@
    }
   }
  ],
- "nodeLosses": [],
- "evaluatedAt": "2026-10-14T08:29:43.603Z"
+ "nodeLosses": [
+  {
+   "run": "normal-nodeloss",
+   "node": "bnk8s-worker",
+   "atMinute": 19.3,
+   "atS": 1040,
+   "pods": {
+    "ad": {
+     "bnk8s-worker": 1
+    },
+    "cart": {
+     "bnk8s-worker": 1
+    },
+    "checkout": {
+     "bnk8s-worker2": 1
+    },
+    "currency": {
+     "bnk8s-worker2": 1
+    },
+    "email": {
+     "bnk8s-worker": 1
+    },
+    "flagd": {
+     "bnk8s-worker2": 1
+    },
+    "frontend": {
+     "bnk8s-worker2": 2,
+     "bnk8s-worker": 1
+    },
+    "jaeger": {
+     "bnk8s-worker": 1
+    },
+    "otel-collector": {
+     "bnk8s-worker2": 1
+    },
+    "payment": {
+     "bnk8s-worker": 1
+    },
+    "product-catalog": {
+     "bnk8s-worker2": 1
+    },
+    "quote": {
+     "bnk8s-worker": 1
+    },
+    "recommendation": {
+     "bnk8s-worker2": 1
+    },
+    "shipping": {
+     "bnk8s-worker": 1
+    },
+    "valkey-cart": {
+     "bnk8s-worker2": 1
+    }
+   },
+   "lost": [
+    {
+     "service": "ad",
+     "pods": 1,
+     "of": 1,
+     "down": true
+    },
+    {
+     "service": "cart",
+     "pods": 1,
+     "of": 1,
+     "down": true
+    },
+    {
+     "service": "email",
+     "pods": 1,
+     "of": 1,
+     "down": true
+    },
+    {
+     "service": "frontend",
+     "pods": 1,
+     "of": 3,
+     "down": false
+    },
+    {
+     "service": "jaeger",
+     "pods": 1,
+     "of": 1,
+     "down": true
+    },
+    {
+     "service": "payment",
+     "pods": 1,
+     "of": 1,
+     "down": true
+    },
+    {
+     "service": "quote",
+     "pods": 1,
+     "of": 1,
+     "down": true
+    },
+    {
+     "service": "shipping",
+     "pods": 1,
+     "of": 1,
+     "down": true
+    }
+   ],
+   "predicted": {
+    "minutesOutOfSlo": 7,
+    "failedRequests": 21221,
+    "verdict": "fails",
+    "worst": "frontend at 61% of capacity (164.5 req/s on 2 × 134.1 req/s)"
+   },
+   "onTheDay": {
+    "minutesOutOfSlo": 7,
+    "failedRequests": 16804
+   },
+   "measured": {
+    "minutesOutOfSlo": 10.5,
+    "failedRequests": 32886,
+    "errorRate": 0.15828307671574407,
+    "p99Ms": 5002
+   }
+  }
+ ],
+ "evaluatedAt": "2026-10-14T09:15:44.543Z"
 }
