@@ -929,7 +929,7 @@
       },
       "reasons": [
        "costs the same, with no change in time out of SLO",
-       "frees 0.5 cores and 512 MiB of requests, but the node pool is fixed at 3: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 21% of it (23% before)",
+       "frees 0.5 cores and 512 MiB of requests, but the node pool is fixed at 1.9999999999999998: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 26% of it (30% before)",
        "headroom drops from 405.4 to 270.5 req/s (the history peaked at 164.5)"
       ],
       "warnings": [
@@ -1806,7 +1806,7 @@
        "adds 15.8 min out of SLO (10–90%: 0 … 22.6)",
        "worst at 2026-10-13T17:04:00Z: frontend at 136% of capacity (365.1 req/s on 2 × 134.1 req/s), 27.4 s queue",
        "worse for frontend GET /, frontend GET /api/cart, frontend GET /api/data, frontend GET /api/products/{id}, frontend GET /api/recommendations, frontend POST /api/cart, frontend POST /api/checkout against their own SLOs",
-       "frees 0.5 cores and 512 MiB of requests, but the node pool is fixed at 3: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 21% of it (23% before)",
+       "frees 0.5 cores and 512 MiB of requests, but the node pool is fixed at 1.9999999999999998: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 26% of it (30% before)",
        "headroom drops from 405.4 to 270.5 req/s (the replayed traffic peaks at 365.1)"
       ],
       "warnings": [
@@ -2685,7 +2685,7 @@
        "adds 10.5 min out of SLO (10–90%: 7.4 … 15.5)",
        "worst at 2026-10-13T17:07:00Z: frontend at 94% of capacity (126.3 req/s on 1 × 134.1 req/s), 16.2 s queue",
        "worse for frontend GET /, frontend GET /api/cart, frontend GET /api/data, frontend GET /api/products/{id}, frontend GET /api/recommendations, frontend POST /api/cart, frontend POST /api/checkout against their own SLOs",
-       "frees 1 cores and 1024 MiB of requests, but the node pool is fixed at 3: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 19% of it (23% before)",
+       "frees 1 cores and 1024 MiB of requests, but the node pool is fixed at 1.9999999999999998: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 23% of it (30% before)",
        "headroom drops from 405.4 to 135.3 req/s (the history peaked at 164.5)"
       ],
       "warnings": [
@@ -5759,7 +5759,7 @@
       "reasons": [
        "costs the same, with no change in time out of SLO",
        "the backtest passes, but confidence is low (frontend: the model fits it poorly, and this change changes it) — load-test before trusting it",
-       "frees 0.5 cores and 512 MiB of requests, but the node pool is fixed at 3: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 19% of it (21% before)",
+       "frees 0.5 cores and 512 MiB of requests, but the node pool is fixed at 1.9999999999999998: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 24% of it (28% before)",
        "headroom drops from 492.6 to 329.1 req/s (the history peaked at 164.5)"
       ],
       "warnings": [
@@ -6637,7 +6637,7 @@
        "adds 4.5 min out of SLO (10–90%: 4 … 4.7)",
        "worst at 2026-10-13T17:04:00Z: frontend at 108% of capacity (365.1 req/s on 2 × 168.7 req/s), 1.5 s queue",
        "worse for frontend GET, frontend GET /, frontend GET /api/cart, frontend GET /api/recommendations, frontend POST, frontend POST /api/cart, frontend POST /api/checkout against their own SLOs",
-       "frees 0.5 cores and 512 MiB of requests, but the node pool is fixed at 3: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 19% of it (21% before)",
+       "frees 0.5 cores and 512 MiB of requests, but the node pool is fixed at 1.9999999999999998: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 24% of it (28% before)",
        "headroom drops from 492.6 to 329.1 req/s (the replayed traffic peaks at 365.1)"
       ],
       "warnings": [
@@ -7516,7 +7516,7 @@
        "adds 1 min out of SLO (10–90%: 0.5 … 1)",
        "worst at 2026-10-13T17:04:00Z: frontend at 98% of capacity (164.5 req/s on 1 × 168.7 req/s), 58 ms wait",
        "worse for frontend GET /api/recommendations against their own SLOs",
-       "frees 1 cores and 1024 MiB of requests, but the node pool is fixed at 3: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 17% of it (21% before)",
+       "frees 1 cores and 1024 MiB of requests, but the node pool is fixed at 1.9999999999999998: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 21% of it (28% before)",
        "headroom drops from 492.6 to 164.7 req/s (the history peaked at 164.5)"
       ],
       "warnings": [
@@ -9679,5 +9679,5 @@
   }
  ],
  "nodeLosses": [],
- "evaluatedAt": "2026-10-14T05:59:26.438Z"
+ "evaluatedAt": "2026-10-14T06:01:42.169Z"
 }

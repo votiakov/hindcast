@@ -159,17 +159,21 @@ export const PRESETS: Record<string, Preset> = {
         // what each replica asks the scheduler for: node capacity is spent on requests, not on use
         { file: 'cpu-request.json', query: `max by (workload) (${podSum('kube_pod_container_resource_requests', 'cpu')})`, mapping: { metric: 'cpuRequestCores', by: 'workload' } },
         { file: 'memory-request.json', query: `max by (workload) (${podSum('kube_pod_container_resource_requests', 'memory')})`, mapping: { metric: 'memoryRequestBytes', by: 'workload' } },
-        // the nodes, and everything running on them (whatever the namespace: they share the nodes)
-        { file: 'cluster-nodes.json', query: `count(kube_node_info)`, mapping: { metric: 'clusterNodes' } },
-        { file: 'cluster-node-cpu.json', query: `avg(kube_node_status_allocatable{resource="cpu"})`, mapping: { metric: 'clusterNodeCpu' } },
-        { file: 'cluster-node-memory.json', query: `avg(kube_node_status_allocatable{resource="memory"})`, mapping: { metric: 'clusterNodeMemoryBytes' } },
-        { file: 'cluster-requested-cpu.json', query: `sum(kube_pod_container_resource_requests{resource="cpu"} and on (namespace, pod) (kube_pod_status_phase{phase="Running"} == 1))`, mapping: { metric: 'clusterRequestedCpu' } },
-        { file: 'cluster-requested-memory.json', query: `sum(kube_pod_container_resource_requests{resource="memory"} and on (namespace, pod) (kube_pod_status_phase{phase="Running"} == 1))`, mapping: { metric: 'clusterRequestedMemoryBytes' } },
+        // the worker nodes, and everything running on them (whatever the namespace: they share the
+        // nodes). Control-plane nodes take no workloads and, managed, aren't billed as nodes
+        { file: 'cluster-nodes.json', query: `count(kube_node_info ${WORKERS})`, mapping: { metric: 'clusterNodes' } },
+        { file: 'cluster-node-cpu.json', query: `avg(kube_node_status_allocatable{resource="cpu"} ${WORKERS})`, mapping: { metric: 'clusterNodeCpu' } },
+        { file: 'cluster-node-memory.json', query: `avg(kube_node_status_allocatable{resource="memory"} ${WORKERS})`, mapping: { metric: 'clusterNodeMemoryBytes' } },
+        { file: 'cluster-requested-cpu.json', query: `sum((kube_pod_container_resource_requests{resource="cpu"} ${WORKERS}) and on (namespace, pod) (kube_pod_status_phase{phase="Running"} == 1))`, mapping: { metric: 'clusterRequestedCpu' } },
+        { file: 'cluster-requested-memory.json', query: `sum((kube_pod_container_resource_requests{resource="memory"} ${WORKERS}) and on (namespace, pod) (kube_pod_status_phase{phase="Running"} == 1))`, mapping: { metric: 'clusterRequestedMemoryBytes' } },
         { file: 'throttled.json', query: `sum by (workload) (${workload(`rate(container_cpu_cfs_throttled_periods_total{${ctr}}[${w}])`)}) / sum by (workload) (${workload(`rate(container_cpu_cfs_periods_total{${ctr}}[${w}])`)})`, mapping: { metric: 'cpuThrottled', by: 'workload', unit: 'ratio' } },
       ];
     },
   },
 };
+
+/** series on worker nodes only: control-plane nodes take no workloads */
+const WORKERS = `unless on (node) kube_node_role{role=~"control-plane|master"}`;
 
 /** pods per node per workload, at one instant: which replicas a node failure takes with it */
 export const podsByNodeQuery = (namespaces?: string[]) => `count by (workload, node) (${workload(`kube_pod_info{${[`pod!=""`, `node!=""`, nsMatcher(namespaces)].filter(Boolean).join(',')}}`)})`;

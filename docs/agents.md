@@ -310,8 +310,17 @@ pool with no room for them leaves them Pending. It returns, per node:
 It also lists the services one node failure takes out entirely. With a `strategy`, the strategy's
 new replica counts are spread evenly over the nodes, as the default scheduler does.
 
+`suggest_changes` runs the same check and proposes the fix, then replays the loss of every node again
+to prove it. The fix adds a second replica, spread over the nodes, for every service on a
+request's path that one node takes down. Each degraded service gets enough replicas that what
+survives the busiest node carries its peak at 85% of capacity. In a manifest, `spread: even` is
+`topologySpreadConstraints` on `kubernetes.io/hostname`; diffs that add one are read as that
+change. A datastore needs replication for its second replica to survive.
+
 On the Kubernetes reference, the as-built shop fails either way. Losing a worker at the peak adds
-6.5–7.3 minutes out of SLO and about 50,000 failed requests: 14 services run a single replica.
+6.5–7.3 minutes out of SLO and about 50,000 failed requests: 14 services run a single replica. The
+suggested fix (a fourth frontend replica, a second for 12 services, all spread) survives the loss of
+either node, at $0 a month on the reference's fixed node pool, which has room for them.
 
 ### `read_cluster`
 

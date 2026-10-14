@@ -15,6 +15,8 @@ export interface WorkloadConfig {
   replicas?: number;
   cpu?: number;
   memoryGb?: number;
+  /** replicas kept apart by node (topologySpreadConstraints or podAntiAffinity on kubernetes.io/hostname) */
+  spread?: boolean;
   /** requests (Kubernetes defaults them to the limits when only limits are set) */
   cpuRequest?: number;
   memoryRequestGb?: number;
@@ -70,6 +72,7 @@ export function readWorkloads(yamlTexts: string[]): Map<string, WorkloadConfig> 
       replicas: spec.replicas === undefined ? 1 : Number(spec.replicas),
       cpu: cpuQuantity(limits.cpu ?? requests.cpu),
       memoryGb: memQuantity(limits.memory ?? requests.memory),
+      spread: arr(pod.topologySpreadConstraints).some((t) => o(t).topologyKey === 'kubernetes.io/hostname') || JSON.stringify(o(o(pod.affinity).podAntiAffinity)).includes('kubernetes.io/hostname'),
       cpuRequest: cpuQuantity(requests.cpu ?? limits.cpu),
       memoryRequestGb: memQuantity(requests.memory ?? limits.memory),
       arch: archLabel === 'arm64' ? 'arm' : 'x86',
@@ -123,6 +126,10 @@ export function strategyFromDiff(before: Map<string, WorkloadConfig>, after: Map
     if (b.memoryGb !== undefined && b.memoryGb !== a.memoryGb) {
       ch.memoryGb = Math.round(b.memoryGb * 1000) / 1000;
       said.push(`${svc} memory ${a.memoryGb?.toFixed(2) ?? '?'} → ${b.memoryGb.toFixed(2)} GiB`);
+    }
+    if (b.spread && !a.spread) {
+      ch.spread = 'even';
+      said.push(`${svc} spread over nodes`);
     }
     // a request that moved on its own (a limit change carries an equal request with it)
     if (b.cpuRequest !== undefined && b.cpuRequest !== a.cpuRequest && !(b.cpu !== a.cpu && b.cpuRequest === b.cpu)) {

@@ -111,7 +111,8 @@ export function podsPerNode(model: Model, strategy?: unknown): Record<string, Re
   const nodes = [...new Set(Object.values(out).flatMap((p) => Object.keys(p)))].sort();
   for (const ch of spec.changes) {
     if (!('service' in ch) || !out[ch.service]) continue;
-    const r = ch.replicas ?? (ch.autoscale ? ch.autoscale.min : undefined);
+    const now = Object.values(out[ch.service]).reduce((a, x) => a + x, 0);
+    const r = ch.replicas ?? (ch.autoscale ? ch.autoscale.min : ch.spread ? now : undefined);
     if (r === undefined) continue;
     const p: Record<string, number> = {};
     for (let k = 0; k < r; k++) p[nodes[k % nodes.length]] = (p[nodes[k % nodes.length]] ?? 0) + 1;

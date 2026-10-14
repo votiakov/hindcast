@@ -575,6 +575,9 @@ spec:
     // limits only: requests default to them, and move with them
     const lim = (cpu: string) => w(cpu, cpu).replace(/requests: \{[^}]*\}, /, '');
     expect(strategyFromDiff(readWorkloads([lim('1')]), readWorkloads([lim('2')])).strategy!.changes).toEqual([{ service: 'api', cpu: 2 }]);
+    // a topology spread over hostnames is the spread a node failure needs
+    const spread = w('500m', '1').replace('      containers:', '      topologySpreadConstraints: [{ maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: ScheduleAnyway }]\n      containers:');
+    expect(strategyFromDiff(before, readWorkloads([spread])).strategy!.changes).toEqual([{ service: 'api', spread: 'even' }]);
   });
 });
 

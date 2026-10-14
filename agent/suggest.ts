@@ -1,3 +1,4 @@
+import { nodeLoss } from '../src/backtest/resilience';
 import type { Dataset } from '../src/backtest/dataset';
 import { modelBreakingPoint } from '../src/backtest/accuracy';
 import { backtest } from '../src/backtest/backtest';
@@ -147,6 +148,48 @@ export async function suggestChanges(ws: Workspace, o: SuggestOptions = {}, prog
     combined = evaluate([{ name: `All safe savings together (${safe.length})`, changes: [...byService.values()] as StrategySpec['changes'] }])[0];
   }
 
+  // ---- losing a node (Kubernetes): what one node failure at the busiest moment takes, and the
+  // replicas and spreading that survive it, proven by replaying the loss of every node again
+  let resilience: Record<string, unknown> | null = null;
+  if (goal !== 'cost' && Object.values(m.services).some((s) => s.pods)) {
+    await say('losing each node at the busiest moment', 2);
+    const now = nodeLoss(m, d, { draws: 6 });
+    if (!now.survives) {
+      const failing = now.results.filter((x) => x.verdict === 'fails');
+      const changes = new Map<string, Record<string, unknown>>();
+      // only what requests pass through: a tracing backend going down costs traces, not the SLO
+      const onPath = new Set(Object.values(m.endpoints).flatMap((e) => Object.keys(e.visits).filter((k) => (e.visits[k] ?? 0) > 0)));
+      for (const id of [...onPath]) if (m.services[id]?.hostedBy) onPath.add(m.services[id].hostedBy!);
+      for (const x of failing)
+        for (const l of x.lost) {
+          const s = m.services[l.service];
+          if (!s || (s.kind === 'external' && !s.pods) || !onPath.has(l.service) || changes.has(l.service)) continue;
+          // enough replicas that what survives the busiest node carries the peak at 85% of capacity,
+          // spread evenly: r − ⌈r / nodes⌉ survivors
+          const K = s.capacity.perReplicaRps;
+          const peakRps = (peak[l.service] ?? 0) * (isFinite(K) ? K : 0) * l.of;
+          const need = isFinite(K) && K > 0 ? Math.max(1, Math.ceil(peakRps / (K * 0.85))) : 1;
+          let r = Math.max(l.down ? 2 : l.of, 2);
+          while (r - Math.ceil(r / now.nodes) < need && r < 64) r++;
+          if (l.down || r !== l.of || l.pods > Math.ceil(l.of / now.nodes)) changes.set(l.service, { service: l.service, ...(r !== l.of ? { replicas: r } : {}), spread: 'even' });
+        }
+      const fix = { name: 'Survive a node failure', description: `replicas for what one node takes down, spread evenly over the ${now.nodes} nodes`, changes: [...changes.values()] } as StrategySpec;
+      const after = changes.size ? nodeLoss(m, d, { draws: 6, strategy: fix }) : null;
+      const cost = changes.size ? backtest(m, d, [fix], { draws: 1 }).strategies[0].delta.monthly.p50 : 0;
+      resilience = {
+        asBuilt: { survives: false, worst: { node: failing[0].node, minutesOutOfSlo: failing[0].minutesOutOfSlo, failedRequests: failing[0].failedRequests, down: failing[0].lost.filter((l) => l.down).map((l) => l.service) } },
+        singlePointsOfFailure: now.singlePointsOfFailure.map((x) => x.service),
+        fix: after ? { change: fix, survives: after.survives, worstAfter: after.results[0] ? { node: after.results[0].node, minutesOutOfSlo: after.results[0].minutesOutOfSlo, verdict: after.results[0].verdict, worst: after.results[0].worst } : null, monthlyDelta: r2(cost) } : null,
+        notes: [
+          'spread: even is topologySpreadConstraints on kubernetes.io/hostname with maxSkew 1 (or a preferred podAntiAffinity)',
+          ...[...changes.keys()]
+            .filter((id) => ['db', 'cache', 'queue'].includes(m.services[id]?.kind))
+            .map((id) => `${id} holds data: a second replica only survives a node with replication (a primary and a replica, or a cluster mode) — the replay treats its replicas as interchangeable`),
+        ],
+      };
+    } else resilience = { asBuilt: { survives: true }, singlePointsOfFailure: now.singlePointsOfFailure.map((x) => x.service) };
+  }
+
   const minutes = asBuilt.summary.minutesOutOfSlo.p50;
   // a fix helps when it cuts time out of SLO, or failed requests by a tenth: an SLO broken by
   // something else in the same minutes (errors unrelated to capacity) can hide a real improvement
@@ -159,6 +202,7 @@ export async function suggestChanges(ws: Workspace, o: SuggestOptions = {}, prog
     fixes: helpful,
     savings: saveResults.filter((s) => s.verdict === 'pass' && s.monthlyDelta < 0).sort((a, b) => a.monthlyDelta - b.monthlyDelta),
     combinedSavings: combined,
+    ...(resilience ? { nodeLoss: resilience } : {}),
     rejected: [...fixResults.filter((f) => !helpful.includes(f)), ...saveResults.filter((s) => !(s.verdict === 'pass' && s.monthlyDelta < 0))].map((x) => ({ name: x.name, verdict: x.verdict, summary: x.summary })),
     notes: [
       ...notes,

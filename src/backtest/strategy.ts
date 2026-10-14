@@ -33,6 +33,7 @@ const ServiceChange = z
       .optional(),
     cpu: z.number().positive().optional().describe('cores per replica (resize)'),
     memoryGb: z.number().positive().optional(),
+    spread: z.literal('even').optional().describe('Kubernetes: spread the replicas evenly over the nodes (topologySpreadConstraints on kubernetes.io/hostname, maxSkew 1) — what a node failure takes'),
     cpuRequest: z.number().positive().optional().describe('Kubernetes CPU request per replica, cores (what it takes of a node)'),
     memoryRequestGb: z.number().positive().optional().describe('Kubernetes memory request per replica, GiB'),
     // the spellings agents and manifests use: arm64, aarch64, graviton; amd64, x86_64
@@ -73,7 +74,7 @@ export const StrategySpec = z.object({
         const schema = 'endpoint' in o && !('service' in o) ? EndpointChange : ServiceChange;
         const r = schema.safeParse(c);
         if (r.success) return r.data;
-        for (const i of r.error.issues) ctx.addIssue({ code: 'custom', message: `${schema === EndpointChange ? 'endpoint change' : 'service change'}: ${i.message}${schema === EndpointChange ? ' — an endpoint change takes endpoint, retries { attempts, budget? }, timeoutMs' : ' — a service change takes service plus replicas, autoscale, cpu, memoryGb, cpuRequest, memoryRequestGb, arch, perf, capacityRps, cache, readReplicas, readShare, zone, region'}`, path: i.path });
+        for (const i of r.error.issues) ctx.addIssue({ code: 'custom', message: `${schema === EndpointChange ? 'endpoint change' : 'service change'}: ${i.message}${schema === EndpointChange ? ' — an endpoint change takes endpoint, retries { attempts, budget? }, timeoutMs' : ' — a service change takes service plus replicas, autoscale, cpu, memoryGb, cpuRequest, memoryRequestGb, spread, arch, perf, capacityRps, cache, readReplicas, readShare, zone, region'}`, path: i.path });
         return z.NEVER;
       }),
     )
