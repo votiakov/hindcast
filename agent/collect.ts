@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { stringify as toYaml } from 'yaml';
 import { importBundle } from '../src/backtest/import/manifest';
-import { exportPlan, manifestMetrics, podsByNodeQuery, runExport } from '../src/backtest/import/promExport';
+import { exportPlan, manifestMetrics, podsByNodeQuery, runExport, zoneOfProviderId } from '../src/backtest/import/promExport';
 import { parseTraceFile, parseTraceLines, templatePath, type Span } from '../src/backtest/import/traces';
 import type { Dataset } from '../src/backtest/dataset';
 import { fileAccess, glob, readLines } from '../cli/files';
@@ -207,6 +207,14 @@ export async function collect(ws: Workspace, o: CollectOptions = {}, progress?: 
         (by[id] ??= {})[r.metric.node] = Number(r.value[1]);
       }
       if (Object.keys(by).length) dataset.podsByNode = by;
+      // the zone of each node, from its provider id (AWS and GCP put it there)
+      const ni = (await (await fetch(`${src.prometheus.url.replace(/\/$/, '')}/api/v1/query?query=${encodeURIComponent('kube_node_info')}&time=${end}`, { headers: authHeaders(src.prometheus) })).json()) as { data?: { result?: { metric: Record<string, string> }[] } };
+      const zones: Record<string, string> = {};
+      for (const r of ni.data?.result ?? []) {
+        const z = zoneOfProviderId(r.metric.provider_id);
+        if (z && r.metric.node) zones[r.metric.node] = z;
+      }
+      if (Object.keys(zones).length) dataset.nodeZones = zones;
     } catch {
       warnings.push('could not read which node each pod runs on (kube_pod_info): node-loss checks are unavailable');
     }

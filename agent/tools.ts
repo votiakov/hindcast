@@ -187,12 +187,13 @@ export const TOOLS: AgentTool[] = [
       strategy: z.union([z.string(), z.record(z.string(), z.unknown())]).optional().describe('check under this strategy instead of as built'),
       traffic: z.object({ scale: z.number().positive().optional(), peakRps: z.number().positive().optional() }).optional().describe('at another load (launch day: scale 2)'),
       recoverS: z.number().positive().optional().describe('seconds until replacement pods serve (default 380)'),
+      zones: z.boolean().optional().describe('lose a whole availability zone (every node in it) instead of one node — zones come from the nodes\' provider ids (AWS, GCP)'),
     },
     run: (a, ws) => {
       const m = reviveModel(ws.readJson<Model>('model.json'));
       const d = ws.readJson<Dataset>('dataset.json');
       const strategy = typeof a.strategy === 'string' ? parseYaml(a.strategy) : a.strategy;
-      return nodeLoss(m, d, { strategy, load: a.traffic as { scale?: number; peakRps?: number } | undefined, recoverS: a.recoverS as number | undefined });
+      return nodeLoss(m, d, { strategy, load: a.traffic as { scale?: number; peakRps?: number } | undefined, recoverS: a.recoverS as number | undefined, zones: a.zones as boolean | undefined });
     },
   },
   {

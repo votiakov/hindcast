@@ -178,6 +178,15 @@ const WORKERS = `unless on (node) kube_node_role{role=~"control-plane|master"}`;
 /** pods per node per workload, at one instant: which replicas a node failure takes with it */
 export const podsByNodeQuery = (namespaces?: string[]) => `count by (workload, node) (${workload(`kube_pod_info{${[`pod!=""`, `node!=""`, nsMatcher(namespaces)].filter(Boolean).join(',')}}`)})`;
 
+/** the zone of a node from its provider id: AWS aws:///us-east-1a/i-…, GCP gce://project/us-central1-a/name */
+export function zoneOfProviderId(id: string | undefined): string | null {
+  if (!id) return null;
+  const aws = /^aws:\/\/\/([a-z]{2}-[a-z]+-\d[a-z])\//.exec(id);
+  if (aws) return aws[1];
+  const gce = /^gce:\/\/[^/]+\/([a-z]+-[a-z]+\d-[a-z])\//.exec(id);
+  return gce ? gce[1] : null;
+}
+
 /** service_name=~"a|b" for the services requests enter through */
 const entryMatcher = (entry: string[]) => `service_name=~"${entry.map((e) => e.replace(/[.*+?^${}()|[\]\\"]/g, '\\\\$&')).join('|')}"`;
 

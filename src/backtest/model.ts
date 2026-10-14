@@ -131,6 +131,8 @@ export interface ClusterModel {
   other: { cpu: number; memoryGb: number };
   /** seconds a pod waits for a new node (default 90) */
   provisionS?: number;
+  /** the zone of each node (from its provider id) */
+  zones?: Record<string, string>;
   notes: string[];
 }
 

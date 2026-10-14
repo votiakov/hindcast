@@ -187,6 +187,8 @@ export interface Dataset {
   cluster?: ClusterSeries;
   /** pods per node per service at the end of the window (Kubernetes): what losing a node takes */
   podsByNode?: Record<string, Record<string, number>>;
+  /** the zone of each node, where the provider id tells it (AWS, GCP) */
+  nodeZones?: Record<string, string>;
   /** where each piece came from, for the report */
   sources: string[];
   /** modelling hints from the import manifest (SLO, client deadline, in-process dependencies…) */

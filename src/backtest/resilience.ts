@@ -29,6 +29,8 @@ export interface NodeLossOptions {
   nodes?: string[];
   /** when the node goes, seconds from the start of the history (default: a minute before its busiest moment) */
   atS?: number;
+  /** lose whole zones (every node in one) instead of single nodes — needs the nodes' zones */
+  zones?: boolean;
 }
 
 export interface NodeLossResult {
@@ -46,7 +48,13 @@ export interface NodeLossResult {
 const RECOVER_S = 50 + 300 + 30;
 
 export function nodeLoss(model: Model, d: Dataset, o: NodeLossOptions = {}) {
-  const spread = o.pods ? Object.fromEntries(Object.entries(o.pods).filter(([id]) => model.services[id] && !model.services[id].hostedBy)) : podsPerNode(model, o.strategy);
+  let spread = o.pods ? Object.fromEntries(Object.entries(o.pods).filter(([id]) => model.services[id] && !model.services[id].hostedBy)) : podsPerNode(model, o.strategy);
+  if (o.zones) {
+    // a zone is one big node: every pod in it goes at once
+    const zoneOf = model.cluster?.zones ?? {};
+    if (!Object.keys(zoneOf).length) throw new Error('the nodes have no zones (they come from kube_node_info provider ids on AWS and GCP): check single nodes instead');
+    spread = Object.fromEntries(Object.entries(spread).map(([id, p]) => [id, Object.entries(p).reduce<Record<string, number>>((acc, [n, k]) => ((acc[zoneOf[n] ?? n] = (acc[zoneOf[n] ?? n] ?? 0) + k), acc), {})]));
+  }
   const nodes = (o.nodes ?? [...new Set(Object.values(spread).flatMap((p) => Object.keys(p)))]).sort();
   if (!nodes.length) throw new Error('no pod placement in the model: collect from a Kubernetes cluster (kube-state-metrics kube_pod_info) to check node loss');
   let traffic = trafficOf(d, model);

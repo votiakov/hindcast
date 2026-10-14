@@ -326,7 +326,9 @@ pool with no room for them leaves them Pending. It returns, per node:
 - what the node takes down;
 - the minutes out of SLO and failed requests it adds.
 
-It also lists the services one node failure takes out entirely. With a `strategy`, the strategy's
+It also lists the services one node failure takes out entirely. With `zones: true` it loses a whole
+availability zone at once. Zones come from the nodes' provider ids: AWS
+(`aws:///us-east-1a/i-…`) and GCP put the zone there, Azure and kind don't. With a `strategy`, the strategy's
 new replica counts are spread evenly over the nodes, as the default scheduler does.
 
 `verify_change` runs it too, whenever the model knows the pod placement. It says when a change
@@ -440,7 +442,7 @@ or dropped on the app's Backtest screen.
 | `suggest_changes` | `goal?` (reliability \| cost \| both), `last?`, `draws?`, `gateMinutes?`, `idleBelow?` | saturated services; fixes and savings that pass, each judged; the savings combined; rejected candidates |
 | `find_headroom` | `strategy?` | req/s within SLO, what binds, history peak |
 | `review_capacity` | `draws?` | headroom, 1.5× and 2× load, node loss and its fix, throttled and memory-bound services, node pool fill, fixes and savings; a Markdown report |
-| `check_node_loss` | `strategy?`, `traffic?{scale \| peakRps}`, `recoverS?` | per node: services lost or degraded, minutes out of SLO and failed requests added; single points of failure |
+| `check_node_loss` | `strategy?`, `traffic?{scale \| peakRps}`, `recoverS?`, `zones?` | per node: services lost or degraded, minutes out of SLO and failed requests added; single points of failure |
 | `verify_design` | `spec`, `rps?`, `slo?`, `budgetMonthly?`, `incidentCostPerMinute?` | verdict, problems, findings with fixes as spec changes, app link |
 | `read_cluster` | `context`, `namespace?`, `selector?` | workloads, snapshot path, the exact command run |
 

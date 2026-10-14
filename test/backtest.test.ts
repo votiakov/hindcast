@@ -494,6 +494,23 @@ describe('Kubernetes nodes', () => {
     expect(more.cluster!.peakNodes).toBeGreaterThan(r.baseline.cluster!.peakNodes);
   });
 
+  it('loses a whole zone: two nodes in it go at once', async () => {
+    const { zoneOfProviderId } = await import('../src/backtest/import/promExport');
+    const { nodeLoss } = await import('../src/backtest/resilience');
+    expect(zoneOfProviderId('aws:///us-east-1a/i-0abc')).toBe('us-east-1a');
+    expect(zoneOfProviderId('gce://proj/us-central1-b/gke-node-1')).toBe('us-central1-b');
+    expect(zoneOfProviderId('kind://docker/bnk8s/bnk8s-worker')).toBeNull();
+    const d = onNodes(false);
+    d.podsByNode = { api: { n1: 1, n2: 1 } };
+    d.nodeZones = { n1: 'us-east-1a', n2: 'us-east-1a', n3: 'us-east-1b' };
+    const m = calibrate(d, { bootstrap: 0 });
+    // node by node, api keeps a replica; the zone takes both
+    expect(nodeLoss(m, d, { draws: 1 }).results.every((x) => x.lost.every((l) => !l.down))).toBe(true);
+    const z = nodeLoss(m, d, { draws: 1, zones: true });
+    expect(z.results.map((x) => x.node)).toEqual(['us-east-1a']);
+    expect(z.results[0].lost[0]).toMatchObject({ service: 'api', pods: 2, of: 2, down: true });
+  });
+
   it('an HPA scale-out waits for a node on an autoscaled pool, and stays Pending on a full fixed one', () => {
     const scaleOut = { name: 'hpa', changes: [{ service: 'api', autoscale: { min: 1, max: 6, targetCpu: 0.3, warmupS: 20, cooldownS: 600 } }] };
     const auto = onNodes(true);
