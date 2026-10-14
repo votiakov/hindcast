@@ -12,6 +12,26 @@ failed requests, the worst moment and why, with confidence bands. Famous public 
 against your model too. Accuracy is measured against real runs of three open demo systems
 ([reference/](reference/README.md)). Guide: [docs/backtest.md](docs/backtest.md).
 
+**On Kubernetes** it reads what the cluster already exports (kube-prometheus-stack, ingress-nginx,
+OpenTelemetry). From that it covers the questions a platform team answers by hand:
+
+- **CPU quota throttling:** a service caps out before its CPU limit, so capacity stops there.
+- **Memory:** a lower limit OOM-kills pods in the replay.
+- **Nodes:** request cuts save money only if nodes go; fixed and autoscaled pools are told apart,
+  and scale-outs wait for a node.
+- **Node or zone loss:** what one failure at the busiest moment takes down, the single points of
+  failure, and the replicas that survive it.
+- **`review_capacity`:** all of it in one report.
+
+It was validated on a real cluster serving real traffic:
+
+- **In-sample:** five decisions answered from an ordinary day, then made for real. The throttle
+  rules were designed on these runs.
+- **Out of sample:** four more, predicted and committed before they ran.
+- **A node failure:** a node stopped at the peak.
+
+See [reference/k8s](reference/k8s/README.md).
+
 Draw a system (or import it from Terraform or Kubernetes manifests, or paste a YAML spec), push traffic and failures through
 it, and watch where it gives out. Then run the failure audit: every component dying, every dependency
 turning slow, caches restarting cold, zones going dark, a traffic surge. Each incident is graded by what
