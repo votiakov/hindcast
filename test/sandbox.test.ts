@@ -83,9 +83,39 @@ describe('one component at a time, against queueing arithmetic', () => {
   it('a cache answers its hit rate and sends the misses to the origin', () => {
     const b = board([{ id: 'users', kind: 'client' }, { id: 'c', kind: 'cache', hitRate: 0.7 }, { id: 'db', kind: 'db' }], [['users', 'c'], ['c', 'db']]);
     const s = run(b, 200, { seconds: 120 });
-    expect(edgeRps(s, 'c', 'db')).toBeCloseTo(60, 0);
-    expect(s.nodeStats.c.hitRps).toBeCloseTo(140, 0);
+    // reads (80%) hit 70% of the time; misses and writes reach the origin
+    expect(edgeRps(s, 'c', 'db')).toBeCloseTo(200 * (1 - 0.8 * 0.7), 0);
+    expect(s.nodeStats.c.hitRps).toBeCloseTo(200 * 0.8 * 0.7, 0);
     expect(s.global.errorRate).toBeLessThan(0.001);
+  });
+
+  it('only reads can hit a cache: writes go on to the origin', () => {
+    const b = board([{ id: 'users', kind: 'client' }, { id: 'c', kind: 'cache', hitRate: 0.8 }, { id: 'db', kind: 'db' }], [['users', 'c'], ['c', 'db']]);
+    // half reads: 40% of everything hits, the other 60% (misses and every write) reaches the database
+    expect(edgeRps(run(b, 200, { readRatio: 0.5, seconds: 120 }), 'c', 'db')).toBeCloseTo(120, 0);
+    // all writes: the cache saves the database nothing
+    expect(edgeRps(run(b, 200, { readRatio: 0, seconds: 60 }), 'c', 'db')).toBeCloseTo(200, 0);
+  });
+
+  it('a write-behind cache acknowledges writes at once, flushes them later, and loses the buffer when it dies', () => {
+    const spec = { components: [{ id: 'users', kind: 'client' as Kind }, { id: 'c', kind: 'cache' as Kind, hitRate: 0.9, writePolicy: 'behind' as const }, { id: 'db', kind: 'db' as Kind, latencyMs: 200 }], connections: [['users', 'c'], ['c', 'db']] as [string, string][] };
+    const b = board(spec.components, spec.connections);
+    const s = run(b, 100, { readRatio: 0, seconds: 60 });
+    // every write answered at cache speed, and flushed on to the database at the same rate on average
+    expect(s.nodeStats.users.latencyMs).toBeLessThan(10);
+    expect(edgeRps(s, 'c', 'db')).toBeCloseTo(100, 0);
+    expect(s.global.errorRate).toBeLessThan(0.001);
+    // the cache dies: the ~5 s of writes it held are gone
+    const e = s.engine;
+    patch(b, 'c', { alive: false });
+    e.step(b.nodes as never, b.edges as never, 100, 0, 0.05, DEFAULT_ENGINE_CONFIG);
+    const lost = e.snapshot(b.nodes as never, b.edges as never).global.lostWrites;
+    expect(lost).toBeGreaterThan(350);
+    expect(lost).toBeLessThan(650);
+    // the discrete-event engine loses about as many
+    const des = simulateDes(spec, { duration: 40, rps: 100, readRatio: 0, events: [{ at: 30, action: { type: 'kill-id', id: 'c' } }] }, { seed: 1 }).summary.lostWrites ?? 0;
+    expect(des).toBeGreaterThan(350);
+    expect(des).toBeLessThan(650);
   });
 
   it('a database shares its reads with its replicas and keeps the writes', () => {
@@ -311,12 +341,13 @@ describe('resilience behaviours', () => {
       for (let i = 0; i < n; i++) e.step(b.nodes as never, b.edges as never, 500, 0.8, 0.05, DEFAULT_ENGINE_CONFIG);
       return e.snapshot(b.nodes as never, b.edges as never);
     };
-    expect(edgeRps(step(1200), 'c', 'db')).toBeCloseTo(50, 0);
+    const warm = 500 * (1 - 0.8 * 0.9);
+    expect(edgeRps(step(1200), 'c', 'db')).toBeCloseTo(warm, 0);
     patch(b, 'c', { flushes: 1 } as Partial<SystemNodeData>);
     expect(edgeRps(step(40), 'c', 'db')).toBeGreaterThan(300);
     // re-warms exponentially: 80 s is four warm-up periods, e⁻⁴ of the hits still missing
     const cold = Math.exp(-4);
-    expect(Math.abs(edgeRps(step(1600), 'c', 'db') - 500 * (0.1 + 0.9 * cold))).toBeLessThan(2);
+    expect(Math.abs(edgeRps(step(1600), 'c', 'db') - 500 * (1 - 0.8 * 0.9 * (1 - cold)))).toBeLessThan(2);
   });
 
   it('link latency adds to what users wait', () => {

@@ -40,8 +40,13 @@ only one instance gets traffic.
 **Service time.** `baseLatencyOf` = catalog/override latency × runtime latency factor (+400 ms for
 batching).
 
-**Reads and writes.** `readRatio` (scenario/sandbox) splits traffic. Databases keep writes on the
-primary and share reads evenly between the primary and live replica children.
+**Reads and writes.** `readRatio` (scenario/sandbox) splits traffic, and both engines follow each
+class along the graph: only reads can hit a cache (its misses and every write go on to the origin,
+so what reaches a database behind a cache is mostly writes); databases keep writes on the primary and
+share reads evenly between the primary and live replica children. Success is tracked per class, so a
+failure only writes see (an election, a cache with no origin) is not retried away by reads' success.
+A write-behind cache (`writePolicy: behind`) answers writes itself and flushes them ~5 s later; a
+cache that dies takes the unflushed ones with it (`lostWrites` in the results).
 
 **Failover.** A dead primary with live replicas *elects* for `failoverS` (default 3 s): writes fail,
 reads keep working on replicas. Then the first replica is *promoted*: it takes writes plus its share

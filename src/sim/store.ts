@@ -266,7 +266,7 @@ export const recorders: Record<BoardId, Recorder> = { main: new Recorder(), A: n
 
 export const engines: Record<BoardId, Engine> = { main: new Engine(), A: new Engine(), B: new Engine() };
 let toastSeq = 1;
-const emptyGlobal: GlobalStats = { t: 0, rps: 0, errorRate: 0, p99: 0, cost: 0, history: [] };
+const emptyGlobal: GlobalStats = { t: 0, rps: 0, errorRate: 0, p99: 0, cost: 0, lostWrites: 0, history: [] };
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 
 export const activeBoards = (mode: Mode, episodeId?: string): BoardId[] =>
@@ -837,7 +837,7 @@ export const useSim = create<State>()((set, get) => {
           recorded =
             recorders[b].maybeRecord(simT, () => ({
               t: simT,
-              global: { t: nb.global.t, rps: nb.global.rps, errorRate: nb.global.errorRate, p99: nb.global.p99, cost: nb.global.cost },
+              global: { t: nb.global.t, rps: nb.global.rps, errorRate: nb.global.errorRate, p99: nb.global.p99, cost: nb.global.cost, lostWrites: nb.global.lostWrites },
               nodeStats: lean(nb.nodeStats),
               edgeStats: nb.edgeStats,
               data: Object.fromEntries(systemNodes(nodes).map((n) => [n.id, n.data])),

@@ -241,6 +241,8 @@ enum Cont {
     Failover { n: usize, read: bool, order: usize, i: usize, done: ContId },
     /// a queue's consumer finished one message
     Consumer { queue: usize },
+    /// a write-behind cache's flush to the origin settled
+    Flushed,
     Free,
 }
 
@@ -256,6 +258,8 @@ enum Ev {
     Timeout { settle: ContId },
     Sample,
     Scenario { k: usize },
+    /// a write-behind cache flushes one buffered write to its origin
+    Flush { n: usize },
 }
 
 #[derive(Clone, Copy)]
@@ -357,6 +361,9 @@ pub struct DesSummary {
     pub slo_breach_seconds: f64,
     pub requests: f64,
     pub failed_requests: f64,
+    /// writes a write-behind cache acknowledged and then lost
+    #[serde(skip_serializing_if = "is_zero")]
+    pub lost_writes: f64,
     pub worst_moment_s: f64,
     pub events: f64,
     pub wall_ms: f64,
@@ -428,6 +435,7 @@ struct Des<'a> {
     win_fail: f64,
     total_reqs: f64,
     total_fail: f64,
+    lost_writes: f64,
     traffic: Vec<(f64, f64)>,
     ev_log: Vec<super::headless::Event>,
     timeline: Vec<DesPoint>,
@@ -551,6 +559,12 @@ impl<'a> Des<'a> {
                 self.release(id);
                 self.nodes[queue].inflight -= 1.0;
                 self.pump(queue);
+            }
+            Cont::Flushed => {
+                self.release(id);
+                if !ok {
+                    self.lost_writes += 1.0;
+                }
             }
             Cont::Free => {}
         }
@@ -708,7 +722,13 @@ impl<'a> Des<'a> {
         }
         if kind == "cache" || kind == "cdn" {
             let d = &self.nodes[n].data;
-            let hit = d.hit_rate.unwrap_or(0.85) * cache_warmth(self.nodes[n].cold_at, self.now, d.warmup_s);
+            // writes never hit: they go on to the origin, or wait in a write-behind cache
+            if !job.read && d.write_policy.as_deref() == Some("behind") {
+                let wait = self.rng.exp(super::engine::WRITE_BEHIND_S) * 1000.0;
+                self.at(wait, Ev::Flush { n });
+                return self.deliver(done, true);
+            }
+            let hit = if job.read { d.hit_rate.unwrap_or(0.85) * cache_warmth(self.nodes[n].cold_at, self.now, d.warmup_s) } else { 0.0 };
             if self.rng.next() < hit {
                 self.nodes[n].win.hits += 1.0;
                 return self.deliver(done, true);
@@ -1101,6 +1121,15 @@ impl<'a> Des<'a> {
             Ev::Timeout { settle } => self.settle(settle, false, true),
             Ev::Sample => self.sample(),
             Ev::Scenario { k } => self.scenario(k),
+            Ev::Flush { n } => {
+                // a cache that died meanwhile took the write with it
+                if !up(&self.nodes[n]) || self.nodes[n].children.is_empty() {
+                    self.lost_writes += 1.0;
+                    return;
+                }
+                let c = self.cont(Cont::Flushed);
+                self.call_downstream(n, false, c);
+            }
         }
     }
 }
@@ -1194,6 +1223,7 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
         win_fail: 0.0,
         total_reqs: 0.0,
         total_fail: 0.0,
+        lost_writes: 0.0,
         traffic: tl,
         ev_log: vec![],
         timeline: vec![],
@@ -1284,6 +1314,7 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
             slo_breach_seconds: des.breach,
             requests: des.total_reqs,
             failed_requests: des.total_fail,
+            lost_writes: des.lost_writes,
             worst_moment_s: r3(des.worst_t),
             events: processed,
             wall_ms,
@@ -1325,4 +1356,8 @@ pub fn simulate_des(spec: &serde_json::Value, scenario: &serde_json::Value, cfg:
     let sc = parse_scenario(scenario)?;
     let _ = Action::ReviveAll;
     Ok(run_des(&a, &sc, cfg))
+}
+
+fn is_zero(x: &f64) -> bool {
+    *x == 0.0
 }

@@ -50,6 +50,8 @@ export interface SimResult {
     sloBreachSeconds: number;
     requests: number;
     failedRequests: number;
+    /** writes a write-behind cache acknowledged and then lost */
+    lostWrites?: number;
     worstMomentS: number;
   };
   slo: { maxErrorRate: number; maxP99Ms: number };

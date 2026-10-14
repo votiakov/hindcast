@@ -49,6 +49,7 @@ zones:                          # optional failure domains
 | `queueS` | queued kinds | bounded queue length in seconds of work |
 | `autoscale` | server, worker, llm | `{ min, max, targetUtil?, warmupS?, cooldownS? }` — target-tracking autoscaling; `instances` is the starting size. Defaults: target 0.6, warm-up 30 s, scale-in cooldown 60 s |
 | `warmupS` | cache, cdn | re-warm time constant after a restart or flush (default 20 s) |
+| `writePolicy` | cache, cdn | `through` (default): writes go on to the origin. `behind`: acknowledged at the cache and flushed ~5 s later — writes are fast and the origin sees them smoothed, but the buffered ones are lost if the cache dies (`lostWrites`) |
 | `capacity` | any | override: req/s per size-S instance |
 | `latencyMs` | any | override: base service time |
 | `costPerHour` | any | override: $/h per size-S instance |

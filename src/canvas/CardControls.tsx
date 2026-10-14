@@ -140,6 +140,15 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
           <b className="nc-v">{Math.round((data.hitRate ?? 0.85) * 100)}%</b>
         </div>
       )}
+      {(data.kind === 'cache' || data.kind === 'cdn') && (
+        <div className="nc-row">
+          <span className="nc-l">writes</span>
+          <select value={data.writePolicy ?? 'through'} onChange={(e) => set({ writePolicy: e.target.value as 'through' | 'behind' })} title="through: writes go on to the origin. behind: acknowledged at the cache and flushed ~5 s later — lost if the cache dies first">
+            <option value="through">through</option>
+            <option value="behind">behind</option>
+          </select>
+        </div>
+      )}
       {(data.kind === 'gateway' || data.kind === 'function' || data.kind === 'llmapi') && (
         <div className="nc-row">
           <span className="nc-l">{data.kind === 'function' ? 'max conc.' : 'rate limit'}</span>

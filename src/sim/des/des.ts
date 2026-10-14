@@ -57,6 +57,7 @@ export interface DesResult {
     sloBreachSeconds: number;
     requests: number;
     failedRequests: number;
+    lostWrites?: number;
     worstMomentS: number;
     events: number;
     wallMs: number;

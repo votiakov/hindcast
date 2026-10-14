@@ -77,6 +77,8 @@ export interface GlobalStats {
   errorRate: number;
   p99: number;
   cost: number;
+  /** writes acknowledged and then lost (a write-behind cache that died) */
+  lostWrites: number;
   history: { rps: number; err: number; p99: number; cost: number }[];
 }
 

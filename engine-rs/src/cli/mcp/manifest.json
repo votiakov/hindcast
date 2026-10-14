@@ -241,6 +241,14 @@
            "type": "number",
            "exclusiveMinimum": 0
           },
+          "writePolicy": {
+           "description": "cache/cdn: writes go on to the origin (through, default), or are acknowledged at the cache and flushed ~5 s later — fast, but lost if the cache dies first (behind)",
+           "type": "string",
+           "enum": [
+            "through",
+            "behind"
+           ]
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -560,6 +568,14 @@
            "description": "cache/cdn: re-warm time constant after a restart or flush (default 20 s)",
            "type": "number",
            "exclusiveMinimum": 0
+          },
+          "writePolicy": {
+           "description": "cache/cdn: writes go on to the origin (through, default), or are acknowledged at the cache and flushed ~5 s later — fast, but lost if the cache dies first (behind)",
+           "type": "string",
+           "enum": [
+            "through",
+            "behind"
+           ]
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -1194,6 +1210,14 @@
            "type": "number",
            "exclusiveMinimum": 0
           },
+          "writePolicy": {
+           "description": "cache/cdn: writes go on to the origin (through, default), or are acknowledged at the cache and flushed ~5 s later — fast, but lost if the cache dies first (behind)",
+           "type": "string",
+           "enum": [
+            "through",
+            "behind"
+           ]
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -1503,6 +1527,14 @@
               "type": "number",
               "exclusiveMinimum": 0
              },
+             "writePolicy": {
+              "description": "cache/cdn: writes go on to the origin (through, default), or are acknowledged at the cache and flushed ~5 s later — fast, but lost if the cache dies first (behind)",
+              "type": "string",
+              "enum": [
+               "through",
+               "behind"
+              ]
+             },
              "capacity": {
               "description": "override: req/s per size-S instance",
               "type": "number",
@@ -1766,6 +1798,14 @@
                 "type": "number",
                 "exclusiveMinimum": 0
                },
+               "writePolicy": {
+                "description": "cache/cdn: writes go on to the origin (through, default), or are acknowledged at the cache and flushed ~5 s later — fast, but lost if the cache dies first (behind)",
+                "type": "string",
+                "enum": [
+                 "through",
+                 "behind"
+                ]
+               },
                "capacity": {
                 "description": "override: req/s per size-S instance",
                 "type": "number",
@@ -1969,6 +2009,14 @@
                 "description": "cache/cdn: re-warm time constant after a restart or flush (default 20 s)",
                 "type": "number",
                 "exclusiveMinimum": 0
+               },
+               "writePolicy": {
+                "description": "cache/cdn: writes go on to the origin (through, default), or are acknowledged at the cache and flushed ~5 s later — fast, but lost if the cache dies first (behind)",
+                "type": "string",
+                "enum": [
+                 "through",
+                 "behind"
+                ]
                },
                "capacity": {
                 "description": "override: req/s per size-S instance",
@@ -2583,6 +2631,14 @@
            "type": "number",
            "exclusiveMinimum": 0
           },
+          "writePolicy": {
+           "description": "cache/cdn: writes go on to the origin (through, default), or are acknowledged at the cache and flushed ~5 s later — fast, but lost if the cache dies first (behind)",
+           "type": "string",
+           "enum": [
+            "through",
+            "behind"
+           ]
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -2918,6 +2974,14 @@
            "description": "cache/cdn: re-warm time constant after a restart or flush (default 20 s)",
            "type": "number",
            "exclusiveMinimum": 0
+          },
+          "writePolicy": {
+           "description": "cache/cdn: writes go on to the origin (through, default), or are acknowledged at the cache and flushed ~5 s later — fast, but lost if the cache dies first (behind)",
+           "type": "string",
+           "enum": [
+            "through",
+            "behind"
+           ]
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -3540,6 +3604,14 @@
            "description": "cache/cdn: re-warm time constant after a restart or flush (default 20 s)",
            "type": "number",
            "exclusiveMinimum": 0
+          },
+          "writePolicy": {
+           "description": "cache/cdn: writes go on to the origin (through, default), or are acknowledged at the cache and flushed ~5 s later — fast, but lost if the cache dies first (behind)",
+           "type": "string",
+           "enum": [
+            "through",
+            "behind"
+           ]
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -4172,6 +4244,14 @@
            "type": "number",
            "exclusiveMinimum": 0
           },
+          "writePolicy": {
+           "description": "cache/cdn: writes go on to the origin (through, default), or are acknowledged at the cache and flushed ~5 s later — fast, but lost if the cache dies first (behind)",
+           "type": "string",
+           "enum": [
+            "through",
+            "behind"
+           ]
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -4576,6 +4656,14 @@
            "type": "number",
            "exclusiveMinimum": 0
           },
+          "writePolicy": {
+           "description": "cache/cdn: writes go on to the origin (through, default), or are acknowledged at the cache and flushed ~5 s later — fast, but lost if the cache dies first (behind)",
+           "type": "string",
+           "enum": [
+            "through",
+            "behind"
+           ]
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -4882,6 +4970,14 @@
              "type": "number",
              "exclusiveMinimum": 0
             },
+            "writePolicy": {
+             "description": "cache/cdn: writes go on to the origin (through, default), or are acknowledged at the cache and flushed ~5 s later — fast, but lost if the cache dies first (behind)",
+             "type": "string",
+             "enum": [
+              "through",
+              "behind"
+             ]
+            },
             "capacity": {
              "description": "override: req/s per size-S instance",
              "type": "number",
@@ -5145,6 +5241,14 @@
                "type": "number",
                "exclusiveMinimum": 0
               },
+              "writePolicy": {
+               "description": "cache/cdn: writes go on to the origin (through, default), or are acknowledged at the cache and flushed ~5 s later — fast, but lost if the cache dies first (behind)",
+               "type": "string",
+               "enum": [
+                "through",
+                "behind"
+               ]
+              },
               "capacity": {
                "description": "override: req/s per size-S instance",
                "type": "number",
@@ -5348,6 +5452,14 @@
                "description": "cache/cdn: re-warm time constant after a restart or flush (default 20 s)",
                "type": "number",
                "exclusiveMinimum": 0
+              },
+              "writePolicy": {
+               "description": "cache/cdn: writes go on to the origin (through, default), or are acknowledged at the cache and flushed ~5 s later — fast, but lost if the cache dies first (behind)",
+               "type": "string",
+               "enum": [
+                "through",
+                "behind"
+               ]
               },
               "capacity": {
                "description": "override: req/s per size-S instance",
@@ -5960,6 +6072,14 @@
            "type": "number",
            "exclusiveMinimum": 0
           },
+          "writePolicy": {
+           "description": "cache/cdn: writes go on to the origin (through, default), or are acknowledged at the cache and flushed ~5 s later — fast, but lost if the cache dies first (behind)",
+           "type": "string",
+           "enum": [
+            "through",
+            "behind"
+           ]
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -6266,6 +6386,14 @@
              "type": "number",
              "exclusiveMinimum": 0
             },
+            "writePolicy": {
+             "description": "cache/cdn: writes go on to the origin (through, default), or are acknowledged at the cache and flushed ~5 s later — fast, but lost if the cache dies first (behind)",
+             "type": "string",
+             "enum": [
+              "through",
+              "behind"
+             ]
+            },
             "capacity": {
              "description": "override: req/s per size-S instance",
              "type": "number",
@@ -6529,6 +6657,14 @@
                "type": "number",
                "exclusiveMinimum": 0
               },
+              "writePolicy": {
+               "description": "cache/cdn: writes go on to the origin (through, default), or are acknowledged at the cache and flushed ~5 s later — fast, but lost if the cache dies first (behind)",
+               "type": "string",
+               "enum": [
+                "through",
+                "behind"
+               ]
+              },
               "capacity": {
                "description": "override: req/s per size-S instance",
                "type": "number",
@@ -6732,6 +6868,14 @@
                "description": "cache/cdn: re-warm time constant after a restart or flush (default 20 s)",
                "type": "number",
                "exclusiveMinimum": 0
+              },
+              "writePolicy": {
+               "description": "cache/cdn: writes go on to the origin (through, default), or are acknowledged at the cache and flushed ~5 s later — fast, but lost if the cache dies first (behind)",
+               "type": "string",
+               "enum": [
+                "through",
+                "behind"
+               ]
               },
               "capacity": {
                "description": "override: req/s per size-S instance",

@@ -186,6 +186,9 @@ pub struct NodeState {
     pub hit_rps: f64,
     pub util: f64,
     pub success: f64,
+    /// success of reads and of writes on their own (a write-only failure is not retried away)
+    pub success_r: f64,
+    pub success_w: f64,
     pub latency_ms: f64,
     /// p99 − mean of the answers this component gives (its own tail and what it waits on)
     pub tail_ms: f64,
@@ -211,7 +214,14 @@ pub struct NodeState {
     pub cold_at: Option<f64>,
     pub flush_seen: f64,
     pub warmth: f64,
+    /// write-behind: writes acknowledged but not yet flushed to the origin
+    pub wb_buffer: f64,
+    /// write-behind: flushed to the origin this tick
+    pub wb_flushed: f64,
 }
+
+/// write-behind: the mean wait before a buffered write is flushed to the origin, s
+pub const WRITE_BEHIND_S: f64 = 5.0;
 
 fn fresh() -> NodeState {
     NodeState {
@@ -221,6 +231,8 @@ fn fresh() -> NodeState {
         hit_rps: 0.0,
         util: 0.0,
         success: 1.0,
+        success_r: 1.0,
+        success_w: 1.0,
         latency_ms: 0.0,
         tail_ms: 0.0,
         dist: vec![],
@@ -243,6 +255,8 @@ fn fresh() -> NodeState {
         cold_at: None,
         flush_seen: 0.0,
         warmth: 1.0,
+        wb_buffer: 0.0,
+        wb_flushed: 0.0,
     }
 }
 
@@ -329,12 +343,17 @@ struct ProcessResult {
     hits: Option<f64>,
     /// processed work this component already failed itself (nowhere to send it)
     failed_processed: f64,
+    /// of what it forwards, the share that is reads (None: the share it received)
+    fwd_read_share: Option<f64>,
+    /// shares of reads and of writes answered here (None: local_share for both)
+    local_r: Option<f64>,
+    local_w: Option<f64>,
     util: f64,
     up: bool,
 }
 
 fn res(processed: f64, failed: f64, forward: f64, util: f64, up: bool) -> ProcessResult {
-    ProcessResult { processed, failed, forward, routes: None, shares: None, local_share: None, hits: None, failed_processed: 0.0, util, up }
+    ProcessResult { processed, failed, forward, routes: None, shares: None, local_share: None, hits: None, failed_processed: 0.0, fwd_read_share: None, local_r: None, local_w: None, util, up }
 }
 
 fn queue_seconds(d: &NodeData, cfg: &EngineConfig) -> f64 {
@@ -492,17 +511,34 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
         }
         "cache" | "cdn" => {
             let mut r = process_through(c, st);
+            // only reads can hit; writes go on to the origin, or wait in the cache (write-behind)
             let h = c.d.hit_rate.unwrap_or(0.85) * st.warmth;
-            let hits = r.processed * h;
-            let mut forward = r.processed - hits;
+            let reads = r.processed * c.read_ratio;
+            let writes = r.processed - reads;
+            let hits = reads * h;
+            let behind = c.d.write_policy.as_deref() == Some("behind");
+            let (mut forward, local) = if behind {
+                st.wb_buffer += writes;
+                let flushed = st.wb_buffer * (1.0 - (-c.dt / WRITE_BEHIND_S).js_exp());
+                st.wb_buffer -= flushed;
+                st.wb_flushed = flushed;
+                (reads - hits + flushed, hits + writes)
+            } else {
+                st.wb_flushed = 0.0;
+                (r.processed - hits, hits)
+            };
             if c.routes.is_empty() {
                 r.failed += forward;
                 r.failed_processed = forward;
                 forward = 0.0;
             }
+            let fwd_reads = reads - hits;
+            r.local_r = Some(h);
+            r.local_w = Some(if behind { 1.0 } else { 0.0 });
+            r.fwd_read_share = Some(if forward > 0.0 { (fwd_reads / forward).min(1.0) } else { 0.0 });
             r.forward = forward;
             r.hits = Some(hits);
-            r.local_share = Some(h);
+            r.local_share = Some(if r.processed > 0.0 { (local / r.processed).min(1.0) } else { h * c.read_ratio + if behind { 1.0 - c.read_ratio } else { 0.0 } });
             r
         }
         "db" => {
@@ -536,6 +572,8 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
                 r.routes = Some(replicas);
                 r.shares = shares;
                 r.local_share = Some(0.0);
+                r.local_r = Some(0.0);
+                r.local_w = Some(0.0);
                 return r;
             }
             let local_share = write_ratio + c.read_ratio / (replicas.len() as f64 + 1.0);
@@ -545,6 +583,10 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
             let mut r = res(processed, failed, to_replicas, util, true);
             r.routes = Some(replicas);
             r.local_share = Some(local_share);
+            // what goes to the replicas is reads; writes stay on the primary
+            r.fwd_read_share = Some(1.0);
+            r.local_r = Some(1.0 / (r.routes.as_ref().map(|x| x.len()).unwrap_or(0) as f64 + 1.0));
+            r.local_w = Some(1.0);
             r
         }
         "queue" => {
@@ -644,6 +686,8 @@ pub struct GlobalStats {
     pub error_rate: f64,
     pub p99: f64,
     pub cost: f64,
+    /// writes acknowledged and then lost (a write-behind cache that died, or could not flush)
+    pub lost_writes: f64,
     pub history: Vec<HistoryPoint>,
 }
 
@@ -696,6 +740,10 @@ pub struct Snapshot {
 
 struct Local {
     local_share: f64,
+    local_r: f64,
+    local_w: f64,
+    /// reads among what arrived
+    rr: f64,
     routes: Vec<Route>,
     /// (edge index, volume), in the order first sent
     flows: Vec<(usize, f64)>,
@@ -712,7 +760,7 @@ pub struct Engine {
     global: GlobalStats,
     since_history: f64,
     /// requests sent this tick to a component that had already run (a call cycle): they arrive next tick
-    carry: HashMap<String, f64>,
+    carry: HashMap<String, (f64, f64)>,
 }
 
 fn failover_name(f: Failover) -> &'static str {
@@ -730,6 +778,11 @@ impl Engine {
 
     pub fn reset(&mut self) {
         *self = Engine::default();
+    }
+
+    /// writes acknowledged and then lost so far
+    pub fn lost_writes(&self) -> f64 {
+        self.global.lost_writes
     }
 
     fn state(&mut self, id: &str) -> &mut NodeState {
@@ -860,7 +913,9 @@ impl Engine {
 
         let mut inflow = vec![0.0; n];
         let mut done = vec![false; n];
-        let mut carried: HashMap<String, f64> = std::mem::take(&mut self.carry);
+        let mut carried: HashMap<String, (f64, f64)> = std::mem::take(&mut self.carry);
+        // reads among what arrives: a cache's misses and every write are what reaches what is behind it
+        let mut inflow_r = vec![0.0; n];
         let mut edge_flow = vec![0.0; edges.len()];
         let mut local: Vec<Option<Local>> = (0..n).map(|_| None).collect();
         let mut promoted = vec![false; n];
@@ -872,16 +927,21 @@ impl Engine {
             let d = &data[i];
             let id = nodes_in[i].id.as_str();
             let routes = &out[i];
-            let arrivals = if d.kind == "client" { if d.alive { per_client } else { 0.0 } } else { inflow[i] + carried.remove(id).unwrap_or(0.0) };
+            let (late_in, late_r) = if d.kind == "client" { (0.0, 0.0) } else { carried.remove(id).unwrap_or((0.0, 0.0)) };
+            let arrivals = if d.kind == "client" { if d.alive { per_client } else { 0.0 } } else { inflow[i] + late_in };
+            let read_ratio = if d.kind == "client" || arrivals <= 0.0 { read_ratio } else { ((inflow_r[i] + late_r) / arrivals).clamp(0.0, 1.0) };
             done[i] = true;
             let mut st = std::mem::replace(&mut self.nodes[sidx[i]], fresh());
             if d.kind == "replica" {
                 st.failover = if promoted[i] { Failover::Promoted } else { Failover::None };
             }
             if d.kind == "cache" || d.kind == "cdn" {
-                // a dead or flushed cache comes back empty and re-warms from misses
+                // a dead or flushed cache comes back empty and re-warms from misses; a dead one also loses
+                // the writes it had acknowledged but not flushed
                 if !is_up(d) || d.flushes.unwrap_or(0.0) != st.flush_seen {
                     st.cold_at = Some(now);
+                    self.global.lost_writes += st.wb_buffer;
+                    st.wb_buffer = 0.0;
                 }
                 st.flush_seen = d.flushes.unwrap_or(0.0);
                 st.warmth = cache_warmth(st.cold_at, now, d.warmup_s);
@@ -919,6 +979,7 @@ impl Engine {
             let retries = d.retries.unwrap_or(0.0);
             st.retry_amp = if retries > 0.0 && !targets.is_empty() { retry_amp(st.attempt_fail, retries, d.retry_policy.as_deref().unwrap_or("immediate")) } else { 1.0 };
             let forward = r.forward * st.breaker_pass * st.retry_amp * d.fanout.unwrap_or(1.0).max(1.0);
+            let fwd_r = r.fwd_read_share.unwrap_or(read_ratio);
 
             // routing policy
             let mut flows: Vec<(usize, f64)> = vec![];
@@ -978,9 +1039,12 @@ impl Engine {
                     let t = targets.iter().find(|x| x.e == e).unwrap().t;
                     if done[t] {
                         // a call back into a component that already ran this tick (a cycle): next tick
-                        *self.carry.entry(nodes_in[t].id.clone()).or_insert(0.0) += v;
+                        let c = self.carry.entry(nodes_in[t].id.clone()).or_insert((0.0, 0.0));
+                        c.0 += v;
+                        c.1 += v * fwd_r;
                     } else {
                         inflow[t] += v;
+                        inflow_r[t] += v * fwd_r;
                     }
                     edge_flow[e] += v;
                 }
@@ -993,10 +1057,11 @@ impl Engine {
             let own = if d.kind == "db" { arrivals * local_share } else { arrivals };
             st.drop_ratio = ema(st.drop_ratio, if own > 0.0 { r.failed / own } else { 0.0 }, dt, 0.6);
             self.nodes[sidx[i]] = st;
-            local[i] = Some(Local { local_share, routes: targets, flows, mode, up: r.up });
+            local[i] = Some(Local { local_share, local_r: r.local_r.unwrap_or(local_share), local_w: r.local_w.unwrap_or(local_share), rr: read_ratio, routes: targets, flows, mode, up: r.up });
         }
 
         // ---- backward pass ----
+        let mut lost_now = 0.0;
         for &i in order.iter().rev() {
             let d = &data[i];
             let id = nodes_in[i].id.as_str();
@@ -1004,6 +1069,7 @@ impl Engine {
             let has_kids = !l.routes.is_empty();
             // aggregate one downstream attempt according to the routing policy
             let (mut succ, mut lat, mut tail) = (1.0, 0.0, 0.0);
+            let (mut succ_r, mut succ_w) = (1.0, 1.0);
             // the caller's deadline judged branch by branch: a slow branch's answers are late, a fast one's are not
             let tmo = d.timeout_ms.filter(|t| *t != 0.0 && !t.is_nan());
             let mut late: Option<f64> = None;
@@ -1023,8 +1089,14 @@ impl Engine {
                         mix_then(&s.dist, edge_lat[k.e], 0.0, 1.0)
                     }
                 };
+                let kid_rw = |k: &Route| {
+                    let s = &self.nodes[sidx[k.t]];
+                    (s.success_r, s.success_w)
+                };
                 if l.mode == "fanout" {
                     succ = l.routes.iter().fold(1.0, |p, k| p * kid(k).0);
+                    succ_r = l.routes.iter().fold(1.0, |p, k| p * kid_rw(k).0);
+                    succ_w = l.routes.iter().fold(1.0, |p, k| p * kid_rw(k).1);
                     lat = js_max(f64::NEG_INFINITY, l.routes.iter().map(|k| kid(k).1));
                     // the slowest answer's 99th percentile
                     let p99 = js_max(f64::NEG_INFINITY, l.routes.iter().map(|k| kid(k).1 + kid(k).3));
@@ -1034,6 +1106,7 @@ impl Engine {
                     }
                 } else if l.mode == "failover" {
                     let mut miss = 1.0;
+                    let (mut miss_r, mut miss_w) = (1.0, 1.0);
                     let mut p99 = 0.0;
                     for k in &l.routes {
                         let (s, la, f, t) = kid(k);
@@ -1041,17 +1114,26 @@ impl Engine {
                             lat += miss * la;
                             p99 += miss * (la + t);
                             miss *= 1.0 - s;
+                            let (sr, sw) = kid_rw(k);
+                            miss_r *= 1.0 - sr;
+                            miss_w *= 1.0 - sw;
                         }
                     }
                     succ = 1.0 - miss;
+                    succ_r = 1.0 - miss_r;
+                    succ_w = 1.0 - miss_w;
                     tail = (p99 - lat).max(0.0);
                 } else {
                     let (mut w, mut s, mut p99, mut lt) = (0.0, 0.0, 0.0, 0.0);
+                    let (mut sr, mut sw) = (0.0, 0.0);
                     for k in &l.routes {
                         let (ks, kl, f, t) = kid(k);
                         let wk = if f > 0.0 { f } else { 1e-9 };
                         w += wk;
                         s += ks * wk;
+                        let (kr, kw) = kid_rw(k);
+                        sr += kr * wk;
+                        sw += kw * wk;
                         lat += kl * wk;
                         p99 += (kl + t) * wk;
                         let kd = kid_dist(k);
@@ -1061,6 +1143,8 @@ impl Engine {
                         kids_mix.extend(mix_then(&kd, 0.0, 0.0, wk));
                     }
                     succ = s / w;
+                    succ_r = sr / w;
+                    succ_w = sw / w;
                     lat /= w;
                     tail = (p99 / w - lat).max(0.0);
                     if tmo.is_some() {
@@ -1072,6 +1156,8 @@ impl Engine {
             let degree = d.fanout.unwrap_or(1.0).max(1.0);
             if degree > 1.0 && has_kids {
                 succ = succ.js_pow(degree);
+                succ_r = succ_r.js_pow(degree);
+                succ_w = succ_w.js_pow(degree);
                 let kd = &data[l.routes[0].t];
                 let p = kd.stall_rate.unwrap_or(0.0);
                 lat = lat * fanout_tail(degree) + (1.0 - (1.0 - p).js_pow(degree) - p) * kd.stall_ms.unwrap_or(0.0);
@@ -1087,26 +1173,47 @@ impl Engine {
                 _ => 0.0,
             };
             let attempt = succ * (1.0 - st.late_frac);
+            let (attempt_r, attempt_w) = (succ_r * (1.0 - st.late_frac), succ_w * (1.0 - st.late_frac));
             if let Some(t) = tmo {
                 lat = lat.min(t);
             }
             st.attempt_fail = if has_kids { 1.0 - attempt } else { 0.0 };
             // retries, then breaker (blocked calls fail fast or get the fallback)
             let mut child_succ = attempt;
+            let (mut child_r, mut child_w) = (attempt_r, attempt_w);
             let mut child_lat = lat;
             let retries = d.retries.unwrap_or(0.0);
             if retries > 0.0 && has_kids {
                 let policy = d.retry_policy.as_deref().unwrap_or("immediate");
                 child_succ = retry_success(attempt, retries, policy, st.retry_amp);
+                child_r = retry_success(attempt_r, retries, policy, st.retry_amp);
+                child_w = retry_success(attempt_w, retries, policy, st.retry_amp);
                 child_lat = lat * st.retry_amp + if policy == "backoff" { (st.retry_amp - 1.0) * BACKOFF_DELAY_MS * 4.0 } else { 0.0 };
             }
             if st.breaker_pass < 1.0 {
                 let p = st.breaker_pass;
-                child_succ = p * child_succ + (1.0 - p) * (if d.fallback == Some(true) { 1.0 } else { 0.0 });
+                let fb = if d.fallback == Some(true) { 1.0 } else { 0.0 };
+                child_succ = p * child_succ + (1.0 - p) * fb;
+                child_r = p * child_r + (1.0 - p) * fb;
+                child_w = p * child_w + (1.0 - p) * fb;
                 child_lat = p * child_lat + (1.0 - p) * 2.0;
             }
             let keep = 1.0 - st.drop_ratio;
-            let (success, mut latency) = if l.up { fold(&FoldCtx { d, keep, local_share: l.local_share, child_succ, child_lat, has_kids, cfg }, st) } else { (0.0, 0.0) };
+            let (_, mut latency) = if l.up { fold(&FoldCtx { d, keep, local_share: l.local_share, child_succ, child_lat, has_kids, cfg }, st) } else { (0.0, 0.0) };
+            // success per class: a cache answers its read hits, a database its writes; the rest waits on what is behind
+            let origin_less = (d.kind == "cache" || d.kind == "cdn") && !has_kids;
+            let class = |local: f64, child: f64| {
+                if !l.up {
+                    0.0
+                } else if origin_less {
+                    // nothing behind it: only what it answers itself succeeds (its drops are those misses, plus any shedding)
+                    if l.local_share > 0.0 { (keep / l.local_share).min(1.0) * local } else { 0.0 }
+                } else {
+                    fold(&FoldCtx { d, keep, local_share: local, child_succ: child, child_lat, has_kids, cfg }, st).0
+                }
+            };
+            let (success_r, success_w) = (class(l.local_r, child_r), class(l.local_w, child_w));
+            let success = l.rr * success_r + (1.0 - l.rr) * success_w;
             if l.up {
                 if let Some(fl) = d.fault_latency_ms.filter(|x| *x != 0.0 && !x.is_nan()) {
                     latency += fl;
@@ -1196,7 +1303,13 @@ impl Engine {
                 (p99 - latency).max(0.0)
             };
             st.dist = dist;
+            // write-behind flushes the origin did not take are writes lost
+            if st.wb_flushed > 0.0 {
+                lost_now += st.wb_flushed * if has_kids { 1.0 - succ } else { 1.0 };
+            }
             st.success = ema(st.success, success, dt, 0.3);
+            st.success_r = ema(st.success_r, success_r, dt, 0.3);
+            st.success_w = ema(st.success_w, success_w, dt, 0.3);
             st.latency_ms = ema(st.latency_ms, latency, dt, 0.3);
             st.tail_ms = ema(st.tail_ms, tail_total, dt, 0.3);
             let usage = usage_cost(d, st, profile);
@@ -1221,6 +1334,8 @@ impl Engine {
                 }
             }
         }
+
+        self.global.lost_writes += lost_now;
 
         // autoscalers react to the demand they saw this tick
         for k in 0..self.scalers.len() {

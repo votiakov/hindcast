@@ -7,7 +7,7 @@ use crate::math::js_num;
 use serde_json::{json, Map as JMap, Value};
 
 const KINDS: [&str; 14] = ["client", "cdn", "lb", "gateway", "server", "worker", "function", "cache", "db", "replica", "storage", "queue", "llm", "llmapi"];
-const DATA_KEYS: [&str; 21] = ["tier", "instances", "runtime", "hitRate", "limit", "batching", "retries", "retryPolicy", "timeoutMs", "breaker", "fallback", "routing", "fanout", "stallRate", "stallMs", "queueS", "capacity", "latencyMs", "costPerHour", "autoscale", "warmupS"];
+const DATA_KEYS: [&str; 22] = ["tier", "instances", "runtime", "hitRate", "limit", "batching", "retries", "retryPolicy", "timeoutMs", "breaker", "fallback", "routing", "fanout", "stallRate", "stallMs", "queueS", "capacity", "latencyMs", "costPerHour", "autoscale", "warmupS", "writePolicy"];
 
 #[derive(Clone, Debug, Default)]
 pub struct Issue {
@@ -169,6 +169,7 @@ fn check_component(c: &JMap<String, Value>, path: Vec<Value>, issues: &mut Vec<I
     v.number("fanout", false, Some((1.0, true)), Some(1000.0), true);
     v.number("queueS", false, Some((0.0, false)), None, false);
     v.number("warmupS", false, Some((0.0, false)), None, false);
+    v.one_of("writePolicy", &["through", "behind"], false);
     v.number("capacity", false, Some((0.0, false)), None, false);
     v.number("latencyMs", false, Some((0.0, true)), None, false);
     v.number("costPerHour", false, Some((0.0, true)), None, false);

@@ -76,6 +76,10 @@ pub struct NodeData {
     pub warmup_s: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub flushes: Option<f64>,
+    /// cache/cdn: "through" (writes go on to the origin, the default) or "behind" (acknowledged at the
+    /// cache, flushed to the origin a few seconds later — lost if the cache dies first)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub write_policy: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fault_rate: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]

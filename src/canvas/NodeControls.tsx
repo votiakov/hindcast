@@ -100,6 +100,11 @@ export function NodeControls({ id, data, selected }: { id: string; data: SystemN
             <span className="tb-label">hit</span>
             <input type="range" min={0} max={0.99} step={0.01} value={data.hitRate ?? 0.85} onChange={(e) => set({ hitRate: +e.target.value })} />
             <span className="tb-count">{Math.round((data.hitRate ?? 0.85) * 100)}%</span>
+            <span className="tb-label">writes</span>
+            <select className="tb-select" value={data.writePolicy ?? 'through'} onChange={(e) => set({ writePolicy: e.target.value as 'through' | 'behind' })} title="through: writes go on to the origin. behind: acknowledged at the cache and flushed ~5 s later — lost if the cache dies first">
+              <option value="through">through</option>
+              <option value="behind">behind</option>
+            </select>
           </div>
         )}
         {(data.kind === 'gateway' || data.kind === 'function' || data.kind === 'llmapi') && (

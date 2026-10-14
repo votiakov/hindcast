@@ -271,7 +271,7 @@ impl Validated {
     }
 }
 
-const COMPONENT_KEYS: [&str; 25] = ["id", "kind", "name", "tier", "instances", "runtime", "hitRate", "limit", "batching", "retries", "retryPolicy", "timeoutMs", "breaker", "fallback", "routing", "stallRate", "stallMs", "fanout", "queueS", "autoscale", "warmupS", "capacity", "latencyMs", "costPerHour", ""];
+const COMPONENT_KEYS: [&str; 26] = ["id", "kind", "name", "tier", "instances", "runtime", "hitRate", "limit", "batching", "retries", "retryPolicy", "timeoutMs", "breaker", "fallback", "routing", "stallRate", "stallMs", "fanout", "queueS", "autoscale", "warmupS", "writePolicy", "capacity", "latencyMs", "costPerHour", ""];
 
 /// the spec as the schema returns it: its keys in schema order, unknown keys dropped, "a -> b" as a pair
 pub fn canonical_spec(v: &Value) -> Value {

@@ -287,7 +287,14 @@ pub struct Summary {
     pub slo_breach_seconds: f64,
     pub requests: f64,
     pub failed_requests: f64,
+    /// writes a write-behind cache acknowledged and then lost
+    #[serde(skip_serializing_if = "is_zero")]
+    pub lost_writes: f64,
     pub worst_moment_s: f64,
+}
+
+fn is_zero(x: &f64) -> bool {
+    *x == 0.0
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -529,6 +536,7 @@ pub fn simulate_parsed(spec: &Architecture, sc: &Scenario, o: &SimOptions) -> Si
             slo_breach_seconds: round(breach, 1),
             requests: js_round(requests),
             failed_requests: js_round(failed),
+            lost_writes: js_round(engine.lost_writes()),
             worst_moment_s: round(worst_t, 1),
         },
         slo: SloOut { max_error_rate: max_err, max_p99_ms: max_p99 },

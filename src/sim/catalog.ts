@@ -88,6 +88,8 @@ export interface SystemNodeData extends Record<string, unknown> {
   autoscale?: AutoscaleSpec;
   /** cache / cdn: seconds to re-warm after a restart or flush (time constant) */
   warmupS?: number;
+  /** cache/cdn: writes go on to the origin (through) or wait in the cache and flush later (behind) */
+  writePolicy?: 'through' | 'behind';
   /** cache / cdn: bumped by the flush action — the engine empties the cache when it changes */
   flushes?: number;
 

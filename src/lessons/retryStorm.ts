@@ -70,17 +70,17 @@ export const retryStorm: Lesson = {
       hintAfter: 8,
       hint:
         'Try api → breaker + fallback first and watch it flap: open (fallback served) → probe → close → database overloaded again → open. ' +
-        'Breakers buy time and protect, but they add no capacity. The fix that holds: put a Cache between api and db (api → cache → db) so most reads never touch the struggling database.',
+        'Breakers buy time and protect, but they add no capacity. The fix that holds: put a Cache between api and db (api → cache → db) so most reads never touch the struggling database — writes still do, so the hit rate on reads has to be high.',
       solution: {
         note: 'A cache between the API and the struggling database',
         changes: [
-          { op: 'add', component: { id: 'cache', kind: 'cache' } },
+          { op: 'add', component: { id: 'cache', kind: 'cache', hitRate: 0.95 } },
           { op: 'disconnect', from: 'api', to: 'db' },
           { op: 'connect', from: 'api', to: 'cache' },
           { op: 'connect', from: 'cache', to: 'db' },
         ],
       },
-      takeaway: 'A breaker protects and buys time but adds no capacity. Keeping reads away from a degraded dependency is what holds.',
+      takeaway: 'A breaker protects and buys time but adds no capacity. Keeping reads away from a degraded dependency is what holds — every write still reaches it, so a cache only goes so far.',
     },
   ],
 };
