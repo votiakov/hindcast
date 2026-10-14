@@ -9,10 +9,16 @@ use serde_json::{json, Map as JMap, Value};
 const KINDS: [&str; 14] = ["client", "cdn", "lb", "gateway", "server", "worker", "function", "cache", "db", "replica", "storage", "queue", "llm", "llmapi"];
 const DATA_KEYS: [&str; 21] = ["tier", "instances", "runtime", "hitRate", "limit", "batching", "retries", "retryPolicy", "timeoutMs", "breaker", "fallback", "routing", "fanout", "stallRate", "stallMs", "queueS", "capacity", "latencyMs", "costPerHour", "autoscale", "warmupS"];
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Issue {
     pub path: Vec<Value>,
     pub message: String,
+    /// the schema's issue code (invalid_type, invalid_value, too_small, too_big, custom)
+    pub code: &'static str,
+    /// invalid_value: the allowed values
+    pub values: Option<Vec<Value>>,
+    pub minimum: Option<f64>,
+    pub maximum: Option<f64>,
 }
 
 pub fn issues_message(issues: &[Issue]) -> String {
@@ -45,15 +51,18 @@ impl<'a> V<'a> {
         p
     }
     fn fail(&mut self, k: &str, m: String) {
+        self.fail_as(k, m, "invalid_type", None, None, None);
+    }
+    fn fail_as(&mut self, k: &str, m: String, code: &'static str, values: Option<Vec<Value>>, minimum: Option<f64>, maximum: Option<f64>) {
         let path = self.at(k);
-        self.issues.push(Issue { path, message: m });
+        self.issues.push(Issue { path, message: m, code, values, minimum, maximum });
     }
     fn string(&mut self, k: &str, required: bool, min: usize) {
         match self.o.get(k) {
             None if !required => {}
             Some(Value::String(s)) => {
                 if s.chars().count() < min {
-                    self.fail(k, format!("Too small: expected string to have >={} characters", min));
+                    self.fail_as(k, format!("Too small: expected string to have >={} characters", min), "too_small", None, Some(min as f64), None);
                 }
             }
             v => self.fail(k, format!("Invalid input: expected string, received {}", received(v))),
@@ -69,7 +78,7 @@ impl<'a> V<'a> {
         match self.o.get(k) {
             None if !required => {}
             Some(Value::String(s)) if opts.contains(&s.as_str()) => {}
-            _ => self.fail(k, format!("Invalid option: expected one of {}", opts.iter().map(|x| format!("\"{}\"", x)).collect::<Vec<_>>().join("|"))),
+            _ => self.fail_as(k, format!("Invalid option: expected one of {}", opts.iter().map(|x| format!("\"{}\"", x)).collect::<Vec<_>>().join("|")), "invalid_value", Some(opts.iter().map(|x| json!(x)).collect()), None, None),
         }
     }
     /// min: (value, inclusive)
@@ -88,12 +97,12 @@ impl<'a> V<'a> {
         }
         if let Some((m, inc)) = min {
             if (inc && x < m) || (!inc && x <= m) {
-                self.fail(k, format!("Too small: expected number to be {}{}", if inc { ">=" } else { ">" }, js_num(m)));
+                self.fail_as(k, format!("Too small: expected number to be {}{}", if inc { ">=" } else { ">" }, js_num(m)), "too_small", None, Some(m), None);
             }
         }
         if let Some(m) = max {
             if x > m {
-                self.fail(k, format!("Too big: expected number to be <={}", js_num(m)));
+                self.fail_as(k, format!("Too big: expected number to be <={}", js_num(m)), "too_big", None, None, Some(m));
             }
         }
     }
@@ -186,14 +195,20 @@ fn connection_of(c: &Value) -> Option<(String, String, Option<f64>)> {
 }
 
 pub fn parse_architecture(v: &Value) -> Result<Architecture, String> {
+    let (a, issues) = check_architecture(v);
+    a.ok_or_else(|| issues_message(&issues))
+}
+
+/// the spec checked against the schema: the architecture when it holds, and every issue found
+pub fn check_architecture(v: &Value) -> (Option<Architecture>, Vec<Issue>) {
     let mut issues = vec![];
     let o = match v {
         Value::Object(o) => o,
-        x => return Err(issues_message(&[Issue { path: vec![], message: format!("Invalid input: expected object, received {}", received(Some(x))) }])),
+        x => return (None, vec![Issue { path: vec![], message: format!("Invalid input: expected object, received {}", received(Some(x))), code: "invalid_type", ..Default::default() }]),
     };
     if let Some(ver) = o.get("version") {
         if ver.as_f64() != Some(1.0) {
-            issues.push(Issue { path: vec![json!("version")], message: "Invalid input: expected 1".into() });
+            issues.push(Issue { path: vec![json!("version")], message: "Invalid input: expected 1".into(), code: "invalid_value", values: Some(vec![json!(1)]), ..Default::default() });
         }
     }
     {
@@ -206,7 +221,7 @@ pub fn parse_architecture(v: &Value) -> Result<Architecture, String> {
     match o.get("components") {
         Some(Value::Array(a)) => {
             if a.is_empty() {
-                issues.push(Issue { path: vec![json!("components")], message: "Too small: expected array to have >=1 items".into() });
+                issues.push(Issue { path: vec![json!("components")], message: "Too small: expected array to have >=1 items".into(), code: "too_small", minimum: Some(1.0), ..Default::default() });
             }
             for (i, c) in a.iter().enumerate() {
                 match c {
@@ -214,11 +229,11 @@ pub fn parse_architecture(v: &Value) -> Result<Architecture, String> {
                         check_component(co, vec![json!("components"), json!(i)], &mut issues, false);
                         components.push(co.clone());
                     }
-                    x => issues.push(Issue { path: vec![json!("components"), json!(i)], message: format!("Invalid input: expected object, received {}", received(Some(x))) }),
+                    x => issues.push(Issue { path: vec![json!("components"), json!(i)], message: format!("Invalid input: expected object, received {}", received(Some(x))), code: "invalid_type", ..Default::default() }),
                 }
             }
         }
-        x => issues.push(Issue { path: vec![json!("components")], message: format!("Invalid input: expected array, received {}", received(x)) }),
+        x => issues.push(Issue { path: vec![json!("components")], message: format!("Invalid input: expected array, received {}", received(x)), code: "invalid_type", ..Default::default() }),
     }
     let mut connections = vec![];
     match o.get("connections") {
@@ -226,11 +241,11 @@ pub fn parse_architecture(v: &Value) -> Result<Architecture, String> {
             for (i, c) in a.iter().enumerate() {
                 match connection_of(c) {
                     Some(x) => connections.push(x),
-                    None => issues.push(Issue { path: vec![json!("connections"), json!(i)], message: "write a connection as \"from -> to\", [\"from\", \"to\"] or { from, to, latencyMs? } (latencyMs 0–1000)".into() }),
+                    None => issues.push(Issue { path: vec![json!("connections"), json!(i)], message: "write a connection as \"from -> to\", [\"from\", \"to\"] or { from, to, latencyMs? } (latencyMs 0–1000)".into(), code: "custom", ..Default::default() }),
                 }
             }
         }
-        x => issues.push(Issue { path: vec![json!("connections")], message: format!("Invalid input: expected array, received {}", received(x)) }),
+        x => issues.push(Issue { path: vec![json!("connections")], message: format!("Invalid input: expected array, received {}", received(x)), code: "invalid_type", ..Default::default() }),
     }
     let mut zones = vec![];
     match o.get("zones") {
@@ -242,22 +257,22 @@ pub fn parse_architecture(v: &Value) -> Result<Architecture, String> {
                 let members = zo.and_then(|z| z.get("members")).and_then(|x| x.as_array()).map(|m| m.iter().map(|x| x.as_str().map(String::from)).collect::<Option<Vec<_>>>());
                 match (id, members) {
                     (Some(id), Some(Some(m))) => zones.push((id.to_string(), zo.and_then(|z| z.get("label")).and_then(|x| x.as_str()).map(String::from), m)),
-                    _ => issues.push(Issue { path: vec![json!("zones"), json!(i)], message: "a zone takes id, label? and members (component ids)".into() }),
+                    _ => issues.push(Issue { path: vec![json!("zones"), json!(i)], message: "a zone takes id, label? and members (component ids)".into(), code: "custom", ..Default::default() }),
                 }
             }
         }
-        x => issues.push(Issue { path: vec![json!("zones")], message: format!("Invalid input: expected array, received {}", received(x)) }),
+        x => issues.push(Issue { path: vec![json!("zones")], message: format!("Invalid input: expected array, received {}", received(x)), code: "invalid_type", ..Default::default() }),
     }
     if !issues.is_empty() {
-        return Err(issues_message(&issues));
+        return (None, issues);
     }
-    Ok(Architecture {
+    (Some(Architecture {
         name: o.get("name").and_then(|x| x.as_str()).map(String::from),
         pricing: o.get("pricing").and_then(|x| x.as_str()).map(String::from),
         components,
         connections,
         zones,
-    })
+    }), issues)
 }
 
 /// a component's node data: the kind's defaults, then the spec's own fields
@@ -420,7 +435,7 @@ pub fn parse_action(v: &Value, path: Vec<Value>, issues: &mut Vec<Issue>) -> Opt
     let o = match v.as_object() {
         Some(o) => o,
         None => {
-            issues.push(Issue { path, message: "Invalid input: expected object".into() });
+            issues.push(Issue { path, message: "Invalid input: expected object".into(), ..Default::default() });
             return None;
         }
     };
@@ -431,7 +446,7 @@ pub fn parse_action(v: &Value, path: Vec<Value>, issues: &mut Vec<Issue>) -> Opt
         if r.is_none() {
             let mut p = path.clone();
             p.push(json!("id"));
-            issues.push(Issue { path: p, message: "Invalid input: expected string, received undefined".into() });
+            issues.push(Issue { path: p, message: "Invalid input: expected string, received undefined".into(), ..Default::default() });
         }
         r
     };
@@ -441,7 +456,7 @@ pub fn parse_action(v: &Value, path: Vec<Value>, issues: &mut Vec<Issue>) -> Opt
         if !ok {
             let mut p = path.clone();
             p.push(json!(k));
-            issues.push(Issue { path: p, message: format!("expected a number {}", max.map(|m| format!("between 0 and {}", js_num(m))).unwrap_or_else(|| ">= 0".into())) });
+            issues.push(Issue { path: p, message: format!("expected a number {}", max.map(|m| format!("between 0 and {}", js_num(m))).unwrap_or_else(|| ">= 0".into())), ..Default::default() });
         }
         x
     };
@@ -453,7 +468,7 @@ pub fn parse_action(v: &Value, path: Vec<Value>, issues: &mut Vec<Issue>) -> Opt
             if kind.is_none() {
                 let mut p = path.clone();
                 p.push(json!("kind"));
-                issues.push(Issue { path: p, message: format!("Invalid option: expected one of {}", KINDS.iter().map(|x| format!("\"{}\"", x)).collect::<Vec<_>>().join("|")) });
+                issues.push(Issue { path: p, message: format!("Invalid option: expected one of {}", KINDS.iter().map(|x| format!("\"{}\"", x)).collect::<Vec<_>>().join("|")), ..Default::default() });
                 return None;
             }
             Action::Kill { kind: kind.unwrap().into(), busiest: o.get("pick").and_then(|x| x.as_str()).unwrap_or("busiest") != "random" }
@@ -478,7 +493,7 @@ pub fn parse_action(v: &Value, path: Vec<Value>, issues: &mut Vec<Issue>) -> Opt
         x => {
             let mut p = path.clone();
             p.push(json!("type"));
-            issues.push(Issue { path: p, message: format!("unknown action \"{}\" (kill-id, revive-id, kill, revive-all, fail-zone, restore-zone, degrade, restore, inject-errors, inject-latency, flush-cache)", x) });
+            issues.push(Issue { path: p, message: format!("unknown action \"{}\" (kill-id, revive-id, kill, revive-all, fail-zone, restore-zone, degrade, restore, inject-errors, inject-latency, flush-cache)", x), ..Default::default() });
             return None;
         }
     })
@@ -509,7 +524,7 @@ pub fn parse_scenario(v: &Value) -> Result<Scenario, String> {
     let traffic = o.get("traffic").and_then(|t| t.as_array()).map(|a| a.iter().filter_map(|k| Some((k.get("at")?.as_f64()?, k.get("rps")?.as_f64()?))).collect::<Vec<_>>());
     if let (Some(t), Some(a)) = (&traffic, o.get("traffic").and_then(|t| t.as_array())) {
         if t.len() != a.len() || t.iter().any(|(at, r)| *at < 0.0 || *r < 0.0) {
-            issues.push(Issue { path: vec![json!("traffic")], message: "traffic keyframes take at ≥ 0 and rps ≥ 0".into() });
+            issues.push(Issue { path: vec![json!("traffic")], message: "traffic keyframes take at ≥ 0 and rps ≥ 0".into(), ..Default::default() });
         }
     }
     let mut events = vec![];
@@ -517,7 +532,7 @@ pub fn parse_scenario(v: &Value) -> Result<Scenario, String> {
         for (i, e) in a.iter().enumerate() {
             let at = e.get("at").and_then(|x| x.as_f64()).filter(|x| *x >= 0.0);
             if at.is_none() {
-                issues.push(Issue { path: vec![json!("events"), json!(i), json!("at")], message: "Invalid input: expected number >= 0".into() });
+                issues.push(Issue { path: vec![json!("events"), json!(i), json!("at")], message: "Invalid input: expected number >= 0".into(), ..Default::default() });
             }
             let act = parse_action(e.get("action").unwrap_or(&Value::Null), vec![json!("events"), json!(i), json!("action")], &mut issues);
             if let (Some(at), Some(act)) = (at, act) {

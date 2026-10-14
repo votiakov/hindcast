@@ -17,6 +17,7 @@ pub mod sim;
 pub mod strategy;
 pub mod terraform_diff;
 pub mod types;
+pub mod yaml_out;
 
 pub use engine::run_plan;
 
@@ -545,5 +546,12 @@ mod wasm {
     pub fn import_terraform(doc: JsValue, name: Option<String>) -> Result<JsValue, JsValue> {
         let doc: serde_json::Value = from(doc)?;
         Ok(crate::convert::terraform::import_terraform(&doc, name.as_deref()).map_err(err)?.serialize(&ser())?)
+    }
+
+    /// specToYaml(spec) → YAML as src/spec/yaml.ts writes it
+    #[wasm_bindgen(js_name = specToYaml)]
+    pub fn spec_to_yaml(spec: JsValue) -> Result<String, JsValue> {
+        let v: serde_json::Value = from(spec)?;
+        Ok(crate::yaml_out::spec_to_yaml(&v))
     }
 }

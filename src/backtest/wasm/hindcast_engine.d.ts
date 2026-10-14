@@ -117,6 +117,10 @@ export function importKubernetes(documents: any, name?: string | null): any;
  */
 export function importTerraform(doc: any, name?: string | null): any;
 /**
+ * specToYaml(spec) → YAML as src/spec/yaml.ts writes it
+ */
+export function specToYaml(spec: any): string;
+/**
  * the design simulator's fluid engine, stepped by the app (one tick at a time) and by headless runs
  */
 export class SimEngine {
@@ -172,12 +176,14 @@ export interface InitOutput {
   readonly instanceType: (a: number, b: number) => [number, number, number];
   readonly importKubernetes: (a: any, b: number, c: number) => [number, number, number];
   readonly importTerraform: (a: any, b: number, c: number) => [number, number, number];
+  readonly specToYaml: (a: any) => [number, number, number, number];
   readonly __wbindgen_exn_store: (a: number) => void;
   readonly __externref_table_alloc: () => number;
   readonly __wbindgen_export_2: WebAssembly.Table;
   readonly __wbindgen_malloc: (a: number, b: number) => number;
   readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
   readonly __externref_table_dealloc: (a: number) => void;
+  readonly __wbindgen_free: (a: number, b: number, c: number) => void;
   readonly __wbindgen_start: () => void;
 }
 
