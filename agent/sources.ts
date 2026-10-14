@@ -1,4 +1,4 @@
-import { authHeaders, getJson, iso, type Sources } from './workspace';
+import { authHeaders, getJson, iso, type Sources, nowS } from './workspace';
 import { WORKLOAD_RE } from '../src/backtest/import/promExport';
 import type { Span } from '../src/backtest/import/traces';
 import { parseJaeger, parseOtlp } from '../src/backtest/import/traces';
@@ -49,7 +49,7 @@ export interface PrometheusProbe {
 
 const LOOKBACKS_H = [0, 1, 6, 24, 72, 168, 336, 720];
 
-export async function probePrometheus(cfg: NonNullable<Sources['prometheus']>, now = Date.now() / 1000): Promise<PrometheusProbe> {
+export async function probePrometheus(cfg: NonNullable<Sources['prometheus']>, now = nowS()): Promise<PrometheusProbe> {
   const h = authHeaders(cfg);
   const api = (path: string, q: Record<string, string> = {}) => {
     const u = new URL(path, cfg.url.endsWith('/') ? cfg.url : cfg.url + '/');
@@ -251,7 +251,7 @@ const jaegerTraces = (url: string, h: Record<string, string>, q: Record<string, 
   return getJson<JaegerTraces>(u.toString(), h, 60_000);
 };
 
-export async function probeJaeger(cfg: NonNullable<Sources['jaeger']>, now = Date.now() / 1000): Promise<TraceProbe> {
+export async function probeJaeger(cfg: NonNullable<Sources['jaeger']>, now = nowS()): Promise<TraceProbe> {
   const h = authHeaders(cfg);
   const out: TraceProbe = { kind: 'jaeger', url: cfg.url, ok: false, services: [], entry: [], clientsOnly: [], edges: [], warnings: [] };
   const s = await getJson<{ data: string[] | null }>(new URL('api/services', cfg.url.endsWith('/') ? cfg.url : cfg.url + '/').toString(), h, 10_000);
@@ -276,7 +276,7 @@ const tempoUrl = (base: string, path: string, q: Record<string, string> = {}) =>
   return u.toString();
 };
 
-export async function probeTempo(cfg: NonNullable<Sources['tempo']>, now = Date.now() / 1000): Promise<TraceProbe> {
+export async function probeTempo(cfg: NonNullable<Sources['tempo']>, now = nowS()): Promise<TraceProbe> {
   const h = authHeaders(cfg);
   const out: TraceProbe = { kind: 'tempo', url: cfg.url, ok: false, services: [], entry: [], clientsOnly: [], edges: [], warnings: [] };
   const v = await getJson<{ tagValues?: string[] | { value: string }[] }>(tempoUrl(cfg.url, 'api/search/tag/service.name/values'), h, 10_000);

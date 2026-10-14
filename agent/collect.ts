@@ -7,7 +7,7 @@ import { parseTraceFile, parseTraceLines, templatePath, type Span } from '../src
 import type { Dataset } from '../src/backtest/dataset';
 import { fileAccess, glob, readLines } from '../cli/files';
 import { fetchTraces, probeJaeger, probePrometheus, probeTempo, shapeOf, trafficBySlice } from './sources';
-import { authHeaders, iso, seconds, Workspace } from './workspace';
+import { authHeaders, iso, seconds, Workspace, nowS } from './workspace';
 
 /**
  * One collection: query Prometheus over a window, fetch traces spread over the same window, add the
@@ -46,7 +46,7 @@ export async function collect(ws: Workspace, o: CollectOptions = {}, progress?: 
   const src = ws.sources();
   if (!src.prometheus) throw new Error('no Prometheus connected — call connect_telemetry with prometheus.url first');
   const warnings: string[] = [];
-  const now = Date.now() / 1000;
+  const now = nowS();
   const probe = await probePrometheus(src.prometheus, now);
   if (!probe.presets.length) throw new Error(`Prometheus at ${src.prometheus.url} has none of the metrics the presets read. ${probe.nearMisses.join(' ')}`);
   const presets = src.prometheus.presets?.length ? src.prometheus.presets : probe.presets;

@@ -17,7 +17,7 @@ import { strategyFromTerraformPlan } from '../src/backtest/terraformDiff';
 import { audit, type AuditResult } from '../src/sim/audit';
 import { validateSpec } from '../src/spec/validate';
 import { encodePayload } from '../src/spec/convert';
-import { iso, seconds, Workspace } from './workspace';
+import { iso, seconds, Workspace, nowS, nowDate } from './workspace';
 
 /**
  * The verdicts an agent acts on. Every answer says how far to trust it: which services the change
@@ -155,7 +155,7 @@ export function accuracyOf(m: Model) {
 
 export function modelStatus(ws: Workspace) {
   const src = ws.sources();
-  const now = Date.now() / 1000;
+  const now = nowS();
   // sources.json holds env var names, never credentials: safe to show as is
   const out: Record<string, unknown> = { workspace: ws.dir, sources: src };
   const warnings: string[] = [];
@@ -299,18 +299,18 @@ export function verifyChange(ws: Workspace, inputs: ChangeInput[], o: VerifyOpti
   let reports: { html: string; markdown: string; bundle: string } | undefined;
   if (o.report !== false) {
     ws.ensure('reports');
-    const slug = `${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}-${strategies[0].name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}`;
+    const slug = `${nowDate().toISOString().slice(0, 19).replace(/[:T]/g, '-')}-${strategies[0].name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}`;
     reports = { html: join(ws.path('reports'), `${slug}.html`), markdown: join(ws.path('reports'), `${slug}.md`), bundle: join(ws.path('reports'), `${slug}.hindcast.json`) };
     writeFileSync(reports.html, backtestHtml(r, m));
     writeFileSync(reports.markdown, backtestMarkdown(r, m));
     writeFileSync(join(ws.path('reports'), `${slug}.strategies.yaml`), strategies.map((s) => toYaml(s)).join('---\n'));
     // the app's workspace bundle: the same history, model and strategies, to open on the backtest screen
-    writeFileSync(reports.bundle, JSON.stringify({ name: m.name, source: `verified by an agent, ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`, dataset: d, model: m, strategies: strategies.map((s) => toYaml(s)) }));
+    writeFileSync(reports.bundle, JSON.stringify({ name: m.name, source: `verified by an agent, ${nowDate().toISOString().slice(0, 16).replace('T', ' ')} UTC`, dataset: d, model: m, strategies: strategies.map((s) => toYaml(s)) }));
   }
   const worst = results.some((x) => x.verdict === 'fail') ? 'fail' : results.some((x) => x.verdict === 'inconclusive') ? 'inconclusive' : 'pass';
   return {
     verdict: worst,
-    model: { name: m.name, fittedOn: { start: iso(m.fittedOn.start), end: iso(m.fittedOn.end) }, ageDays: r1((Date.now() / 1000 - m.fittedOn.end) / 86400), accuracy: accuracyOf(m) },
+    model: { name: m.name, fittedOn: { start: iso(m.fittedOn.start), end: iso(m.fittedOn.end) }, ageDays: r1((nowS() - m.fittedOn.end) / 86400), accuracy: accuracyOf(m) },
     window: { start: iso(r.window.start), end: iso(r.window.end), hours: r1((r.window.end - r.window.start) / 3600) },
     slo: r.slo,
     gate: `fails if it adds more than ${gate} min out of SLO over the window`,

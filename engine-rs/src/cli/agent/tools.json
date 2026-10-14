@@ -1,0 +1,807 @@
+[
+ {
+  "name": "connect_telemetry",
+  "title": "Connect to telemetry (Prometheus, Jaeger/Tempo, bill)",
+  "description": "Point Hindcast at the system's live telemetry and probe it, read-only: which metric presets Prometheus supports, which services it names, how far back data goes; which services Jaeger or Tempo knows and which ones requests enter through. Saves the connection in the workspace (credentials only as env var names). Call this first; calling it again merges new settings. Returns problems to fix and what the model will be able to know.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "workspace": {
+     "description": "workspace directory (default ./.hindcast, or $HINDCAST_WORKSPACE)",
+     "type": "string"
+    },
+    "prometheus": {
+     "type": "object",
+     "properties": {
+      "url": {
+       "type": "string",
+       "format": "uri"
+      },
+      "selector": {
+       "description": "label matchers added to every query, e.g. cluster=\"prod-eu\"",
+       "type": "string"
+      },
+      "namespaces": {
+       "description": "Kubernetes namespaces the system runs in (default: the namespaces holding the traced services)",
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "presets": {
+       "description": "default: every preset whose metrics exist",
+       "type": "array",
+       "items": {
+        "type": "string",
+        "enum": [
+         "otel-spanmetrics",
+         "http-server",
+         "spring",
+         "ingress-nginx",
+         "cadvisor",
+         "kubernetes"
+        ]
+       }
+      },
+      "tokenEnv": {
+       "description": "env var holding a bearer token (the token itself never goes in the workspace)",
+       "type": "string"
+      },
+      "basicAuthEnv": {
+       "description": "env var holding \"user:password\"",
+       "type": "string"
+      },
+      "headersEnv": {
+       "description": "header → env var, e.g. { \"X-Scope-OrgID\": \"TENANT\" }",
+       "type": "object",
+       "propertyNames": {
+        "type": "string"
+       },
+       "additionalProperties": {
+        "type": "string"
+       }
+      }
+     },
+     "required": [
+      "url"
+     ],
+     "additionalProperties": false
+    },
+    "jaeger": {
+     "type": "object",
+     "properties": {
+      "url": {
+       "type": "string",
+       "format": "uri",
+       "description": "Jaeger query UI/API base, e.g. http://jaeger:16686"
+      },
+      "tokenEnv": {
+       "description": "env var holding a bearer token (the token itself never goes in the workspace)",
+       "type": "string"
+      },
+      "basicAuthEnv": {
+       "description": "env var holding \"user:password\"",
+       "type": "string"
+      },
+      "headersEnv": {
+       "description": "header → env var, e.g. { \"X-Scope-OrgID\": \"TENANT\" }",
+       "type": "object",
+       "propertyNames": {
+        "type": "string"
+       },
+       "additionalProperties": {
+        "type": "string"
+       }
+      }
+     },
+     "required": [
+      "url"
+     ],
+     "additionalProperties": false
+    },
+    "tempo": {
+     "type": "object",
+     "properties": {
+      "url": {
+       "type": "string",
+       "format": "uri",
+       "description": "Tempo HTTP API base, e.g. http://tempo:3200"
+      },
+      "tokenEnv": {
+       "description": "env var holding a bearer token (the token itself never goes in the workspace)",
+       "type": "string"
+      },
+      "basicAuthEnv": {
+       "description": "env var holding \"user:password\"",
+       "type": "string"
+      },
+      "headersEnv": {
+       "description": "header → env var, e.g. { \"X-Scope-OrgID\": \"TENANT\" }",
+       "type": "object",
+       "propertyNames": {
+        "type": "string"
+       },
+       "additionalProperties": {
+        "type": "string"
+       }
+      }
+     },
+     "required": [
+      "url"
+     ],
+     "additionalProperties": false
+    },
+    "traceFiles": {
+     "description": "OTLP JSON lines or Jaeger JSON files (globs ok), instead of a trace backend",
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "bill": {
+     "type": "object",
+     "properties": {
+      "cur": {
+       "description": "AWS Cost and Usage Report CSV",
+       "type": "string"
+      },
+      "gcp": {
+       "description": "GCP billing export",
+       "type": "string"
+      },
+      "tag": {
+       "description": "cost-allocation tag naming the component, e.g. user:service",
+       "type": "string"
+      },
+      "resources": {
+       "type": "object",
+       "propertyNames": {
+        "type": "string"
+       },
+       "additionalProperties": {
+        "type": "string"
+       }
+      }
+     },
+     "additionalProperties": false
+    },
+    "system": {
+     "type": "object",
+     "properties": {
+      "name": {
+       "type": "string"
+      },
+      "slo": {
+       "description": "system SLO (default p99 500 ms, errors 1%)",
+       "type": "object",
+       "properties": {
+        "p99Ms": {
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "errorRate": {
+         "type": "number",
+         "minimum": 0,
+         "maximum": 1
+        }
+       },
+       "required": [
+        "p99Ms",
+        "errorRate"
+       ],
+       "additionalProperties": false
+      },
+      "timeoutMs": {
+       "description": "client deadline: slower answers count as failures",
+       "type": "number",
+       "exclusiveMinimum": 0
+      },
+      "rename": {
+       "description": "raw service names → one id across sources",
+       "type": "object",
+       "propertyNames": {
+        "type": "string"
+       },
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "hostedBy": {
+       "description": "in-process dependencies seen in traces → the service they run in",
+       "type": "object",
+       "propertyNames": {
+        "type": "string"
+       },
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "entry": {
+       "description": "services requests enter through (default: found in traces)",
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "ignore": {
+       "description": "services outside the system, e.g. load generators (default: client-only services in traces)",
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "exclude": {
+       "description": "services to drop from the collected history: another system sharing the Prometheus (collect_telemetry lists services no trace touches)",
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      }
+     },
+     "additionalProperties": false
+    }
+   },
+   "additionalProperties": false
+  }
+ },
+ {
+  "name": "collect_telemetry",
+  "title": "Collect history from the connected telemetry",
+  "description": "Query Prometheus over a window, fetch traces spread across it from Jaeger/Tempo, add the bill, and import everything into the workspace dataset. Reports per service which signals exist (request rate, errors, p99, CPU, CPU limit, replicas, traces) and what is missing. Longer history with a busy peak makes a better model: one overload in the history is worth more than a month of quiet days.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "workspace": {
+     "description": "workspace directory (default ./.hindcast, or $HINDCAST_WORKSPACE)",
+     "type": "string"
+    },
+    "last": {
+     "description": "how much history, e.g. \"6h\", \"7d\", \"14d\" (default 24h, or what the data covers)",
+     "type": "string"
+    },
+    "start": {
+     "description": "window start (ISO or epoch s), instead of last",
+     "type": [
+      "string",
+      "number"
+     ]
+    },
+    "end": {
+     "description": "window end (default now, or the newest data)",
+     "type": [
+      "string",
+      "number"
+     ]
+    },
+    "stepS": {
+     "description": "bucket size in seconds (default: window / ~1000, at least 30)",
+     "type": "integer",
+     "exclusiveMinimum": 0,
+     "maximum": 9007199254740991
+    },
+    "maxTraces": {
+     "description": "traces to fetch, spread over the window (default 3000)",
+     "type": "integer",
+     "exclusiveMinimum": 0,
+     "maximum": 9007199254740991
+    },
+    "windows": {
+     "description": "several windows instead of one — an ordinary week plus a load test, say. A calm history never shows where latency turns; one load test in it teaches the model",
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "start": {
+        "type": [
+         "string",
+         "number"
+        ]
+       },
+       "end": {
+        "type": [
+         "string",
+         "number"
+        ]
+       }
+      },
+      "required": [
+       "start",
+       "end"
+      ],
+      "additionalProperties": false
+     }
+    }
+   },
+   "additionalProperties": false
+  }
+ },
+ {
+  "name": "calibrate_model",
+  "title": "Calibrate a model of the system from the collected history",
+  "description": "Fit the model: capacity per replica (with its band) and what limits it (CPU, a lock or pool), latency, errors and cost per service; endpoint paths from traces. Holds back the last part of the history to measure accuracy on data the model never saw. Returns a trust report: services whose limit the history actually reached, services whose capacity is extrapolated, and services the model cannot explain. Read it before relying on verify_change.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "workspace": {
+     "description": "workspace directory (default ./.hindcast, or $HINDCAST_WORKSPACE)",
+     "type": "string"
+    },
+    "holdout": {
+     "description": "share of the history held back to measure accuracy (default 0.3; 0 to skip)",
+     "type": "number",
+     "minimum": 0,
+     "maximum": 0.6
+    },
+    "slo": {
+     "type": "object",
+     "properties": {
+      "p99Ms": {
+       "type": "number",
+       "exclusiveMinimum": 0
+      },
+      "errorRate": {
+       "type": "number",
+       "minimum": 0,
+       "maximum": 1
+      }
+     },
+     "required": [
+      "p99Ms",
+      "errorRate"
+     ],
+     "additionalProperties": false
+    },
+    "timeoutMs": {
+     "type": "number",
+     "exclusiveMinimum": 0
+    },
+    "listPrices": {
+     "description": "price services without a bill line at AWS Fargate list prices (default true)",
+     "type": "boolean"
+    }
+   },
+   "additionalProperties": false
+  }
+ },
+ {
+  "name": "model_status",
+  "title": "What the workspace holds",
+  "description": "Connections, the collected history (window, age), the model (fit and trust per service, accuracy), recent reports, warnings (stale history, unmeasured accuracy) and the next step. Cheap: call it at the start of a session to see what is already there.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "workspace": {
+     "description": "workspace directory (default ./.hindcast, or $HINDCAST_WORKSPACE)",
+     "type": "string"
+    }
+   },
+   "additionalProperties": false
+  }
+ },
+ {
+  "name": "verify_change",
+  "title": "Verify an infrastructure change against real history",
+  "description": "Backtest one or more changes over the collected history, before they ship: $ per month saved or spent (with its 10–90% band), minutes out of SLO added or removed, failed requests, the worst moment and why, endpoints that get worse, headroom before and after. A change is a strategy (object or YAML), a Kubernetes manifest diff (base/head), a Terraform plan (`terraform show -json`), or edited manifests against the live cluster snapshot from read_cluster. Each result has verdict pass | fail | inconclusive and a confidence (high | medium | low) that says which services the change pushes past anything the history showed. Writes an HTML and Markdown report for a human.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "workspace": {
+     "description": "workspace directory (default ./.hindcast, or $HINDCAST_WORKSPACE)",
+     "type": "string"
+    },
+    "changes": {
+     "minItems": 1,
+     "type": "array",
+     "items": {
+      "anyOf": [
+       {
+        "type": "object",
+        "properties": {
+         "strategy": {
+          "anyOf": [
+           {
+            "type": "string"
+           },
+           {
+            "type": "object",
+            "propertyNames": {
+             "type": "string"
+            },
+            "additionalProperties": {}
+           }
+          ],
+          "description": "a strategy object or YAML: { name, changes: [{ service, replicas | autoscale | cpu | memoryGb | cpuRequest | memoryRequestGb | arch | perf | capacityRps | cache | readReplicas | zone | region } | { endpoint, retries, timeoutMs }] }"
+         }
+        },
+        "required": [
+         "strategy"
+        ],
+        "additionalProperties": false
+       },
+       {
+        "type": "object",
+        "properties": {
+         "kubernetes": {
+          "type": "object",
+          "properties": {
+           "base": {
+            "type": "string",
+            "description": "manifests before: a directory, a file, or YAML text"
+           },
+           "head": {
+            "type": "string",
+            "description": "manifests after"
+           }
+          },
+          "required": [
+           "base",
+           "head"
+          ],
+          "additionalProperties": false
+         }
+        },
+        "required": [
+         "kubernetes"
+        ],
+        "additionalProperties": false
+       },
+       {
+        "type": "object",
+        "properties": {
+         "terraformPlan": {
+          "anyOf": [
+           {
+            "type": "string"
+           },
+           {
+            "type": "object",
+            "propertyNames": {
+             "type": "string"
+            },
+            "additionalProperties": {}
+           }
+          ],
+          "description": "path to `terraform show -json plan.out` output, or the JSON itself"
+         }
+        },
+        "required": [
+         "terraformPlan"
+        ],
+        "additionalProperties": false
+       },
+       {
+        "type": "object",
+        "properties": {
+         "cluster": {
+          "type": "object",
+          "properties": {
+           "head": {
+            "type": "string",
+            "description": "the edited manifests (directory, file or YAML text)"
+           },
+           "snapshot": {
+            "description": "a read_cluster snapshot (default: the latest)",
+            "type": "string"
+           }
+          },
+          "required": [
+           "head"
+          ],
+          "additionalProperties": false
+         }
+        },
+        "required": [
+         "cluster"
+        ],
+        "additionalProperties": false
+       }
+      ]
+     }
+    },
+    "last": {
+     "description": "only the last part of the history, e.g. \"7d\"",
+     "type": "string"
+    },
+    "gateMinutes": {
+     "description": "minutes out of SLO a change may add before it fails (default 0.5)",
+     "type": "number",
+     "minimum": 0
+    },
+    "draws": {
+     "description": "capacity draws for the bands (default 30)",
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 100
+    },
+    "window": {
+     "description": "replay only this part of the history — the ordinary week, when the history also holds a load test (the model still learned from all of it)",
+     "type": "object",
+     "properties": {
+      "start": {
+       "type": [
+        "string",
+        "number"
+       ]
+      },
+      "end": {
+       "type": [
+        "string",
+        "number"
+       ]
+      }
+     },
+     "required": [
+      "start",
+      "end"
+     ],
+     "additionalProperties": false
+    },
+    "traffic": {
+     "description": "replay the history at another load — scale ×N, or peakRps for its busiest moment — to ask \"does it survive launch day / Black Friday?\"; the as-built system sees the same load",
+     "type": "object",
+     "properties": {
+      "scale": {
+       "type": "number",
+       "exclusiveMinimum": 0
+      },
+      "peakRps": {
+       "type": "number",
+       "exclusiveMinimum": 0
+      }
+     },
+     "additionalProperties": false
+    }
+   },
+   "required": [
+    "changes"
+   ],
+   "additionalProperties": false
+  }
+ },
+ {
+  "name": "suggest_changes",
+  "title": "What should we change? Fixes and savings, backtested",
+  "description": "Generates candidate changes from the history itself and backtests them all: services that ran out of capacity get fixes (more replicas — of the host for an in-process dependency —, more CPU or CPU autoscaling when CPU-bound); services that idled get savings (fewer replicas, smaller CPU, Graviton). Returns the fixes that cut minutes out of SLO and the savings that pass, cheapest first, each with its verdict and confidence, the passing savings tried together, and what was rejected. Use it for \"what should we change?\", \"where can we save?\" or after a fail, then verify_change the one to ship.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "workspace": {
+     "description": "workspace directory (default ./.hindcast, or $HINDCAST_WORKSPACE)",
+     "type": "string"
+    },
+    "goal": {
+     "description": "fixes, savings, or both (default)",
+     "type": "string",
+     "enum": [
+      "reliability",
+      "cost",
+      "both"
+     ]
+    },
+    "last": {
+     "type": "string"
+    },
+    "draws": {
+     "description": "capacity draws per candidate (default 12)",
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 50
+    },
+    "gateMinutes": {
+     "type": "number",
+     "minimum": 0
+    },
+    "idleBelow": {
+     "description": "a service is idle below this share of capacity at its busiest (default 0.35)",
+     "type": "number",
+     "minimum": 0.05,
+     "maximum": 0.8
+    }
+   },
+   "additionalProperties": false
+  }
+ },
+ {
+  "name": "find_headroom",
+  "title": "How much more traffic the system can take",
+  "description": "The req/s the calibrated model sustains within SLO with today's endpoint mix, and which service saturates first — as built, and optionally with a strategy applied.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "workspace": {
+     "description": "workspace directory (default ./.hindcast, or $HINDCAST_WORKSPACE)",
+     "type": "string"
+    },
+    "strategy": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "object",
+       "propertyNames": {
+        "type": "string"
+       },
+       "additionalProperties": {}
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  }
+ },
+ {
+  "name": "review_capacity",
+  "title": "Capacity review: headroom, busier days, node loss, binding limits, fixes and savings",
+  "description": "The capacity review a platform team does by hand, from the calibrated history, every number backtested: headroom over the busiest moment and what saturates first; whether 1.5× and 2× today's traffic hold; what losing a node at the peak costs and the single points of failure (Kubernetes), with the replicas that fix it; services held back by CPU quota throttling or near their memory limit; and the fixes and savings that pass. Writes a Markdown report into the workspace. Use it for \"how are we doing?\", \"weekly capacity review\", \"are we ready for next week?\".",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "workspace": {
+     "description": "workspace directory (default ./.hindcast, or $HINDCAST_WORKSPACE)",
+     "type": "string"
+    },
+    "draws": {
+     "description": "capacity draws per replay (default 12)",
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 30
+    }
+   },
+   "additionalProperties": false
+  }
+ },
+ {
+  "name": "check_node_loss",
+  "title": "Does it survive losing a Kubernetes node at its busiest?",
+  "description": "Replays the history's busiest moment with each node gone: every pod on it disappears at once (from kube_pod_info placement at the end of the history), services left with no replica are down, the rest serve on what is left, and Kubernetes brings the pods back after NotReady plus the default 300 s eviction toleration and a start (or never, when a fixed node pool has no room). Returns per node what it takes down, the minutes out of SLO and failed requests it adds, and the services one node failure takes out entirely. With a strategy, its replica changes are spread evenly over the nodes. Use it for \"can we lose a node?\", \"is 2 replicas enough?\", \"where are our single points of failure?\".",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "workspace": {
+     "description": "workspace directory (default ./.hindcast, or $HINDCAST_WORKSPACE)",
+     "type": "string"
+    },
+    "strategy": {
+     "description": "check under this strategy instead of as built",
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "object",
+       "propertyNames": {
+        "type": "string"
+       },
+       "additionalProperties": {}
+      }
+     ]
+    },
+    "traffic": {
+     "description": "at another load (launch day: scale 2)",
+     "type": "object",
+     "properties": {
+      "scale": {
+       "type": "number",
+       "exclusiveMinimum": 0
+      },
+      "peakRps": {
+       "type": "number",
+       "exclusiveMinimum": 0
+      }
+     },
+     "additionalProperties": false
+    },
+    "recoverS": {
+     "description": "seconds until replacement pods serve (default 380)",
+     "type": "number",
+     "exclusiveMinimum": 0
+    },
+    "zones": {
+     "description": "lose a whole availability zone (every node in it) instead of one node — zones come from the nodes' provider ids (AWS, GCP)",
+     "type": "boolean"
+    }
+   },
+   "additionalProperties": false
+  }
+ },
+ {
+  "name": "verify_design",
+  "title": "Verify a system design (no history needed)",
+  "description": "Check an architecture spec an agent wrote or proposes: validate it, simulate it at the expected load, replay every failure (instance and component deaths, zone loss, slow and erroring dependencies, cold caches, a 3× surge), measure headroom and cost against a budget. Verdict pass | pass with risks | fail, with findings and verified fixes that list the exact spec changes to apply. Use list_components to write the spec. Numbers come from catalogue defaults unless the spec overrides capacity, latency and cost.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "spec": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "object",
+       "propertyNames": {
+        "type": "string"
+       },
+       "additionalProperties": {}
+      }
+     ],
+     "description": "architecture spec, object or YAML"
+    },
+    "rps": {
+     "description": "expected load (default: half the breaking point)",
+     "type": "number",
+     "exclusiveMinimum": 0
+    },
+    "slo": {
+     "type": "object",
+     "properties": {
+      "maxP99Ms": {
+       "type": "number",
+       "exclusiveMinimum": 0
+      },
+      "maxErrorRate": {
+       "type": "number",
+       "minimum": 0,
+       "maximum": 1
+      }
+     },
+     "additionalProperties": false
+    },
+    "budgetMonthly": {
+     "description": "$ per month the design must fit in",
+     "type": "number",
+     "exclusiveMinimum": 0
+    },
+    "incidentCostPerMinute": {
+     "description": "what a minute of outage costs, to price risk",
+     "type": "number",
+     "exclusiveMinimum": 0
+    }
+   },
+   "required": [
+    "spec"
+   ],
+   "additionalProperties": false
+  }
+ },
+ {
+  "name": "read_cluster",
+  "title": "Snapshot a Kubernetes cluster's workloads (read-only)",
+  "description": "Run `kubectl get deployments,statefulsets,hpa -o json` against an explicitly named context and save the snapshot: replicas, CPU and memory limits, autoscalers and architecture per workload. Never uses the current context implicitly and never runs anything but get. Then verify_change with { cluster: { head } } backtests edited manifests against what is running.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "workspace": {
+     "description": "workspace directory (default ./.hindcast, or $HINDCAST_WORKSPACE)",
+     "type": "string"
+    },
+    "context": {
+     "type": "string",
+     "description": "kube context name — required, never implied"
+    },
+    "namespace": {
+     "type": "string"
+    },
+    "selector": {
+     "description": "label selector",
+     "type": "string"
+    }
+   },
+   "required": [
+    "context"
+   ],
+   "additionalProperties": false
+  }
+ }
+]

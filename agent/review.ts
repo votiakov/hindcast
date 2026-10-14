@@ -7,7 +7,7 @@ import { basePlan } from '../src/backtest/engine';
 import { modelBreakingPoint } from '../src/backtest/accuracy';
 import { nodeLoss } from '../src/backtest/resilience';
 import { suggestChanges } from './suggest';
-import { iso, type Workspace } from './workspace';
+import { iso, type Workspace, nowDate } from './workspace';
 
 /**
  * The capacity review a platform team does by hand, from the calibrated history: how much headroom
@@ -77,7 +77,7 @@ export async function reviewCapacity(ws: Workspace, o: { draws?: number } = {}, 
   };
   const md = reviewMarkdown(out);
   ws.ensure('reports');
-  const file = join(ws.path('reports'), `capacity-review-${new Date().toISOString().slice(0, 10)}.md`);
+  const file = join(ws.path('reports'), `capacity-review-${nowDate().toISOString().slice(0, 10)}.md`);
   writeFileSync(file, md);
   return { ...out, report: file, markdown: md };
 }

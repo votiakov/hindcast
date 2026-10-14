@@ -12,6 +12,9 @@ const out = mkdtempSync(join(tmpdir(), 'cli-parity-'));
 const ex = 'examples';
 const fx = 'test/cli-fixtures';
 const PROM = 'http://127.0.0.1:19090';
+const TEL = 'http://127.0.0.1:19091';
+const ws = (k: string) => `${out}/OUT/ws-${k}`;
+const agent = (tool: string, args: Record<string, unknown>) => ['agent', tool, JSON.stringify(args)];
 /** cases whose stderr is a YAML parser's syntax message: only the exit code has to agree */
 const PARSER_MESSAGE = new Set([`validate ${ex}/kubernetes/shop.yaml`, `audit ${ex}/kubernetes/shop.yaml`]);
 export const CASES: string[][] = [
@@ -78,6 +81,19 @@ export const CASES: string[][] = [
   ['export-prometheus', '--url', `${PROM}/prefix/`, '--start', '1791390000', '--end', '1791410000', '--step', '1', '--preset', 'kubernetes,ingress-nginx,spring,http-server', '--selector', 'namespace="shop"', '--window', '5m', '--name', 'Shop', '--out', `${out}/OUT/exp2`],
   ['export-prometheus', '--url', PROM, '--start', 'yesterday', '--end', '2026-09-01'],
   ['export-prometheus', '--url', PROM, '--start', '2026-09-01', '--end', '2026-09-02', '--preset', 'nonsense', '--out', `${out}/OUT/exp3`],
+  ['agent'],
+  ['agent', 'list'],
+  ['agent', 'nonsense'],
+  agent('connect_telemetry', { workspace: ws('a'), prometheus: { url: `${TEL}/prom` }, jaeger: { url: `${TEL}/jaeger` } }),
+  agent('connect_telemetry', { workspace: ws('b'), prometheus: { url: `${TEL}/gappy`, tokenEnv: 'HINDCAST_TEST_UNSET_TOKEN' }, tempo: { url: `${TEL}/tempo` }, system: { name: 'Gappy', slo: { errorRate: 0.02, p99Ms: 300 }, rename: { 'shop-worker': 'other' } } }),
+  agent('connect_telemetry', { workspace: ws('c'), prometheus: { url: `${TEL}/broken` }, traceFiles: ['reference/hotrod/runs/history/raw/*.jsonl'], bill: { cur: 'nowhere.csv', tag: 'user:service' } }),
+  agent('connect_telemetry', { workspace: ws('d') }),
+  agent('connect_telemetry', { workspace: ws('e'), prometheus: { url: 'not a url' } }),
+  agent('connect_telemetry', { workspace: ws('f'), prometheus: { url: `${TEL}/prom`, selector: 'cluster="eu"', namespaces: ['shop'], presets: ['cadvisor'], extra: 1 }, system: { entry: ['api'], ignore: [], exclude: ['db'], hostedBy: { redis: 'api' }, placement: { api: { zone: 'a', foo: 1 } } } }),
+  agent('read_cluster', { workspace: ws('g'), context: 'kind-test', namespace: 'shop' }),
+  agent('read_cluster', { workspace: ws('h'), context: 'kind-test', selector: 'app=web' }),
+  agent('read_cluster', { workspace: ws('i'), context: 'nope' }),
+  agent('read_cluster', { workspace: ws('j') }),
   ['outage', 'reference/shop/model.json', 'list'],
   ['outage', 'reference/shop/model.json', 'aws-use1-2025-10-20'],
   ['outage', 'reference/shop/model.json', 'slack-2021-01-04', 'reference/shop/strategies/1-autoscale-frontend.yaml', '--md', `${out}/OUT/o.md`],
@@ -98,13 +114,16 @@ const mask = (s: string) => s.replace(/(in |· )\d+ ms/g, '$1# ms').replace(/"wa
 
 function run(cmd: string, args: string[], tag: string) {
   const a = args.map((x) => x.replace('/OUT/', `/OUT${tag}/`));
-  for (const x of a) if (x.includes(`/OUT${tag}/`)) spawnSync('mkdir', ['-p', x.slice(0, x.lastIndexOf('/'))]);
-  const r = spawnSync(cmd, cmd === 'npx' ? ['tsx', 'cli/bottleneck.ts', ...a] : a, { encoding: 'utf8', env: { ...process.env, NO_COLOR: '' } });
-  const files = a.filter((x) => x.includes(`/OUT${tag}/`) && existsSync(x)).flatMap((x) => (statSync(x).isDirectory() ? walk(x) : [x])).map((x) => `${x.replace(/OUT[12]/, 'OUT')}\n${mask(readFileSync(x, 'utf8'))}`);
+  for (const x of a) if (x.startsWith(`${out}/OUT${tag}/`)) spawnSync('mkdir', ['-p', x.slice(0, x.lastIndexOf('/'))]);
+  const r = spawnSync(cmd, cmd === 'npx' ? ['tsx', 'cli/bottleneck.ts', ...a] : a, { encoding: 'utf8', env: { ...process.env, NO_COLOR: '', HINDCAST_NOW: '1791500000', HINDCAST_KUBECTL: 'test/cli-fixtures/fake-kubectl.mjs' } });
+  // everything either CLI wrote: named outputs, workspaces, reports
+  const root = `${out}/OUT${tag}`;
+  const files = existsSync(root) ? walk(root).map((x) => `${x.replace(/OUT[12]/, 'OUT')}\n${mask(readFileSync(x, 'utf8'))}`) : [];
   return { stdout: mask(r.stdout), stderr: mask(r.stderr), code: r.status, files };
 }
 
 const prom = spawn('node', ['test/cli-fixtures/mock-prometheus.mjs', '19090'], { stdio: 'ignore' });
+const tel = spawn('node', ['test/cli-fixtures/mock-telemetry.mjs', '19091'], { stdio: 'ignore' });
 spawnSync('sleep', ['0.5']);
 const filter = process.argv[2];
 let failed = 0;
@@ -135,5 +154,6 @@ for (const c of CASES) {
   }
 }
 prom.kill();
+tel.kill();
 console.log(failed ? `\n${failed} differ` : '\nall match');
 process.exitCode = failed ? 1 : 0;

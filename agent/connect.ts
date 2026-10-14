@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 import { readWorkloads } from '../src/backtest/configDiff';
 import { glob } from '../cli/files';
 import { probeJaeger, probePrometheus, probeTempo, suggestRenames, type PrometheusProbe, type TraceProbe } from './sources';
-import { Sources, Workspace } from './workspace';
+import { Sources, Workspace, nowDate } from './workspace';
 
 /**
  * Connecting is probing: every source is asked what it holds before anything is collected, and
@@ -109,7 +109,7 @@ export async function readCluster(ws: Workspace, o: { context: string; namespace
   const { stdout } = await run(kubectl, args, { maxBuffer: 64 * 1024 * 1024, timeout: 30_000 });
   const doc = JSON.parse(stdout) as { items?: unknown[] };
   ws.ensure('cluster');
-  const file = join(ws.path('cluster'), `${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}-${o.context.replace(/[^\w.-]+/g, '_')}-${o.namespace ?? 'all'}.json`);
+  const file = join(ws.path('cluster'), `${nowDate().toISOString().slice(0, 19).replace(/[:T]/g, '-')}-${o.context.replace(/[^\w.-]+/g, '_')}-${o.namespace ?? 'all'}.json`);
   ws.writeJson(file.slice(ws.dir.length + 1), doc);
   const workloads = [...readWorkloads([stdout]).values()];
   const src = ws.sources();

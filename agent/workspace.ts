@@ -131,4 +131,9 @@ export function seconds(span: string): number {
   return parseFloat(m[1]) * { s: 1, m: 60, h: 3600, d: 86400, w: 604800 }[m[2] as 's']!;
 }
 
+/** the time now, epoch seconds; HINDCAST_NOW pins it (tests and the native CLI's parity runs) */
+export const nowS = () => (process.env.HINDCAST_NOW ? Number(process.env.HINDCAST_NOW) : Date.now() / 1000);
+/** the time now as a Date */
+export const nowDate = () => new Date(nowS() * 1000);
+
 export const iso = (t: number) => new Date(t * 1000).toISOString().replace('.000Z', 'Z');
