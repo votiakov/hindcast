@@ -67,3 +67,16 @@ for (const file of ['k8s-shop', 'shop']) {
   const rs2 = Math.min(t(() => wasm.simulate(shop, bf, {})), t(() => wasm.simulate(shop, bf, {})));
   console.log(`simulator: black friday on examples/shop.yaml — TypeScript ${ts2.toFixed(0)} ms, Rust/WASM ${rs2.toFixed(0)} ms (${(ts2 / rs2).toFixed(1)}×)`);
 }
+
+// the discrete-event simulator: one black-friday run, every request an entity
+{
+  const { parse } = await import('yaml');
+  const { simulateDesTs } = await import('../src/sim/des/des');
+  const wasm = await import('../src/backtest/wasm/hindcast_engine.js');
+  const shop = parse(readFileSync('examples/shop.yaml', 'utf8'));
+  const bf = parse(readFileSync('examples/black-friday.yaml', 'utf8'));
+  const t = (f: () => unknown) => { const a = performance.now(); const r = f(); return [performance.now() - a, r] as const; };
+  const [ts, r] = t(() => simulateDesTs(shop, bf, { seed: 1 }));
+  const [rs] = t(() => wasm.simulateDes(shop, bf, { seed: 1 }));
+  console.log(`DES: black friday on examples/shop.yaml (${(r as { summary: { requests: number; events: number } }).summary.requests.toLocaleString('en-US')} requests, ${(r as { summary: { events: number } }).summary.events.toLocaleString('en-US')} events) — TypeScript ${ts.toFixed(0)} ms, Rust/WASM ${rs.toFixed(0)} ms (${(ts / rs).toFixed(1)}×)`);
+}

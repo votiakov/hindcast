@@ -83,6 +83,10 @@ pub struct ScalerState {
     pub desired: f64,
 }
 
+pub fn new_scaler_pub(d: &NodeData) -> ScalerState {
+    new_scaler(d)
+}
+
 fn new_scaler(d: &NodeData) -> ScalerState {
     let a = d.autoscale.as_ref().unwrap();
     let start = a.max.min(a.min.max(d.instances.unwrap_or(a.min)));
@@ -98,6 +102,10 @@ fn effective_data(d: &NodeData, s: Option<&ScalerState>) -> NodeData {
 }
 
 /// advance a scaler to `now`; (kind, from, to)
+pub fn step_scaler_pub(s: &mut ScalerState, d: &NodeData, now: f64, demand: f64, per_instance: f64) -> Vec<(&'static str, f64, f64)> {
+    step_scaler(s, d, now, demand, per_instance)
+}
+
 fn step_scaler(s: &mut ScalerState, d: &NodeData, now: f64, demand: f64, per_instance: f64) -> Vec<(&'static str, f64, f64)> {
     let a = d.autoscale.as_ref().unwrap();
     let target = a.target_util.unwrap_or(AUTOSCALE_TARGET);

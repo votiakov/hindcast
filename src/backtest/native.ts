@@ -9,6 +9,7 @@ import type { AccuracyRecord } from './model';
 import type { Num } from './dataset';
 import { setNativeSim, type NativeSim } from '../sim/engine';
 import { setNativeHeadless } from '../sim/headless';
+import { setNativeDes } from '../sim/des/des';
 import { setNativeCalibrate, type CalibrateOptions } from './calibrate';
 import { setNativeEngine, type Plan, type RunOpts, type RunResult, type Traffic } from './engine';
 import { setNativeBacktest, type BacktestOptions, type BacktestResult } from './backtest';
@@ -96,6 +97,7 @@ const use = () => {
   setNativeResilience({ nodeLoss: nodeLossNative as never, nodeLossFaults: nodeLossFaultsNative as never, podsPerNode: podsPerNodeNative });
   setNativeOutages({ outageScenario: outageScenarioNative });
   setNativeSim(() => new wasm.SimEngine() as unknown as NativeSim);
+  setNativeDes((spec, scenario, cfg) => wasm.simulateDes(spec, scenario, cfg));
   setNativeHeadless({
     simulate: (spec, scenario, opts) => wasm.simulate(spec, scenario, opts),
     compare: (base, variants, scenario, opts) => wasm.compareVariants(base, variants, scenario, opts),

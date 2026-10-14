@@ -286,6 +286,15 @@ mod wasm {
         Ok(crate::sim::headless::load_curve(&spec, o.max_rps, o.points, o.read_ratio, o.hold_s, o.cfg).map_err(jerr)?.serialize(&ser())?)
     }
 
+    /// simulateDes(spec, scenario, cfg) → DesResult (src/sim/des/des.ts)
+    #[wasm_bindgen(js_name = simulateDes)]
+    pub fn simulate_des(spec: JsValue, scenario: JsValue, cfg: JsValue) -> Result<JsValue, JsValue> {
+        let spec: serde_json::Value = from(spec)?;
+        let sc: serde_json::Value = if scenario.is_undefined() || scenario.is_null() { serde_json::json!({}) } else { from(scenario)? };
+        let cfg: crate::sim::des::DesConfig = opt(cfg)?;
+        Ok(crate::sim::des::simulate_des(&spec, &sc, &cfg).map_err(jerr)?.serialize(&ser())?)
+    }
+
     /// the same replay with the long series packed: the plan without its observed replicas, the
     /// traffic without its series; `series` holds each endpoint's n values (null as 0), then each
     /// service's observed replicas (null as NaN) at the offsets in `observed`. Returns

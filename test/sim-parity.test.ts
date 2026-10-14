@@ -137,3 +137,41 @@ describe('the headless simulator in Rust matches TypeScript', () => {
     expect(() => wSimulate(bad, {}, {})).toThrow();
   });
 });
+
+import { simulateDes as wDes } from '../src/backtest/wasm/hindcast_engine.js';
+import { simulateDesTs } from '../src/sim/des/des';
+
+describe('the discrete-event simulator in Rust matches TypeScript, seed for seed', () => {
+  const resilient = {
+    name: 'resilient shop',
+    components: [
+      { id: 'users', kind: 'client', retries: 2, retryPolicy: 'backoff', timeoutMs: 800, breaker: true, fallback: true },
+      { id: 'gw', kind: 'gateway', limit: 900 },
+      { id: 'lb', kind: 'lb' },
+      { id: 'api', kind: 'server', instances: 3, autoscale: { min: 2, max: 6, warmupS: 5 }, stallRate: 0.01, stallMs: 300 },
+      { id: 'cache', kind: 'cache', hitRate: 0.7 },
+      { id: 'db', kind: 'db', tier: 'M' },
+      { id: 'replica', kind: 'replica' },
+      { id: 'q', kind: 'queue' },
+      { id: 'worker', kind: 'worker', instances: 2 },
+      { id: 'llm', kind: 'llmapi', limit: 30 },
+      { id: 'fn', kind: 'function', runtime: 'python' },
+    ],
+    connections: ['users -> gw', 'gw -> lb', 'lb -> api', 'api -> cache', 'cache -> db', 'db -> replica', 'api -> q', 'q -> worker', 'worker -> llm', 'api -> fn'],
+  };
+  const cases: [string, unknown, unknown][] = [
+    ['shop, steady', shop, { duration: 15, rps: 600 }],
+    ['shop + replica, a primary dies', shopWithReplica, { duration: 20, rps: 700, events: [{ at: 8, action: { type: 'kill-id', id: 'db' } }] }],
+    ['examples/shop.yaml, black friday', yaml('examples/shop.yaml'), { ...yaml('examples/black-friday.yaml'), duration: 40, traffic: [{ at: 0, rps: 300 }, { at: 20, rps: 1200 }, { at: 40, rps: 1200 }] }],
+    ['retries, breaker, fallback, autoscaling, queue, LLM API, serverless', resilient, { duration: 30, traffic: [{ at: 0, rps: 200 }, { at: 15, rps: 1100 }, { at: 30, rps: 600 }], events: [{ at: 10, action: { type: 'inject-errors', id: 'cache', rate: 0.3 } }, { at: 18, action: { type: 'inject-latency', id: 'db', ms: 400 } }, { at: 24, action: { type: 'revive-all' } }] }],
+    ['failover routing', { components: [{ id: 'u', kind: 'client', routing: 'failover' }, { id: 'gpu', kind: 'llm', instances: 2 }, { id: 'api', kind: 'llmapi' }], connections: ['u -> gpu', 'u -> api'] }, { duration: 15, rps: 30 }],
+  ];
+  it.each(cases)('%s', (_, spec, sc) => {
+    for (const seed of [1, 7920]) {
+      const ts = simulateDesTs(spec, sc, { seed });
+      const rs = wDes(spec, sc, { seed });
+      ts.summary.wallMs = rs.summary.wallMs = 0;
+      same(ts, rs, `des seed ${seed}`);
+    }
+  });
+});

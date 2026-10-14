@@ -228,7 +228,18 @@ export interface DesResult {
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
 
+/** the compiled DES (src/backtest/native.ts sets it) */
+let nativeDes: typeof simulateDesTs | null = null;
+export function setNativeDes(f: typeof simulateDesTs | null) {
+  nativeDes = f;
+}
+
 export function simulateDes(specInput: unknown, scenarioInput: unknown = {}, cfgIn: Partial<DesConfig> = {}): DesResult {
+  return nativeDes ? nativeDes(specInput, scenarioInput, cfgIn) : simulateDesTs(specInput, scenarioInput, cfgIn);
+}
+
+/** the discrete-event run in TypeScript: the reference the Rust one is checked against */
+export function simulateDesTs(specInput: unknown, scenarioInput: unknown = {}, cfgIn: Partial<DesConfig> = {}): DesResult {
   const spec = ArchitectureSpec.parse(specInput);
   return withPricing(spec.pricing, () => runDes(spec, scenarioInput, cfgIn));
 }

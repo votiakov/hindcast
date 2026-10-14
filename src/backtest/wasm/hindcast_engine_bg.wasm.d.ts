@@ -23,6 +23,7 @@ export const simulate: (a: any, b: any, c: any) => [number, number, number];
 export const compareVariants: (a: any, b: any, c: any, d: any) => [number, number, number];
 export const breakingPoint: (a: any, b: any) => [number, number, number];
 export const loadCurve: (a: any, b: any) => [number, number, number];
+export const simulateDes: (a: any, b: any, c: any) => [number, number, number];
 export const runPlanPacked: (a: any, b: any, c: number, d: number, e: any, f: number, g: number, h: any) => [number, number, number];
 export const __wbindgen_exn_store: (a: number) => void;
 export const __externref_table_alloc: () => number;

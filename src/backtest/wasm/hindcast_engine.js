@@ -418,6 +418,21 @@ export function loadCurve(spec, opts) {
     return takeFromExternrefTable0(ret[0]);
 }
 
+/**
+ * simulateDes(spec, scenario, cfg) → DesResult (src/sim/des/des.ts)
+ * @param {any} spec
+ * @param {any} scenario
+ * @param {any} cfg
+ * @returns {any}
+ */
+export function simulateDes(spec, scenario, cfg) {
+    const ret = wasm.simulateDes(spec, scenario, cfg);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
 function passArrayJsValueToWasm0(array, malloc) {
     const ptr = malloc(array.length * 4, 4) >>> 0;
     for (let i = 0; i < array.length; i++) {
