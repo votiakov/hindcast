@@ -112,6 +112,7 @@ export function nodeLoss(model: Model, d: Dataset, o: NodeLossOptions = {}) {
     singlePointsOfFailure: spof,
     notes: [
       roomless ? `the node pool is fixed and losing ${nodes.filter(roomlessFor).join(', ')} leaves no room for its pods: they stay Pending until it returns` : `pods come back ${Math.round(recoverS / 60)} min after the node goes (NotReady after ~50 s, the default 300 s eviction toleration, a start)`,
+      'that is when the platform has recovered; callers can stay broken longer. Reconnect backoff (gRPC waits up to 2 min between attempts) and channels that never reconnect are not in the replay. On the reference cluster a stopped node cost 10.5 min against 7 predicted, because the frontend\'s channel to cart stayed broken until it restarted',
       ...(o.strategy ? ['replica counts the strategy changes are spread evenly over the nodes, as the default scheduler does'] : []),
     ],
   };
