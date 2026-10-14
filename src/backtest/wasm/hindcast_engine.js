@@ -203,6 +203,20 @@ export function backtest(model, dataset, strategies, opts) {
     return takeFromExternrefTable0(ret[0]);
 }
 
+/**
+ * calibrate(dataset, options) → Model (src/backtest/calibrate.ts)
+ * @param {any} dataset
+ * @param {any} options
+ * @returns {any}
+ */
+export function calibrate(dataset, options) {
+    const ret = wasm.calibrate(dataset, options);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
 function passArrayJsValueToWasm0(array, malloc) {
     const ptr = malloc(array.length * 4, 4) >>> 0;
     for (let i = 0; i < array.length; i++) {

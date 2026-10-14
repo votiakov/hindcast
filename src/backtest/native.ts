@@ -1,4 +1,5 @@
-import init, { initSync, runPlanPacked, backtest as wasmBacktest } from './wasm/hindcast_engine.js';
+import init, { initSync, runPlanPacked, backtest as wasmBacktest, calibrate as wasmCalibrate } from './wasm/hindcast_engine.js';
+import { setNativeCalibrate, type CalibrateOptions } from './calibrate';
 import { setNativeEngine, type Plan, type RunOpts, type RunResult, type Traffic } from './engine';
 import { setNativeBacktest, type BacktestOptions, type BacktestResult } from './backtest';
 import type { Model } from './model';
@@ -52,9 +53,15 @@ export function backtestNative(model: Model, d: Dataset, strategies: unknown[], 
   return r;
 }
 
+/** calibration in the compiled engine */
+export function calibrateNative(d: Dataset, options: CalibrateOptions = {}): Model {
+  return wasmCalibrate(d, options) as Model;
+}
+
 const use = () => {
   setNativeEngine(runPlanNative);
   setNativeBacktest(backtestNative);
+  setNativeCalibrate(calibrateNative);
 };
 
 const wanted = () => typeof process === 'undefined' || process.env?.HINDCAST_ENGINE !== 'ts';

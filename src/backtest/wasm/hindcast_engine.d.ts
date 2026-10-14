@@ -9,6 +9,10 @@ export function runPlan(plan: any, traffic: any, opts: any): any;
  */
 export function backtest(model: any, dataset: any, strategies: any, opts: any): any;
 /**
+ * calibrate(dataset, options) → Model (src/backtest/calibrate.ts)
+ */
+export function calibrate(dataset: any, options: any): any;
+/**
  * the same replay with the long series packed: the plan without its observed replicas, the
  * traffic without its series; `series` holds each endpoint's n values (null as 0), then each
  * service's observed replicas (null as NaN) at the offsets in `observed`. Returns
@@ -22,6 +26,7 @@ export interface InitOutput {
   readonly memory: WebAssembly.Memory;
   readonly runPlan: (a: any, b: any, c: any) => [number, number, number];
   readonly backtest: (a: any, b: any, c: any, d: any) => [number, number, number];
+  readonly calibrate: (a: any, b: any) => [number, number, number];
   readonly runPlanPacked: (a: any, b: any, c: number, d: number, e: any, f: number, g: number, h: any) => [number, number, number];
   readonly __wbindgen_exn_store: (a: number) => void;
   readonly __externref_table_alloc: () => number;

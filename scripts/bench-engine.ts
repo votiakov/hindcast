@@ -38,3 +38,16 @@ for (const file of ['k8s-shop', 'shop']) {
     console.log(`${file}: backtest of ${s.length} strategies × 30 draws — TypeScript ${ts.toFixed(0)} ms, Rust/WASM ${rs.toFixed(0)} ms (${(ts / rs).toFixed(1)}×)`);
   }
 }
+
+// calibration: fitting each reference system's model from its dataset
+{
+  const { calibrateTs } = await import('../src/backtest/calibrate');
+  const { calibrateNative } = await import('../src/backtest/native');
+  for (const file of ['k8s-shop', 'shop', 'hotrod']) {
+    const w = JSON.parse(readFileSync(`public/reference/${file}.json`, 'utf8'));
+    const t = (f: () => unknown) => { const a = performance.now(); f(); return performance.now() - a; };
+    const ts = t(() => calibrateTs(w.dataset));
+    const rs = Math.min(t(() => calibrateNative(w.dataset)), t(() => calibrateNative(w.dataset)));
+    console.log(`${file}: calibration (${w.dataset.n} buckets) — TypeScript ${ts.toFixed(0)} ms, Rust/WASM ${rs.toFixed(0)} ms (${(ts / rs).toFixed(1)}×)`);
+  }
+}

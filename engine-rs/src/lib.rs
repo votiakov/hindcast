@@ -3,6 +3,7 @@
 //! reference: test/engine-parity.test.ts runs both on the same plans and compares every series.
 
 pub mod backtest;
+pub mod calibrate;
 pub mod dataset;
 pub mod engine;
 pub mod math;
@@ -67,6 +68,16 @@ mod wasm {
         let out = crate::backtest::backtest(&model, &dataset, &strategies, &opts).map_err(|e| JsValue::from(js_sys::Error::new(&e)))?;
         let ser = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true).serialize_missing_as_null(true);
         Ok(out.serialize(&ser)?)
+    }
+
+    /// calibrate(dataset, options) → Model (src/backtest/calibrate.ts)
+    #[wasm_bindgen]
+    pub fn calibrate(dataset: JsValue, options: JsValue) -> Result<JsValue, JsValue> {
+        let dataset: crate::dataset::Dataset = serde_wasm_bindgen::from_value(dataset)?;
+        let options: crate::calibrate::CalibrateOptions = if options.is_undefined() || options.is_null() { Default::default() } else { serde_wasm_bindgen::from_value(options)? };
+        let model = crate::calibrate::calibrate(&dataset, &options);
+        let ser = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true).serialize_missing_as_null(true);
+        Ok(model.serialize(&ser)?)
     }
 
     /// the same replay with the long series packed: the plan without its observed replicas, the

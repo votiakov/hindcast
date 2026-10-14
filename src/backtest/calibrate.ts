@@ -358,7 +358,19 @@ export function sameEndpoint(a: string, b: string) {
   return pa.svc === pb.svc && pa.path === pb.path && (!pa.method || !pb.method || pa.method === pb.method);
 }
 
+type Calibrator = (d: Dataset, options: CalibrateOptions) => Model;
+/** the compiled calibration (engine-rs) once loaded */
+let nativeCalibrate: Calibrator | null = null;
+export function setNativeCalibrate(c: Calibrator | null) {
+  nativeCalibrate = c;
+}
+
 export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
+  return nativeCalibrate ? nativeCalibrate(d, options) : calibrateTs(d, options);
+}
+
+/** calibration in TypeScript: the reference the Rust one is checked against */
+export function calibrateTs(d: Dataset, options: CalibrateOptions = {}): Model {
   const opts: CalibrateOptions = { ...d.hints, ...options, hostedBy: { ...d.hints?.hostedBy, ...options.hostedBy }, services: { ...d.hints?.services, ...options.services }, endpoints: { ...d.hints?.endpoints, ...options.endpoints } };
   const slo = opts.slo ?? { p99Ms: 500, errorRate: 0.01 };
   const timeoutMs = opts.timeoutMs ?? 5000;
