@@ -101,6 +101,11 @@ export interface EndpointShape {
   p99Ms: number;
   /** the same over the quietest buckets only: the baseline before any queueing (a history with an
    *  overload or a load test in it would otherwise put the overload into the baseline) */
+  /** median and p90 of the traced requests (shape the latency distribution between mean and p99) */
+  p50Ms?: number;
+  p90Ms?: number;
+  lowP50Ms?: number;
+  lowP90Ms?: number;
   lowMeanMs?: number;
   lowP99Ms?: number;
   /** bytes moved per request per edge key */

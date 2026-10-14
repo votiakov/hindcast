@@ -104,12 +104,19 @@ export interface EndpointModel {
   baseExcessMs: number;
   /** measured median at low load, ms */
   baseP50Ms?: number;
+  /** p90 at low load, ms (with the median, keeps a bimodal endpoint's tail where it is) */
+  baseP90Ms?: number;
   /** tail multiplier fitted on history */
   tail: number;
   /** baseline error share (not overload), at zero load */
   errorRate: number;
   /** baseline errors that grow with traffic: + this × the endpoint's req/s */
   errorSlope?: number;
+  /** services on its path that ran under a CPU limit below one core and were throttled at low load:
+   *  a one-core burst spends the quota early in the 100 ms CFS period and waits out the rest, so
+   *  the p99 carries one stall of (1 − limit) × 100 ms. baseExcessMs is without it; the replay adds
+   *  the longest stall at the plan's limits */
+  stalls?: { service: string; limit: number }[];
   /** bytes per request per edge, and back to the client */
   bytes: Record<string, number>;
   egressBytes: number;

@@ -95,9 +95,12 @@ export interface EndpointPlan {
   baseExcessMs: number;
   /** median at low load, ms (shapes the latency distribution) */
   baseP50Ms?: number;
+  baseP90Ms?: number;
   tail: number;
   errorRate: number;
   errorSlope?: number;
+  /** throttled services on its path (EndpointModel.stalls) */
+  stalls?: { service: string; limit: number }[];
   bytes: Record<string, number>;
   egressBytes: number;
   /** client retries per failed request, capped by a budget (share of extra load) */
@@ -227,7 +230,19 @@ function normalTail(z: number): number {
  * request latencies are skewed: most fast, a few very slow — otherwise an exponential tail through
  * (mean, p99).
  */
-export function survival(p: { mean: number; p99: number; p50?: number }, x: number): number {
+export function survival(p: { mean: number; p99: number; p50?: number; p90?: number }, x: number): number {
+  // with a p90 as well, log survival runs straight in log latency between (p50, ½), (p90, 1/10) and
+  // (p99, 1/100), and on past p99 at the last slope: a bimodal endpoint (most fast, 1% slow) keeps
+  // its slow mode at p99 instead of spreading it over everything above the median
+  if (p.p50 && p.p90 && p.p50 > 0 && p.p90 > p.p50 * 1.01 && p.p99 > p.p90 * 1.01 && x > 0) {
+    const L = Math.log;
+    if (x <= p.p90) {
+      const sigma = (L(p.p90) - L(p.p50)) / 1.2816;
+      return normalTail((L(x) - L(p.p50)) / sigma);
+    }
+    const slope = (L(0.01) - L(0.1)) / (L(p.p99) - L(p.p90));
+    return Math.min(0.1, Math.exp(L(0.1) + slope * (L(x) - L(p.p90))));
+  }
   if (p.p50 && p.p50 > 0 && p.p99 > p.p50 * 1.01 && x > 0) {
     const sigma = (Math.log(p.p99) - Math.log(p.p50)) / 2.3263;
     return normalTail((Math.log(x) - Math.log(p.p50)) / sigma);
@@ -236,11 +251,11 @@ export function survival(p: { mean: number; p99: number; p50?: number }, x: numb
 }
 
 /** p-quantile of a traffic-weighted mixture of endpoint latencies */
-export function mixtureQuantile(input: { w: number; mean: number; p99: number; p50?: number }[], tail = 0.01): number {
+export function mixtureQuantile(input: { w: number; mean: number; p99: number; p50?: number; p90?: number }[], tail = 0.01): number {
   // identical parts (the substeps of a steady bucket) are one part with their weights summed
-  const parts: { w: number; mean: number; p99: number; p50?: number }[] = [];
+  const parts: { w: number; mean: number; p99: number; p50?: number; p90?: number }[] = [];
   for (const p of input) {
-    const same = parts.find((q) => q.mean === p.mean && q.p99 === p.p99 && q.p50 === p.p50);
+    const same = parts.find((q) => q.mean === p.mean && q.p99 === p.p99 && q.p50 === p.p50 && q.p90 === p.p90);
     if (same) same.w += p.w;
     else parts.push({ ...p });
   }
@@ -502,7 +517,10 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
           const ex0 = Math.max(0, ps.selfP99 - ps.selfMean);
           ex2 += (w * keep * Math.max(0, l.p99 - l.mean - ex0)) ** 2;
         }
-        const p99 = mean + Math.sqrt(ep.baseExcessMs ** 2 + ep.tail ** 2 * ex2);
+        // one CFS stall at the plan's limits: the longest on the path (they rarely coincide)
+        let stall = 0;
+        if (ep.stalls) for (const x of ep.stalls) if (!lat[x.service] || lat[x.service].err < 1) stall = Math.max(stall, cfsStallMs(plan.services[x.service]?.cpuLimit ?? x.limit));
+        const p99 = mean + stall + Math.sqrt(ep.baseExcessMs ** 2 + ep.tail ** 2 * ex2);
         const late = exceed(mean, p99, ep.timeoutMs);
         // a failed call to any service on the request's path fails the request
         let ok = 1;
@@ -519,14 +537,16 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
         o.rps[i] += base / sub;
         o.errorRate[i] += fail / sub;
         // the median moves with the mean: everything that waits, waits for everyone
-        const p50 = ep.baseP50Ms ? Math.min(ep.timeoutMs, ep.baseP50Ms + Math.max(0, seenMean - zeroMean[e])) : 0;
+        const shift = Math.max(0, seenMean - zeroMean[e]);
+        const p50 = ep.baseP50Ms ? Math.min(ep.timeoutMs, ep.baseP50Ms + shift) : 0;
+        const p90 = ep.baseP90Ms && p50 > 0 ? Math.min(ep.timeoutMs, ep.baseP90Ms + shift) : 0;
         o.meanMs[i] += seenMean / sub;
         o.p99Ms[i] += seenP99 / sub;
         o.p50Ms[i] += p50 / sub;
         acc.rps += base / sub;
         acc.fail += (base * fail) / sub;
         acc.late += (base * late) / sub;
-        acc.parts.push({ w: base / sub, mean: seenMean, p99: seenP99, ...(p50 > 0 && late <= 0.01 ? { p50 } : {}) });
+        acc.parts.push({ w: base / sub, mean: seenMean, p99: seenP99, ...(p50 > 0 && late <= 0.01 ? { p50, ...(p90 > p50 && p90 < seenP99 ? { p90 } : {}) } : {}) });
         acc.timeout = Math.max(acc.timeout, ep.timeoutMs);
       }
 
@@ -713,6 +733,9 @@ export function runPlan(plan: Plan, traffic: Traffic, opts: { substepS?: number;
 }
 
 /** a plan that reproduces the model as it was (observed replicas, no changes) */
+/** the wait a one-core burst sees once it has spent its CFS quota: the rest of the 100 ms period */
+export const cfsStallMs = (limit: number | null) => (limit && limit < 1 ? (1 - limit) * 100 : 0);
+
 export function basePlan(model: Model, observed?: Record<string, Num[] | undefined>): Plan {
   const services: Record<string, ServicePlan> = {};
   for (const [id, s] of Object.entries(model.services)) {
@@ -741,7 +764,7 @@ export function basePlan(model: Model, observed?: Record<string, Num[] | undefin
   }
   const endpoints: Record<string, EndpointPlan> = {};
   for (const [id, e] of Object.entries(model.endpoints))
-    endpoints[id] = { id, service: e.service, visits: e.visits, calls: e.calls, weights: e.weights, overheadMs: e.overheadMs, baseExcessMs: e.baseExcessMs, baseP50Ms: e.baseP50Ms, tail: e.tail, errorRate: e.errorRate, errorSlope: e.errorSlope, bytes: e.bytes, egressBytes: e.egressBytes, timeoutMs: model.timeoutMs, slo: e.slo };
+    endpoints[id] = { id, service: e.service, visits: e.visits, calls: e.calls, weights: e.weights, overheadMs: e.overheadMs, baseExcessMs: e.baseExcessMs, baseP50Ms: e.baseP50Ms, baseP90Ms: e.baseP90Ms, tail: e.tail, errorRate: e.errorRate, errorSlope: e.errorSlope, ...(e.stalls ? { stalls: e.stalls.map((x) => ({ ...x })) } : {}), bytes: e.bytes, egressBytes: e.egressBytes, timeoutMs: model.timeoutMs, slo: e.slo };
   const c = model.cluster;
   const cluster: ClusterPlan | undefined = c ? { node: { cpu: c.node.cpu, memoryGb: c.node.memoryGb, perHour: c.node.perHour }, nodes: c.nodes, autoscaled: c.autoscaled, minNodes: c.autoscaled ? 1 : c.nodes, maxNodes: c.autoscaled ? Math.max(c.maxNodes * 4, c.maxNodes + 10) : c.nodes, packing: c.packing, other: { ...c.other }, scaleDownS: 600, provisionS: c.provisionS ?? 90 } : undefined;
   return { services, endpoints, transfer: model.transfer, unattributedPerHour: model.unattributedPerHour, slo: model.slo, ...(cluster ? { cluster } : {}) };

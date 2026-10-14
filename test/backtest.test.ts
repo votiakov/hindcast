@@ -8,7 +8,7 @@ import { importBundle } from '../src/backtest/import/manifest';
 import { exportPlan } from '../src/backtest/import/promExport';
 import { erlangC, mmcWait } from '../src/backtest/queueing';
 import { calibrate, trafficOf } from '../src/backtest/calibrate';
-import { basePlan, runPlan } from '../src/backtest/engine';
+import { basePlan, cfsStallMs, mixtureQuantile, runPlan, survival } from '../src/backtest/engine';
 import { applyStrategy } from '../src/backtest/strategy';
 import { backtest } from '../src/backtest/backtest';
 import type { Model } from '../src/backtest/model';
@@ -762,5 +762,29 @@ describe('metastable failures', () => {
     // (1.8 − 0.2) / (1 − 0.2) = ×2 of the CPU left for requests
     expect(p.services.api.perReplicaRps).toBeCloseTo(plan.services.api.perReplicaRps * 2, 6);
     expect(p.services.api.overloadedRps).toBeCloseTo(40, 6);
+  });
+});
+
+describe('latency tails under a CPU quota', () => {
+  it('a CFS stall is the rest of the 100 ms period after a one-core burst spends the quota', () => {
+    expect(cfsStallMs(0.5)).toBeCloseTo(50);
+    expect(cfsStallMs(0.75)).toBeCloseTo(25);
+    expect(cfsStallMs(1)).toBe(0);
+    expect(cfsStallMs(2)).toBe(0);
+    expect(cfsStallMs(null)).toBe(0);
+  });
+
+  it('a p90 keeps a bimodal endpoint’s slow mode at its p99 instead of spreading it above the median', () => {
+    // 85% fast endpoints (p99 15 ms) and 15% of an endpoint that is fast but 1% very slow
+    const fast = { w: 0.85, mean: 4, p50: 3, p99: 15 };
+    const bimodal = { w: 0.15, mean: 7, p50: 5, p99: 216 };
+    const without = mixtureQuantile([fast, bimodal]);
+    const withP90 = mixtureQuantile([fast, { ...bimodal, p90: 9 }]);
+    expect(withP90).toBeLessThan(without);
+    expect(withP90).toBeLessThan(40);
+    // survival passes through the three anchors
+    expect(survival({ ...bimodal, p90: 9 }, 9)).toBeCloseTo(0.1, 2);
+    expect(survival({ ...bimodal, p90: 9 }, 216)).toBeCloseTo(0.01, 3);
+    expect(survival({ ...bimodal, p90: 9 }, 5)).toBeCloseTo(0.5, 2);
   });
 });

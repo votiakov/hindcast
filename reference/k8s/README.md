@@ -63,11 +63,11 @@ spends any minute out of SLO.
 
 | run | question | measured (k6, every request) | backtest before the day | model on the day’s real traffic | naive CPU ratio |
 |---|---|---|---|---|---|
-| `launch` | As built (3 frontend replicas), on launch day? | **pass**: p99 419 ms, errors 0.00%, 0.5 min out of SLO | pass ✅, 0 min | p99 132 ms, errors 0.00%, 0 min | pass ✅ at 84% CPU |
-| `normal-2` | 2 frontend replicas instead of 3, on an ordinary day? | **pass**: p99 142 ms, errors 0.02%, 1 min out of SLO | pass ✅ (medium confidence), 0 min | p99 83 ms, errors 0.00%, 0 min | pass ✅ at 57% CPU |
+| `launch` | As built (3 frontend replicas), on launch day? | **pass**: p99 419 ms, errors 0.00%, 0.5 min out of SLO | pass ✅, 0 min | p99 116 ms, errors 0.00%, 0 min | pass ✅ at 84% CPU |
+| `normal-2` | 2 frontend replicas instead of 3, on an ordinary day? | **pass**: p99 142 ms, errors 0.02%, 1 min out of SLO | pass ✅ (medium confidence), 0 min | p99 81 ms, errors 0.00%, 0 min | pass ✅ at 57% CPU |
 | `launch-2` | 2 frontend replicas instead of 3, on launch day? | **fail**: p99 5233 ms, errors 45.3%, 11.5 min out of SLO | fail ✅ (low confidence), 19.3 min | p99 5000 ms, errors 61.1%, 15.5 min | fail ✅ at 126% CPU |
-| `normal-1` | 1 frontend replica, on an ordinary day? | **fail**: p99 5007 ms, errors 27.9%, 19.5 min out of SLO | fail ✅ (low confidence), 10.5 min | p99 100 ms, errors 0.00%, 0 min | fail ✅ at 113% CPU |
-| `launch-hpa` | An HPA (1–3 replicas at 60% CPU) instead of 3 fixed, on launch day? | **fail**: p99 159 ms, errors 0.08%, 1.5 min out of SLO | fail ✅ (low confidence), 1.5 min | p99 3969 ms, errors 1.2%, 2 min | pass ❌ at 84% CPU |
+| `normal-1` | 1 frontend replica, on an ordinary day? | **fail**: p99 5007 ms, errors 27.9%, 19.5 min out of SLO | fail ✅ (low confidence), 10.5 min | p99 83 ms, errors 0.00%, 0 min | fail ✅ at 113% CPU |
+| `launch-hpa` | An HPA (1–3 replicas at 60% CPU) instead of 3 fixed, on launch day? | **fail**: p99 159 ms, errors 0.08%, 1.5 min out of SLO | fail ✅ (low confidence), 1.5 min | p99 3742 ms, errors 1.1%, 2 min | pass ❌ at 84% CPU |
 
 Backtest verdicts: **5 right**, 0 inconclusive (it said to load-test), 0 wrong, of 5. Naive CPU ratio: 4 right.
 
@@ -75,10 +75,10 @@ Backtest verdicts: **5 right**, 0 inconclusive (it said to load-test), 0 wrong, 
 
 | run | question | measured (k6, every request) | backtest before the day | model on the day’s real traffic | naive CPU ratio |
 |---|---|---|---|---|---|
-| `launch-2c` | 2 frontend replicas at 1 core instead of 3 at half a core, on launch day? | **fail**: p99 596 ms, errors 0.33%, 3.5 min out of SLO | inconclusive ⚠️ (low confidence), 0 min | p99 110 ms, errors 0.00%, 0 min | pass ❌ at 63% CPU |
-| `normal-1c` | 1 frontend replica at 1 core, on an ordinary day? | **pass**: p99 28 ms, errors 0.00%, 0 min out of SLO | pass ✅ (medium confidence), 0 min | p99 98 ms, errors 0.00%, 0 min | pass ✅ at 57% CPU |
-| `normal-1-750` | 1 frontend replica at 750m, on an ordinary day? | **pass**: p99 55 ms, errors 0.00%, 0 min out of SLO | pass ✅ (medium confidence), 0 min | p99 101 ms, errors 0.00%, 0 min | pass ✅ at 76% CPU |
-| `launch-x1.3` | As built, on a launch day with 30% more traffic? | **fail**: p99 1178 ms, errors 0.29%, 5.5 min out of SLO | fail ✅, 9 min | p99 5000 ms, errors 5.7%, 3.5 min | fail ✅ at 109% CPU |
+| `launch-2c` | 2 frontend replicas at 1 core instead of 3 at half a core, on launch day? | **fail**: p99 596 ms, errors 0.33%, 3.5 min out of SLO | inconclusive ⚠️ (low confidence), 0 min | p99 72 ms, errors 0.00%, 0 min | pass ❌ at 63% CPU |
+| `normal-1c` | 1 frontend replica at 1 core, on an ordinary day? | **pass**: p99 28 ms, errors 0.00%, 0 min out of SLO | pass ✅ (medium confidence), 0 min | p99 46 ms, errors 0.00%, 0 min | pass ✅ at 57% CPU |
+| `normal-1-750` | 1 frontend replica at 750m, on an ordinary day? | **pass**: p99 55 ms, errors 0.00%, 0 min out of SLO | pass ✅ (medium confidence), 0 min | p99 65 ms, errors 0.00%, 0 min | pass ✅ at 76% CPU |
+| `launch-x1.3` | As built, on a launch day with 30% more traffic? | **fail**: p99 1178 ms, errors 0.29%, 5.5 min out of SLO | fail ✅, 9 min | p99 5000 ms, errors 5.3%, 3.5 min | fail ✅ at 109% CPU |
 
 Backtest verdicts: **3 right**, 1 inconclusive (it said to load-test), 0 wrong, of 4. Naive CPU ratio: 3 right.
 
@@ -86,22 +86,22 @@ Backtest verdicts: **3 right**, 1 inconclusive (it said to load-test), 0 wrong, 
 
 | run | question | measured (k6, every request) | backtest before the day | model on the day’s real traffic | naive CPU ratio |
 |---|---|---|---|---|---|
-| `launch` | As built (3 frontend replicas), on launch day? | **pass**: p99 419 ms, errors 0.00%, 0.5 min out of SLO | pass ✅, 0 min | p99 279 ms, errors 0.00%, 0 min | pass ✅ at 84% CPU |
-| `normal-2` | 2 frontend replicas instead of 3, on an ordinary day? | **pass**: p99 142 ms, errors 0.02%, 1 min out of SLO | inconclusive ⚠️ (low confidence), 0 min | p99 258 ms, errors 0.00%, 0 min | pass ✅ at 57% CPU |
-| `launch-2` | 2 frontend replicas instead of 3, on launch day? | **fail**: p99 5233 ms, errors 45.3%, 11.5 min out of SLO | fail ✅ (low confidence), 4.5 min | p99 5000 ms, errors 22.4%, 9.5 min | fail ✅ at 126% CPU |
-| `normal-1` | 1 frontend replica, on an ordinary day? | **fail**: p99 5007 ms, errors 27.9%, 19.5 min out of SLO | fail ✅ (low confidence), 1 min | p99 284 ms, errors 0.00%, 0.5 min | fail ✅ at 113% CPU |
-| `launch-hpa` | An HPA (1–3 replicas at 60% CPU) instead of 3 fixed, on launch day? | **fail**: p99 159 ms, errors 0.08%, 1.5 min out of SLO | inconclusive ⚠️ (low confidence), 0.5 min | p99 311 ms, errors 0.00%, 0 min | pass ❌ at 84% CPU |
+| `launch` | As built (3 frontend replicas), on launch day? | **pass**: p99 419 ms, errors 0.00%, 0.5 min out of SLO | pass ✅, 0 min | p99 150 ms, errors 0.00%, 0 min | pass ✅ at 84% CPU |
+| `normal-2` | 2 frontend replicas instead of 3, on an ordinary day? | **pass**: p99 142 ms, errors 0.02%, 1 min out of SLO | inconclusive ⚠️ (low confidence), 0 min | p99 118 ms, errors 0.00%, 0 min | pass ✅ at 57% CPU |
+| `launch-2` | 2 frontend replicas instead of 3, on launch day? | **fail**: p99 5233 ms, errors 45.3%, 11.5 min out of SLO | fail ✅ (low confidence), 4 min | p99 5000 ms, errors 21.7%, 9.5 min | fail ✅ at 126% CPU |
+| `normal-1` | 1 frontend replica, on an ordinary day? | **fail**: p99 5007 ms, errors 27.9%, 19.5 min out of SLO | inconclusive ⚠️ (low confidence), 0 min | p99 212 ms, errors 0.00%, 0 min | fail ✅ at 113% CPU |
+| `launch-hpa` | An HPA (1–3 replicas at 60% CPU) instead of 3 fixed, on launch day? | **fail**: p99 159 ms, errors 0.08%, 1.5 min out of SLO | inconclusive ⚠️ (low confidence), 0.5 min | p99 179 ms, errors 0.00%, 0 min | pass ❌ at 84% CPU |
 
-Backtest verdicts: **3 right**, 2 inconclusive (it said to load-test), 0 wrong, of 5. Naive CPU ratio: 4 right.
+Backtest verdicts: **2 right**, 3 inconclusive (it said to load-test), 0 wrong, of 5. Naive CPU ratio: 4 right.
 
 *Out of sample* — added after the throttle model was designed on the runs above; the verdicts are the ones committed in `validation/predictions-oos.json` before each run was recorded:
 
 | run | question | measured (k6, every request) | backtest before the day | model on the day’s real traffic | naive CPU ratio |
 |---|---|---|---|---|---|
-| `launch-2c` | 2 frontend replicas at 1 core instead of 3 at half a core, on launch day? | **fail**: p99 596 ms, errors 0.33%, 3.5 min out of SLO | inconclusive ⚠️ (low confidence), 0 min | p99 280 ms, errors 0.00%, 0 min | pass ❌ at 63% CPU |
-| `normal-1c` | 1 frontend replica at 1 core, on an ordinary day? | **pass**: p99 28 ms, errors 0.00%, 0 min out of SLO | inconclusive ⚠️ (low confidence), 0 min | p99 253 ms, errors 0.00%, 0 min | pass ✅ at 57% CPU |
-| `normal-1-750` | 1 frontend replica at 750m, on an ordinary day? | **pass**: p99 55 ms, errors 0.00%, 0 min out of SLO | inconclusive ⚠️ (low confidence), 0 min | p99 256 ms, errors 0.00%, 0 min | pass ✅ at 76% CPU |
-| `launch-x1.3` | As built, on a launch day with 30% more traffic? | **fail**: p99 1178 ms, errors 0.29%, 5.5 min out of SLO | pass ❌, 0 min | p99 371 ms, errors 0.00%, 0.5 min | fail ✅ at 109% CPU |
+| `launch-2c` | 2 frontend replicas at 1 core instead of 3 at half a core, on launch day? | **fail**: p99 596 ms, errors 0.33%, 3.5 min out of SLO | inconclusive ⚠️ (low confidence), 0 min | p99 134 ms, errors 0.00%, 0 min | pass ❌ at 63% CPU |
+| `normal-1c` | 1 frontend replica at 1 core, on an ordinary day? | **pass**: p99 28 ms, errors 0.00%, 0 min out of SLO | inconclusive ⚠️ (low confidence), 0 min | p99 88 ms, errors 0.00%, 0 min | pass ✅ at 57% CPU |
+| `normal-1-750` | 1 frontend replica at 750m, on an ordinary day? | **pass**: p99 55 ms, errors 0.00%, 0 min out of SLO | inconclusive ⚠️ (low confidence), 0 min | p99 101 ms, errors 0.00%, 0 min | pass ✅ at 76% CPU |
+| `launch-x1.3` | As built, on a launch day with 30% more traffic? | **fail**: p99 1178 ms, errors 0.29%, 5.5 min out of SLO | pass ❌, 0 min | p99 335 ms, errors 0.00%, 0.5 min | fail ✅ at 109% CPU |
 
 Backtest verdicts: **0 right**, 3 inconclusive (it said to load-test), 1 wrong, of 4. Naive CPU ratio: 3 right.
 
@@ -171,16 +171,26 @@ The first 2 minutes of every run are left out of the scoring, measured and predi
   Measured: +10.5 minutes, 32,886 failed requests. The replay has no term for callers that stay
   broken after their dependency is back, such as reconnect backoff or stuck channels. Treat its
   recovery time as the platform's, and the clients' as extra.
-- **It gets the tail wrong both ways under a CPU limit.** On launch day the frontend's p99 climbed
-  to 500–700 ms at 60% CPU, as quota stalls and a few slow requests on one thread compound. On an
-  ordinary day at 1 core, users saw a p99 of 28 ms, against about 140 ms at half a core. The calm-day
-  model said 83–101 ms for both, because its baseline tail was read at half a core. The
-  load-tested model's p99 misses by more than 20% on eight of nine runs.
+- **A CPU limit below one core adds one CFS stall to every endpoint's p99.** The client measured
+  the same medians at every limit. The p99 of almost every endpoint moved together: 60–80 ms at half a
+  core, 33–43 ms at 750m, 10–15 ms at 1 core. That is one wait of (1 − limit) × 100 ms: the rest of
+  the CFS period after a single-threaded burst has spent its quota. The traces can't show it; the
+  wait sits outside the frontend's spans.
 
-  The traces don't show where the stall goes. The frontend's own time and the gaps around its calls
-  are the same at every limit, so the wait sits outside its spans, most likely before the server
-  span starts. That makes it invisible to a model built from traces. A per-limit tail term is the
-  next gap.
+  Calibration now takes that stall out of each endpoint's baseline tail, and the replay puts it back
+  at the plan's limit. Two other fixes found on the way:
+  - a path mean summed from self times above the measured mean (checkout: 59.6 ms against 21.8 ms)
+    is scaled down to the measured mean;
+  - endpoint tails are shaped through p50, p90 and p99 from the traces, so an endpoint that is fast
+    except for 1% of slow requests keeps them at its p99.
+
+  At 1 core the calm-day model's p99 went from 98 to 46 ms (measured 28); at 750m from 101 to 65
+  (55). The load-tested model went from 253 to 88 and from 256 to 101. The cost: the load-tested
+  model's "fail" on one replica (normal-1) is now "inconclusive". That fail had come from the
+  inflated tail; its load-test capacity of 169 req/s per pod sits just above the day's 164.5 peak.
+- **Busy days are still underestimated.** On launch day the frontend's p99 climbed to 500–700 ms at
+  60% CPU, where the model says 116–150 ms. Stalls stack as more periods are throttled, and the
+  model only counts one. That is the next gap.
 - **It knew when it didn't know.** Where a change pushed the frontend past anything the history had
   shown, `verify_change` said *inconclusive*, never pass. The recorded agent demo
   ([demos/agent.tape](../../demos/agent.tape)) predates the throttle model: it said to load-test

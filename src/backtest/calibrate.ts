@@ -1,6 +1,6 @@
 import { meanOf, quantile, type Dataset, type EndpointSeries, type Num } from './dataset';
 import { AWS_TRANSFER, type Capacity, type ClusterModel, type EndpointModel, type FitStatus, type Model, type ServiceModel } from './model';
-import { basePlan, runPlan, type Traffic } from './engine';
+import { basePlan, cfsStallMs, runPlan, type Traffic } from './engine';
 import { mmcWait } from './queueing';
 
 /**
@@ -938,6 +938,14 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
     // the traces' mean covers the whole history, overloads included: a low-load median is closer
     const measuredMean = isFinite(lowMean) ? lowMean : isFinite(lowP50) && lowP50 > 0 ? lowP50 : shape?.lowMeanMs ?? shape?.meanMs ?? pathMean;
     const measuredP99 = isFinite(lowP99) ? lowP99 : shape?.lowP99Ms ?? shape?.p99Ms ?? measuredMean * 1.5;
+    // services' self times summed along the critical path can come out above what the endpoint
+    // measured (calls that overlap, self means read over the whole history): scale the weights so the
+    // quiet history replays the mean it measured
+    if (pathMean > measuredMean * 1.1 && measuredMean > 0) {
+      const k = measuredMean / pathMean;
+      for (const svc of Object.keys(weights)) weights[svc] *= k;
+      notes.push(`its services' self times along the path add up to ${pathMean.toFixed(1)} ms, above the ${measuredMean.toFixed(1)} ms it measured at low load: path weights scaled by ${k.toFixed(2)}`);
+    }
     // baseline errors: request-weighted over the low-traffic buckets (a median would read 0 for rare errors)
     let errN = 0;
     let errF = 0;
@@ -970,6 +978,17 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
         notes.push(`errors grow with traffic: ${(fit.intercept * 100).toFixed(2)}% + ${(fit.slope * 100).toFixed(3)}% per req/s`);
       }
     }
+    // services on the path that ran throttled under a limit below one core: their p99 carries a
+    // CFS stall, read out of the baseline so a plan's limit can put it back at its own length
+    const stalls: { service: string; limit: number }[] = [];
+    for (const svc of Object.keys(shape?.visits ?? { [ser?.service ?? id.split(' ')[0]]: 1 })) {
+      const lim = services[svc]?.cpuLimit;
+      if (!lim || lim >= 1 || services[svc]?.hostedBy) continue;
+      const th = median(lowIdx.map((i) => vals(d.services[svc]?.cpuThrottled, i)).filter((x): x is number => x !== null));
+      if (isFinite(th) && th >= 0.01) stalls.push({ service: svc, limit: lim });
+    }
+    const stallMs = Math.max(0, ...stalls.map((x) => cfsStallMs(x.limit)));
+    if (stalls.length) notes.push(`${stalls.map((x) => x.service).join(', ')} ran throttled under a CPU limit below one core: ${Math.round(stallMs)} ms of the p99 is read as a CFS stall, which a higher limit shortens`);
     const e: EndpointModel = {
       id,
       service: shape?.service ?? ser?.service ?? id.split(' ')[0],
@@ -977,12 +996,14 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
       visits: shape?.visits ?? { [ser?.service ?? id.split(' ')[0]]: 1 },
       calls: shape?.calls ?? {},
       weights: shape ? weights : { [ser?.service ?? id.split(' ')[0]]: 1 },
-      overheadMs: Math.max(0, measuredMean - pathMean),
-      baseExcessMs: Math.max(0, measuredP99 - measuredMean),
-      ...(isFinite(lowP50) && lowP50 > 0 ? { baseP50Ms: lowP50 } : {}),
+      overheadMs: Math.max(0, measuredMean - Math.min(pathMean, measuredMean)),
+      baseExcessMs: Math.max(0, measuredP99 - measuredMean - stallMs),
+      ...(isFinite(lowP50) && lowP50 > 0 ? { baseP50Ms: lowP50 } : shape?.lowP50Ms ?? shape?.p50Ms ? { baseP50Ms: shape.lowP50Ms ?? shape.p50Ms } : {}),
+      ...(!isFinite(lowP99) && (shape?.lowP90Ms ?? shape?.p90Ms) ? { baseP90Ms: shape!.lowP90Ms ?? shape!.p90Ms } : {}),
       tail: 1,
       errorRate: errs.length ? Math.min(0.5, errs[0]) : shape?.errorRate ?? 0,
       ...(errorSlope ? { errorSlope } : {}),
+      ...(stalls.length ? { stalls } : {}),
       bytes: shape?.bytes ?? {},
       egressBytes: 0,
       slo: opts.endpoints?.[id]?.slo ?? slo,

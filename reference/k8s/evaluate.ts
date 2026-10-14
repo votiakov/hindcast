@@ -126,6 +126,15 @@ async function telemetryOf(runs: string[], out: string, settle = false): Promise
   let d: Dataset;
   if (existsSync(join(out, 'dataset.json')) && !process.argv.includes('--refresh')) {
     d = JSON.parse(readFileSync(join(out, 'dataset.json'), 'utf8')) as Dataset;
+    // collected before the trace importer read endpoint medians and p90s: imported again from the
+    // files the collection kept (Jaeger no longer has the traces)
+    const mp = ['hindcast.import.yaml', 'bottleneck.import.yaml'].map((m) => join(out, 'telemetry', m)).find((x) => existsSync(x));
+    if (mp && d.topology && Object.values(d.topology.endpoints).some((e) => e.p50Ms === undefined)) {
+      const again = importBundle(parse(readFileSync(mp, 'utf8')), fileAccess(mp)).dataset;
+      d = { ...again, ...(d.podsByNode ? { podsByNode: d.podsByNode } : {}), ...(d.nodeZones ? { nodeZones: d.nodeZones } : {}), ...(d.hpa ? { hpa: d.hpa } : {}) };
+      writeFileSync(join(out, 'dataset.json'), JSON.stringify(d));
+      console.warn(`(${out}: imported again from its collected files)`);
+    }
     try {
       d = await fillLater(d, out);
     } catch (e) {
