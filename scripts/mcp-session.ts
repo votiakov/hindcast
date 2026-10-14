@@ -7,8 +7,10 @@ export async function session(cmd: string, args: string[], messages: Record<stri
   const out: Record<string, unknown>[] = [];
   let buf = '';
   const waiting = new Map<unknown, () => void>();
-  p.stdout.on('data', (b: Buffer) => {
-    buf += b.toString('utf8');
+  // decode as a stream: a character split across two chunks must not become two replacement marks
+  p.stdout.setEncoding('utf8');
+  p.stdout.on('data', (b: string) => {
+    buf += b;
     let i: number;
     while ((i = buf.indexOf('\n')) >= 0) {
       const line = buf.slice(0, i).trim();
