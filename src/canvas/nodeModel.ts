@@ -50,7 +50,8 @@ export function nodeView(d0: SystemNodeData, st: NodeStats | undefined, running:
   const dropRps = st?.dropRps ?? 0;
 
   let health: Health;
-  if (d.kind === 'client') health = up ? (inRps > 0.5 ? 'ok' : 'idle') : 'down';
+  // users have no capacity: their health is how many of their requests succeed
+  if (d.kind === 'client') health = !up ? 'down' : inRps <= 0.5 ? 'idle' : (st?.success ?? 1) < 0.9 ? 'hot' : (st?.success ?? 1) < 0.99 ? 'warm' : 'ok';
   else if (d.kind === 'queue') health = !up ? 'down' : dropRps > 1 ? 'hot' : (st?.queue ?? 0) > 500 ? 'warm' : inRps < 0.5 ? 'idle' : 'ok';
   else if (failover === 'electing') health = 'hot';
   else health = healthOf(util, dropRps, inRps, up);
@@ -159,6 +160,7 @@ export function explain(d: SystemNodeData, st: NodeStats | undefined, v: NodeVie
   const cap = capacityOf(d, st.reachable);
   if (v.failedOver) return { tone: 'info', text: 'Primary is down. A replica was promoted and now takes writes; this node only forwards.' };
   if (v.electing) return { tone: 'bad', text: 'Primary lost. Electing a replica — writes fail until one is promoted; reads continue on replicas.' };
+  if (d.kind === 'client' && v.up && st.inRps > 0.5 && st.success < 0.99) return { tone: st.success < 0.9 ? 'bad' : 'warn', text: `${Math.round((1 - st.success) * 1000) / 10}% of these users' requests fail. Follow the red links to where they are lost.` };
   if (!v.up) return { tone: 'bad', text: 'Unavailable. Every request routed here fails unless an upstream load balancer can route around it.' };
   if (d.faultRate) return { tone: 'bad', text: `Injected fault: ${Math.round(d.faultRate * 100)}% of requests here fail — a bad deploy looks exactly like this. Callers with retries amplify it.` };
   if (d.faultLatencyMs) return { tone: 'bad', text: `Gray failure: +${fmtMs(d.faultLatencyMs)} on every request. It is still "up", so health checks pass — but each worker is busy longer, so throughput drops too.` };

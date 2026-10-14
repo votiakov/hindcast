@@ -621,7 +621,8 @@ export const useSim = create<State>()((set, get) => {
         // the sandbox reopens the last design you were working on
         const saved = mode === 'sandbox' ? readAutosave() : null;
         const graph = saved?.graph ?? lesson.initial;
-        set((s) => ({ mode, focus, running: false, simT: 0, spikeUntil: 0, designId: saved?.designId ?? null, readRatio: mode === 'sandbox' ? s.readRatio : lesson.readRatio ?? 0.8, lesson: freshLesson(lesson), boards: { ...s.boards, main: makeBoard('main', saved?.name ?? (mode === 'sandbox' ? 'Untitled' : 'Main'), graph, s.boards.main.version + 1) } }));
+        // Live's story ramps its traffic up to overload: a board opened from there starts calm
+        set((s) => ({ mode, focus, running: false, simT: 0, spikeUntil: 0, ...(s.mode === 'home' && mode === 'sandbox' ? { traffic: 60, pattern: 'steady' as const } : {}), designId: saved?.designId ?? null, readRatio: mode === 'sandbox' ? s.readRatio : lesson.readRatio ?? 0.8, lesson: freshLesson(lesson), boards: { ...s.boards, main: makeBoard('main', saved?.name ?? (mode === 'sandbox' ? 'Untitled' : 'Main'), graph, s.boards.main.version + 1) } }));
       }
     },
     reset: () => {

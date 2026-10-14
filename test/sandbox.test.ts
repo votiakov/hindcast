@@ -350,7 +350,10 @@ describe('what the board says about a component matches its numbers', () => {
         const x = explain(d, st, v);
         const cap = capacityOf(d, st.reachable);
         if (x?.text.startsWith('Overloaded') && st.inRps < cap * 0.98) bad.push(`${n.id} (${d.kind}): "${x.text}" at ${st.inRps.toFixed(0)}/${cap.toFixed(0)} req/s ${JSON.stringify(spec.components.find((c) => c.id === n.id))} → ${JSON.stringify(spec.connections.filter((c) => c[0] === n.id).map((c) => spec.components.find((x) => x.id === c[1])))}`);
-        if (v.health === 'hot' && st.util < 0.9 && st.dropRps <= Math.max(1, st.inRps * 0.02)) bad.push(`${n.id} (${d.kind}): hot at util ${st.util.toFixed(2)} with no drops`);
+        // users are "hot" when their requests fail (they have no capacity of their own)
+        if (d.kind === 'client' && v.health === 'hot' && st.success >= 0.9) bad.push(`users hot at ${(st.success * 100).toFixed(1)}% success`);
+        if (d.kind === 'client' && v.health === 'ok' && st.success < 0.99) bad.push(`users "Healthy" at ${(st.success * 100).toFixed(1)}% success`);
+        if (d.kind !== 'client' && v.health === 'hot' && st.util < 0.9 && st.dropRps <= Math.max(1, st.inRps * 0.02)) bad.push(`${n.id} (${d.kind}): hot at util ${st.util.toFixed(2)} with no drops`);
       }
     }
     expect(bad.slice(0, 10)).toEqual([]);
