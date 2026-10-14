@@ -929,7 +929,7 @@
       },
       "reasons": [
        "costs the same, with no change in time out of SLO",
-       "frees 0.5 cores and 512 MiB of requests, but the node pool is fixed at 1.9999999999999998: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 26% of it (30% before)",
+       "frees 0.5 cores and 512 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 26% of it (30% before)",
        "headroom drops from 405.4 to 270.5 req/s (the history peaked at 164.5)"
       ],
       "warnings": [
@@ -1806,7 +1806,7 @@
        "adds 15.8 min out of SLO (10–90%: 0 … 22.6)",
        "worst at 2026-10-13T17:04:00Z: frontend at 136% of capacity (365.1 req/s on 2 × 134.1 req/s), 27.4 s queue",
        "worse for frontend GET /, frontend GET /api/cart, frontend GET /api/data, frontend GET /api/products/{id}, frontend GET /api/recommendations, frontend POST /api/cart, frontend POST /api/checkout against their own SLOs",
-       "frees 0.5 cores and 512 MiB of requests, but the node pool is fixed at 1.9999999999999998: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 26% of it (30% before)",
+       "frees 0.5 cores and 512 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 26% of it (30% before)",
        "headroom drops from 405.4 to 270.5 req/s (the replayed traffic peaks at 365.1)"
       ],
       "warnings": [
@@ -2685,7 +2685,9 @@
        "adds 10.5 min out of SLO (10–90%: 7.4 … 15.5)",
        "worst at 2026-10-13T17:07:00Z: frontend at 94% of capacity (126.3 req/s on 1 × 134.1 req/s), 16.2 s queue",
        "worse for frontend GET /, frontend GET /api/cart, frontend GET /api/data, frontend GET /api/products/{id}, frontend GET /api/recommendations, frontend POST /api/cart, frontend POST /api/checkout against their own SLOs",
-       "frees 1 cores and 1024 MiB of requests, but the node pool is fixed at 1.9999999999999998: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 23% of it (30% before)",
+       "frees 1 cores and 1024 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 23% of it (30% before)",
+       "frontend would run on one node: losing bnk8s-worker takes it down",
+       "losing bnk8s-worker at the busiest moment: 7.3 min out of SLO as built, 9 with the change (55,802 failed requests)",
        "headroom drops from 405.4 to 135.3 req/s (the history peaked at 164.5)"
       ],
       "warnings": [
@@ -3561,7 +3563,8 @@
        "costs the same; on Oct 13 at 16:56 UTC it would have caused 1 minute out of SLO (frontend at 113% of capacity (152.1 req/s on 1 × 134.1 req/s), 2.4 s queue)",
        "adds 1 min out of SLO (10–90%: 1 … 1.5)",
        "worst at 2026-10-13T16:56:30Z: frontend at 113% of capacity (152.1 req/s on 1 × 134.1 req/s), 2.4 s queue",
-       "worse for frontend GET /, frontend GET /api/cart, frontend GET /api/data, frontend GET /api/products/{id}, frontend GET /api/recommendations, frontend POST /api/cart, frontend POST /api/checkout against their own SLOs"
+       "worse for frontend GET /, frontend GET /api/cart, frontend GET /api/data, frontend GET /api/products/{id}, frontend GET /api/recommendations, frontend POST /api/cart, frontend POST /api/checkout against their own SLOs",
+       "frontend would run on one node: losing bnk8s-worker takes it down"
       ],
       "warnings": [
        "frontend would run at 113% of a capacity the history never tested (peak 41%): the outcome rests on an extrapolated limit",
@@ -4418,6 +4421,1745 @@
      "agrees": {
       "backtest": true,
       "naive": false
+     }
+    },
+    {
+     "run": "launch-2c",
+     "question": "2 frontend replicas at 1 core instead of 3 at half a core, on launch day?",
+     "oos": true,
+     "exAnte": {
+      "verdict": "inconclusive",
+      "confidence": "low",
+      "minutesOutOfSlo": 0,
+      "peakP99Ms": 110,
+      "monthlyDelta": {
+       "p50": 13.7,
+       "lo": 13.7,
+       "hi": 13.7
+      },
+      "reasons": [
+       "costs $14/month more, with no change in time out of SLO",
+       "the backtest passes, but confidence is low (frontend would run at 65% of capacity, past the history's 41%: its capacity there is extrapolated) — load-test before trusting it"
+      ],
+      "warnings": [
+       "frontend would run at 65% of capacity, past the history's 41%: its capacity there is extrapolated",
+       "product-catalog would run at 51% of capacity, past the history's 23%: its capacity there is extrapolated",
+       "recommendation: the model fits it poorly, and this change pushes it harder than the history did",
+       "only 0.6 h of history: daily and weekly peaks may be missing",
+       "costs are AWS Fargate list prices, not your bill: discounts and Savings Plans are not in them"
+      ]
+     },
+     "exPost": {
+      "p99Ms": 110,
+      "errorRate": 0,
+      "minutesOutOfSlo": 0,
+      "frontendReplicasPeak": 1.9999999999999998
+     },
+     "measured": {
+      "p99Ms": 596,
+      "errorRate": 0.003251576547253019,
+      "minutesOutOfSlo": 3.5,
+      "requests": 299547,
+      "addedOverAsBuilt": 3
+     },
+     "series": {
+      "predicted": {
+       "rps": [
+        121.5,
+        15.6,
+        79.9,
+        77.8,
+        75.3,
+        74.3,
+        78.3,
+        79.1,
+        77.9,
+        74.4,
+        59.2,
+        52.6,
+        52.7,
+        64.2,
+        63.5,
+        50.3,
+        47.6,
+        51.3,
+        61.4,
+        61,
+        61.2,
+        63.6,
+        67.8,
+        95.2,
+        106.5,
+        124.5,
+        159.5,
+        147.9,
+        183.9,
+        278.7,
+        311.4,
+        331.6,
+        309,
+        317.6,
+        362.2,
+        285.4,
+        178.1,
+        228.6,
+        237.6,
+        226.5,
+        222.4,
+        214.6,
+        208.3,
+        189.8,
+        160.2,
+        152.9,
+        170.9,
+        188.1,
+        179,
+        168.6,
+        170.8,
+        160.3,
+        161.2,
+        173.5,
+        178.2,
+        177.7,
+        164.4,
+        145.8,
+        68.9,
+        68.4,
+        110.1,
+        110.4,
+        107.9,
+        104.4,
+        89,
+        74.4,
+        69.7,
+        18.6,
+        24.4,
+        65.5,
+        60.9,
+        78.2,
+        89.1,
+        72.3,
+        90.7,
+        83.4,
+        73.3,
+        74.5,
+        75.7,
+        92.3,
+        73.4
+       ],
+       "p99Ms": [
+        107,
+        106,
+        108,
+        108,
+        108,
+        106,
+        107,
+        108,
+        107,
+        108,
+        105,
+        105,
+        105,
+        104,
+        103,
+        101,
+        103,
+        102,
+        101,
+        101,
+        102,
+        106,
+        106,
+        108,
+        110,
+        110,
+        112,
+        111,
+        112,
+        115,
+        118,
+        125,
+        117,
+        118,
+        166,
+        110,
+        104,
+        106,
+        105,
+        107,
+        106,
+        101,
+        97,
+        90,
+        89,
+        88,
+        89,
+        94,
+        90,
+        93,
+        94,
+        92,
+        91,
+        91,
+        92,
+        92,
+        89,
+        87,
+        83,
+        83,
+        77,
+        68,
+        77,
+        76,
+        77,
+        77,
+        84,
+        88,
+        95,
+        95,
+        98,
+        103,
+        103,
+        103,
+        108,
+        105,
+        105,
+        104,
+        105,
+        103,
+        102
+       ],
+       "errorRate": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+       ],
+       "frontendReplicas": [
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998
+       ]
+      },
+      "measured": [
+       {
+        "rps": 0,
+        "p99Ms": null,
+        "errorRate": null
+       },
+       {
+        "rps": 0,
+        "p99Ms": null,
+        "errorRate": null
+       },
+       {
+        "rps": 0,
+        "p99Ms": null,
+        "errorRate": null
+       },
+       {
+        "rps": 0,
+        "p99Ms": null,
+        "errorRate": null
+       },
+       {
+        "rps": 52.2,
+        "p99Ms": 49,
+        "errorRate": 0
+       },
+       {
+        "rps": 81.2,
+        "p99Ms": 48,
+        "errorRate": 0
+       },
+       {
+        "rps": 76.3,
+        "p99Ms": 21,
+        "errorRate": 0
+       },
+       {
+        "rps": 77.4,
+        "p99Ms": 34,
+        "errorRate": 0
+       },
+       {
+        "rps": 67,
+        "p99Ms": 23,
+        "errorRate": 0
+       },
+       {
+        "rps": 56,
+        "p99Ms": 24,
+        "errorRate": 0
+       },
+       {
+        "rps": 50.1,
+        "p99Ms": 23,
+        "errorRate": 0
+       },
+       {
+        "rps": 57,
+        "p99Ms": 26,
+        "errorRate": 0
+       },
+       {
+        "rps": 66.9,
+        "p99Ms": 28,
+        "errorRate": 0
+       },
+       {
+        "rps": 60,
+        "p99Ms": 23,
+        "errorRate": 0
+       },
+       {
+        "rps": 43.8,
+        "p99Ms": 23,
+        "errorRate": 0
+       },
+       {
+        "rps": 53.4,
+        "p99Ms": 24,
+        "errorRate": 0
+       },
+       {
+        "rps": 52.9,
+        "p99Ms": 19,
+        "errorRate": 0
+       },
+       {
+        "rps": 62.7,
+        "p99Ms": 37,
+        "errorRate": 0
+       },
+       {
+        "rps": 59.7,
+        "p99Ms": 25,
+        "errorRate": 0
+       },
+       {
+        "rps": 64.6,
+        "p99Ms": 28,
+        "errorRate": 0
+       },
+       {
+        "rps": 62.2,
+        "p99Ms": 37,
+        "errorRate": 0
+       },
+       {
+        "rps": 80.2,
+        "p99Ms": 67,
+        "errorRate": 0
+       },
+       {
+        "rps": 104.3,
+        "p99Ms": 19,
+        "errorRate": 0
+       },
+       {
+        "rps": 109.8,
+        "p99Ms": 25,
+        "errorRate": 0
+       },
+       {
+        "rps": 141.4,
+        "p99Ms": 39,
+        "errorRate": 0
+       },
+       {
+        "rps": 172.8,
+        "p99Ms": 301,
+        "errorRate": 0
+       },
+       {
+        "rps": 139.3,
+        "p99Ms": 367,
+        "errorRate": 0
+       },
+       {
+        "rps": 231.1,
+        "p99Ms": 343,
+        "errorRate": 0
+       },
+       {
+        "rps": 312.2,
+        "p99Ms": 622,
+        "errorRate": 0
+       },
+       {
+        "rps": 293.2,
+        "p99Ms": 834,
+        "errorRate": 0
+       },
+       {
+        "rps": 350.4,
+        "p99Ms": 701,
+        "errorRate": 0.0001
+       },
+       {
+        "rps": 303.2,
+        "p99Ms": 696,
+        "errorRate": 0
+       },
+       {
+        "rps": 343,
+        "p99Ms": 3849,
+        "errorRate": 0.0017
+       },
+       {
+        "rps": 329.9,
+        "p99Ms": 808,
+        "errorRate": 0
+       },
+       {
+        "rps": 226.9,
+        "p99Ms": 483,
+        "errorRate": 0
+       },
+       {
+        "rps": 205.9,
+        "p99Ms": 177,
+        "errorRate": 0
+       },
+       {
+        "rps": 229,
+        "p99Ms": 404,
+        "errorRate": 0
+       },
+       {
+        "rps": 232.9,
+        "p99Ms": 229,
+        "errorRate": 0
+       },
+       {
+        "rps": 224.9,
+        "p99Ms": 250,
+        "errorRate": 0
+       },
+       {
+        "rps": 214.8,
+        "p99Ms": 550,
+        "errorRate": 0
+       },
+       {
+        "rps": 219.2,
+        "p99Ms": 307,
+        "errorRate": 0
+       },
+       {
+        "rps": 197.9,
+        "p99Ms": 461,
+        "errorRate": 0
+       },
+       {
+        "rps": 175,
+        "p99Ms": 57,
+        "errorRate": 0
+       },
+       {
+        "rps": 148.6,
+        "p99Ms": 223,
+        "errorRate": 0
+       },
+       {
+        "rps": 164.7,
+        "p99Ms": 24,
+        "errorRate": 0
+       },
+       {
+        "rps": 176.1,
+        "p99Ms": 47,
+        "errorRate": 0
+       },
+       {
+        "rps": 193.6,
+        "p99Ms": 208,
+        "errorRate": 0
+       },
+       {
+        "rps": 161.2,
+        "p99Ms": 42,
+        "errorRate": 0
+       },
+       {
+        "rps": 178.6,
+        "p99Ms": 83,
+        "errorRate": 0
+       },
+       {
+        "rps": 166.5,
+        "p99Ms": 5000,
+        "errorRate": 0.0104
+       },
+       {
+        "rps": 157.9,
+        "p99Ms": 5002,
+        "errorRate": 0.0412
+       },
+       {
+        "rps": 165.6,
+        "p99Ms": 5002,
+        "errorRate": 0.0415
+       },
+       {
+        "rps": 179.5,
+        "p99Ms": 5002,
+        "errorRate": 0.0414
+       },
+       {
+        "rps": 178.1,
+        "p99Ms": 5002,
+        "errorRate": 0.0438
+       },
+       {
+        "rps": 173.5,
+        "p99Ms": 3818,
+        "errorRate": 0.0088
+       },
+       {
+        "rps": 158.1,
+        "p99Ms": 78,
+        "errorRate": 0
+       },
+       {
+        "rps": 115.9,
+        "p99Ms": 20,
+        "errorRate": 0
+       },
+       {
+        "rps": 41.4,
+        "p99Ms": 24,
+        "errorRate": 0
+       },
+       {
+        "rps": 104,
+        "p99Ms": 22,
+        "errorRate": 0
+       },
+       {
+        "rps": 108.1,
+        "p99Ms": 24,
+        "errorRate": 0
+       },
+       {
+        "rps": 112,
+        "p99Ms": 22,
+        "errorRate": 0
+       },
+       {
+        "rps": 109.4,
+        "p99Ms": 26,
+        "errorRate": 0
+       },
+       {
+        "rps": 96.6,
+        "p99Ms": 22,
+        "errorRate": 0
+       },
+       {
+        "rps": 72.2,
+        "p99Ms": 21,
+        "errorRate": 0
+       },
+       {
+        "rps": 83.3,
+        "p99Ms": 24,
+        "errorRate": 0
+       },
+       {
+        "rps": 44.5,
+        "p99Ms": 26,
+        "errorRate": 0
+       },
+       {
+        "rps": 8.2,
+        "p99Ms": 37,
+        "errorRate": 0
+       },
+       {
+        "rps": 52.9,
+        "p99Ms": 25,
+        "errorRate": 0
+       },
+       {
+        "rps": 60.3,
+        "p99Ms": 24,
+        "errorRate": 0
+       },
+       {
+        "rps": 67,
+        "p99Ms": 22,
+        "errorRate": 0
+       },
+       {
+        "rps": 88.9,
+        "p99Ms": 24,
+        "errorRate": 0
+       },
+       {
+        "rps": 81.8,
+        "p99Ms": 22,
+        "errorRate": 0
+       },
+       {
+        "rps": 76.3,
+        "p99Ms": 23,
+        "errorRate": 0
+       },
+       {
+        "rps": 91.1,
+        "p99Ms": 21,
+        "errorRate": 0
+       },
+       {
+        "rps": 76.2,
+        "p99Ms": 22,
+        "errorRate": 0
+       },
+       {
+        "rps": 77,
+        "p99Ms": 21,
+        "errorRate": 0
+       },
+       {
+        "rps": 69.5,
+        "p99Ms": 25,
+        "errorRate": 0
+       },
+       {
+        "rps": 88.5,
+        "p99Ms": 34,
+        "errorRate": 0
+       },
+       {
+        "rps": 82.1,
+        "p99Ms": 26,
+        "errorRate": 0
+       },
+       {
+        "rps": 72.3,
+        "p99Ms": 20,
+        "errorRate": 0
+       },
+       {
+        "rps": 23,
+        "p99Ms": 22,
+        "errorRate": 0
+       }
+      ],
+      "frontendReplicas": [
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2
+      ]
+     },
+     "truth": "fail",
+     "naive": {
+      "historyPeakUtil": 0.37822496052742455,
+      "predictedPeakUtil": 0.629744559278162,
+      "verdict": "pass"
+     },
+     "agrees": {
+      "backtest": false,
+      "naive": false
+     }
+    },
+    {
+     "run": "launch-x1.3",
+     "question": "As built, on a launch day with 30% more traffic?",
+     "oos": true,
+     "exAnte": {
+      "verdict": "fail",
+      "confidence": null,
+      "minutesOutOfSlo": 9,
+      "peakP99Ms": null,
+      "monthlyDelta": null,
+      "reasons": [],
+      "warnings": []
+     },
+     "exPost": {
+      "p99Ms": 5000,
+      "errorRate": 0.05732734298163819,
+      "minutesOutOfSlo": 3.5,
+      "frontendReplicasPeak": 3
+     },
+     "measured": {
+      "p99Ms": 1178,
+      "errorRate": 0.002895245903739479,
+      "minutesOutOfSlo": 5.5,
+      "requests": 390295,
+      "addedOverAsBuilt": 5.5
+     },
+     "series": {
+      "predicted": {
+       "rps": [
+        153.5,
+        16.7,
+        102.9,
+        103.8,
+        93.8,
+        98.1,
+        101.7,
+        101.1,
+        99.5,
+        96.3,
+        76.9,
+        66.6,
+        66.6,
+        84,
+        84.9,
+        69.3,
+        60,
+        65.2,
+        79.9,
+        80.5,
+        80.2,
+        80.3,
+        89.3,
+        121.2,
+        143.9,
+        163,
+        207.2,
+        194.1,
+        234.9,
+        344.1,
+        411.5,
+        428.5,
+        399.5,
+        408.6,
+        484.8,
+        348.4,
+        242.9,
+        297.7,
+        306.3,
+        289.9,
+        295.4,
+        285.1,
+        271.7,
+        242.9,
+        210.8,
+        194.6,
+        223.4,
+        244.9,
+        236.4,
+        219.9,
+        222.1,
+        209.4,
+        210.2,
+        226.2,
+        237.3,
+        232.9,
+        218,
+        196,
+        93.6,
+        88.1,
+        144.3,
+        144.6,
+        139.4,
+        139.5,
+        114,
+        96.8,
+        89.6,
+        25.2,
+        30,
+        80,
+        77.2,
+        101.8,
+        116,
+        93.7,
+        120.1,
+        107.3,
+        93.7,
+        97.7,
+        100.8,
+        119,
+        94.4
+       ],
+       "p99Ms": [
+        94,
+        98,
+        104,
+        107,
+        107,
+        109,
+        105,
+        104,
+        103,
+        102,
+        102,
+        99,
+        99,
+        99,
+        96,
+        93,
+        93,
+        97,
+        100,
+        101,
+        101,
+        101,
+        102,
+        101,
+        100,
+        101,
+        105,
+        106,
+        113,
+        215,
+        3790,
+        5000,
+        5000,
+        5000,
+        5000,
+        5000,
+        5000,
+        131,
+        136,
+        124,
+        126,
+        121,
+        116,
+        109,
+        104,
+        101,
+        103,
+        106,
+        106,
+        104,
+        104,
+        102,
+        102,
+        104,
+        105,
+        104,
+        104,
+        104,
+        99,
+        100,
+        103,
+        103,
+        103,
+        104,
+        102,
+        103,
+        104,
+        102,
+        103,
+        104,
+        102,
+        101,
+        100,
+        98,
+        100,
+        100,
+        99,
+        98,
+        97,
+        95,
+        95
+       ],
+       "errorRate": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.1444,
+        0.1824,
+        0.1775,
+        0.6196,
+        0.662,
+        0.0265,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+       ],
+       "frontendReplicas": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3
+       ]
+      },
+      "measured": [
+       {
+        "rps": 0,
+        "p99Ms": null,
+        "errorRate": null
+       },
+       {
+        "rps": 0,
+        "p99Ms": null,
+        "errorRate": null
+       },
+       {
+        "rps": 0,
+        "p99Ms": null,
+        "errorRate": null
+       },
+       {
+        "rps": 0,
+        "p99Ms": null,
+        "errorRate": null
+       },
+       {
+        "rps": 64.8,
+        "p99Ms": 18,
+        "errorRate": 0
+       },
+       {
+        "rps": 104.7,
+        "p99Ms": 51,
+        "errorRate": 0
+       },
+       {
+        "rps": 97.8,
+        "p99Ms": 104,
+        "errorRate": 0
+       },
+       {
+        "rps": 100.3,
+        "p99Ms": 61,
+        "errorRate": 0
+       },
+       {
+        "rps": 88,
+        "p99Ms": 42,
+        "errorRate": 0
+       },
+       {
+        "rps": 71.6,
+        "p99Ms": 58,
+        "errorRate": 0
+       },
+       {
+        "rps": 63.9,
+        "p99Ms": 23,
+        "errorRate": 0
+       },
+       {
+        "rps": 72.1,
+        "p99Ms": 45,
+        "errorRate": 0
+       },
+       {
+        "rps": 89.4,
+        "p99Ms": 42,
+        "errorRate": 0
+       },
+       {
+        "rps": 81.9,
+        "p99Ms": 61,
+        "errorRate": 0
+       },
+       {
+        "rps": 58.1,
+        "p99Ms": 32,
+        "errorRate": 0
+       },
+       {
+        "rps": 68,
+        "p99Ms": 42,
+        "errorRate": 0
+       },
+       {
+        "rps": 68.2,
+        "p99Ms": 34,
+        "errorRate": 0
+       },
+       {
+        "rps": 81.1,
+        "p99Ms": 41,
+        "errorRate": 0
+       },
+       {
+        "rps": 80.6,
+        "p99Ms": 28,
+        "errorRate": 0
+       },
+       {
+        "rps": 82.3,
+        "p99Ms": 41,
+        "errorRate": 0
+       },
+       {
+        "rps": 79.3,
+        "p99Ms": 35,
+        "errorRate": 0
+       },
+       {
+        "rps": 104.7,
+        "p99Ms": 32,
+        "errorRate": 0
+       },
+       {
+        "rps": 136.3,
+        "p99Ms": 44,
+        "errorRate": 0
+       },
+       {
+        "rps": 147.1,
+        "p99Ms": 68,
+        "errorRate": 0
+       },
+       {
+        "rps": 186.1,
+        "p99Ms": 132,
+        "errorRate": 0
+       },
+       {
+        "rps": 220.3,
+        "p99Ms": 214,
+        "errorRate": 0
+       },
+       {
+        "rps": 183.3,
+        "p99Ms": 84,
+        "errorRate": 0
+       },
+       {
+        "rps": 292.1,
+        "p99Ms": 298,
+        "errorRate": 0
+       },
+       {
+        "rps": 394.4,
+        "p99Ms": 2419,
+        "errorRate": 0
+       },
+       {
+        "rps": 386.4,
+        "p99Ms": 3425,
+        "errorRate": 0
+       },
+       {
+        "rps": 449.1,
+        "p99Ms": 595,
+        "errorRate": 0
+       },
+       {
+        "rps": 396.1,
+        "p99Ms": 1143,
+        "errorRate": 0
+       },
+       {
+        "rps": 446.2,
+        "p99Ms": 963,
+        "errorRate": 0.0001
+       },
+       {
+        "rps": 434,
+        "p99Ms": 843,
+        "errorRate": 0.0001
+       },
+       {
+        "rps": 305.8,
+        "p99Ms": 5002,
+        "errorRate": 0.0668
+       },
+       {
+        "rps": 262.8,
+        "p99Ms": 1418,
+        "errorRate": 0
+       },
+       {
+        "rps": 300.1,
+        "p99Ms": 598,
+        "errorRate": 0
+       },
+       {
+        "rps": 299.9,
+        "p99Ms": 837,
+        "errorRate": 0.0001
+       },
+       {
+        "rps": 291.9,
+        "p99Ms": 792,
+        "errorRate": 0
+       },
+       {
+        "rps": 287.4,
+        "p99Ms": 3347,
+        "errorRate": 0.0003
+       },
+       {
+        "rps": 283.2,
+        "p99Ms": 5000,
+        "errorRate": 0.0121
+       },
+       {
+        "rps": 262.9,
+        "p99Ms": 5002,
+        "errorRate": 0.0439
+       },
+       {
+        "rps": 230.3,
+        "p99Ms": 3716,
+        "errorRate": 0.0084
+       },
+       {
+        "rps": 192.5,
+        "p99Ms": 253,
+        "errorRate": 0
+       },
+       {
+        "rps": 210.5,
+        "p99Ms": 624,
+        "errorRate": 0.0002
+       },
+       {
+        "rps": 232,
+        "p99Ms": 1655,
+        "errorRate": 0
+       },
+       {
+        "rps": 251.8,
+        "p99Ms": 3167,
+        "errorRate": 0
+       },
+       {
+        "rps": 211.3,
+        "p99Ms": 297,
+        "errorRate": 0
+       },
+       {
+        "rps": 235.4,
+        "p99Ms": 366,
+        "errorRate": 0
+       },
+       {
+        "rps": 215,
+        "p99Ms": 344,
+        "errorRate": 0
+       },
+       {
+        "rps": 204.5,
+        "p99Ms": 237,
+        "errorRate": 0
+       },
+       {
+        "rps": 214.8,
+        "p99Ms": 388,
+        "errorRate": 0
+       },
+       {
+        "rps": 236.6,
+        "p99Ms": 299,
+        "errorRate": 0.0001
+       },
+       {
+        "rps": 232.3,
+        "p99Ms": 184,
+        "errorRate": 0
+       },
+       {
+        "rps": 227.9,
+        "p99Ms": 140,
+        "errorRate": 0
+       },
+       {
+        "rps": 209.5,
+        "p99Ms": 155,
+        "errorRate": 0
+       },
+       {
+        "rps": 156.6,
+        "p99Ms": 200,
+        "errorRate": 0
+       },
+       {
+        "rps": 56.4,
+        "p99Ms": 72,
+        "errorRate": 0
+       },
+       {
+        "rps": 136.5,
+        "p99Ms": 77,
+        "errorRate": 0
+       },
+       {
+        "rps": 141.7,
+        "p99Ms": 98,
+        "errorRate": 0
+       },
+       {
+        "rps": 139.7,
+        "p99Ms": 81,
+        "errorRate": 0
+       },
+       {
+        "rps": 150.4,
+        "p99Ms": 278,
+        "errorRate": 0
+       },
+       {
+        "rps": 124.1,
+        "p99Ms": 317,
+        "errorRate": 0
+       },
+       {
+        "rps": 94.6,
+        "p99Ms": 502,
+        "errorRate": 0
+       },
+       {
+        "rps": 106.2,
+        "p99Ms": 489,
+        "errorRate": 0
+       },
+       {
+        "rps": 61.3,
+        "p99Ms": 31,
+        "errorRate": 0
+       },
+       {
+        "rps": 10.2,
+        "p99Ms": 26,
+        "errorRate": 0
+       },
+       {
+        "rps": 69.8,
+        "p99Ms": 67,
+        "errorRate": 0
+       },
+       {
+        "rps": 70.7,
+        "p99Ms": 50,
+        "errorRate": 0
+       },
+       {
+        "rps": 88.1,
+        "p99Ms": 27,
+        "errorRate": 0
+       },
+       {
+        "rps": 115.2,
+        "p99Ms": 103,
+        "errorRate": 0
+       },
+       {
+        "rps": 102.1,
+        "p99Ms": 57,
+        "errorRate": 0
+       },
+       {
+        "rps": 104,
+        "p99Ms": 35,
+        "errorRate": 0
+       },
+       {
+        "rps": 119.1,
+        "p99Ms": 99,
+        "errorRate": 0
+       },
+       {
+        "rps": 97.6,
+        "p99Ms": 156,
+        "errorRate": 0
+       },
+       {
+        "rps": 95.1,
+        "p99Ms": 178,
+        "errorRate": 0
+       },
+       {
+        "rps": 96.5,
+        "p99Ms": 267,
+        "errorRate": 0.0003
+       },
+       {
+        "rps": 113.6,
+        "p99Ms": 243,
+        "errorRate": 0
+       },
+       {
+        "rps": 106.9,
+        "p99Ms": 220,
+        "errorRate": 0
+       },
+       {
+        "rps": 94.6,
+        "p99Ms": 229,
+        "errorRate": 0
+       },
+       {
+        "rps": 32.2,
+        "p99Ms": 49,
+        "errorRate": 0
+       }
+      ],
+      "frontendReplicas": [
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3
+      ]
+     },
+     "truth": "fail",
+     "naive": {
+      "historyPeakUtil": 0.37822496052742455,
+      "predictedPeakUtil": 1.0915572360821475,
+      "verdict": "fail"
+     },
+     "agrees": {
+      "backtest": true,
+      "naive": true
      }
     }
    ],
@@ -5759,7 +7501,7 @@
       "reasons": [
        "costs the same, with no change in time out of SLO",
        "the backtest passes, but confidence is low (frontend: the model fits it poorly, and this change changes it) — load-test before trusting it",
-       "frees 0.5 cores and 512 MiB of requests, but the node pool is fixed at 1.9999999999999998: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 24% of it (28% before)",
+       "frees 0.5 cores and 512 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 24% of it (28% before)",
        "headroom drops from 492.6 to 329.1 req/s (the history peaked at 164.5)"
       ],
       "warnings": [
@@ -6637,7 +8379,7 @@
        "adds 4.5 min out of SLO (10–90%: 4 … 4.7)",
        "worst at 2026-10-13T17:04:00Z: frontend at 108% of capacity (365.1 req/s on 2 × 168.7 req/s), 1.5 s queue",
        "worse for frontend GET, frontend GET /, frontend GET /api/cart, frontend GET /api/recommendations, frontend POST, frontend POST /api/cart, frontend POST /api/checkout against their own SLOs",
-       "frees 0.5 cores and 512 MiB of requests, but the node pool is fixed at 1.9999999999999998: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 24% of it (28% before)",
+       "frees 0.5 cores and 512 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 24% of it (28% before)",
        "headroom drops from 492.6 to 329.1 req/s (the replayed traffic peaks at 365.1)"
       ],
       "warnings": [
@@ -7516,7 +9258,8 @@
        "adds 1 min out of SLO (10–90%: 0.5 … 1)",
        "worst at 2026-10-13T17:04:00Z: frontend at 98% of capacity (164.5 req/s on 1 × 168.7 req/s), 58 ms wait",
        "worse for frontend GET /api/recommendations against their own SLOs",
-       "frees 1 cores and 1024 MiB of requests, but the node pool is fixed at 1.9999999999999998: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 21% of it (28% before)",
+       "frees 1 cores and 1024 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 21% of it (28% before)",
+       "frontend would run on one node: losing bnk8s-worker takes it down",
        "headroom drops from 492.6 to 164.7 req/s (the history peaked at 164.5)"
       ],
       "warnings": [
@@ -8392,7 +10135,8 @@
       "reasons": [
        "costs the same; on Oct 13 at 16:57 UTC it would have caused 1 minute out of SLO (frontend at 85% of capacity (172.5 req/s on 1.3 × 151.8 req/s (normally 168.7)), 0.2 s queue)",
        "the backtest passes, but confidence is low (frontend: the model fits it poorly, and this change changes it) — load-test before trusting it",
-       "worst at 2026-10-13T16:57:00Z: frontend at 85% of capacity (172.5 req/s on 1.3 × 151.8 req/s (normally 168.7)), 0.2 s queue"
+       "worst at 2026-10-13T16:57:00Z: frontend at 85% of capacity (172.5 req/s on 1.3 × 151.8 req/s (normally 168.7)), 0.2 s queue",
+       "frontend would run on one node: losing bnk8s-worker takes it down"
       ],
       "warnings": [
        "frontend: the model fits it poorly, and this change changes it",
@@ -9250,6 +10994,1745 @@
       "backtest": false,
       "naive": false
      }
+    },
+    {
+     "run": "launch-2c",
+     "question": "2 frontend replicas at 1 core instead of 3 at half a core, on launch day?",
+     "oos": true,
+     "exAnte": {
+      "verdict": "inconclusive",
+      "confidence": "low",
+      "minutesOutOfSlo": 0,
+      "peakP99Ms": 289,
+      "monthlyDelta": {
+       "p50": 13.7,
+       "lo": 13.7,
+       "hi": 13.7
+      },
+      "reasons": [
+       "costs $14/month more, with no change in time out of SLO",
+       "the backtest passes, but confidence is low (frontend: the model fits it poorly, and this change changes it) — load-test before trusting it"
+      ],
+      "warnings": [
+       "frontend: the model fits it poorly, and this change changes it",
+       "recommendation fits poorly and runs near its limit; the change leaves it as it was, so the comparison holds better than the absolute numbers",
+       "the model's accuracy was never measured",
+       "only 0.6 h of history: daily and weekly peaks may be missing",
+       "costs are AWS Fargate list prices, not your bill: discounts and Savings Plans are not in them"
+      ]
+     },
+     "exPost": {
+      "p99Ms": 280,
+      "errorRate": 0,
+      "minutesOutOfSlo": 0,
+      "frontendReplicasPeak": 1.9999999999999998
+     },
+     "measured": {
+      "p99Ms": 596,
+      "errorRate": 0.003251576547253019,
+      "minutesOutOfSlo": 3.5,
+      "requests": 299547,
+      "addedOverAsBuilt": 3
+     },
+     "series": {
+      "predicted": {
+       "rps": [
+        121.5,
+        15.6,
+        79.9,
+        77.8,
+        75.3,
+        74.3,
+        78.3,
+        79.1,
+        77.9,
+        74.4,
+        59.2,
+        52.6,
+        52.7,
+        64.2,
+        63.5,
+        50.3,
+        47.6,
+        51.3,
+        61.4,
+        61,
+        61.2,
+        63.6,
+        67.8,
+        95.2,
+        106.5,
+        124.5,
+        159.5,
+        147.9,
+        183.9,
+        278.7,
+        311.4,
+        331.6,
+        309,
+        317.6,
+        362.2,
+        285.4,
+        178.1,
+        228.6,
+        237.6,
+        226.5,
+        222.4,
+        214.6,
+        208.3,
+        189.8,
+        160.2,
+        152.9,
+        170.9,
+        188.1,
+        179,
+        168.6,
+        170.8,
+        160.3,
+        161.2,
+        173.5,
+        178.2,
+        177.7,
+        164.4,
+        145.8,
+        68.9,
+        68.4,
+        110.1,
+        110.4,
+        107.9,
+        104.4,
+        89,
+        74.4,
+        69.7,
+        18.6,
+        24.4,
+        65.5,
+        60.9,
+        78.2,
+        89.1,
+        72.3,
+        90.7,
+        83.4,
+        73.3,
+        74.5,
+        75.7,
+        92.3,
+        73.4
+       ],
+       "p99Ms": [
+        267,
+        261,
+        264,
+        267,
+        267,
+        267,
+        264,
+        263,
+        258,
+        254,
+        253,
+        253,
+        253,
+        250,
+        247,
+        246,
+        243,
+        238,
+        238,
+        238,
+        244,
+        250,
+        254,
+        254,
+        256,
+        258,
+        259,
+        264,
+        271,
+        281,
+        295,
+        313,
+        306,
+        308,
+        328,
+        302,
+        288,
+        293,
+        293,
+        291,
+        293,
+        289,
+        283,
+        282,
+        280,
+        280,
+        281,
+        281,
+        281,
+        278,
+        278,
+        276,
+        275,
+        274,
+        273,
+        273,
+        274,
+        274,
+        271,
+        266,
+        262,
+        261,
+        258,
+        254,
+        253,
+        253,
+        254,
+        247,
+        244,
+        244,
+        244,
+        249,
+        249,
+        249,
+        254,
+        252,
+        252,
+        250,
+        252,
+        250,
+        250
+       ],
+       "errorRate": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+       ],
+       "frontendReplicas": [
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998,
+        1.9999999999999998
+       ]
+      },
+      "measured": [
+       {
+        "rps": 0,
+        "p99Ms": null,
+        "errorRate": null
+       },
+       {
+        "rps": 0,
+        "p99Ms": null,
+        "errorRate": null
+       },
+       {
+        "rps": 0,
+        "p99Ms": null,
+        "errorRate": null
+       },
+       {
+        "rps": 0,
+        "p99Ms": null,
+        "errorRate": null
+       },
+       {
+        "rps": 52.2,
+        "p99Ms": 49,
+        "errorRate": 0
+       },
+       {
+        "rps": 81.2,
+        "p99Ms": 48,
+        "errorRate": 0
+       },
+       {
+        "rps": 76.3,
+        "p99Ms": 21,
+        "errorRate": 0
+       },
+       {
+        "rps": 77.4,
+        "p99Ms": 34,
+        "errorRate": 0
+       },
+       {
+        "rps": 67,
+        "p99Ms": 23,
+        "errorRate": 0
+       },
+       {
+        "rps": 56,
+        "p99Ms": 24,
+        "errorRate": 0
+       },
+       {
+        "rps": 50.1,
+        "p99Ms": 23,
+        "errorRate": 0
+       },
+       {
+        "rps": 57,
+        "p99Ms": 26,
+        "errorRate": 0
+       },
+       {
+        "rps": 66.9,
+        "p99Ms": 28,
+        "errorRate": 0
+       },
+       {
+        "rps": 60,
+        "p99Ms": 23,
+        "errorRate": 0
+       },
+       {
+        "rps": 43.8,
+        "p99Ms": 23,
+        "errorRate": 0
+       },
+       {
+        "rps": 53.4,
+        "p99Ms": 24,
+        "errorRate": 0
+       },
+       {
+        "rps": 52.9,
+        "p99Ms": 19,
+        "errorRate": 0
+       },
+       {
+        "rps": 62.7,
+        "p99Ms": 37,
+        "errorRate": 0
+       },
+       {
+        "rps": 59.7,
+        "p99Ms": 25,
+        "errorRate": 0
+       },
+       {
+        "rps": 64.6,
+        "p99Ms": 28,
+        "errorRate": 0
+       },
+       {
+        "rps": 62.2,
+        "p99Ms": 37,
+        "errorRate": 0
+       },
+       {
+        "rps": 80.2,
+        "p99Ms": 67,
+        "errorRate": 0
+       },
+       {
+        "rps": 104.3,
+        "p99Ms": 19,
+        "errorRate": 0
+       },
+       {
+        "rps": 109.8,
+        "p99Ms": 25,
+        "errorRate": 0
+       },
+       {
+        "rps": 141.4,
+        "p99Ms": 39,
+        "errorRate": 0
+       },
+       {
+        "rps": 172.8,
+        "p99Ms": 301,
+        "errorRate": 0
+       },
+       {
+        "rps": 139.3,
+        "p99Ms": 367,
+        "errorRate": 0
+       },
+       {
+        "rps": 231.1,
+        "p99Ms": 343,
+        "errorRate": 0
+       },
+       {
+        "rps": 312.2,
+        "p99Ms": 622,
+        "errorRate": 0
+       },
+       {
+        "rps": 293.2,
+        "p99Ms": 834,
+        "errorRate": 0
+       },
+       {
+        "rps": 350.4,
+        "p99Ms": 701,
+        "errorRate": 0.0001
+       },
+       {
+        "rps": 303.2,
+        "p99Ms": 696,
+        "errorRate": 0
+       },
+       {
+        "rps": 343,
+        "p99Ms": 3849,
+        "errorRate": 0.0017
+       },
+       {
+        "rps": 329.9,
+        "p99Ms": 808,
+        "errorRate": 0
+       },
+       {
+        "rps": 226.9,
+        "p99Ms": 483,
+        "errorRate": 0
+       },
+       {
+        "rps": 205.9,
+        "p99Ms": 177,
+        "errorRate": 0
+       },
+       {
+        "rps": 229,
+        "p99Ms": 404,
+        "errorRate": 0
+       },
+       {
+        "rps": 232.9,
+        "p99Ms": 229,
+        "errorRate": 0
+       },
+       {
+        "rps": 224.9,
+        "p99Ms": 250,
+        "errorRate": 0
+       },
+       {
+        "rps": 214.8,
+        "p99Ms": 550,
+        "errorRate": 0
+       },
+       {
+        "rps": 219.2,
+        "p99Ms": 307,
+        "errorRate": 0
+       },
+       {
+        "rps": 197.9,
+        "p99Ms": 461,
+        "errorRate": 0
+       },
+       {
+        "rps": 175,
+        "p99Ms": 57,
+        "errorRate": 0
+       },
+       {
+        "rps": 148.6,
+        "p99Ms": 223,
+        "errorRate": 0
+       },
+       {
+        "rps": 164.7,
+        "p99Ms": 24,
+        "errorRate": 0
+       },
+       {
+        "rps": 176.1,
+        "p99Ms": 47,
+        "errorRate": 0
+       },
+       {
+        "rps": 193.6,
+        "p99Ms": 208,
+        "errorRate": 0
+       },
+       {
+        "rps": 161.2,
+        "p99Ms": 42,
+        "errorRate": 0
+       },
+       {
+        "rps": 178.6,
+        "p99Ms": 83,
+        "errorRate": 0
+       },
+       {
+        "rps": 166.5,
+        "p99Ms": 5000,
+        "errorRate": 0.0104
+       },
+       {
+        "rps": 157.9,
+        "p99Ms": 5002,
+        "errorRate": 0.0412
+       },
+       {
+        "rps": 165.6,
+        "p99Ms": 5002,
+        "errorRate": 0.0415
+       },
+       {
+        "rps": 179.5,
+        "p99Ms": 5002,
+        "errorRate": 0.0414
+       },
+       {
+        "rps": 178.1,
+        "p99Ms": 5002,
+        "errorRate": 0.0438
+       },
+       {
+        "rps": 173.5,
+        "p99Ms": 3818,
+        "errorRate": 0.0088
+       },
+       {
+        "rps": 158.1,
+        "p99Ms": 78,
+        "errorRate": 0
+       },
+       {
+        "rps": 115.9,
+        "p99Ms": 20,
+        "errorRate": 0
+       },
+       {
+        "rps": 41.4,
+        "p99Ms": 24,
+        "errorRate": 0
+       },
+       {
+        "rps": 104,
+        "p99Ms": 22,
+        "errorRate": 0
+       },
+       {
+        "rps": 108.1,
+        "p99Ms": 24,
+        "errorRate": 0
+       },
+       {
+        "rps": 112,
+        "p99Ms": 22,
+        "errorRate": 0
+       },
+       {
+        "rps": 109.4,
+        "p99Ms": 26,
+        "errorRate": 0
+       },
+       {
+        "rps": 96.6,
+        "p99Ms": 22,
+        "errorRate": 0
+       },
+       {
+        "rps": 72.2,
+        "p99Ms": 21,
+        "errorRate": 0
+       },
+       {
+        "rps": 83.3,
+        "p99Ms": 24,
+        "errorRate": 0
+       },
+       {
+        "rps": 44.5,
+        "p99Ms": 26,
+        "errorRate": 0
+       },
+       {
+        "rps": 8.2,
+        "p99Ms": 37,
+        "errorRate": 0
+       },
+       {
+        "rps": 52.9,
+        "p99Ms": 25,
+        "errorRate": 0
+       },
+       {
+        "rps": 60.3,
+        "p99Ms": 24,
+        "errorRate": 0
+       },
+       {
+        "rps": 67,
+        "p99Ms": 22,
+        "errorRate": 0
+       },
+       {
+        "rps": 88.9,
+        "p99Ms": 24,
+        "errorRate": 0
+       },
+       {
+        "rps": 81.8,
+        "p99Ms": 22,
+        "errorRate": 0
+       },
+       {
+        "rps": 76.3,
+        "p99Ms": 23,
+        "errorRate": 0
+       },
+       {
+        "rps": 91.1,
+        "p99Ms": 21,
+        "errorRate": 0
+       },
+       {
+        "rps": 76.2,
+        "p99Ms": 22,
+        "errorRate": 0
+       },
+       {
+        "rps": 77,
+        "p99Ms": 21,
+        "errorRate": 0
+       },
+       {
+        "rps": 69.5,
+        "p99Ms": 25,
+        "errorRate": 0
+       },
+       {
+        "rps": 88.5,
+        "p99Ms": 34,
+        "errorRate": 0
+       },
+       {
+        "rps": 82.1,
+        "p99Ms": 26,
+        "errorRate": 0
+       },
+       {
+        "rps": 72.3,
+        "p99Ms": 20,
+        "errorRate": 0
+       },
+       {
+        "rps": 23,
+        "p99Ms": 22,
+        "errorRate": 0
+       }
+      ],
+      "frontendReplicas": [
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2
+      ]
+     },
+     "truth": "fail",
+     "naive": {
+      "historyPeakUtil": 0.37822496052742455,
+      "predictedPeakUtil": 0.629744559278162,
+      "verdict": "pass"
+     },
+     "agrees": {
+      "backtest": false,
+      "naive": false
+     }
+    },
+    {
+     "run": "launch-x1.3",
+     "question": "As built, on a launch day with 30% more traffic?",
+     "oos": true,
+     "exAnte": {
+      "verdict": "pass",
+      "confidence": null,
+      "minutesOutOfSlo": 0,
+      "peakP99Ms": null,
+      "monthlyDelta": null,
+      "reasons": [],
+      "warnings": []
+     },
+     "exPost": {
+      "p99Ms": 371,
+      "errorRate": 1.897079329154237e-8,
+      "minutesOutOfSlo": 0.5,
+      "frontendReplicasPeak": 3
+     },
+     "measured": {
+      "p99Ms": 1178,
+      "errorRate": 0.002895245903739479,
+      "minutesOutOfSlo": 5.5,
+      "requests": 390295,
+      "addedOverAsBuilt": 5.5
+     },
+     "series": {
+      "predicted": {
+       "rps": [
+        153.5,
+        16.7,
+        102.9,
+        103.8,
+        93.8,
+        98.1,
+        101.7,
+        101.1,
+        99.5,
+        96.3,
+        76.9,
+        66.6,
+        66.6,
+        84,
+        84.9,
+        69.3,
+        60,
+        65.2,
+        79.9,
+        80.5,
+        80.2,
+        80.3,
+        89.3,
+        121.2,
+        143.9,
+        163,
+        207.2,
+        194.1,
+        234.9,
+        344.1,
+        411.5,
+        428.5,
+        399.5,
+        408.6,
+        484.8,
+        348.4,
+        242.9,
+        297.7,
+        306.3,
+        289.9,
+        295.4,
+        285.1,
+        271.7,
+        242.9,
+        210.8,
+        194.6,
+        223.4,
+        244.9,
+        236.4,
+        219.9,
+        222.1,
+        209.4,
+        210.2,
+        226.2,
+        237.3,
+        232.9,
+        218,
+        196,
+        93.6,
+        88.1,
+        144.3,
+        144.6,
+        139.4,
+        139.5,
+        114,
+        96.8,
+        89.6,
+        25.2,
+        30,
+        80,
+        77.2,
+        101.8,
+        116,
+        93.7,
+        120.1,
+        107.3,
+        93.7,
+        97.7,
+        100.8,
+        119,
+        94.4
+       ],
+       "p99Ms": [
+        280,
+        274,
+        279,
+        274,
+        273,
+        271,
+        269,
+        270,
+        274,
+        276,
+        271,
+        275,
+        275,
+        276,
+        279,
+        282,
+        282,
+        283,
+        280,
+        277,
+        278,
+        279,
+        277,
+        279,
+        281,
+        283,
+        288,
+        283,
+        295,
+        349,
+        467,
+        512,
+        439,
+        443,
+        1628,
+        337,
+        290,
+        302,
+        307,
+        297,
+        295,
+        293,
+        290,
+        287,
+        284,
+        283,
+        288,
+        294,
+        291,
+        285,
+        288,
+        286,
+        286,
+        286,
+        285,
+        284,
+        280,
+        277,
+        268,
+        268,
+        272,
+        271,
+        269,
+        268,
+        269,
+        265,
+        261,
+        256,
+        254,
+        258,
+        258,
+        259,
+        257,
+        257,
+        257,
+        254,
+        254,
+        254,
+        255,
+        257,
+        252
+       ],
+       "errorRate": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+       ],
+       "frontendReplicas": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3
+       ]
+      },
+      "measured": [
+       {
+        "rps": 0,
+        "p99Ms": null,
+        "errorRate": null
+       },
+       {
+        "rps": 0,
+        "p99Ms": null,
+        "errorRate": null
+       },
+       {
+        "rps": 0,
+        "p99Ms": null,
+        "errorRate": null
+       },
+       {
+        "rps": 0,
+        "p99Ms": null,
+        "errorRate": null
+       },
+       {
+        "rps": 64.8,
+        "p99Ms": 18,
+        "errorRate": 0
+       },
+       {
+        "rps": 104.7,
+        "p99Ms": 51,
+        "errorRate": 0
+       },
+       {
+        "rps": 97.8,
+        "p99Ms": 104,
+        "errorRate": 0
+       },
+       {
+        "rps": 100.3,
+        "p99Ms": 61,
+        "errorRate": 0
+       },
+       {
+        "rps": 88,
+        "p99Ms": 42,
+        "errorRate": 0
+       },
+       {
+        "rps": 71.6,
+        "p99Ms": 58,
+        "errorRate": 0
+       },
+       {
+        "rps": 63.9,
+        "p99Ms": 23,
+        "errorRate": 0
+       },
+       {
+        "rps": 72.1,
+        "p99Ms": 45,
+        "errorRate": 0
+       },
+       {
+        "rps": 89.4,
+        "p99Ms": 42,
+        "errorRate": 0
+       },
+       {
+        "rps": 81.9,
+        "p99Ms": 61,
+        "errorRate": 0
+       },
+       {
+        "rps": 58.1,
+        "p99Ms": 32,
+        "errorRate": 0
+       },
+       {
+        "rps": 68,
+        "p99Ms": 42,
+        "errorRate": 0
+       },
+       {
+        "rps": 68.2,
+        "p99Ms": 34,
+        "errorRate": 0
+       },
+       {
+        "rps": 81.1,
+        "p99Ms": 41,
+        "errorRate": 0
+       },
+       {
+        "rps": 80.6,
+        "p99Ms": 28,
+        "errorRate": 0
+       },
+       {
+        "rps": 82.3,
+        "p99Ms": 41,
+        "errorRate": 0
+       },
+       {
+        "rps": 79.3,
+        "p99Ms": 35,
+        "errorRate": 0
+       },
+       {
+        "rps": 104.7,
+        "p99Ms": 32,
+        "errorRate": 0
+       },
+       {
+        "rps": 136.3,
+        "p99Ms": 44,
+        "errorRate": 0
+       },
+       {
+        "rps": 147.1,
+        "p99Ms": 68,
+        "errorRate": 0
+       },
+       {
+        "rps": 186.1,
+        "p99Ms": 132,
+        "errorRate": 0
+       },
+       {
+        "rps": 220.3,
+        "p99Ms": 214,
+        "errorRate": 0
+       },
+       {
+        "rps": 183.3,
+        "p99Ms": 84,
+        "errorRate": 0
+       },
+       {
+        "rps": 292.1,
+        "p99Ms": 298,
+        "errorRate": 0
+       },
+       {
+        "rps": 394.4,
+        "p99Ms": 2419,
+        "errorRate": 0
+       },
+       {
+        "rps": 386.4,
+        "p99Ms": 3425,
+        "errorRate": 0
+       },
+       {
+        "rps": 449.1,
+        "p99Ms": 595,
+        "errorRate": 0
+       },
+       {
+        "rps": 396.1,
+        "p99Ms": 1143,
+        "errorRate": 0
+       },
+       {
+        "rps": 446.2,
+        "p99Ms": 963,
+        "errorRate": 0.0001
+       },
+       {
+        "rps": 434,
+        "p99Ms": 843,
+        "errorRate": 0.0001
+       },
+       {
+        "rps": 305.8,
+        "p99Ms": 5002,
+        "errorRate": 0.0668
+       },
+       {
+        "rps": 262.8,
+        "p99Ms": 1418,
+        "errorRate": 0
+       },
+       {
+        "rps": 300.1,
+        "p99Ms": 598,
+        "errorRate": 0
+       },
+       {
+        "rps": 299.9,
+        "p99Ms": 837,
+        "errorRate": 0.0001
+       },
+       {
+        "rps": 291.9,
+        "p99Ms": 792,
+        "errorRate": 0
+       },
+       {
+        "rps": 287.4,
+        "p99Ms": 3347,
+        "errorRate": 0.0003
+       },
+       {
+        "rps": 283.2,
+        "p99Ms": 5000,
+        "errorRate": 0.0121
+       },
+       {
+        "rps": 262.9,
+        "p99Ms": 5002,
+        "errorRate": 0.0439
+       },
+       {
+        "rps": 230.3,
+        "p99Ms": 3716,
+        "errorRate": 0.0084
+       },
+       {
+        "rps": 192.5,
+        "p99Ms": 253,
+        "errorRate": 0
+       },
+       {
+        "rps": 210.5,
+        "p99Ms": 624,
+        "errorRate": 0.0002
+       },
+       {
+        "rps": 232,
+        "p99Ms": 1655,
+        "errorRate": 0
+       },
+       {
+        "rps": 251.8,
+        "p99Ms": 3167,
+        "errorRate": 0
+       },
+       {
+        "rps": 211.3,
+        "p99Ms": 297,
+        "errorRate": 0
+       },
+       {
+        "rps": 235.4,
+        "p99Ms": 366,
+        "errorRate": 0
+       },
+       {
+        "rps": 215,
+        "p99Ms": 344,
+        "errorRate": 0
+       },
+       {
+        "rps": 204.5,
+        "p99Ms": 237,
+        "errorRate": 0
+       },
+       {
+        "rps": 214.8,
+        "p99Ms": 388,
+        "errorRate": 0
+       },
+       {
+        "rps": 236.6,
+        "p99Ms": 299,
+        "errorRate": 0.0001
+       },
+       {
+        "rps": 232.3,
+        "p99Ms": 184,
+        "errorRate": 0
+       },
+       {
+        "rps": 227.9,
+        "p99Ms": 140,
+        "errorRate": 0
+       },
+       {
+        "rps": 209.5,
+        "p99Ms": 155,
+        "errorRate": 0
+       },
+       {
+        "rps": 156.6,
+        "p99Ms": 200,
+        "errorRate": 0
+       },
+       {
+        "rps": 56.4,
+        "p99Ms": 72,
+        "errorRate": 0
+       },
+       {
+        "rps": 136.5,
+        "p99Ms": 77,
+        "errorRate": 0
+       },
+       {
+        "rps": 141.7,
+        "p99Ms": 98,
+        "errorRate": 0
+       },
+       {
+        "rps": 139.7,
+        "p99Ms": 81,
+        "errorRate": 0
+       },
+       {
+        "rps": 150.4,
+        "p99Ms": 278,
+        "errorRate": 0
+       },
+       {
+        "rps": 124.1,
+        "p99Ms": 317,
+        "errorRate": 0
+       },
+       {
+        "rps": 94.6,
+        "p99Ms": 502,
+        "errorRate": 0
+       },
+       {
+        "rps": 106.2,
+        "p99Ms": 489,
+        "errorRate": 0
+       },
+       {
+        "rps": 61.3,
+        "p99Ms": 31,
+        "errorRate": 0
+       },
+       {
+        "rps": 10.2,
+        "p99Ms": 26,
+        "errorRate": 0
+       },
+       {
+        "rps": 69.8,
+        "p99Ms": 67,
+        "errorRate": 0
+       },
+       {
+        "rps": 70.7,
+        "p99Ms": 50,
+        "errorRate": 0
+       },
+       {
+        "rps": 88.1,
+        "p99Ms": 27,
+        "errorRate": 0
+       },
+       {
+        "rps": 115.2,
+        "p99Ms": 103,
+        "errorRate": 0
+       },
+       {
+        "rps": 102.1,
+        "p99Ms": 57,
+        "errorRate": 0
+       },
+       {
+        "rps": 104,
+        "p99Ms": 35,
+        "errorRate": 0
+       },
+       {
+        "rps": 119.1,
+        "p99Ms": 99,
+        "errorRate": 0
+       },
+       {
+        "rps": 97.6,
+        "p99Ms": 156,
+        "errorRate": 0
+       },
+       {
+        "rps": 95.1,
+        "p99Ms": 178,
+        "errorRate": 0
+       },
+       {
+        "rps": 96.5,
+        "p99Ms": 267,
+        "errorRate": 0.0003
+       },
+       {
+        "rps": 113.6,
+        "p99Ms": 243,
+        "errorRate": 0
+       },
+       {
+        "rps": 106.9,
+        "p99Ms": 220,
+        "errorRate": 0
+       },
+       {
+        "rps": 94.6,
+        "p99Ms": 229,
+        "errorRate": 0
+       },
+       {
+        "rps": 32.2,
+        "p99Ms": 49,
+        "errorRate": 0
+       }
+      ],
+      "frontendReplicas": [
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3
+      ]
+     },
+     "truth": "fail",
+     "naive": {
+      "historyPeakUtil": 0.37822496052742455,
+      "predictedPeakUtil": 1.0915572360821475,
+      "verdict": "fail"
+     },
+     "agrees": {
+      "backtest": false,
+      "naive": true
+     }
     }
    ],
    "trust": {
@@ -9679,5 +13162,5 @@
   }
  ],
  "nodeLosses": [],
- "evaluatedAt": "2026-10-14T06:01:42.169Z"
+ "evaluatedAt": "2026-10-14T06:59:09.409Z"
 }

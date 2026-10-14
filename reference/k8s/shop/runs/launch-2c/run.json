@@ -1,0 +1,13 @@
+{
+  "system": "shop",
+  "run": "launch-2c",
+  "start": 1791958658,
+  "end": 1791961059,
+  "day": "13/Jul/1995",
+  "minutes": 40,
+  "scale": "x83",
+  "steps": null,
+  "manifests": "variants/frontend-2-1cpu.yaml",
+  "note": null,
+  "recordedAt": "2026-10-14T06:58:26.355Z"
+}
