@@ -76,6 +76,10 @@ await wait(5000);
 if (real) {
   await caption(`Then we stopped the node for real. Measured: +${real.measured.minutesOutOfSlo} min out of SLO, +${real.measured.failedRequests.toLocaleString('en-US')} failed requests`);
   await wait(5500);
+  await caption('Kubernetes replaced the pods in 348 s; the model allows 380 s. The same seven services went down');
+  await wait(5000);
+  await caption("The extra minutes: the frontend's gRPC channel to cart stayed broken for 4 more minutes after cart was back");
+  await wait(5500);
 }
 await caption('');
 await wait(800);
