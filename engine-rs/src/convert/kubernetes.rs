@@ -52,6 +52,16 @@ fn classify(image: &str) -> Option<(&'static str, String)> {
     None
 }
 
+/// telemetry plumbing (tracing, metrics, logs): it watches the system, it is not on the request path
+fn is_telemetry(image: &str, name: &str) -> bool {
+    static T: OnceLock<Regex> = OnceLock::new();
+    let lower = image.to_lowercase();
+    let i = lower.split('@').next().unwrap_or("");
+    let img = i.split('/').next_back().unwrap_or("").split(':').next().unwrap_or("");
+    let r = re(&T, "^(jaeger|all-in-one|opentelemetry-collector|otel-collector|otelcol|prometheus|grafana|loki|promtail|tempo|alertmanager|node-exporter|kube-state-metrics|fluentd|fluent-bit|zipkin|opensearch-dashboards|kibana)");
+    r.is_match(img) || r.is_match(&name.to_lowercase()) || i.contains("jaegertracing/") || i.contains("opentelemetry-collector")
+}
+
 /// container CPU request → size tier
 fn tier_of_cpu(cpu: &str) -> Option<&'static str> {
     if cpu.is_empty() {
@@ -180,6 +190,11 @@ pub fn import_kubernetes(docs_in: &[Value], name: Option<&str>) -> Result<Import
         let main = o(containers.first());
         let image = s(main.get("image"));
         let nm = s(meta(d).get("name"));
+        if is_telemetry(&image, &nm) {
+            skipped.push(ref_of(d));
+            assumptions.push(format!("{}: telemetry ({}), not on the request path — not modelled", ref_of(d), if image.is_empty() { nm.clone() } else { image.split('/').next_back().unwrap_or("").to_string() }));
+            continue;
+        }
         let cls = classify(&image);
         let replicas = if kind == "DaemonSet" { 3.0 } else { jmax(1.0, number(or(spec.get("replicas"), Some(&json!(1))))) };
         if kind == "DaemonSet" {
@@ -494,6 +509,41 @@ pub fn import_kubernetes(docs_in: &[Value], name: Option<&str>) -> Result<Import
             }
         }
         assumptions.push(format!("{}: read-through in front of {} (cache-aside) — remove the cache → db link if your services read the database directly", cache, dbs.join(", ")));
+    } else if caches.len() > 1 {
+        // several caches: each fronts the databases its own callers also call
+        for cache in &caches {
+            let callers: Vec<String> = edges.iter().filter(|(_, y)| y == cache).map(|(x, _)| x.clone()).collect();
+            let mut near: Vec<String> = vec![];
+            for (x, y) in &edges {
+                if callers.contains(x) && dbs.contains(y) && !near.contains(y) {
+                    near.push(y.clone());
+                }
+            }
+            if near.is_empty() {
+                continue;
+            }
+            edges.retain(|(x, y)| !(callers.contains(x) && near.contains(y)));
+            for db in &near {
+                edges.push((cache.clone(), db.clone()));
+            }
+            assumptions.push(format!("{}: read-through in front of {} (cache-aside) — remove the cache → db link if your services read the database directly", cache, near.join(", ")));
+        }
+    }
+
+    // a cache with nothing behind it is the store itself (a cart in Valkey, sessions in Redis)
+    for c in components.iter_mut() {
+        if kind_str(c) != "cache" {
+            continue;
+        }
+        let id = s(c.get("id"));
+        if edges.iter().any(|(x, _)| *x == id) {
+            continue;
+        }
+        c.insert("kind".into(), json!("db"));
+        c.shift_remove("hitRate");
+        let name = c.get("name").map(|x| s(Some(x))).unwrap_or_else(|| id.clone());
+        assumptions.retain(|x| !(x.contains(&format!("/{}: cache (", name)) && x.ends_with("hit rate assumed 85%")));
+        assumptions.push(format!("{}: nothing behind it, so it is the data store itself — modelled as a database", id));
     }
 
     for d in &docs {
