@@ -1,6 +1,7 @@
 // The native MCP server (`hindcast mcp`) against its golden session (test/golden/mcp.json), recorded
-// from the Node server it replaced (mcp/server.ts): every response and notification of one scripted
+// first from the Node server it replaced (6b0e08c): every response and notification of one scripted
 // session, and every file the tools wrote, must match (timings, temp dirs and the port masked).
+// After an intended change, --record writes the binary's session as the new reference.
 // npx tsx scripts/mcp-golden.ts [filter] [--record]
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -101,6 +102,8 @@ const mask = (s: string) =>
     .replace(/(in |· )\d+ ms/g, '$1# ms')
     .replace(/(\\*"wallMs\\*": ?)\d+(\.\d+)?/g, '$1#')
     .replace(/(\\*"measuredAt\\*": ?)\\*"[^"\\]*\\*"/g, '$1#')
+    // a file's age against the pinned clock: it moves with the wall clock
+    .replace(/(\\*"collectedHoursAgo\\*": ?)-?[\d.]+/g, '$1#')
     .replace(/127\.0\.0\.1(%3A|:)19101/g, '127.0.0.1$1PORT')
     .replaceAll(realpathSync(out), '$OUT')
     .replaceAll(out, '$OUT')
@@ -122,7 +125,7 @@ async function run(record: boolean): Promise<Golden> {
   const seeded = snapshot(root, mask);
   const msgs = [...handshake, ...CASES.map(([, method, params], i) => ({ jsonrpc: '2.0', id: 100 + i, method, ...(params ? { params } : {}) }))];
   const env = { NO_COLOR: '', HINDCAST_NOW: '1791500000', HINDCAST_KUBECTL: 'test/cli-fixtures/fake-kubectl.mjs', HINDCAST_SERVE_PORT: '19101' };
-  const lines = record ? await session('npx', ['tsx', 'mcp/server.ts'], msgs, env) : await session(BIN, ['mcp'], msgs, env);
+  const lines = await session(BIN, ['mcp'], msgs, env);
   // a call's name: its label, and a hash of everything it sent (labels are cut short)
   const key = ([l, method, params]: Case) => `${mask(l)} [${createHash('sha256').update(mask(JSON.stringify([method, params ?? null]))).digest('hex').slice(0, 8)}]`;
   const labels = new Map<number, string>([[1, 'initialize'], ...CASES.map((c, i) => [100 + i, key(c)] as [number, string])]);

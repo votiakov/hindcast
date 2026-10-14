@@ -2,7 +2,7 @@
 // over stdio and drives connect → collect → calibrate → verify with nothing but URLs.
 //
 //   node scripts/agent-e2e.mjs --prom http://localhost:9090 --jaeger http://localhost:16686 --last 30m \
-//        [--p99 1000 --errors 0.03 --timeout 5000] [--bundle] [--out transcript.json]
+//        [--p99 1000 --errors 0.03 --timeout 5000] [--out transcript.json]
 //
 // Against the reference HotROD under load (reference/README.md), it expects: retries without a
 // budget fail, Graviton does not. Exits 1 when an expectation fails.
@@ -19,7 +19,7 @@ const arg = (k, d) => {
 const prom = arg('prom', 'http://localhost:9090');
 const jaeger = arg('jaeger', 'http://localhost:16686');
 const workspace = arg('workspace', mkdtempSync(join(tmpdir(), 'hindcast-e2e-')));
-const server = arg('bundle') ? { command: 'node', args: ['dist-cli/hindcast-mcp.mjs'] } : { command: 'npx', args: ['tsx', 'mcp/server.ts'] };
+const server = { command: 'bin/hindcast', args: ['mcp'] };
 
 const client = new Client({ name: 'hindcast-e2e', version: '1.0.0' });
 await client.connect(new StdioClientTransport({ ...server, env: { ...process.env, HINDCAST_WORKSPACE: workspace }, stderr: 'inherit' }));

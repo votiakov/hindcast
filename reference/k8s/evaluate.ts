@@ -19,9 +19,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
 import { parse, stringify as toYaml } from 'yaml';
-import { Workspace } from '../../agent/workspace';
-import { calibrateModel, strategiesFrom, verifyChange } from '../../agent/verify';
-import { collect } from '../../agent/collect';
+import { agent, strategyFromManifests, Workspace } from '../hindcast';
 import { reviveModel, type Model } from '../../src/backtest/model';
 import { quantile, type Dataset } from '../../src/backtest/dataset';
 import { basePlan, mixtureQuantile, runPlan } from '../../src/backtest/engine';
@@ -31,7 +29,7 @@ import { accuracyLines, parseRequestLog, referenceAccuracy, type ReferenceRun, t
 import { importBundle } from '../../src/backtest/import/manifest';
 import { PRESETS, podsByNodeQuery, WORKLOAD_RE } from '../../src/backtest/import/promExport';
 import { nodeLoss } from '../../src/backtest/resilience';
-import { fileAccess } from '../../cli/files';
+import { fileAccess } from '../../scripts/files';
 import type { K8sReference } from './record';
 import { loadNativeEngine } from '../../src/backtest/native';
 
@@ -154,7 +152,7 @@ async function telemetryOf(runs: string[], out: string, settle = false): Promise
     const ws = new Workspace(fresh);
     // calibration histories leave out the same settling minutes the scoring leaves out
     const w = runs.map((r) => ({ start: meta(r).start + (settle ? SETTLE_S : 0), end: meta(r).end }));
-    await collect(ws, w.length > 1 ? { windows: w, stepS: STEP, maxTraces: 6000 * w.length } : { ...w[0], stepS: STEP, maxTraces: 6000 });
+    agent('collect_telemetry', ws, w.length > 1 ? { windows: w, stepS: STEP, maxTraces: 6000 * w.length } : { ...w[0], stepS: STEP, maxTraces: 6000 });
     d = ws.readJson<Dataset>('dataset.json');
     rmSync(out, { recursive: true, force: true });
     renameSync(fresh, out);
@@ -224,7 +222,7 @@ function measuredSeries(log: RequestLog, start: number, n: number) {
 
 /** the model with the change, replayed over the traffic the run actually had (after settling) */
 function predicted(m: Model, ws: Workspace, run: Dataset, runStart: number, head: string | undefined, base: string) {
-  const strat = head ? strategiesFrom(ws, [{ kubernetes: { base, head } }], m).strategies[0] : undefined;
+  const strat = head ? strategyFromManifests(base, head, ws.path('model.json')) : undefined;
   const plan = strat ? applyStrategy(m, basePlan(m), strat).plan : basePlan(m);
   // a fixed replica count was really applied: replay the counts the run had (pods start seconds
   // apart); an autoscaler is predicted, never copied from the run
@@ -279,7 +277,7 @@ function forecast(c: Case, ws: Workspace, base: string) {
   const traffic = c.scale !== 1 ? { scale: c.scale } : undefined;
   // the replay is the ordinary day, whatever else the model learned from (a load test)
   const window = { start: meta('history').start + SETTLE_S, end: meta('history').end };
-  const exAnte = verifyChange(ws, [head ? { kubernetes: { base, head } } : { strategy: { name: 'as built', changes: [] } }], { traffic, window, report: false });
+  const exAnte = agent('verify_change', ws, { changes: [head ? { kubernetes: { base, head } } : { strategy: { name: 'as built', changes: [] } }], traffic, window, report: false });
   const res = exAnte.results[0];
   const asBuilt = c.run === c.asBuilt;
   const asBuiltMin = exAnte.asBuilt?.minutesOutOfSlo ?? 0;
@@ -392,7 +390,7 @@ async function calibrated(name: string, runs: string[], evalDir: string, slo: Mo
   cpSync(join(runDir(runs[0]), 'workspace', 'sources.json'), join(dir, 'sources.json'));
   const ws = new Workspace(dir);
   ws.writeJson('dataset.json', await telemetryOf(runs, join(evalDir, 'collected', runs.join('+')), true), false);
-  const trust = await calibrateModel(ws, { slo, holdout: runs.length > 1 ? 0 : 0.3 });
+  const trust = agent('calibrate_model', ws, { slo, holdout: runs.length > 1 ? 0 : 0.3 });
   return { ws, trust };
 }
 
@@ -440,7 +438,7 @@ async function main() {
   for (const c of CASES) {
     if (!recorded(c.run)) continue;
     const head = c.head ? resolve(SYS, c.head) : undefined;
-    const spec = head ? strategiesFrom(best, [{ kubernetes: { base, head } }], m).strategies[0] : undefined;
+    const spec = head ? (strategyFromManifests(base, head, best.path('model.json')) as Record<string, unknown> | undefined) : undefined;
     if (spec && !strategies.some((y) => y.includes(`name: ${strategyName(c.head!)}\n`))) {
       spec.name = strategyName(c.head!);
       spec.description = `${c.head} — the manifests applied for real (${CASES.filter((x) => x.head === c.head).map((x) => x.run).join(', ')})`;

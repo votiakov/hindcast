@@ -16,7 +16,7 @@ import { importBundle } from '../src/backtest/import/manifest';
 import { calibrate } from '../src/backtest/calibrate';
 import { accuracyLines, holdoutAccuracy, parseRequestLog, referenceAccuracy, type ReferenceRun } from '../src/backtest/accuracy';
 import type { Dataset } from '../src/backtest/dataset';
-import { fileAccess } from '../cli/files';
+import { fileAccess } from '../scripts/files';
 import { MANIFEST, MANIFESTS, writeManifest } from './manifest';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));

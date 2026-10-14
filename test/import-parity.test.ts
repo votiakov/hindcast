@@ -11,7 +11,7 @@ import { specToYaml } from '../src/spec/yaml';
 import { parse as parseYaml } from 'yaml';
 import * as W from '../src/backtest/wasm/hindcast_engine.js';
 import { importBundleTs, ImportManifest } from '../src/backtest/import/manifest';
-import { fileAccess } from '../cli/files';
+import { fileAccess } from '../scripts/files';
 
 /**
  * The Rust importers (engine-rs/src/import) against the TypeScript ones: every import manifest in the

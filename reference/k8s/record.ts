@@ -16,9 +16,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 import { clientCsv, readK6, requestsCsv } from '../k6';
-import { Workspace } from '../../agent/workspace';
-import { connectTelemetry } from '../../agent/connect';
-import { collect } from '../../agent/collect';
+import { agent, Workspace } from '../hindcast';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const LOAD = join(ROOT, '..', 'load');
@@ -138,13 +136,13 @@ async function main() {
 
   // 4. telemetry, collected the way an agent collects it: from the live Prometheus and Jaeger
   const ws = new Workspace(join(out, 'workspace'));
-  const conn = await connectTelemetry(ws, { prometheus: { url: cfg.prometheus }, jaeger: { url: cfg.jaeger }, system: { name: `${cfg.name} — ${run}`, slo: cfg.slo, timeoutMs: Number(String(cfg.timeout ?? '5s').replace('s', '')) * 1000 } });
+  const conn = agent('connect_telemetry', ws, { prometheus: { url: cfg.prometheus }, jaeger: { url: cfg.jaeger }, system: { name: `${cfg.name} — ${run}`, slo: cfg.slo, timeoutMs: Number(String(cfg.timeout ?? '5s').replace('s', '')) * 1000 } });
   if (conn.problems.length) console.warn('connect problems:', conn.problems);
   // a killed node may have taken Jaeger and its traces with it: the metrics still stand
-  const col = await collect(ws, { start, end, stepS: 30 }).catch((e) => {
+  const col = await Promise.resolve().then(() => agent('collect_telemetry', ws, { start, end, stepS: 30 })).catch((e) => {
     if (!r.kill) throw e;
     console.warn(`collection failed after the node kill: ${(e as Error).message}`);
-    return { window: { buckets: 0 }, services: 0, warnings: [String(e)] } as unknown as Awaited<ReturnType<typeof collect>>;
+    return { window: { buckets: 0 }, services: 0, warnings: [String(e)] };
   });
   writeFileSync(join(out, 'collect.json'), JSON.stringify(col, null, 1));
   console.log(`collected ${col.window.buckets} buckets, ${col.services} services; warnings: ${col.warnings.length}`);

@@ -1,0 +1,10 @@
+#!/bin/sh
+# Hindcast: the native binary (engine-rs), built on first use in a checkout of the repository.
+#   bin/hindcast <command> …     e.g. bin/hindcast audit examples/shop.yaml, bin/hindcast mcp
+root=$(cd "$(dirname "$0")/.." && pwd)
+bin="$root/engine-rs/target/release/hindcast"
+if [ ! -x "$bin" ]; then
+  echo "building hindcast (once): cargo build --release --bin hindcast" >&2
+  (cd "$root/engine-rs" && cargo build --release --bin hindcast >&2) || exit 1
+fi
+exec "$bin" "$@"

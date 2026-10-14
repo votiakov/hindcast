@@ -1,7 +1,8 @@
 // The native CLI (engine-rs, `hindcast`) against its golden outputs (test/golden/cli.json), which were
-// recorded from the Node CLI it replaced: stdout, stderr, the exit code and every file each command
-// wrote must match (wall-clock timings and temp dirs masked).
-// npx tsx scripts/cli-golden.ts [filter]
+// first recorded from the Node CLI it replaced (6b0e08c): stdout, stderr, the exit code and every file
+// each command wrote must match (wall-clock timings and temp dirs masked). After an intended change in
+// output, --record writes the binary's answers as the new reference.
+// npx tsx scripts/cli-golden.ts [filter] [--record]
 import { spawn, spawnSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -142,7 +143,7 @@ export const CASES: string[][] = [
 ];
 
 /** wall-clock numbers differ run to run */
-const mask = (s: string) => s.replace(/(in |· )\d+ ms/g, '$1# ms').replace(/"wallMs": \d+(\.\d+)?/g, '"wallMs": #').replace(/"measuredAt": ?"[^"]*"/g, '"measuredAt": #').replaceAll(realpathSync(out), '$OUT').replaceAll(out, '$OUT').replaceAll(process.cwd(), '$CWD');
+const mask = (s: string) => s.replace(/(in |· )\d+ ms/g, '$1# ms').replace(/"wallMs": \d+(\.\d+)?/g, '"wallMs": #').replace(/"measuredAt": ?"[^"]*"/g, '"measuredAt": #').replace(/"collectedHoursAgo": -?[\d.]+/g, '"collectedHoursAgo": #').replaceAll(realpathSync(out), '$OUT').replaceAll(out, '$OUT').replaceAll(process.cwd(), '$CWD');
 
 interface Golden {
   stdout: string;
@@ -156,7 +157,7 @@ let files = snapshot(root, mask);
 function run(args: string[], record: boolean): Golden {
   for (const x of args) if (x.startsWith(`${root}/`)) mkdirSync(x.slice(0, x.lastIndexOf('/')), { recursive: true });
   const env = { ...process.env, NO_COLOR: '', HINDCAST_NOW: '1791500000', HINDCAST_KUBECTL: 'test/cli-fixtures/fake-kubectl.mjs' };
-  const r = record ? spawnSync('npx', ['tsx', 'cli/bottleneck.ts', ...args], { encoding: 'utf8', env }) : spawnSync(BIN, args, { encoding: 'utf8', env });
+  const r = spawnSync(BIN, args, { encoding: 'utf8', env });
   // everything the command wrote: named outputs, workspaces, reports
   const now = snapshot(root, mask);
   const g = { stdout: mask(r.stdout), stderr: store(mask(r.stderr)), code: r.status, files: changed(files, now) };

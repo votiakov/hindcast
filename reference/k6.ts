@@ -1,5 +1,5 @@
 import { quantile } from '../src/backtest/dataset';
-import { readLines } from '../cli/files';
+import { readLines } from '../scripts/files';
 
 /**
  * k6 CSV output (streamed — Poisson thinning makes it large) → what the reference runs keep:
