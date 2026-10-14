@@ -1,6 +1,7 @@
 //! The agent tools (agent/tools.ts), defined once: `hindcast agent <tool>` runs them from a shell and
 //! the MCP server registers them. Every tool is read-only towards the user's systems.
 
+pub mod collect;
 pub mod connect;
 pub mod sources;
 pub mod workspace;
@@ -180,6 +181,7 @@ pub fn run_tool(name: &str, args: &Value) -> Result<Value, String> {
     match name {
         "connect_telemetry" => connect::connect_telemetry(&ws, &parsed),
         "read_cluster" => connect::read_cluster(&ws, &parsed),
+        "collect_telemetry" => collect::collect(&ws, &parsed),
         _ => Err(format!("{} is not available in this build yet", name)),
     }
 }

@@ -171,6 +171,9 @@ export async function collect(ws: Workspace, o: CollectOptions = {}, progress?: 
   const manifest = {
     name: src.system.name,
     step: `${stepS}s`,
+    // the grid is the collection window: a span with a skewed clock (or a sample from 1970) can't
+    // stretch the history to decades of empty buckets
+    window: { start: iso(parts[0].start), end: iso(parts[parts.length - 1].end) },
     ...(src.system.rename && Object.keys(src.system.rename).length ? { rename: src.system.rename } : {}),
     metrics: manifestMetrics(metricsPlan, parts.length > 1 ? 'metrics/*' : 'metrics'),
     traces: traceFiles.length
