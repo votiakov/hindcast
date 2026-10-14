@@ -487,18 +487,25 @@ export function calibrate(d: Dataset, options: CalibrateOptions = {}): Model {
       let hard = 0;
       let healthy = 0;
       let broke = 0;
+      let topU = 0;
+      const brokeAt: number[] = [];
       for (let i = 0; i < d.n; i++) {
         const th = vals(s.cpuThrottled, i);
         if (th === null || th < THROTTLE_COLLAPSE) continue;
         hard++;
+        const c = vals(s.cpuCores, i);
+        const r = vals(reps, i) ?? replicas;
+        const u = c !== null && r > 0 ? c / (r * cpuLimit) : 0;
+        topU = Math.max(topU, u);
         const p = vals(own, i);
         const err = vals(s.errorRate, i) ?? 0;
         if (p !== null && isFinite(calmP99) && p <= Math.max(calmP99 * 2, calmP99 + 50) && err < 0.01) healthy++;
-        if (err >= 0.01 || (vals(s.p99Ms, i) ?? 0) >= timeoutMs * 0.5) broke++;
+        if (err >= 0.01 || (vals(s.p99Ms, i) ?? 0) >= timeoutMs * 0.5) (broke++, brokeAt.push(u));
       }
-      // …and one the history saw failing while throttled that hard was held back by it
-      // a stray bucket of errors with another cause shouldn't cap it: a tenth of them, two at least
-      throttleBound = broke >= Math.max(2, 0.1 * hard);
+      // …and one the history saw failing while throttled that hard was held back by it: failing at
+      // the top of its throttled range (a collapse), or often enough not to be a stray bucket of
+      // errors with another cause
+      throttleBound = broke >= Math.max(2, 0.1 * hard) || brokeAt.some((u) => u >= topU * 0.95);
       if (hard >= 3 && healthy >= hard * 0.8) notes.push(`throttled in ${Math.round(THROTTLE_COLLAPSE * 100)}%+ of CPU periods for ${hard} buckets of the history without slowing down: the quota does not limit it`);
       else if (fit && fit.slope > 0 && fit.r2 >= 0.3) {
         const knee = (Math.log(THROTTLE_COLLAPSE) - fit.intercept) / fit.slope;
