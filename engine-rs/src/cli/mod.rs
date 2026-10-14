@@ -4,6 +4,7 @@
 mod bt;
 mod design;
 mod files;
+mod http;
 mod reports;
 mod sim;
 pub mod util;

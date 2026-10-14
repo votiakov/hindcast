@@ -417,6 +417,142 @@ pub fn command(cmd: &str, f: &Flags, out: &mut Out) -> Result<Option<i32>, Strin
             out.log(&format!("{}\n", accuracy_line(&arr(&mv, &["accuracy"]))));
             0
         }
+        "export-prometheus" => {
+            let url = f.get("url").unwrap_or_else(|| "http://localhost:9090".into());
+            let start = crate::import::parse_timestamp_str(&f.get("start").unwrap_or_else(|| "undefined".into()));
+            let end = if tf("end") { crate::import::parse_timestamp_str(&f.get("end").unwrap()) } else { Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0)) };
+            let (start, end) = match (start, end) {
+                (Some(a), Some(b)) => (a, b),
+                _ => return Err("--start and --end must be timestamps (ISO or epoch)".into()),
+            };
+            let presets: Vec<String> = f.get("preset").unwrap_or_else(|| "otel-spanmetrics,cadvisor".into()).split(',').map(String::from).collect();
+            let dir = f.get("out").unwrap_or_else(|| "telemetry".into());
+            std::fs::create_dir_all(format!("{}/metrics", dir)).map_err(|e| e.to_string())?;
+            let o = crate::prom_export::Opts { window: if tf("window") { f.get("window").unwrap() } else { "1m".into() }, selector: if tf("selector") { f.get("selector").unwrap() } else { String::new() }, entry: vec![], namespaces: vec![] };
+            let plan = crate::prom_export::export_plan(&presets, &o)?;
+            let step = f.num("step").unwrap_or(60.0);
+            let res = run_export(&url, &plan, start, end, step, &|file, body| write(&format!("{}/metrics/{}", dir, file), body), &[])?;
+            let mut manifest = JMap::new();
+            manifest.insert("name".into(), json!(f.get("name").unwrap_or_else(|| "my system".into())));
+            manifest.insert("step".into(), json!(format!("{}s", js_num(step))));
+            manifest.insert("metrics".into(), Value::Array(crate::prom_export::manifest_metrics(&plan, "metrics")));
+            manifest.insert("traces".into(), json!([]));
+            manifest.insert("billing".into(), json!([]));
+            let mpath = format!("{}/hindcast.import.yaml", dir);
+            write(&mpath, &format!("# Written by hindcast export-prometheus. Add traces (OTLP JSON) and a bill (AWS CUR / GCP export), then:\n#   hindcast import {}\n{}", mpath, crate::yaml_out::to_yaml(&Value::Object(manifest))))?;
+            for (file, series) in &res {
+                out.log(&format!("  {} {} {}", if *series > 0 { green("✓") } else { yellow("·") }, file, dim(&format!("{} series", series))));
+            }
+            out.log(&format!("\n{} {} {}\n", bold("Wrote"), mpath, dim(&format!("({} presets available)", crate::prom_export::PRESET_IDS.join(", ")))));
+            0
+        }
+        "diff-strategy" => {
+            let texts = |p: &str| -> Result<Vec<String>, String> { yaml_files(p).iter().map(|f| read(f)).collect() };
+            let docs = |p: &str| -> Result<Vec<Value>, String> {
+                let mut out = vec![];
+                for t in texts(p)? {
+                    out.extend(yaml_documents(&t)?);
+                }
+                Ok(out)
+            };
+            let known: Option<indexmap::IndexSet<String>> = if tf("model") {
+                let mv = read_json(&f.get("model").unwrap())?;
+                Some(g(&mv, &["services"]).as_object().map(|m| m.keys().cloned().collect()).unwrap_or_default())
+            } else {
+                None
+            };
+            let before = crate::config_diff::read_workloads(&docs(&f.get("base").unwrap_or_else(|| "undefined".into()))?);
+            let after = crate::config_diff::read_workloads(&docs(&f.get("head").unwrap_or_else(|| "undefined".into()))?);
+            let r = crate::config_diff::strategy_from_diff(&before, &after, if tf("name") { f.get("name") } else { None }.as_deref(), known.as_ref());
+            for i in &r.ignored {
+                out.err(&yellow(&format!("  ignored: {}", i)));
+            }
+            match r.strategy {
+                None => {
+                    out.err(&dim("  no change the model can backtest (replicas, CPU/memory limits, HPAs, arch)"));
+                    if tf("out") {
+                        write(&f.get("out").unwrap(), "")?;
+                    }
+                }
+                Some(st) => {
+                    let yaml = crate::yaml_out::to_yaml(&st);
+                    if tf("out") {
+                        write(&f.get("out").unwrap(), &yaml)?;
+                    } else {
+                        out.log(&yaml);
+                    }
+                    out.err(&green(&format!("  strategy: {}", s(&st, &["name"]))));
+                }
+            }
+            0
+        }
         _ => return Ok(None),
     }))
+}
+
+/// every YAML file under a path, in readdirSync order (a file path itself is taken as it is)
+fn yaml_files(p: &str) -> Vec<String> {
+    let path = std::path::Path::new(p);
+    if !path.exists() {
+        return vec![];
+    }
+    if !path.is_dir() {
+        return vec![p.to_string()];
+    }
+    let mut out = vec![];
+    if let Ok(rd) = std::fs::read_dir(path) {
+        // readdirSync's order: libuv sorts the entries byte-wise
+        let mut names: Vec<String> = rd.flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect();
+        names.sort();
+        for name in names {
+            out.extend(yaml_files(&format!("{}/{}", p.trim_end_matches('/'), name)));
+        }
+    }
+    out.into_iter().filter(|f| f.ends_with(".yaml") || f.ends_with(".yml")).collect()
+}
+
+/// run an export plan against a live Prometheus; long ranges in chunks under its 11,000 points per
+/// series, stitched back together (src/backtest/import/promExport.ts runExport)
+pub fn run_export(url: &str, plan: &[crate::prom_export::PlanItem], start: f64, end: f64, step: f64, write: &dyn Fn(&str, &str) -> Result<(), String>, headers: &[(String, String)]) -> Result<Vec<(String, usize)>, String> {
+    let mut out = vec![];
+    let span = 10_000.0 * step;
+    for p in plan {
+        let mut merged: indexmap::IndexMap<String, (Value, Vec<Value>)> = indexmap::IndexMap::new();
+        let mut t0 = start;
+        loop {
+            if !(t0 < end || t0 == start) {
+                break;
+            }
+            let t1 = end.min(t0 + span - step);
+            let u = format!(
+                "{}?query={}&start={}&end={}&step={}",
+                super::http::join(url, "api/v1/query_range"),
+                crate::prom_export::form_encode(&p.query.query),
+                crate::prom_export::form_encode(&js_num(t0)),
+                crate::prom_export::form_encode(&js_num(t0.max(t1))),
+                crate::prom_export::form_encode(&format!("{}s", js_num(step)))
+            );
+            let (status, body) = super::http::get(&u, headers)?;
+            if !(200..300).contains(&status) {
+                return Err(format!("{}: Prometheus answered {} {}", p.query.file, status, body));
+            }
+            let v: Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
+            for series in g(&v, &["data", "result"]).as_array().cloned().unwrap_or_default() {
+                let metric = series.get("metric").cloned().unwrap_or(Value::Null);
+                let key = crate::convert::js_stringify(&metric);
+                let e = merged.entry(key).or_insert_with(|| (metric, vec![]));
+                if let Some(vals) = series.get("values").and_then(|x| x.as_array()) {
+                    e.1.extend(vals.iter().cloned());
+                }
+            }
+            if t1 >= end {
+                break;
+            }
+            t0 += span;
+        }
+        let result: Vec<Value> = merged.values().map(|(m, v)| json!({ "metric": m, "values": v })).collect();
+        write(&p.query.file, &crate::convert::js_stringify(&json!({ "status": "success", "data": { "resultType": "matrix", "result": result } })))?;
+        out.push((p.query.file.clone(), merged.len()));
+    }
+    Ok(out)
 }

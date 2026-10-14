@@ -15,6 +15,7 @@ pub mod fmath;
 pub mod import;
 pub mod math;
 pub mod model;
+pub mod prom_export;
 pub mod resilience;
 pub mod sim;
 pub mod strategy;
@@ -557,5 +558,12 @@ mod wasm {
     pub fn spec_to_yaml(spec: JsValue) -> Result<String, JsValue> {
         let v: serde_json::Value = from(spec)?;
         Ok(crate::yaml_out::spec_to_yaml(&v))
+    }
+
+    /// toYaml(value) → yaml.stringify(value) with the package's defaults
+    #[wasm_bindgen(js_name = toYaml)]
+    pub fn to_yaml(v: JsValue) -> Result<String, JsValue> {
+        let v: serde_json::Value = from(v)?;
+        Ok(crate::yaml_out::to_yaml(&v))
     }
 }

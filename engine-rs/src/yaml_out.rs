@@ -24,6 +24,12 @@ struct Ctx {
     indent: String,
     in_flow: bool,
     implicit_key: bool,
+    /// the column a map value starts at (key and ': '), for folding
+    indent_at_start: Option<usize>,
+    /// 0: never fold (specToYaml); 80: the yaml package's default
+    line_width: usize,
+    /// ' ' inside non-empty flow collections (the default) or ''
+    padding: bool,
 }
 
 const STEP: &str = "  ";
@@ -107,10 +113,11 @@ fn double_quoted(value: &str, ctx: &Ctx) -> String {
         }
         i += 1;
     }
-    if start > 0 {
-        out + &slice(start, json.len())
+    let res = if start > 0 { out + &slice(start, json.len()) } else { json.iter().collect() };
+    if ctx.implicit_key {
+        res
     } else {
-        json.iter().collect()
+        fold(&res, &indent, Fold::Quoted, ctx.indent_at_start, ctx.line_width).0
     }
 }
 
@@ -133,7 +140,12 @@ fn single_quoted(value: &str, ctx: &Ctx) -> String {
         return double_quoted(value, ctx);
     }
     let indent = if !ctx.indent.is_empty() { ctx.indent.clone() } else if contains_document_marker(value) { "  ".into() } else { String::new() };
-    format!("'{}'", after_newlines(&value.replace('\'', "''"), &format!("\n{}", indent)))
+    let res = format!("'{}'", after_newlines(&value.replace('\'', "''"), &format!("\n{}", indent)));
+    if ctx.implicit_key {
+        res
+    } else {
+        fold(&res, &indent, Fold::Flow, ctx.indent_at_start, ctx.line_width).0
+    }
 }
 
 fn quoted(value: &str, ctx: &Ctx) -> String {
@@ -198,6 +210,29 @@ fn block_string(value: &str, ctx: &Ctx, force_block_indent: bool) -> String {
     }
     let indent_size = if indent.is_empty() { "1" } else { "2" };
     let header = format!("{}{}", if start_with_space { indent_size } else { "" }, chomp);
+    let literal = !line_length_over_limit(value, ctx.line_width, indent.chars().count());
+    // folded (>): only where no line is more indented (the package keeps those unfolded with a
+    // regular expression this port does not need: such values are written literally here)
+    if !literal && !body.split('\n').any(|l| l.starts_with([' ', '\t'])) {
+        let doubled = {
+            // /\n+/g → '\n$&': each run of newlines gets one more
+            let mut o = String::new();
+            let mut prev_nl = false;
+            for c in body.chars() {
+                if c == '\n' && !prev_nl {
+                    o.push('\n');
+                }
+                prev_nl = c == '\n';
+                o.push(c);
+            }
+            o
+        };
+        let folded_value = after_newlines(&doubled, &indent);
+        let (folded, overflow) = fold(&format!("{}{}{}", start, folded_value, end), &indent, Fold::Block, Some(indent.chars().count()), ctx.line_width);
+        if !overflow {
+            return format!(">{}\n{}{}", header, indent, folded);
+        }
+    }
     let body = after_newlines(&body, &indent);
     format!("|{}\n{}{}{}{}", header, indent, start, body, end)
 }
@@ -311,7 +346,36 @@ fn plain_string(value: &str, ctx: &Ctx) -> String {
     if looks_typed(&s) {
         return quoted(value, ctx);
     }
-    s
+    if ctx.implicit_key {
+        s
+    } else {
+        fold(&s, &ctx.indent, Fold::Flow, ctx.indent_at_start, ctx.line_width).0
+    }
+}
+
+/// lineLengthOverLimit: a line of the value longer than lineWidth − indent
+fn line_length_over_limit(s: &str, line_width: usize, indent: usize) -> bool {
+    if line_width == 0 {
+        return false;
+    }
+    let limit = line_width as isize - indent as isize;
+    let c: Vec<char> = s.chars().collect();
+    if c.len() as isize <= limit {
+        return false;
+    }
+    let mut start = 0usize;
+    for (i, ch) in c.iter().enumerate() {
+        if *ch == '\n' {
+            if (i - start) as isize > limit {
+                return true;
+            }
+            start = i + 1;
+            if (c.len() - start) as isize <= limit {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 fn string(value: &str, ctx: &Ctx) -> String {
@@ -379,7 +443,7 @@ fn block_collection(items: Vec<Item>, ctx: &Ctx, prefix: &str, item_indent: Stri
     if items.is_empty() {
         return empty.into();
     }
-    let ictx = Ctx { indent: item_indent, in_flow: ctx.in_flow, implicit_key: false };
+    let ictx = Ctx { indent: item_indent, in_flow: ctx.in_flow, implicit_key: false, indent_at_start: None, line_width: ctx.line_width, padding: ctx.padding };
     let lines: Vec<String> = items.iter().map(|it| format!("{}{}", prefix, item(it, &ictx))).collect();
     let mut out = lines[0].clone();
     for l in &lines[1..] {
@@ -398,7 +462,7 @@ fn flow_collection(items: Vec<Item>, ctx: &Ctx, item_indent: String, start: &str
     if items.is_empty() {
         return format!("{}{}", start, end);
     }
-    let ictx = Ctx { indent: format!("{}{}", item_indent, STEP), in_flow: true, implicit_key: false };
+    let ictx = Ctx { indent: format!("{}{}", item_indent, STEP), in_flow: true, implicit_key: false, indent_at_start: None, line_width: ctx.line_width, padding: ctx.padding };
     let mut req_newline = false;
     let mut lines = vec![];
     let n = items.len();
@@ -409,6 +473,10 @@ fn flow_collection(items: Vec<Item>, ctx: &Ctx, item_indent: String, start: &str
             s.push(',');
         }
         lines.push(s);
+    }
+    if !req_newline && ctx.line_width > 0 {
+        let len = lines.iter().fold(2, |a, l| a + l.encode_utf16().count() + 2);
+        req_newline = len > ctx.line_width;
     }
     if req_newline {
         let mut out = start.to_string();
@@ -421,14 +489,16 @@ fn flow_collection(items: Vec<Item>, ctx: &Ctx, item_indent: String, start: &str
         }
         format!("{}\n{}{}", out, ctx.indent, end)
     } else {
-        format!("{}{}{}", start, lines.join(" "), end)
+        let p = if ctx.padding { " " } else { "" };
+        format!("{}{}{}{}{}", start, p, lines.join(" "), p, end)
     }
 }
 
 fn pair(key: &str, value: &Node, ctx: &Ctx) -> String {
-    let kctx = Ctx { indent: format!("{}{}", ctx.indent, STEP), in_flow: ctx.in_flow, implicit_key: true };
+    let kctx = Ctx { indent: format!("{}{}", ctx.indent, STEP), in_flow: ctx.in_flow, implicit_key: true, indent_at_start: None, line_width: ctx.line_width, padding: ctx.padding };
     let mut s = format!("{}:", string(key, &kctx));
-    let vctx = Ctx { implicit_key: false, ..kctx };
+    let ias = if matches!(value, Node::Scalar(_)) { Some(s.encode_utf16().count() + 1) } else { None };
+    let vctx = Ctx { implicit_key: false, indent_at_start: ias, ..kctx };
     let vs = stringify(value, &vctx);
     let coll = |len: usize, flow: bool| {
         // ctx.inFlow ?? value.flow ?? value.items.length === 0
@@ -526,6 +596,152 @@ pub fn spec_to_yaml(spec: &Value) -> String {
             }
         }
     }
-    let ctx = Ctx { indent: String::new(), in_flow: false, implicit_key: false };
+    let ctx = Ctx { indent: String::new(), in_flow: false, implicit_key: false, indent_at_start: None, line_width: 0, padding: false };
     format!("{}\n", stringify(&root, &ctx))
+}
+
+/// yaml.stringify(value) with the package's default options (lines folded at 80 columns, block style)
+pub fn to_yaml(v: &Value) -> String {
+    let ctx = Ctx { indent: String::new(), in_flow: false, implicit_key: false, indent_at_start: None, line_width: 80, padding: true };
+    format!("{}\n", stringify(&node(v), &ctx))
+}
+
+#[derive(PartialEq, Clone, Copy)]
+enum Fold {
+    Flow,
+    Block,
+    Quoted,
+}
+
+/// foldFlowLines (yaml/stringify/foldFlowLines.js); returns the text and whether a line overflowed
+fn fold(text: &str, indent: &str, mode: Fold, indent_at_start: Option<usize>, line_width: usize) -> (String, bool) {
+    if line_width == 0 {
+        return (text.to_string(), false);
+    }
+    let t: Vec<char> = text.chars().collect();
+    let min_content = if line_width < 20 { 0 } else { 20 };
+    let ind = indent.chars().count();
+    let end_step = ((1 + min_content) as isize).max((1 + line_width) as isize - ind as isize) as usize;
+    if t.len() <= end_step {
+        return (text.to_string(), false);
+    }
+    let mut folds: Vec<usize> = vec![];
+    let mut escaped: std::collections::HashSet<usize> = std::collections::HashSet::new();
+    let mut end: isize = line_width as isize - ind as isize;
+    if let Some(a) = indent_at_start {
+        if a as isize > line_width as isize - (2.max(min_content)) as isize {
+            folds.push(0);
+        } else {
+            end = line_width as isize - a as isize;
+        }
+    }
+    let mut split: Option<usize> = None;
+    let mut prev: Option<char> = None;
+    let mut overflow = false;
+    let mut i: isize = -1;
+    let (mut esc_start, mut esc_end): (isize, isize) = (-1, -1);
+    if mode == Fold::Block {
+        i = more_indented(&t, i, ind);
+        if i != -1 {
+            end = i + end_step as isize;
+        }
+    }
+    loop {
+        i += 1;
+        let Some(&c0) = t.get(i as usize) else { break };
+        let mut ch = c0;
+        if mode == Fold::Quoted && ch == '\\' {
+            esc_start = i;
+            i += match t.get(i as usize + 1) {
+                Some('x') => 3,
+                Some('u') => 5,
+                Some('U') => 9,
+                _ => 1,
+            };
+            esc_end = i;
+        }
+        if ch == '\n' {
+            if mode == Fold::Block {
+                i = more_indented(&t, i, ind);
+            }
+            end = i + ind as isize + end_step as isize;
+            split = None;
+        } else {
+            if ch == ' ' && matches!(prev, Some(p) if p != ' ' && p != '\n' && p != '\t') {
+                if let Some(&next) = t.get(i as usize + 1) {
+                    if next != ' ' && next != '\n' && next != '\t' {
+                        split = Some(i as usize);
+                    }
+                }
+            }
+            if i >= end {
+                if let Some(sp) = split.filter(|x| *x != 0) {
+                    folds.push(sp);
+                    end = sp as isize + end_step as isize;
+                    split = None;
+                } else if mode == Fold::Quoted {
+                    while prev == Some(' ') || prev == Some('\t') {
+                        prev = Some(ch);
+                        i += 1;
+                        ch = t.get(i as usize).copied().unwrap_or('\0');
+                        overflow = true;
+                    }
+                    let j = if i > esc_end + 1 { i - 2 } else { esc_start - 1 };
+                    if escaped.contains(&(j as usize)) {
+                        return (text.to_string(), overflow);
+                    }
+                    folds.push(j as usize);
+                    escaped.insert(j as usize);
+                    end = j + end_step as isize;
+                    split = None;
+                } else {
+                    overflow = true;
+                }
+            }
+        }
+        prev = Some(ch);
+    }
+    if folds.is_empty() {
+        return (text.to_string(), overflow);
+    }
+    let slice = |a: usize, b: usize| t[a.min(t.len())..b.min(t.len())].iter().collect::<String>();
+    let mut res = slice(0, folds[0]);
+    for (k, &f) in folds.iter().enumerate() {
+        let e = folds.get(k + 1).copied().filter(|x| *x != 0).unwrap_or(t.len());
+        if f == 0 {
+            res = format!("\n{}{}", indent, slice(0, e));
+        } else {
+            if mode == Fold::Quoted && escaped.contains(&f) {
+                res.push(t[f]);
+                res.push('\\');
+            }
+            res += &format!("\n{}{}", indent, slice(f + 1, e));
+        }
+    }
+    (res, overflow)
+}
+
+fn more_indented(t: &[char], i: isize, indent: usize) -> isize {
+    let mut end = i;
+    let mut i = i;
+    let mut start = i + 1;
+    let mut ch = t.get(start as usize).copied();
+    while ch == Some(' ') || ch == Some('\t') {
+        if i < start + indent as isize {
+            i += 1;
+            ch = t.get(i as usize).copied();
+        } else {
+            loop {
+                i += 1;
+                ch = t.get(i as usize).copied();
+                if ch.is_none() || ch == Some('\n') {
+                    break;
+                }
+            }
+            end = i;
+            start = i + 1;
+            ch = t.get(start as usize).copied();
+        }
+    }
+    end
 }

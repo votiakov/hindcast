@@ -1,8 +1,9 @@
 // The native CLI (engine-rs, `hindcast`) against the Node one (cli/bottleneck.ts): every case runs
 // through both; stdout, stderr and the exit code must match (wall-clock timings masked).
 // npx tsx scripts/cli-parity.ts [filter]
-import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
+const walk = (d: string): string[] => readdirSync(d).sort().flatMap((f) => (statSync(`${d}/${f}`).isDirectory() ? walk(`${d}/${f}`) : [`${d}/${f}`]));
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -10,6 +11,7 @@ const BIN = 'engine-rs/target/release/hindcast';
 const out = mkdtempSync(join(tmpdir(), 'cli-parity-'));
 const ex = 'examples';
 const fx = 'test/cli-fixtures';
+const PROM = 'http://127.0.0.1:19090';
 /** cases whose stderr is a YAML parser's syntax message: only the exit code has to agree */
 const PARSER_MESSAGE = new Set([`validate ${ex}/kubernetes/shop.yaml`, `audit ${ex}/kubernetes/shop.yaml`]);
 export const CASES: string[][] = [
@@ -68,6 +70,14 @@ export const CASES: string[][] = [
   ['headroom', 'reference/petclinic/model.json', 'reference/petclinic/strategies/4-read-replica.yaml', '--json'],
   ['accuracy', 'reference/shop/model.json'],
   ['accuracy', 'demos/ws/model.json', '--json'],
+  ['diff-strategy', '--base', 'reference/k8s/shop/variants/frontend-1.yaml', '--head', 'reference/k8s/shop/variants/frontend-hpa.yaml'],
+  ['diff-strategy', '--base', 'reference/k8s/shop/variants/frontend-2.yaml', '--head', 'reference/k8s/shop/variants/frontend-1-750m.yaml', '--name', 'smaller', '--out', `${out}/OUT/s.yaml`],
+  ['diff-strategy', '--base', 'reference/k8s/shop/shop.yaml', '--head', 'reference/k8s/shop/variants', '--model', 'reference/shop/model.json'],
+  ['diff-strategy', '--base', 'reference/k8s/shop/shop.yaml', '--head', 'reference/k8s/shop/shop.yaml', '--out', `${out}/OUT/none.yaml`],
+  ['export-prometheus', '--url', PROM, '--start', '2026-09-01T00:00:00Z', '--end', '2026-09-01T01:00:00Z', '--out', `${out}/OUT/exp1`],
+  ['export-prometheus', '--url', `${PROM}/prefix/`, '--start', '1791390000', '--end', '1791410000', '--step', '1', '--preset', 'kubernetes,ingress-nginx,spring,http-server', '--selector', 'namespace="shop"', '--window', '5m', '--name', 'Shop', '--out', `${out}/OUT/exp2`],
+  ['export-prometheus', '--url', PROM, '--start', 'yesterday', '--end', '2026-09-01'],
+  ['export-prometheus', '--url', PROM, '--start', '2026-09-01', '--end', '2026-09-02', '--preset', 'nonsense', '--out', `${out}/OUT/exp3`],
   ['outage', 'reference/shop/model.json', 'list'],
   ['outage', 'reference/shop/model.json', 'aws-use1-2025-10-20'],
   ['outage', 'reference/shop/model.json', 'slack-2021-01-04', 'reference/shop/strategies/1-autoscale-frontend.yaml', '--md', `${out}/OUT/o.md`],
@@ -90,10 +100,12 @@ function run(cmd: string, args: string[], tag: string) {
   const a = args.map((x) => x.replace('/OUT/', `/OUT${tag}/`));
   for (const x of a) if (x.includes(`/OUT${tag}/`)) spawnSync('mkdir', ['-p', x.slice(0, x.lastIndexOf('/'))]);
   const r = spawnSync(cmd, cmd === 'npx' ? ['tsx', 'cli/bottleneck.ts', ...a] : a, { encoding: 'utf8', env: { ...process.env, NO_COLOR: '' } });
-  const files = a.filter((x) => x.includes(`/OUT${tag}/`) && existsSync(x)).map((x) => mask(readFileSync(x, 'utf8')));
+  const files = a.filter((x) => x.includes(`/OUT${tag}/`) && existsSync(x)).flatMap((x) => (statSync(x).isDirectory() ? walk(x) : [x])).map((x) => `${x.replace(/OUT[12]/, 'OUT')}\n${mask(readFileSync(x, 'utf8'))}`);
   return { stdout: mask(r.stdout), stderr: mask(r.stderr), code: r.status, files };
 }
 
+const prom = spawn('node', ['test/cli-fixtures/mock-prometheus.mjs', '19090'], { stdio: 'ignore' });
+spawnSync('sleep', ['0.5']);
 const filter = process.argv[2];
 let failed = 0;
 for (const c of CASES) {
@@ -122,5 +134,6 @@ for (const c of CASES) {
     console.log(`  ${k} line ${i + 1}, column ${j + 1}:\n    node: ${JSON.stringify(cut(x))}\n    rust: ${JSON.stringify(cut(y))}`);
   }
 }
+prom.kill();
 console.log(failed ? `\n${failed} differ` : '\nall match');
 process.exitCode = failed ? 1 : 0;

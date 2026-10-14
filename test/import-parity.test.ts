@@ -274,3 +274,31 @@ describe('Rust spec → YAML matches the yaml package byte for byte', () => {
   });
   const tf0 = () => JSON.parse(readFileSync('examples/terraform/shop.tfstate.json', 'utf8'));
 });
+
+describe('Rust YAML (package defaults) matches yaml.stringify byte for byte', async () => {
+  const { stringify } = await import('yaml');
+  let seed = 9;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  const pick = <T,>(a: T[]): T => a[Math.floor(rnd() * a.length)];
+  const words = ['api', 'frontend', 'replicas', '→', 'CPU', '2', 'autoscale', 'Graviton (arm64)', 'memory', '0.50', 'GiB', '#tag', 'a: b', 'it\'s', 'say "x"', 'x'];
+  const sentence = (n: number) => Array.from({ length: n }, () => pick(words)).join(pick([' ', ' ', '; ', ', ']));
+  const strings = () => pick([sentence(3), sentence(14), sentence(30), sentence(60), `${sentence(10)}\n${sentence(25)}`, `${sentence(40)}\n\n${sentence(5)}\n`, ' lead ' + sentence(20), sentence(25) + ':', `"${sentence(30)}"`, 'x'.repeat(95), `${'y'.repeat(50)} ${'z'.repeat(50)}`, '', 'true', '12']);
+  const value = (d: number): unknown => {
+    const r = rnd();
+    if (d > 3 || r < 0.45) return rnd() < 0.7 ? strings() : pick([1, 0.5, 300, true, null]);
+    if (r < 0.7) return Array.from({ length: Math.floor(rnd() * 4) }, () => value(d + 1));
+    return Object.fromEntries(Array.from({ length: Math.floor(rnd() * 4) }, () => [pick(['name', 'description', 'service', 'changes', 'a long key name here', 'autoscale']), value(d + 1)]));
+  };
+  it('strategies from config diffs and 600 generated documents', () => {
+    const diffs: Diff[] = [];
+    const check = (v: unknown, where: string) => {
+      const a = stringify(v);
+      const b = W.toYaml(v);
+      if (a !== b) diffs.push({ where, ts: a, rs: b });
+    };
+    for (const [a] of [['x']]) void a;
+    for (let i = 0; i < 600; i++) check(value(0), `doc ${i}`);
+    check({ name: 'api 3 → 5 replicas; web CPU 0.5 → 1; db memory 2.00 → 4.00 GiB; cache autoscale 2–8 @ 60% CPU; worker → Graviton (arm64)', description: 'from the pull request diff', changes: [{ service: 'api', replicas: 5 }, { service: 'cache', autoscale: { min: 2, max: 8, targetCpu: 0.6, cooldownS: 300, warmupS: 30 } }] }, 'strategy');
+    expect(diffs.slice(0, 3)).toEqual([]);
+  });
+});
