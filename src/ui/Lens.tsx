@@ -5,6 +5,7 @@ import { PRICING, type PricingId } from '../sim/pricing';
 import { useMemo } from 'react';
 import { graphToSpec } from '../spec/convert';
 import { simulate } from '../sim/headless';
+import { explain, nodeView } from '../canvas/nodeModel';
 import './lens.css';
 
 const TARGETS = [0.99, 0.995, 0.999, 0.9995, 0.9999];
@@ -49,6 +50,20 @@ export function Lens({ onClose }: { onClose: () => void }) {
     .map((n) => ({ id: n.id, name: n.data.name, kind: n.data.kind, perH: stats[n.id]?.costPerHour ?? 0, inst: stats[n.id]?.scaling ? stats[n.id]!.scaling!.live + stats[n.id]!.scaling!.pending : (n.data.instances ?? 1) }))
     .sort((a, b) => b.perH - a.perH);
   const total = rows.reduce((s, r) => s + r.perH, 0);
+  // where requests fail: each component's own failures (what it drops, not what its callees did),
+  // with the reason the board gives it
+  const edgesFrom = new Set(edges.map((e) => e.source));
+  const failing = nodes
+    .filter(isSystem)
+    .filter((n) => n.data.kind !== 'client' && (stats[n.id]?.dropRps ?? 0) > 0.5)
+    .map((n) => {
+      const st = stats[n.id]!;
+      const why = explain(n.data, st, nodeView(n.data, st, true, edgesFrom.has(n.id)))?.text ?? 'failing';
+      return { id: n.id, name: n.data.name, kind: n.data.kind, rps: st.dropRps, why: why.split(/(?<=[.:])\s/)[0].replace(/[.:]$/, '') };
+    })
+    .sort((a, b) => b.rps - a.rps)
+    .slice(0, 5);
+  const failingTotal = failing.reduce((s, f) => s + f.rps, 0);
   const perMillion = g.rps > 0.5 ? (total / (g.rps * 3600)) * 1e6 : null;
   const budgetMin = (1 - target) * 30 * 24 * 60;
   const burn = g.errorRate / (1 - target);
@@ -93,6 +108,28 @@ export function Lens({ onClose }: { onClose: () => void }) {
           </tbody>
         </table>
       </div>
+      {failing.length > 0 && (
+        <div className="lens-sec">
+          <div className="lens-h">where requests fail</div>
+          <table className="lens-table">
+            <tbody>
+              {failing.map((f) => (
+                <tr key={f.id} title={f.why}>
+                  <td className="lens-name lens-fail">
+                    <i style={{ background: KINDS[f.kind].color }} />
+                    {f.name}
+                    <span className="lens-why">{f.why}</span>
+                  </td>
+                  <td className="lens-bar bad">
+                    <i style={{ width: `${(f.rps / failingTotal) * 100}%` }} />
+                  </td>
+                  <td className="lens-num">{f.rps >= 100 ? f.rps.toFixed(0) : f.rps.toFixed(1)}/s</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       <div className="lens-sec">
         <div className="lens-h">
           error budget
