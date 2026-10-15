@@ -169,7 +169,7 @@ or Backtest tab → *Replay an outage…*
 
 ### 15. Compare two designs
 
-- **Compare** tab (17 built-in comparisons) or `hindcast compare arch.yaml variants.yaml
+- **Compare** tab (32 built-in comparisons) or `hindcast compare arch.yaml variants.yaml
   scenario.yaml`. Same traffic and failures on both; the engine computes the takeaway.
 
 ### 16. Cheapest sizing that meets the SLO

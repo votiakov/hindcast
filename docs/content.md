@@ -105,7 +105,11 @@ LLM API vs Self-hosted GPUs · Node.js vs Go vs the Database.
 Advanced (`src/scenarios/advanced.ts`, series "Failure modes at scale"): The Outage After the Fix ·
 Retries at Every Layer · Cells vs One Big Fleet · Queue vs Shed · The Tail at Scale · When Your LLM
 Provider Goes Down · Peak-sized Fleet vs Autoscaling · One Region vs Two · Read Replicas vs One Bigger
-Database · a 10 s Pod vs a 2-minute VM. The first six have a story pack in `content/advanced/` (verified numbers, LinkedIn post,
+Database · a 10 s Pod vs a 2-minute VM.
+
+On the newer kinds (`scenarios.ts`, claims checked in both engines in `test/scenarios.test.ts`): Search
+Freshness (refresh 30 s vs 1 s, scored by stale reads) · Vector Recall 0.99 vs 0.95 · a Vector Index
+past Memory · an Edge Function vs the Origin Round Trip. The first six have a story pack in `content/advanced/` (verified numbers, LinkedIn post,
 carousel plan, article outline, anti-AI audit).
 
 Ad-hoc comparisons can be opened from a link (`#compare=…`, see tools.md) — that is how the MCP
