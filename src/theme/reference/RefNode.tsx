@@ -3,6 +3,7 @@ import { KINDS, type SystemNodeData } from '../../sim/catalog';
 import type { NodeStats } from '../../sim/engine';
 import { KIND_ICONS } from '../../canvas/icons';
 import { explain, healthOf, type NodeView } from '../../canvas/nodeModel';
+import { WithTerms } from '../../ui/Term';
 
 const STATUS: Record<NodeView['health'], string> = {
   idle: 'Idle',
@@ -174,7 +175,11 @@ export function RefNode({ data, st, v, selected, showCost, running, motion = fal
         </div>
       )}
 
-      {note && <div className={`ref-note ${note.tone}`}>{note.text}</div>}
+      {note && (
+        <div className={`ref-note ${note.tone}`}>
+          <WithTerms text={note.text} />
+        </div>
+      )}
       {controls}
       <Handle type="source" position={Position.Right} className="ref-handle" />
     </div>

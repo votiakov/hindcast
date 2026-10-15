@@ -9,6 +9,7 @@ import { saveCurrent } from './DesignMenu';
 import { runAudit } from './AuditPanel';
 import { currentSpecYaml } from '../spec/links';
 import './palette-cmd.css';
+import { GLOSSARY } from '../content/glossary';
 
 interface Cmd {
   id: string;
@@ -84,6 +85,7 @@ function buildCommands(q: string): Cmd[] {
   for (const d of listDesigns()) cmds.push({ id: `design-${d.id}`, group: 'Open design', label: d.name, run: () => (sandbox(), useSim.getState().loadGraph('main', d.graph, d.name), useSim.getState().setDesign(d.id, d.name)) });
   for (const t of TEMPLATES) cmds.push({ id: `tpl-${t.id}`, group: 'Template', label: t.title, hint: t.group, run: () => (sandbox(), useSim.getState().loadGraph('main', t.graph, t.title), useSim.getState().setDesign(null, t.title)) });
   for (const l of LESSONS) cmds.push({ id: `lesson-${l.id}`, group: 'Lesson', label: l.title, run: () => (useSim.getState().setMode('lesson'), useSim.getState().pickLesson(l.id)) });
+  for (const [term, def] of Object.entries(GLOSSARY)) cmds.push({ id: `term-${term}`, group: 'Glossary', label: term, hint: def, run: () => s.toast('info', `${term}: ${def}`) });
   for (const sc of SCENARIOS) cmds.push({ id: `cmp-${sc.id}`, group: 'Compare', label: sc.title, run: () => (useSim.setState({ compare: { ...useSim.getState().compare, scenarioId: sc.id } }), useSim.getState().setMode('compare')) });
   cmds.push({ id: 'replicas', group: 'View', label: s.settings.replicaView === 'each' ? 'Show replicas grouped' : 'Show each replica', run: () => s.setSetting('replicaView', s.settings.replicaView === 'each' ? 'grouped' : 'each') });
   if (s.mode === 'sandbox')
