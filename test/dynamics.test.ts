@@ -389,3 +389,20 @@ describe('a vector database: recall and memory decide its capacity', () => {
     });
   }
 });
+
+describe('archive storage: cheap to keep, slow and priced to read back', () => {
+  const arc = (extra: Record<string, unknown>) => ({ components: [{ id: 'users', kind: 'client', timeoutMs: 10000 }, { id: 'a', kind: 'archive', ...extra }], connections: [['users', 'a']] });
+  const sc = { duration: 40, rps: 10, readRatio: 1 } as never;
+
+  for (const [name, run] of [['fluid', simulate], ['des', (s: never, c: never) => simulateDes(s, c, { seed: 3 })]] as const) {
+    it(`${name}: Instant Retrieval answers users; an expedited restore (1–5 min) cannot, and costs a thousand times more a read`, () => {
+      const instant = run(arc({}) as never, sc).summary;
+      const restore = run(arc({ retrieval: 'expedited' }) as never, sc).summary;
+      expect(instant.meanErrorRate).toBeLessThan(0.01);
+      expect(restore.meanErrorRate).toBeGreaterThan(0.95); // every user gave up after 10 s
+      // 10 reads a second at $10 per 1,000 restores: ~$360 an hour, against ~$1.40 instant
+      expect(restore.meanCostPerHour).toBeGreaterThan(300);
+      expect(instant.meanCostPerHour).toBeLessThan(3);
+    });
+  }
+});

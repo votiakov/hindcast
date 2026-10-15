@@ -313,7 +313,7 @@ fn ema(prev: f64, next: f64, dt: f64, tau: f64) -> f64 {
 pub fn dynamic_data(d: &NodeData, scaler: Option<&ScalerState>) -> NodeData {
     let mut e = effective_data(d, scaler);
     if let Some(fl) = e.fault_latency_ms.filter(|x| *x != 0.0 && !x.is_nan()) {
-        if !matches!(d.kind.as_str(), "gateway" | "llmapi" | "external" | "kv" | "client" | "queue" | "stream") {
+        if !matches!(d.kind.as_str(), "gateway" | "llmapi" | "external" | "kv" | "archive" | "client" | "queue" | "stream") {
             let base = base_latency_of(d).max(0.05);
             e.degraded = Some(e.degraded.unwrap_or(1.0) * (base / (base + fl)));
         }
@@ -839,7 +839,7 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
             st.cold_frac = if demand > 0.5 { ((demand - st.warm) / demand).max(0.0) } else { 0.0 };
             res(processed, c.arrivals - processed, processed, c.arrivals / cap, true)
         }
-        "llmapi" | "external" => {
+        "llmapi" | "external" | "archive" => {
             let cap = capacity_of(c.d, None) * c.dt;
             let processed = c.arrivals.min(cap);
             res(processed, c.arrivals - processed, processed, c.arrivals / cap, true)
@@ -915,6 +915,7 @@ fn fold(c: &FoldCtx, st: &NodeState) -> (f64, f64) {
             (c.keep * kids_succ, base_latency_of(c.d) + st.cold_frac * cold + kids_lat)
         }
         "llmapi" | "external" | "kv" => (c.keep * kids_succ, c.d.latency_ms.unwrap_or(spec(&c.d.kind).base_latency_ms) + kids_lat),
+        "archive" => (c.keep, base_latency_of(c.d)),
         _ => (c.keep * kids_succ, service_latency(c.d, st) + kids_lat),
     }
 }
@@ -923,7 +924,7 @@ fn fold(c: &FoldCtx, st: &NodeState) -> (f64, f64) {
 fn usage_cost(d: &NodeData, st: &NodeState, profile: &str) -> f64 {
     match d.kind.as_str() {
         "function" => st.in_rps * 3600.0 * request_price(d, profile),
-        "llmapi" | "external" | "kv" | "storage" => (st.in_rps - st.drop_rps) * 3600.0 * (if d.cost_per_hour.is_none() { request_price(d, profile) } else { 0.0 }),
+        "llmapi" | "external" | "kv" | "storage" | "archive" => (st.in_rps - st.drop_rps) * 3600.0 * (if d.cost_per_hour.is_none() { request_price(d, profile) } else { 0.0 }),
         _ => st.in_rps * 3600.0 * request_price(d, profile),
     }
 }
@@ -1730,7 +1731,7 @@ impl Engine {
                 let own = match d.kind.as_str() {
                     "client" | "queue" | "stream" | "gateway" => 0.0,
                     "function" => (SERVICE_P99 - 1.0) * base_latency_of(d),
-                    "llmapi" | "external" | "kv" | "storage" => (API_P99 - 1.0) * base_latency_of(d),
+                    "llmapi" | "external" | "kv" | "storage" | "archive" => (API_P99 - 1.0) * base_latency_of(d),
                     _ => service_tail(d, st),
                 };
                 let kids = if has_kids { tail * if retries > 0.0 { st.retry_amp } else { 1.0 } } else { 0.0 };
@@ -1749,7 +1750,7 @@ impl Engine {
                 let own_tail = match d.kind.as_str() {
                     "client" | "queue" | "stream" | "gateway" => 0.0,
                     "function" => (SERVICE_P99 - 1.0) * base_latency_of(d),
-                    "llmapi" | "external" | "kv" | "storage" => (API_P99 - 1.0) * base_latency_of(d),
+                    "llmapi" | "external" | "kv" | "storage" | "archive" => (API_P99 - 1.0) * base_latency_of(d),
                     _ => service_tail(d, st),
                 };
                 let own_mean = if d.kind == "client" { 0.0 } else { own_mean };

@@ -662,6 +662,10 @@ impl<'a> Des<'a> {
             n.rate = f64::INFINITY;
             n.workers = f64::INFINITY;
             n.svc_mean_ms = d.latency_ms.unwrap_or(spec(kind).base_latency_ms);
+        } else if kind == "archive" {
+            n.rate = capacity_of(d, None);
+            n.workers = f64::INFINITY;
+            n.svc_mean_ms = base_latency_of(d);
         } else if kind == "gateway" || kind == "llmapi" || kind == "external" || kind == "kv" || kind == "stream" {
             n.rate = d.limit.unwrap_or(spec(kind).capacity);
             n.workers = f64::INFINITY;
@@ -937,13 +941,17 @@ impl<'a> Des<'a> {
             }
             n.px_bucket[k] -= cost;
         }
-        if kind == "llmapi" || kind == "external" || kind == "kv" || kind == "storage" {
+        if kind == "llmapi" || kind == "external" || kind == "kv" || kind == "storage" || kind == "archive" {
             // provider capacity is not your problem — only its rate limit and latency are
             let n = &self.nodes[i];
             let (mean, fl) = (n.svc_mean_ms, n.data.fault_latency_ms.unwrap_or(0.0));
             let cv = self.cfg.service_cv * 0.5;
             let svc = self.rng.lognormal(mean, cv) + fl;
             let fault = self.nodes[i].data.fault_rate.unwrap_or(0.0);
+            // a restore is billed when it is requested, however long it takes
+            if kind == "archive" {
+                self.nodes[i].win.usage_reqs += 1.0;
+            }
             self.at(svc, Ev::LlmDone { n: i, done, fault });
             return;
         }
@@ -1541,7 +1549,7 @@ impl<'a> Des<'a> {
             let util = if n.lock_busy || w.lock_s > 0.0 { util.max(w.lock_s / win_s) } else { util };
             // thread-per-request: the threads the offered load needs (rate × hold time, Little's law) over those there are
             let util = if n.threads_cap.is_finite() && w.held_n > 0.0 { util.max((w.arrivals / win_s) * (w.held_s / w.held_n) / n.threads_cap.max(1e-9)) } else { util };
-            let billed = if n.data.kind == "function" || n.data.kind == "llmapi" || n.data.kind == "external" || n.data.kind == "kv" || n.data.kind == "storage" { w.usage_reqs } else if n.data.kind == "client" { 0.0 } else { w.arrivals };
+            let billed = if n.data.kind == "function" || n.data.kind == "llmapi" || n.data.kind == "external" || n.data.kind == "kv" || n.data.kind == "storage" || n.data.kind == "archive" { w.usage_reqs } else if n.data.kind == "client" { 0.0 } else { w.arrivals };
             let usage = billed * request_price(&n.data, &self.pricing) * 3600.0;
             let cost_h = match &n.scaler {
                 Some(s) => cost_of(&NodeData { instances: Some(s.live + s.pending.len() as f64), ..n.data.clone() }, &self.pricing),
@@ -1687,7 +1695,9 @@ impl<'a> Des<'a> {
                 self.after_service(n, job);
             }
             Ev::LlmDone { n, done, fault } => {
-                self.nodes[n].win.usage_reqs += 1.0;
+                if self.nodes[n].kind != "archive" {
+                    self.nodes[n].win.usage_reqs += 1.0;
+                }
                 if fault != 0.0 && !fault.is_nan() && self.rng.next() < fault {
                     return self.fail(Some(n), why(n, R_ERROR), done, 0.0);
                 }
@@ -2001,6 +2011,7 @@ fn static_kind(k: &str) -> &'static str {
         "stream" => "stream",
         "search" => "search",
         "vector" => "vector",
+        "archive" => "archive",
         _ => "server",
     }
 }

@@ -194,6 +194,20 @@ pub fn explain(d: &NodeData, st: Option<&NodeStats>, v: &View) -> Option<String>
             fmt(cap),
             pct(1.0 - connection_admit(d, st.in_rps))
         )
+    } else if d.kind == "archive" && st.drop_rps > 1.0 {
+        format!(
+            "Archive request limit: {}/s refused (503 SlowDown) above {}/s — {}. Archives are for data nobody reads in a hurry; put what users read in hot storage or a cache.",
+            fmt(st.drop_rps),
+            fmt(archive_limit(d)),
+            if retrieval_of(d) == "instant" { "Instant Retrieval shares S3's 5,500 GETs a second per prefix" } else { "restore requests are capped at 1,000 a second per account" }
+        )
+    } else if d.kind == "archive" && retrieval_of(d) != "instant" && st.in_rps > 0.01 {
+        format!(
+            "Every read here is a restore that takes {} ({} retrieval) and costs ${} a request. Anyone waiting on it synchronously has long timed out: put a queue and a worker in front and notify when it is back, or keep what users read in Instant Retrieval.",
+            if retrieval_of(d) == "expedited" { "1–5 minutes" } else { "3–5 hours" },
+            retrieval_of(d),
+            js_to_fixed(archive_request_price(d), if retrieval_of(d) == "expedited" { 3 } else { 5 })
+        )
     } else if (d.kind == "gateway" || d.kind == "llmapi" || d.kind == "external" || d.kind == "kv") && st.drop_rps > 1.0 {
         format!("Rate limit reached: {}/s rejected with HTTP 429 to protect what is behind it.", fmt(st.drop_rps))
     } else if d.kind == "function" && st.cold_frac > 0.05 {

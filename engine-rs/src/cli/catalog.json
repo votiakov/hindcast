@@ -210,6 +210,17 @@
       "scalesHorizontally": true
     },
     {
+      "kind": "archive",
+      "label": "Archive Storage",
+      "description": "Cold storage (S3 Glacier): a tenth of the price of hot storage to keep, priced per retrieval to read. Instant Retrieval answers in milliseconds; Flexible Retrieval restores take minutes (expedited) or hours (standard) — no user can wait for that.",
+      "capacityPerInstanceRps": 5500,
+      "baseLatencyMs": 40,
+      "costPerHour": 0,
+      "costPerRequest": 0.000039296875,
+      "sizable": false,
+      "scalesHorizontally": false
+    },
+    {
       "kind": "external",
       "label": "External API",
       "description": "Someone else's service: a payment provider, a partner API, the websites a crawler fetches. You cannot size it — only respect its rate limit and live with its latency and errors.",

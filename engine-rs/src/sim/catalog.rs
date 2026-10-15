@@ -161,6 +161,10 @@ pub struct NodeData {
     /// vector: vectors in the index, millions (default 1; 768 dimensions)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vectors_m: Option<f64>,
+    /// archive: how a read gets its object back — "instant" (milliseconds, Glacier Instant Retrieval),
+    /// "expedited" (1–5 min) or "standard" (3–5 h) restores (Glacier Flexible Retrieval)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retrieval: Option<String>,
     /// a network partition's side this component is on (set by the partition action): links between
     /// components on different sides are cut
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -223,6 +227,8 @@ pub fn spec(kind: &str) -> KindSpec {
         // a vector database (OpenSearch k-NN, pgvector): an HNSW index over its nodes; 300 queries/s per
         // S node at recall 0.95 with the graph in memory
         "vector" => KindSpec { scalable: true, ..k(300.0, 10.0, 0.2, true) },
+        // cold storage (S3 Glacier): pennies to keep, slow and priced per retrieval to read back
+        "archive" => KindSpec { cost_per_request: Some(ARCHIVE_INSTANT_PER_REQ), ..k(5500.0, 40.0, 0.0, false) },
         "kv" => KindSpec { cost_per_request: Some(0.45 / 1_000_000.0), ..k(40000.0, 5.0, 0.0, false) },
         _ => k(250.0, 25.0, 0.1, true),
     }
@@ -457,7 +463,9 @@ pub fn is_up(d: &NodeData) -> bool {
 pub fn capacity_of(d: &NodeData, reachable: Option<f64>) -> f64 {
     let sp = spec(&d.kind);
     let reachable = reachable.unwrap_or_else(|| instances_up(d));
-    let cap = if d.kind == "storage" {
+    let cap = if d.kind == "archive" {
+        archive_limit(d)
+    } else if d.kind == "storage" {
         d.capacity.unwrap_or(PREFIX_READS * prefixes_of(d))
     } else if d.kind == "function" || d.kind == "llmapi" || d.kind == "external" || d.kind == "kv" || d.kind == "gateway" {
         d.limit.unwrap_or(sp.capacity)
@@ -519,6 +527,53 @@ pub fn refresh_s_of(d: &NodeData) -> f64 {
 pub fn index_lag_s(d: &NodeData, backlog: f64, cap: f64) -> f64 {
     let lag = refresh_s_of(d) + if cap > 0.0 { backlog / cap } else if backlog > 0.0 { f64::INFINITY } else { 0.0 };
     if lag.is_finite() { crate::math::js_round(lag * 10.0) / 10.0 } else { lag }
+}
+
+/// an archived object read back, MB (retrieval is priced per GB)
+pub const ARCHIVE_OBJECT_MB: f64 = 1.0;
+/// Glacier Instant Retrieval: $0.01 per 1,000 GETs + $0.03 per GB retrieved
+pub const ARCHIVE_INSTANT_PER_REQ: f64 = 0.01 / 1000.0 + 0.03 * ARCHIVE_OBJECT_MB / 1024.0;
+
+/// an archive's retrieval option
+pub fn retrieval_of(d: &NodeData) -> &str {
+    match d.retrieval.as_deref() {
+        Some("expedited") => "expedited",
+        Some("standard") => "standard",
+        _ => "instant",
+    }
+}
+
+/// an archive's time to the first byte, ms: Instant Retrieval answers like S3; a Flexible Retrieval
+/// restore takes 1–5 min (expedited) or 3–5 h (standard)
+pub fn archive_latency_ms(d: &NodeData) -> f64 {
+    match retrieval_of(d) {
+        "expedited" => 180_000.0,
+        "standard" => 4.0 * 3_600_000.0,
+        _ => 40.0,
+    }
+}
+
+/// an archive's request limit: S3's 5,500 GETs a second (a prefix) for Instant Retrieval; 1,000 restore
+/// requests a second (per account) for Flexible Retrieval
+pub fn archive_limit(d: &NodeData) -> f64 {
+    d.limit.unwrap_or(if retrieval_of(d) == "instant" { 5500.0 } else { 1000.0 })
+}
+
+/// an archive's $ per read (1 MB objects): Glacier Instant Retrieval $0.01/1,000 + $0.03/GB; Flexible
+/// expedited $10/1,000 + $0.03/GB, standard $0.05/1,000 + $0.01/GB
+pub fn archive_request_price(d: &NodeData) -> f64 {
+    match retrieval_of(d) {
+        "expedited" => 10.0 / 1000.0 + 0.03 * ARCHIVE_OBJECT_MB / 1024.0,
+        "standard" => 0.05 / 1000.0 + 0.01 * ARCHIVE_OBJECT_MB / 1024.0,
+        _ => ARCHIVE_INSTANT_PER_REQ,
+    }
+}
+
+/// what an archive costs to keep, $/h: the data it holds (`workingSetGb`, default 1,000 GB) at
+/// $0.004 (Instant Retrieval) or $0.0036 (Flexible Retrieval) per GB-month
+pub fn archive_storage_h(d: &NodeData) -> f64 {
+    let gb = d.working_set_gb.unwrap_or(1000.0).max(0.0);
+    gb * (if retrieval_of(d) == "instant" { 0.004 } else { 0.0036 }) / 730.0
 }
 
 /// a database's (or its replica's) shard count (1 for everything else)
@@ -706,6 +761,9 @@ pub fn per_instance_capacity(d: &NodeData) -> f64 {
 
 pub fn base_latency_of(d: &NodeData) -> f64 {
     let rt = d.runtime.as_deref().filter(|r| !r.is_empty()).map(|r| runtime(r).1).unwrap_or(1.0);
+    if d.kind == "archive" {
+        return d.latency_ms.unwrap_or_else(|| archive_latency_ms(d));
+    }
     d.latency_ms.unwrap_or(spec(&d.kind).base_latency_ms) * rt * vector_work(d) + (if d.kind == "llm" && d.batching == Some(true) { BATCHING_LATENCY_MS } else { 0.0 })
 }
 
@@ -727,6 +785,9 @@ pub fn cost_of(d: &NodeData, profile: &str) -> f64 {
 
 fn fixed_cost_of(d: &NodeData, profile: &str) -> f64 {
     let sp = spec(&d.kind);
+    if d.kind == "archive" && d.cost_per_hour.is_none() {
+        return archive_storage_h(d);
+    }
     let n = d.instances.unwrap_or(1.0) * shards_of(d) * partitions_of(d);
     let p = if d.cost_per_hour.is_none() { kind_pricing(profile, &d.kind) } else { None };
     if let Some(p) = p {
@@ -748,6 +809,9 @@ fn fixed_cost_of(d: &NodeData, profile: &str) -> f64 {
 pub fn request_price(d: &NodeData, profile: &str) -> f64 {
     if d.kind == "function" {
         return fn_cost_per_request(d, profile);
+    }
+    if d.kind == "archive" {
+        return archive_request_price(d);
     }
     if let Some(p) = kind_pricing(profile, &d.kind).and_then(|p| p.per_request) {
         return p;

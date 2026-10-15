@@ -20,7 +20,8 @@ export type Kind =
   | 'dns'
   | 'stream'
   | 'search'
-  | 'vector';
+  | 'vector'
+  | 'archive';
 export type Tier = 'S' | 'M' | 'L';
 
 /** how a node spreads its outgoing calls across children */
@@ -109,6 +110,8 @@ export interface SystemNodeData extends Record<string, unknown> {
   recall?: number;
   /** vector: vectors in the index, millions (default 1; 768 dimensions) */
   vectorsM?: number;
+  /** archive: instant (ms, Glacier Instant Retrieval), or a restore — expedited (1–5 min) or standard (3–5 h) */
+  retrieval?: 'instant' | 'expedited' | 'standard';
   /** dns: how long clients cache an answer, s (default 60) */
   ttlS?: number;
   /** dns: how long health checks take to notice a dead target, s (default 30) */
@@ -291,6 +294,11 @@ export const KINDS: Record<Kind, KindSpec> = {
     capacity: 300, baseLatencyMs: 10, costPerHour: 0.2, tiered: true, scalable: true,
     description: 'Nearest-neighbour search over embeddings (OpenSearch k-NN, pgvector): an HNSW graph spread over its nodes. Higher recall walks more of the graph — 0.99 costs five times 0.95 — and a graph that does not fit in memory is read from disk.',
   },
+  archive: {
+    kind: 'archive', label: 'Archive Storage', prefix: 'glacier', color: '#7dd3fc',
+    capacity: 5500, baseLatencyMs: 40, costPerHour: 0, costPerRequest: 0.01 / 1000 + 0.03 / 1024, tiered: false,
+    description: 'Cold storage (S3 Glacier): a tenth of the price of hot storage to keep, priced per retrieval to read. Instant Retrieval answers in milliseconds; Flexible Retrieval restores take minutes (expedited) or hours (standard) — no user can wait for that.',
+  },
   external: {
     kind: 'external', label: 'External API', prefix: 'ext', color: '#38bdf8',
     capacity: 1000, baseLatencyMs: 200, costPerHour: 0, tiered: false,
@@ -308,7 +316,7 @@ export const CATEGORIES: { id: string; label: string; kinds: Kind[] }[] = [
   { id: 'traffic', label: 'Traffic', kinds: ['client'] },
   { id: 'edge', label: 'Edge & Network', kinds: ['dns', 'cdn', 'lb', 'gateway'] },
   { id: 'compute', label: 'Compute', kinds: ['server', 'worker', 'function'] },
-  { id: 'data', label: 'Data', kinds: ['cache', 'db', 'replica', 'kv', 'storage', 'search', 'vector'] },
+  { id: 'data', label: 'Data', kinds: ['cache', 'db', 'replica', 'kv', 'storage', 'archive', 'search', 'vector'] },
   { id: 'async', label: 'Messaging', kinds: ['queue', 'stream'] },
   { id: 'ai', label: 'AI', kinds: ['llm', 'llmapi'] },
   { id: 'outside', label: 'Third party', kinds: ['external'] },
@@ -349,7 +357,8 @@ export const cacheHitRate = (d: SystemNodeData): number => (d.kind === 'cache' &
 export function capacityOf(d: SystemNodeData, reachable = instancesUp(d)): number {
   const spec = KINDS[d.kind];
   let cap: number;
-  if (d.kind === 'storage') cap = d.capacity ?? PREFIX_READS * prefixesOf(d);
+  if (d.kind === 'archive') cap = archiveLimit(d);
+  else if (d.kind === 'storage') cap = d.capacity ?? PREFIX_READS * prefixesOf(d);
   else if (d.kind === 'function' || d.kind === 'llmapi' || d.kind === 'external' || d.kind === 'kv' || d.kind === 'gateway') cap = d.limit ?? spec.capacity;
   else {
     const tier = spec.tiered ? TIERS[d.tier].capacity : 1;
@@ -405,6 +414,18 @@ export function vectorWork(d: SystemNodeData): number {
 /** a search index's refresh interval, s */
 export const refreshSOf = (d: SystemNodeData): number => Math.max(0, d.refreshS ?? 1);
 
+/** an archive's retrieval option */
+export const retrievalOf = (d: SystemNodeData): 'instant' | 'expedited' | 'standard' => d.retrieval ?? 'instant';
+/** an archive's time to the first byte, ms (mirrors the engine) */
+export const archiveLatencyMs = (d: SystemNodeData): number => ({ instant: 40, expedited: 180_000, standard: 4 * 3_600_000 })[retrievalOf(d)];
+/** an archive's request limit: S3's 5,500 GETs/s for Instant Retrieval, 1,000 restores/s per account for Flexible */
+export const archiveLimit = (d: SystemNodeData): number => d.limit ?? (retrievalOf(d) === 'instant' ? 5500 : 1000);
+/** an archive's $ per read of a 1 MB object (Glacier pricing; mirrors the engine) */
+export const archiveRequestPrice = (d: SystemNodeData): number =>
+  ({ instant: 0.01 / 1000 + 0.03 / 1024, expedited: 10 / 1000 + 0.03 / 1024, standard: 0.05 / 1000 + 0.01 / 1024 })[retrievalOf(d)];
+/** what an archive costs to keep, $/h: the GB it holds (workingSetGb, default 1,000) at $0.004 / $0.0036 per GB-month */
+export const archiveStorageH = (d: SystemNodeData): number => (Math.max(0, d.workingSetGb ?? 1000) * (retrievalOf(d) === 'instant' ? 0.004 : 0.0036)) / 730;
+
 /** a stream's partitions (1 for everything else) */
 export const partitionsOf = (d: SystemNodeData): number => (d.kind === 'stream' ? Math.max(1, Math.floor(d.partitions ?? 4)) : 1);
 
@@ -425,6 +446,7 @@ export function threadsCapacity(d: SystemNodeData, reachable: number, holdMs: nu
 
 export function baseLatencyOf(d: SystemNodeData): number {
   const rt = d.runtime ? RUNTIMES[d.runtime].latency : 1;
+  if (d.kind === 'archive') return d.latencyMs ?? archiveLatencyMs(d);
   return (d.latencyMs ?? KINDS[d.kind].baseLatencyMs) * rt * vectorWork(d) + (d.kind === 'llm' && d.batching ? BATCHING.latencyMs : 0);
 }
 
@@ -451,6 +473,7 @@ export function costOf(d: SystemNodeData): number {
 
 function fixedCostOf(d: SystemNodeData): number {
   const spec = KINDS[d.kind];
+  if (d.kind === 'archive' && d.costPerHour === undefined) return archiveStorageH(d);
   const n = (d.instances ?? 1) * shardsOf(d) * partitionsOf(d);
   const p = d.costPerHour === undefined ? kindPricing(d.kind) : undefined;
   if (p?.tiers) return p.tiers[spec.tiered ? d.tier : 'S'].hourly * n;

@@ -24,8 +24,8 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
   const instances = data.instances ?? 1;
   const set = (patch: Partial<SystemNodeData>) => updateNode(b, id, patch);
   const caller = CALLERS.has(data.kind);
-  const bounded = data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'external' && data.kind !== 'kv' && data.kind !== 'function' && data.kind !== 'queue' && data.kind !== 'stream';
-  const calibratable = data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'external' && data.kind !== 'kv' && data.kind !== 'function' && data.kind !== 'queue' && data.kind !== 'stream';
+  const bounded = data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'external' && data.kind !== 'kv' && data.kind !== 'archive' && data.kind !== 'function' && data.kind !== 'queue' && data.kind !== 'stream';
+  const calibratable = data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'external' && data.kind !== 'kv' && data.kind !== 'archive' && data.kind !== 'function' && data.kind !== 'queue' && data.kind !== 'stream';
   const tuned = (data.retries ?? 0) > 0 || !!data.breaker || !!data.timeoutMs || (data.routing && data.routing !== 'split') || (data.fanout ?? 1) > 1 || data.queueS !== undefined;
   const [more, setMore] = useState(tuned);
   const [cal, setCal] = useState(false);
@@ -258,6 +258,18 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
           </select>
           <span className="nc-l">vectors (M)</span>
           <input className="nc-num" type="number" min={0.1} max={100000} step={0.5} value={data.vectorsM ?? 1} onChange={(e) => set({ vectorsM: Math.max(0.1, Math.min(100000, +e.target.value || 1)) })} />
+        </div>
+      )}
+      {data.kind === 'archive' && (
+        <div className="nc-row" title="Retrieval: Instant Retrieval reads in milliseconds ($0.01 per 1,000 + $0.03/GB); a Flexible Retrieval restore takes 1–5 min (expedited, $10 per 1,000) or 3–5 h (standard). Data: what it holds, at $0.004 (instant) or $0.0036 per GB-month">
+          <span className="nc-l">retrieval</span>
+          <select value={data.retrieval ?? 'instant'} onChange={(e) => set({ retrieval: e.target.value as SystemNodeData['retrieval'] })}>
+            <option value="instant">instant (ms)</option>
+            <option value="expedited">expedited (1–5 min)</option>
+            <option value="standard">standard (3–5 h)</option>
+          </select>
+          <span className="nc-l">data (GB)</span>
+          <input className="nc-num" type="number" min={1} step={100} value={data.workingSetGb ?? 1000} onChange={(e) => set({ workingSetGb: Math.max(1, +e.target.value || 1000) })} />
         </div>
       )}
       {data.kind === 'dns' && (

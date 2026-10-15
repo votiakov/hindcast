@@ -22,6 +22,7 @@ pub fn unit_availability(kind: &str) -> f64 {
         "lb" => 0.9999,                                    // ELB SLA
         "gateway" | "function" => 0.9995,                  // API Gateway, Lambda SLAs
         "cdn" | "cache" | "storage" | "queue" => 0.999,     // CloudFront, ElastiCache, S3, SQS
+        "archive" => 0.999,                                // S3 Glacier Instant Retrieval
         "dns" => 1.0,                                      // Route 53: a 100% SLA (anycast, cached everywhere)
         "kv" => 0.9999,                                    // DynamoDB
         "llmapi" | "external" => 0.999,                    // someone else's service: what they promise

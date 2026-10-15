@@ -53,6 +53,7 @@ fn label_of(kind: &str) -> &'static str {
         "stream" => "Stream",
         "search" => "Search Index",
         "vector" => "Vector Database",
+        "archive" => "Archive Storage",
         _ => "Component",
     }
 }

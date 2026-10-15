@@ -5,7 +5,7 @@ import { z } from 'zod';
  * (app, CLI, MCP server, future engines). Plain data, JSON or YAML.
  */
 
-export const KIND_VALUES = ['client', 'cdn', 'lb', 'gateway', 'server', 'worker', 'function', 'cache', 'db', 'replica', 'storage', 'queue', 'llm', 'llmapi', 'external', 'kv', 'dns', 'stream', 'search', 'vector'] as const;
+export const KIND_VALUES = ['client', 'cdn', 'lb', 'gateway', 'server', 'worker', 'function', 'cache', 'db', 'replica', 'storage', 'queue', 'llm', 'llmapi', 'external', 'kv', 'dns', 'stream', 'search', 'vector', 'archive'] as const;
 
 export const ComponentSpec = z
   .object({
@@ -40,12 +40,13 @@ export const ComponentSpec = z
       .describe('server/worker/llm: target-tracking autoscaling; `instances` is the starting size'),
     warmupS: z.number().positive().optional().describe('cache/cdn: re-warm time constant after a restart or flush (default 20 s)'),
     writePolicy: z.enum(['through', 'behind']).optional().describe('cache/cdn: writes go on to the origin (through, default), or are acknowledged at the cache and flushed ~5 s later — fast, but lost if the cache dies first (behind)'),
-    workingSetGb: z.number().positive().optional().describe('cache: the data it fronts, GB — with it the hit rate follows from the cache size (S 6.4, M 13, L 26 GB) and `skew`'),
+    workingSetGb: z.number().positive().optional().describe('archive: the data it holds, GB (default 1,000), priced per GB-month; cache: the data it fronts, GB — with it the hit rate follows from the cache size (S 6.4, M 13, L 26 GB) and `skew`'),
     skew: z.number().min(0.1).max(3).optional().describe('cache: how concentrated reads are on popular keys (Zipf exponent, default 1)'),
     shards: z.number().int().min(1).max(256).optional().describe('db/replica: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash (give a sharded database\'s replica the same count)'),
     hotKeyShare: z.number().min(0).max(1).optional().describe('db/kv: share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which saturates first'),
     partitions: z.number().int().min(1).max(1024).optional().describe('stream: partitions (default 4) — 1,000 messages/s in each, and a subscriber can use at most one consumer instance per partition'),
     refreshS: z.number().min(0).max(3600).optional().describe('search: how often the index refreshes, s (default 1) — a document is searchable only after the next refresh; a longer interval indexes faster but searches miss recent writes for longer'),
+    retrieval: z.enum(['instant', 'expedited', 'standard']).optional().describe('archive: how a read gets its object back — instant (default: milliseconds, Glacier Instant Retrieval, 5,500 reads/s), or a Glacier Flexible Retrieval restore: expedited (1–5 min, $10 per 1,000) or standard (3–5 h) at 1,000 restores/s'),
     recall: z.number().min(0.5).max(0.999).optional().describe('vector: the recall queries are tuned for (default 0.95) — each halving of the neighbours a search may miss doubles its work: 0.99 costs five times 0.95'),
     vectorsM: z.number().positive().max(100000).optional().describe('vector: vectors in the index, millions (default 1; 768 dimensions, 3.5 GB of graph a million) — what does not fit in the nodes\' memory (4/8/16 GB a node by size) is read from disk at ~10× the cost'),
     ttlS: z.number().min(0).max(86400).optional().describe('dns: how long clients cache an answer, s (default 60) — a dead target keeps getting traffic until it expires'),
