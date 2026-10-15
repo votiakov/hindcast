@@ -491,6 +491,9 @@ fn mix_then(dist: &[[f64; 3]], mean: f64, tail: f64, weight: f64) -> Vec<[f64; 3
 
 /// lognormal service times (cv 0.6, as the discrete-event engine samples them): p99 ≈ 3.1 × mean
 const SERVICE_P99: f64 = 3.11;
+/// someone else's API answers more steadily than your own service (the DES samples it at half the
+/// spread, cv 0.3): lognormal p99 = exp(−σ²/2 + 2.326σ) with σ² = ln(1 + 0.3²) — about 1.9 × mean
+const API_P99: f64 = 1.896;
 /// waits under Poisson arrivals and service of that variability, relative to M/M/c (Allen–Cunneen):
 /// (1 + cv²) / 2
 const WAIT_SCALE: f64 = 0.68;
@@ -1497,7 +1500,8 @@ impl Engine {
                 };
                 let own = match d.kind.as_str() {
                     "client" | "queue" | "gateway" => 0.0,
-                    "function" | "llmapi" | "external" => (SERVICE_P99 - 1.0) * base_latency_of(d),
+                    "function" => (SERVICE_P99 - 1.0) * base_latency_of(d),
+                    "llmapi" | "external" => (API_P99 - 1.0) * base_latency_of(d),
                     _ => service_tail(d, st),
                 };
                 let kids = if has_kids { tail * if retries > 0.0 { st.retry_amp } else { 1.0 } } else { 0.0 };
@@ -1515,7 +1519,8 @@ impl Engine {
                 let own_mean = fold(&FoldCtx { d, keep, local_share: 1.0, child_succ: 1.0, child_lat: 0.0, has_kids: false, cfg }, st).1 + d.fault_latency_ms.filter(|x| !x.is_nan()).unwrap_or(0.0);
                 let own_tail = match d.kind.as_str() {
                     "client" | "queue" | "gateway" => 0.0,
-                    "function" | "llmapi" | "external" => (SERVICE_P99 - 1.0) * base_latency_of(d),
+                    "function" => (SERVICE_P99 - 1.0) * base_latency_of(d),
+                    "llmapi" | "external" => (API_P99 - 1.0) * base_latency_of(d),
                     _ => service_tail(d, st),
                 };
                 let own_mean = if d.kind == "client" { 0.0 } else { own_mean };
