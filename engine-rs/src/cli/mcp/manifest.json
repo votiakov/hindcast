@@ -11881,6 +11881,7 @@
          "enum": [
           "otel-spanmetrics",
           "http-server",
+          "http-server-legacy",
           "spring",
           "ingress-nginx",
           "istio",

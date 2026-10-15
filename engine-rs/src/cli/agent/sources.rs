@@ -8,9 +8,10 @@ use indexmap::{IndexMap, IndexSet};
 use serde_json::{json, Map as JMap, Value};
 
 /// the metric each preset needs, and the label that names services in it
-pub const PRESET_SIGNATURE: [(&str, &str, &str); 8] = [
+pub const PRESET_SIGNATURE: [(&str, &str, &str); 9] = [
     ("otel-spanmetrics", "traces_span_metrics_calls_total", "service_name"),
     ("http-server", "http_server_request_duration_seconds_count", "service_name"),
+    ("http-server-legacy", "http_server_duration_milliseconds_count", "service_name"),
     ("spring", "http_server_requests_seconds_count", "job"),
     ("ingress-nginx", "nginx_ingress_controller_requests", "exported_service"),
     ("istio", "istio_requests_total", "destination_workload"),
@@ -19,10 +20,9 @@ pub const PRESET_SIGNATURE: [(&str, &str, &str); 8] = [
     ("kubernetes", "kube_pod_info", "pod"),
 ];
 
-const NEAR_MISSES: [(&str, &str); 4] = [
+const NEAR_MISSES: [(&str, &str); 3] = [
     ("calls_total", "spanmetrics from an older collector (calls_total): rename with a recording rule to traces_span_metrics_calls_total"),
     ("traces_spanmetrics_calls_total", "spanmetrics from the old spanmetrics processor: rename with a recording rule to traces_span_metrics_calls_total"),
-    ("http_server_duration_milliseconds_count", "OpenTelemetry HTTP metrics under the pre-1.0 name (milliseconds): the http-server preset expects http_server_request_duration_seconds"),
     ("nginx_ingress_controller_nginx_process_requests_total", "ingress-nginx without per-request metrics: requests to an Ingress without a host are only counted with --metrics-per-undefined-host=true (controller.extraArgs in the Helm chart)"),
 ];
 
@@ -143,7 +143,7 @@ pub fn probe_prometheus(cfg: &Value, now: f64) -> Result<Value, String> {
         warnings.push("no metric any preset reads was found in the last 30 days".into());
     }
     // when requests flowed: traffic at a few lookbacks, then bisected to ~1% of the gap
-    let main = ["otel-spanmetrics", "http-server", "spring", "istio", "linkerd", "ingress-nginx"].iter().find(|m| presets.iter().any(|p| p == *m)).map(|m| m.to_string());
+    let main = ["otel-spanmetrics", "http-server", "http-server-legacy", "spring", "istio", "linkerd", "ingress-nginx"].iter().find(|m| presets.iter().any(|p| p == *m)).map(|m| m.to_string());
     if let Some(main) = main {
         let m = PRESET_SIGNATURE.iter().find(|p| p.0 == main).unwrap().1;
         let sel = selector.as_ref().map(|s| format!("{{{}}}", s)).unwrap_or_default();
@@ -249,6 +249,7 @@ pub fn suggest_renames(probe: &Value, trace_services: &[String]) -> JMap<String,
     let mut canonical: IndexSet<String> = IndexSet::new();
     canonical.extend(svc("otel-spanmetrics"));
     canonical.extend(svc("http-server"));
+    canonical.extend(svc("http-server-legacy"));
     canonical.extend(trace_services.iter().cloned());
     let mut out = JMap::new();
     for preset in ["ingress-nginx", "cadvisor", "kubernetes"] {

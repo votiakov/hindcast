@@ -8,7 +8,7 @@ and where it is documented.
 | capability | where | docs |
 |---|---|---|
 | Prometheus `query_range` JSON (any metric, by any label; endpoint and method labels) | A C | [backtest.md §1](backtest.md#1-data-in) |
-| Prometheus export presets: `otel-spanmetrics`, `http-server`, `spring`, `ingress-nginx`, `istio`, `linkerd`, `cadvisor`, `kubernetes`, with a label selector | C | [tools.md](tools.md#backtesting-on-real-data) |
+| Prometheus export presets: `otel-spanmetrics`, `http-server`, `http-server-legacy`, `spring`, `ingress-nginx`, `istio`, `linkerd`, `cadvisor`, `kubernetes`, with a label selector | C | [tools.md](tools.md#backtesting-on-real-data) |
 | CloudWatch `get-metric-data` output (by Id or Label; count-per-period, % of N vCPU) | A C | [backtest.md §1](backtest.md#1-data-in) |
 | Long CSV (timestamp, service, metric, value[, endpoint]) and wide CSV / Grafana exports | A C | [backtest.md §1](backtest.md#1-data-in) |
 | Units: s, ms, µs, percent, ratio, cores, millicores, rpm, count-per-period | A C | [backtest.md §1](backtest.md#1-data-in) |

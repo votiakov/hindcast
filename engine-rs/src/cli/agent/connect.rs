@@ -140,7 +140,7 @@ pub fn connect_telemetry(ws: &Workspace, input: &Value) -> Result<Value, String>
             let mut traced: indexmap::IndexSet<String> = trace_svcs.iter().cloned().collect();
             // without traces, the services the ingress routes to stand in for the traced ones
             let ingress: &[&str] = if trace_svcs.is_empty() { &["ingress-nginx"] } else { &[] };
-            for p in ["otel-spanmetrics", "http-server", "istio", "linkerd"].iter().chain(ingress) {
+            for p in ["otel-spanmetrics", "http-server", "http-server-legacy", "istio", "linkerd"].iter().chain(ingress) {
                 if let Some(a) = prom_report.as_ref().and_then(|r| r.get("services")).and_then(|s| s.get(p)).and_then(|x| x.as_array()) {
                     traced.extend(a.iter().filter_map(|x| x.as_str().map(String::from)));
                 }

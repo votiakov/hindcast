@@ -84,7 +84,8 @@ model:                                 # hints for calibration
 
 `hindcast export-prometheus` writes the `metrics:` block for you. Presets: `otel-spanmetrics`
 (OpenTelemetry Collector spanmetrics connector), `http-server` (OTel HTTP semantic-convention
-histograms, with per-route series), `spring` (Spring Boot / Micrometer `http_server_requests_seconds`,
+histograms, with per-route series), `http-server-legacy` (the same under the pre-1.0 name,
+`http_server_duration_milliseconds`), `spring` (Spring Boot / Micrometer `http_server_requests_seconds`,
 per application, Actuator's own scrapes left out), `ingress-nginx` (requests, errors and latency at the edge, per
 backend Service — they replace span-metric values for the same service), `istio` (Istio sidecar
 metrics, per destination workload), `linkerd` (Linkerd proxy metrics, inbound, per workload),

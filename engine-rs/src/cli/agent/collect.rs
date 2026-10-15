@@ -260,7 +260,7 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
     } else {
         // no traces: the calls the metrics name, read before the export so the entry's endpoints are queried
         super::progress("reading calls from the metrics (no traces)", 1.0, 4.0);
-        let known: Vec<String> = ["otel-spanmetrics", "http-server", "spring"].iter().flat_map(|k| strs(probe.get("services").and_then(|s| s.get(*k))).unwrap_or_default()).map(|x| rename_of(&x)).collect();
+        let known: Vec<String> = ["otel-spanmetrics", "http-server", "http-server-legacy", "spring"].iter().flat_map(|k| strs(probe.get("services").and_then(|s| s.get(*k))).unwrap_or_default()).map(|x| rename_of(&x)).collect();
         let mut c = super::infer::read_calls(&infer_prom, &presets, &strs(probe.get("calls")).unwrap_or_default(), &parts, src.get("topologyFile").and_then(|x| x.as_str()), &known)?;
         match entry.as_ref().filter(|e| !e.is_empty()) {
             Some(e) => c.entry = e.clone(),

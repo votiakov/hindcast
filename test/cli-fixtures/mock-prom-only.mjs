@@ -1,7 +1,7 @@
-// Two Prometheus servers with no traces behind them, for the quickstart-without-traces cases (served by
+// Prometheus servers with no traces behind them, for the quickstart-without-traces cases (served by
 // mock-telemetry.mjs): /kps holds what kube-prometheus-stack and ingress-nginx export — no app metrics,
-// no mesh; /istio holds the same cluster metrics plus Istio's sidecar metrics. Every series is a
-// function of time alone, so two runs see the same history.
+// no mesh; /istio and /linkerd hold the same cluster metrics plus a mesh's proxy metrics. Every series
+// is a function of time alone, so two runs see the same history.
 const NOW = 1_791_500_000;
 const DAY = 86400;
 const MI = 1024 * 1024;
@@ -42,7 +42,29 @@ const WORLDS = {
       frontend: { rps: (L) => L, mean: (L) => 20 + 0.1 * L + (6 + 0.05 * L) + 2 * (4 + 0.04 * L) },
     },
   },
+  // Linkerd: outbound counters name the destination; users is a StatefulSet; gRPC shows as grpc_status
+  linkerd: {
+    names: ['kube_pod_info', 'response_total', 'container_spec_cpu_quota'],
+    workloads: {
+      web: { ns: 'shop', kind: 'deployment', pods: ['web-6d7f8c9b5d-p1q2r', 'web-6d7f8c9b5d-s3t4u'], nodes: ['node-a', 'node-b'], cpu: (L) => 0.05 + 0.003 * L, limit: 1, mem: (L) => 2 * (200 + 0.3 * L) * MI, memLimit: 512 * MI, throttled: () => 0.004 },
+      orders: { ns: 'shop', kind: 'deployment', pods: ['orders-7f8d9c6b5d-v5w6x'], nodes: ['node-a'], cpu: (L) => 0.02 + 0.004 * L, limit: 0.5, mem: (L) => (160 + 0.2 * L) * MI, memLimit: 256 * MI, throttled: () => 0.003 },
+      users: { ns: 'shop', kind: 'statefulset', pods: ['users-0'], nodes: ['node-b'], cpu: (L) => 0.03 + 0.002 * L, limit: 1, mem: () => 300 * MI, memLimit: 1024 * MI, throttled: () => 0.002 },
+      'ingress-nginx-controller': { ns: 'ingress-nginx', kind: 'deployment', pods: ['ingress-nginx-controller-6b7c8d9f5d-zz2xq'], nodes: ['node-a'], cpu: (L) => 0.01 + 0.001 * L, limit: 1, mem: () => 90 * MI, memLimit: 512 * MI, throttled: () => 0.001 },
+    },
+    edges: [
+      { from: 'ingress-nginx-controller', to: 'web', protocol: 'http', rate: (L) => L },
+      { from: 'web', to: 'orders', protocol: 'grpc', rate: (L) => L },
+      { from: 'orders', to: 'users', protocol: 'http', rate: (L) => 3 * L },
+    ],
+    served: {
+      users: { rps: (L) => 3 * L, mean: (L) => 2 + 0.02 * L },
+      orders: { rps: (L) => L, mean: (L) => 5 + 0.04 * L + 3 * (2 + 0.02 * L) },
+      web: { rps: (L) => L, mean: (L) => 25 + 0.1 * L + (5 + 0.04 * L + 3 * (2 + 0.02 * L)) },
+    },
+  },
 };
+/** Linkerd's labels for a workload, by its kind, on either end of a call */
+const lk = (w, id, pre = '') => ({ [`${pre}${w.workloads[id]?.kind ?? 'deployment'}`]: id });
 
 const by = (q) => /by \(([^)]*)\)/.exec(q)?.[1]?.split(',')[0]?.trim() ?? '';
 const workloads = (w) => Object.entries(w.workloads);
@@ -59,6 +81,19 @@ function at(w, q, t) {
     if (q.includes('_sum')) return v('mean');
     if (q.includes('status=~')) return v('errors');
     return v('rps');
+  }
+  if (q.includes('response_total') || q.includes('response_latency_ms')) {
+    if (q.includes('direction="outbound"')) {
+      const out = new Map();
+      for (const e of w.edges) out.set(e.from, (out.get(e.from) ?? 0) + e.rate(L) * w.served[e.to].mean(L));
+      return [...out].map(([id, v]) => [{ workload: id }, v]);
+    }
+    const s = Object.entries(w.served ?? {});
+    const v = (f) => s.map(([id, x]) => [{ workload: id }, f(x)]);
+    if (q.includes('histogram_quantile')) return v((x) => x.mean(L) * 2.5);
+    if (q.includes('_sum')) return v((x) => x.mean(L));
+    if (q.includes('classification="failure"')) return v(() => 0.001);
+    return v((x) => x.rps(L));
   }
   if (q.includes('istio_') && q.includes('reporter="source"')) {
     // what each caller's sidecar timed of its calls: ms per second
@@ -106,7 +141,8 @@ export function promOnly(kind, path, params, send) {
   const lv = /^\/api\/v1\/label\/([^/]+)\/values$/.exec(path)?.[1];
   if (lv === 'pod') return send({ status: 'success', data: workloads(w).flatMap(([, x]) => x.pods) });
   if (lv === 'exported_service') return send({ status: 'success', data: Object.keys(w.ingress ?? {}) });
-  if (lv === 'destination_workload') return send({ status: 'success', data: Object.keys(w.served ?? {}).sort() });
+  if (lv === 'destination_workload' && kind === 'istio') return send({ status: 'success', data: Object.keys(w.served ?? {}).sort() });
+  if (lv === 'deployment' && kind === 'linkerd') return send({ status: 'success', data: workloads(w).filter(([, x]) => x.kind === 'deployment').map(([id]) => id).sort() });
   if (lv) return send({ status: 'success', data: [] });
   const q = params.get('query') ?? '';
   const vector = (rows, t) => send({ status: 'success', data: { resultType: 'vector', result: rows.map(([metric, v]) => ({ metric, value: [t, String(v)] })) } });
@@ -117,6 +153,9 @@ export function promOnly(kind, path, params, send) {
     // the probe: is there traffic at t
     if (q.startsWith('sum(increase(')) return vector(busy(t) ? [[{}, load(t) * 600]] : [], t);
     if (q.includes('increase(istio_requests_total')) return vector((w.edges ?? []).map((e) => [{ source_workload: e.from, destination_workload: e.to, request_protocol: e.protocol }, area(e.rate, t, win)]), t);
+    if (q.includes('increase(response_total') && q.includes('direction="outbound"'))
+      return vector((w.edges ?? []).map((e) => [{ ...lk(w, e.from), ...lk(w, e.to, 'dst_'), ...(e.protocol === 'grpc' ? { grpc_status: '0' } : {}) }, area(e.rate, t, win)]), t);
+    if (q.includes('increase(response_total')) return vector(Object.entries(w.served ?? {}).map(([id, x]) => [lk(w, id), area(x.rps, t, win)]), t);
     if (q.includes('increase(nginx_ingress_controller_requests')) return vector(Object.entries(w.ingress ?? {}).map(([id, x]) => [{ exported_service: id }, area(x.rps, t, win)]), t);
     if (q.startsWith('count by (workload, node)')) return vector(workloads(w).flatMap(([id, x]) => x.nodes.map((node) => [{ workload: id, node }, 1])), t);
     if (q === 'kube_node_info') return vector(['node-a', 'node-b'].map((node, k) => [{ node, provider_id: `aws:///us-east-1${'ab'[k]}/i-0${k}` }, 1]), t);

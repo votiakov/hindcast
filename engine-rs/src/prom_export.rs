@@ -41,7 +41,7 @@ fn join(parts: &[&str]) -> String {
 const SERVER: &str = "span_kind=\"SPAN_KIND_SERVER\"";
 const WORKERS: &str = "unless on (node) kube_node_role{role=~\"control-plane|master\"}";
 
-pub const PRESET_IDS: [&str; 8] = ["otel-spanmetrics", "http-server", "spring", "ingress-nginx", "istio", "linkerd", "cadvisor", "kubernetes"];
+pub const PRESET_IDS: [&str; 9] = ["otel-spanmetrics", "http-server", "http-server-legacy", "spring", "ingress-nginx", "istio", "linkerd", "cadvisor", "kubernetes"];
 
 #[derive(Clone, Debug)]
 pub struct Query {
@@ -106,27 +106,34 @@ fn preset(id: &str, o: &Opts) -> Option<Vec<Query>> {
             }
             v
         }
-        "http-server" => {
+        // OpenTelemetry HTTP server histograms: semantic conventions 1.x, or the pre-1.0 names in ms
+        "http-server" | "http-server-legacy" => {
+            let (base, unit, status, method) = if id == "http-server" { ("http_server_request_duration_seconds", "s", "http_response_status_code", "http_request_method") } else { ("http_server_duration_milliseconds", "ms", "http_status_code", "http_method") };
             let s = if sel.is_empty() { String::new() } else { format!("{{{}}}", sel) };
             let se = if sel.is_empty() { String::new() } else { format!("{},", sel) };
             let es = if entry.is_empty() { s.clone() } else { format!("{{{}}}", join(&[sel, &entry_matcher(entry)])) };
             let tpl: Vec<(&'static str, Value)> = if entry.is_empty() { vec![] } else { vec![("template", json!(true))] };
             let ep = |unit: Option<&str>| -> Vec<(&'static str, Value)> {
-                let mut x: Vec<(&'static str, Value)> = vec![("by", json!("service_name")), ("endpointBy", json!("http_route")), ("methodBy", json!("http_request_method"))];
+                let mut x: Vec<(&'static str, Value)> = vec![("by", json!("service_name")), ("endpointBy", json!("http_route")), ("methodBy", json!(method))];
                 if let Some(u) = unit {
                     x.push(("unit", json!(u)));
                 }
                 x.extend(tpl.iter().cloned());
                 x
             };
-            vec![
-                q("rps.json", format!("sum by (service_name) (rate(http_server_request_duration_seconds_count{s}[{w}]))"), m("rps", &[("by", json!("service_name"))])),
-                q("errors.json", format!("sum by (service_name) (rate(http_server_request_duration_seconds_count{{{se}http_response_status_code=~\"5..\"}}[{w}])) / sum by (service_name) (rate(http_server_request_duration_seconds_count{s}[{w}]))"), m("errorRate", &[("by", json!("service_name")), ("unit", json!("ratio"))])),
-                q("p99.json", format!("histogram_quantile(0.99, sum by (service_name, le) (rate(http_server_request_duration_seconds_bucket{s}[{w}])))"), m("p99Ms", &[("by", json!("service_name")), ("unit", json!("s"))])),
-                q("endpoint-rps.json", format!("sum by (service_name, http_route, http_request_method) (rate(http_server_request_duration_seconds_count{es}[{w}]))"), m("rps", &ep(None))),
-                q("endpoint-p99.json", format!("histogram_quantile(0.99, sum by (service_name, http_route, http_request_method, le) (rate(http_server_request_duration_seconds_bucket{es}[{w}])))"), m("p99Ms", &ep(Some("s")))),
-                q("endpoint-mean.json", format!("sum by (service_name, http_route, http_request_method) (rate(http_server_request_duration_seconds_sum{es}[{w}])) / sum by (service_name, http_route, http_request_method) (rate(http_server_request_duration_seconds_count{es}[{w}]))"), m("meanMs", &ep(Some("s")))),
-            ]
+            let mut v = vec![
+                q("rps.json", format!("sum by (service_name) (rate({base}_count{s}[{w}]))"), m("rps", &[("by", json!("service_name"))])),
+                q("errors.json", format!("sum by (service_name) (rate({base}_count{{{se}{status}=~\"5..\"}}[{w}])) / sum by (service_name) (rate({base}_count{s}[{w}]))"), m("errorRate", &[("by", json!("service_name")), ("unit", json!("ratio"))])),
+                q("p99.json", format!("histogram_quantile(0.99, sum by (service_name, le) (rate({base}_bucket{s}[{w}])))"), m("p99Ms", &[("by", json!("service_name")), ("unit", json!(unit))])),
+                q("endpoint-rps.json", format!("sum by (service_name, http_route, {method}) (rate({base}_count{es}[{w}]))"), m("rps", &ep(None))),
+                q("endpoint-p99.json", format!("histogram_quantile(0.99, sum by (service_name, http_route, {method}, le) (rate({base}_bucket{es}[{w}])))"), m("p99Ms", &ep(Some(unit)))),
+                q("endpoint-mean.json", format!("sum by (service_name, http_route, {method}) (rate({base}_sum{es}[{w}])) / sum by (service_name, http_route, {method}) (rate({base}_count{es}[{w}]))"), m("meanMs", &ep(Some(unit)))),
+            ];
+            if id != "http-server" {
+                // a service-level mean: self time without traces is read from it
+                v.insert(3, q("mean.json", format!("sum by (service_name) (rate({base}_sum{s}[{w}])) / sum by (service_name) (rate({base}_count{s}[{w}]))"), m("meanMs", &[("by", json!("service_name")), ("unit", json!(unit))])));
+            }
+            v
         }
         "spring" => {
             let base = join(&["uri!~\"/actuator.*\"", &ns_matcher(&o.namespaces), sel]);
