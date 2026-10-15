@@ -31,6 +31,10 @@ impl Default for EngineConfig {
 const HISTORY_LEN: usize = 90;
 const HISTORY_EVERY_S: f64 = 0.25;
 const TRIP_FAIL: f64 = 0.5;
+/// the discrete-event engine judges a breaker on 1 s windows, closed on ten calls or more, half open on three
+const BR_WINDOW_S: f64 = 1.0;
+const BR_MIN_CALLS: f64 = 10.0;
+const BR_HALF_MIN_CALLS: f64 = 3.0;
 const TRIP_AFTER_S: f64 = 1.0;
 const OPEN_S: f64 = 5.0;
 const PROBE_OPEN: f64 = 0.02;
@@ -215,6 +219,8 @@ pub struct NodeState {
     pub retry_amp: f64,
     pub breaker: Breaker,
     pub breaker_t: f64,
+    /// half open: how far the probes' windows have gone towards reopening it
+    pub breaker_h: f64,
     pub breaker_pass: f64,
     pub late_frac: f64,
     pub cold_at: Option<f64>,
@@ -282,6 +288,7 @@ fn fresh() -> NodeState {
         retry_amp: 1.0,
         breaker: Breaker::Closed,
         breaker_t: 0.0,
+        breaker_h: 0.0,
         breaker_pass: 1.0,
         late_frac: 0.0,
         cold_at: None,
@@ -352,6 +359,16 @@ pub fn fanout_tail(n: f64) -> f64 {
     } else {
         1.0 + 0.6 * (2.0 * n.js_ln()).sqrt()
     }
+}
+
+/// chance that a window of `n` calls, each failing with chance `p`, measures a failure rate past `t`
+/// (the binomial by its normal approximation, with the continuity correction)
+fn window_above(p: f64, n: f64, t: f64) -> f64 {
+    let sd = (n * p * (1.0 - p)).sqrt();
+    if sd < 1e-9 {
+        return if p > t { 1.0 } else { 0.0 };
+    }
+    crate::math::normal_tail(((t * n).floor() + 0.5 - p * n) / sd)
 }
 
 /// share of answers slower than a deadline, for answers with this mean and p99 − mean: right-skewed,
@@ -1119,30 +1136,44 @@ impl Engine {
             return 1.0;
         }
         let prev = st.breaker;
-        st.breaker_t += dt;
+        // a breaker judges what it measures over a window of calls, and that wanders around the
+        // expected failure rate: past the threshold it trips after a second, as always; just under it,
+        // a window now and then measures past it, and the first one trips it (the discrete-event engine,
+        // and a real breaker, trip that way). So below the threshold the clock runs at the chance that a
+        // window measures past it: a callee failing half the calls (one of two dependencies late) trips
+        // it within a few seconds, one failing a tenth of them never does
+        let calls = st.in_rps * st.retry_amp * BR_WINDOW_S;
+        let hazard = |p: f64, n: f64, min: f64| if p > TRIP_FAIL { 1.0 } else if n < min { 0.0 } else { window_above(p, n, TRIP_FAIL) };
         match st.breaker {
             Breaker::Closed => {
-                if st.attempt_fail > TRIP_FAIL {
+                let h = hazard(st.attempt_fail, calls, BR_MIN_CALLS);
+                if h < 1e-3 {
+                    st.breaker_t = 0.0;
+                } else {
+                    st.breaker_t += dt * h;
                     if st.breaker_t >= TRIP_AFTER_S {
                         st.breaker = Breaker::Open;
                         st.breaker_t = 0.0;
                     }
-                } else {
-                    st.breaker_t = 0.0;
                 }
             }
             Breaker::Open => {
+                st.breaker_t += dt;
                 if st.breaker_t >= OPEN_S {
                     st.breaker = Breaker::Half;
                     st.breaker_t = 0.0;
+                    st.breaker_h = 0.0;
                 }
             }
             Breaker::Half => {
+                st.breaker_t += dt;
+                // the probes' windows (three calls make one) measure past the threshold now and then too
+                st.breaker_h += dt * hazard(st.attempt_fail, calls * PROBE_HALF, BR_HALF_MIN_CALLS);
                 if st.breaker_t >= 1.0 {
                     if st.attempt_fail < CLOSE_FAIL {
                         st.breaker = Breaker::Closed;
                         st.breaker_t = 0.0;
-                    } else if st.attempt_fail > TRIP_FAIL {
+                    } else if st.breaker_h >= 1.0 {
                         st.breaker = Breaker::Open;
                         st.breaker_t = 0.0;
                     }
@@ -1619,7 +1650,7 @@ impl Engine {
                     succ_w = 1.0 - miss_w;
                     tail = (p99 - lat).max(0.0);
                 } else {
-                    let (mut w, mut s, mut p99, mut lt) = (0.0, 0.0, 0.0, 0.0);
+                    let (mut w, mut s, mut p99, mut lt, mut wa) = (0.0, 0.0, 0.0, 0.0, 0.0);
                     let (mut sr, mut sw, mut wr, mut ww) = (0.0, 0.0, 0.0, 0.0);
                     for k in &l.routes {
                         let (ks, kl, f, t) = kid(k);
@@ -1636,11 +1667,17 @@ impl Engine {
                         ww += cw;
                         lat += kl * wk;
                         p99 += (kl + t) * wk;
+                        // the answers are the ones that succeeded: a branch that mostly fails is mostly not
+                        // among them, so its lateness counts by its successes, not by the calls it took
+                        // (weighting by calls makes a slow, failing branch's lateness strike the fast,
+                        // healthy branches' answers too: success × (1 − late) counts it twice)
+                        let wa_k = wk * ks.max(1e-6);
+                        wa += wa_k;
                         let kd = kid_dist(k);
                         if let Some(dl) = tmo {
-                            lt += mix_late(&kd, dl) * wk;
+                            lt += mix_late(&kd, dl) * wa_k;
                         }
-                        kids_mix.extend(mix_then(&kd, 0.0, 0.0, wk));
+                        kids_mix.extend(mix_then(&kd, 0.0, 0.0, wa_k));
                     }
                     succ = s / w;
                     succ_r = if wr > 0.0 { sr / wr } else { 0.0 };
@@ -1648,7 +1685,7 @@ impl Engine {
                     lat /= w;
                     tail = (p99 / w - lat).max(0.0);
                     if tmo.is_some() {
-                        late = Some(lt / w);
+                        late = Some(lt / wa);
                     }
                 }
             }

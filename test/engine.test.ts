@@ -62,6 +62,44 @@ describe('fluid engine', () => {
   });
 });
 
+import { simulateDes } from '../src/sim/des/des';
+
+describe('a deadline over a fast branch and a slow, failing one', () => {
+  // api splits its calls between `fast` and `slow`, with a 200 ms deadline. slow takes 500/s against
+  // 100/s: it sheds 400/s and the 100/s it serves wait ~1 s in its queue, past the deadline. So every
+  // call to slow fails and every call to fast succeeds: 50% fail. (Lateness weighted by calls instead
+  // of by successful answers made fast's answers look half late too: success 0.6 × on time 0.5, so
+  // the fluid engine had 68% failing.)
+  const spec = {
+    components: [{ id: 'users', kind: 'client' }, { id: 'api', kind: 'server', capacity: 1e5, timeoutMs: 200 }, { id: 'fast', kind: 'server', capacity: 1e5, latencyMs: 5 }, { id: 'slow', kind: 'worker', capacity: 100 }],
+    connections: [['users', 'api'], ['api', 'fast'], ['api', 'slow']],
+  };
+  it('half the requests fail, in both engines', () => {
+    const f = simulate(spec, { duration: 40, rps: 1000 }).summary.meanErrorRate;
+    const d = simulateDes(spec, { duration: 40, rps: 1000 }, { seed: 1 }).summary.meanErrorRate;
+    expect(Math.abs(d - 0.5)).toBeLessThan(0.03);
+    expect(Math.abs(f - 0.5)).toBeLessThan(0.03);
+  });
+});
+
+describe('a breaker whose calls fail exactly half the time', () => {
+  // one of api's two dependencies answers in 1 s against a 200 ms deadline: half the calls fail, the
+  // breaker's threshold. The rate a breaker measures over a window wanders around that, so one window
+  // soon measures past it and trips it; with the fallback, few requests fail
+  const spec = {
+    components: [{ id: 'users', kind: 'client' }, { id: 'api', kind: 'server', capacity: 1e5, timeoutMs: 200, breaker: true, fallback: true }, { id: 'fast', kind: 'server', capacity: 1e5, latencyMs: 5 }, { id: 'slow', kind: 'external', latencyMs: 1000 }],
+    connections: [['users', 'api'], ['api', 'fast'], ['api', 'slow']],
+  };
+  it('trips in both engines', () => {
+    const f = simulate(spec, { duration: 60, rps: 300 });
+    const d = simulateDes(spec, { duration: 60, rps: 300 }, { seed: 1 });
+    expect(f.events.some((e) => e.what.startsWith('breaker-open'))).toBe(true);
+    expect(d.events.some((e) => e.what.startsWith('breaker-open'))).toBe(true);
+    expect(f.summary.meanErrorRate).toBeLessThan(0.15);
+    expect(d.summary.meanErrorRate).toBeLessThan(0.15);
+  });
+});
+
 describe('retry amplification', () => {
   it('immediate retries amplify load geometrically', () => {
     expect(retryAmp(0, 3, 'immediate')).toBe(1);
