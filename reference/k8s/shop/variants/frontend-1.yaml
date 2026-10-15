@@ -1120,7 +1120,37 @@ data:
         dimensions:
           - name: http.route
           - name: http.method
+          - name: server.address
+          - name: peer.service
+          - name: net.peer.name
         metrics_flush_interval: 5s
+      servicegraph:
+        latency_histogram_buckets:
+          - 2ms
+          - 5ms
+          - 10ms
+          - 20ms
+          - 30ms
+          - 50ms
+          - 75ms
+          - 100ms
+          - 150ms
+          - 200ms
+          - 300ms
+          - 400ms
+          - 500ms
+          - 750ms
+          - 1s
+          - 1500ms
+          - 2s
+          - 3s
+          - 5s
+          - 10s
+          - 30s
+        store:
+          ttl: 10s
+          max_items: 20000
+        metrics_flush_interval: 15s
     exporters:
       otlp/jaeger:
         endpoint: jaeger:4317
@@ -1138,6 +1168,7 @@ data:
             - batch
           exporters:
             - spanmetrics
+            - servicegraph
         traces/sampled:
           receivers:
             - otlp
@@ -1149,6 +1180,7 @@ data:
         metrics:
           receivers:
             - spanmetrics
+            - servicegraph
           exporters:
             - prometheus
         metrics/apps:

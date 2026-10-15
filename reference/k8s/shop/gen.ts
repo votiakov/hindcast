@@ -379,8 +379,17 @@ function manifests(o: { frontendReplicas: number; frontendCpu?: string; hpa?: { 
             buckets: ['2ms', '5ms', '10ms', '20ms', '30ms', '50ms', '75ms', '100ms', '150ms', '200ms', '300ms', '400ms', '500ms', '750ms', '1s', '1500ms', '2s', '3s', '5s', '10s', '30s'],
           },
         },
-        dimensions: [{ name: 'http.route' }, { name: 'http.method' }],
+        // the peer of a client span (an HTTP or Redis call is named by its method alone): who-calls-whom
+        // without traces reads the callee from these
+        dimensions: [{ name: 'http.route' }, { name: 'http.method' }, { name: 'server.address' }, { name: 'peer.service' }, { name: 'net.peer.name' }],
         metrics_flush_interval: '5s',
+      },
+      // client → server edges from paired spans (traces_service_graph_request_total), the other
+      // traceless source of who-calls-whom
+      servicegraph: {
+        latency_histogram_buckets: ['2ms', '5ms', '10ms', '20ms', '30ms', '50ms', '75ms', '100ms', '150ms', '200ms', '300ms', '400ms', '500ms', '750ms', '1s', '1500ms', '2s', '3s', '5s', '10s', '30s'],
+        store: { ttl: '10s', max_items: 20000 },
+        metrics_flush_interval: '15s',
       },
     },
     exporters: {
@@ -394,14 +403,14 @@ function manifests(o: { frontendReplicas: number; frontendCpu?: string; hpa?: { 
         traces: {
           receivers: ['otlp'],
           processors: ['batch'],
-          exporters: ['spanmetrics'],
+          exporters: ['spanmetrics', 'servicegraph'],
         },
         'traces/sampled': {
           receivers: ['otlp'],
           processors: ['probabilistic_sampler', 'batch'],
           exporters: ['otlp/jaeger'],
         },
-        metrics: { receivers: ['spanmetrics'], exporters: ['prometheus'] },
+        metrics: { receivers: ['spanmetrics', 'servicegraph'], exporters: ['prometheus'] },
         'metrics/apps': { receivers: ['otlp'], exporters: ['nop'] },
         // the C++ SDK (currency) retries refused log exports on new threads until its CPU limit is spent
         logs: { receivers: ['otlp'], exporters: ['nop'] },
