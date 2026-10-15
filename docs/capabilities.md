@@ -59,13 +59,13 @@ and where it is documented.
 |---|---|---|
 | Live failing system with next moves | A | [guide.md](guide.md#live) |
 | Seven lessons, 22 levels with engine-checked objectives; every level proven winnable by a test; show me, debriefs, saved progress | A | [guide.md](guide.md#lessons) |
-| Sandbox: 17 component kinds (incl. a key-value store, DNS with TTL-lagged failover and a pub/sub stream), zones, link latency, templates, per-component runtimes, autoscaling, retries, timeouts, breakers, bounded queues, routing, fan-out, batching, calibration from production numbers | A | [guide.md](guide.md#sandbox), [catalog.md](catalog.md) |
+| Sandbox: 22 component kinds (incl. a key-value store, DNS with TTL-lagged failover, a pub/sub stream, a search index, a vector database, cold archive and edge functions), zones, link latency, templates, per-component runtimes, autoscaling, retries, timeouts, breakers, bounded queues, routing, fan-out, batching, calibration from production numbers | A | [guide.md](guide.md#sandbox), [catalog.md](catalog.md) |
 | Chaos: kill, faults (errors, latency, capacity), cache flush, zone failure; traffic patterns and spikes; real traffic from a CSV | A C | [guide.md](guide.md#sandbox) |
 | Flight recorder: rewind the whole board; incident timeline as Markdown | A | [tools.md](tools.md#app) |
 | Architecture as code: YAML spec, two-way synced; validate and lint | A C M | [spec.md](spec.md) |
 | Import from Terraform (`terraform show -json`) and Kubernetes manifests, with assumptions | A C M | [tools.md](tools.md) |
 | Failure audit: risk register, blast radius, recovery time, $ at risk, verified and priced fixes, one-click apply, CI gate | A C M | [tools.md](tools.md#failure-audit) |
-| Compare: two designs, same scenario, engine-computed takeaway; 17 built-in comparisons | A C M | [guide.md](guide.md#compare) |
+| Compare: two designs, same scenario, engine-computed takeaway; 28 built-in comparisons | A C M | [guide.md](guide.md#compare) |
 | Monte Carlo with confidence intervals, breaking-point search, cost optimizer | A C M | [analysis.md](analysis.md) |
 | Two engines: fluid (fast, live) and discrete-event (every request; real tails, retry storms) | A C M | [engines.md](engines.md) |
 | Pricing: illustrative, AWS us-east-1, GCP us-central1 | A C | [catalog.md](catalog.md) |

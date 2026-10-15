@@ -56,7 +56,7 @@ users would have seen, and each fix is verified by re-running the same incident 
 
 **For AI agents** ([docs/agents.md](docs/agents.md)): give Claude Code (or any MCP host, or any
 agent with a shell) the Hindcast tools and it does the work itself. It connects to your Prometheus
-and Jaeger or Tempo, collects a week of history, calibrates the model, reads its trust report, and
+and Jaeger or Tempo, collects the history you point it at (a day to two weeks), calibrates the model, reads its trust report, and
 verifies a change before proposing it: a strategy, a Kubernetes diff or a Terraform plan. The
 answer is a verdict (pass / fail / inconclusive) with a confidence that says which services the
 change pushes past anything the history showed, the money with its basis, and the SLO minutes.
@@ -68,6 +68,11 @@ agent tools on both, and a VS Code extension that draws the spec you are editing
 
 How it differs from the system-design simulators you may have seen, and what it can't do:
 [Why Hindcast](docs-site/pages/why.html) (`/docs/why.html` in the app).
+
+Needs Node 20+. The CLI, the MCP server and the agent tools are one native binary: `bin/hindcast`
+builds it on first use, which needs a Rust toolchain ([rustup](https://rustup.rs)). The app
+doesn't: the engine is committed as WebAssembly (rebuilding it with `npm run engine:build` needs the
+`wasm32-unknown-unknown` target and `wasm-bindgen-cli`).
 
 ```
 npm install
@@ -115,9 +120,9 @@ manifests or a `terraform show -json` file on the board to open it. `?` lists th
 
 Two engines take the same inputs:
 
-- **fluid** (`src/sim/engine.ts`) – request volume per 50 ms tick through a queueing model. Fast enough
+- **fluid** (`engine-rs/src/sim/engine.rs`) – request volume per 50 ms tick through a queueing model. Fast enough
   for the live board, breaking-point search, the optimizer and the audit (≈ 1 ms per simulated second).
-- **discrete-event** (`src/sim/des/`) – every request simulated: real p50/p99/p99.9, retry storms,
+- **discrete-event** (`engine-rs/src/sim/des.rs`) – every request simulated: real p50/p99/p99.9, retry storms,
   timeouts and breaker oscillation emerge rather than being approximated; seeded and deterministic;
   Monte Carlo with confidence intervals.
 
