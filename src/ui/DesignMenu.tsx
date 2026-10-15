@@ -194,12 +194,18 @@ export function DesignMenu() {
                   <button
                     key={t.id}
                     className="dm-tpl"
+                    title={t.note ? `${t.note}\n\nAfter: ${t.source}` : undefined}
                     onClick={act(() => {
-                      useSim.getState().loadGraph('main', t.graph, t.title);
-                      useSim.getState().setDesign(null, t.title);
+                      const st = useSim.getState();
+                      st.loadGraph('main', t.graph, t.title);
+                      st.setDesign(null, t.title);
+                      if (t.rps) st.setTraffic(t.rps);
+                      if (t.readRatio !== undefined) st.setReadRatio(t.readRatio);
+                      if (t.note) st.toast('info', `${t.note} (After ${t.source}; numbers illustrative.)`);
                     })}
                   >
                     {t.title}
+                    {t.rps ? <span>{t.rps.toLocaleString()} req/s</span> : null}
                   </button>
                 ))}
               </div>
