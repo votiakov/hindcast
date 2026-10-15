@@ -86,11 +86,20 @@ pub fn review_capacity(ws: &Workspace, o: &Value) -> Result<Value, String> {
     }
     let mut out = JMap::new();
     out.insert("system".into(), g(&mv, &["name"]).clone());
+    // nothing carries load: no endpoint, so the replays below have no traffic in them
+    if m.endpoints.is_empty() {
+        out.insert("noTraffic".into(), json!(true));
+    }
     out.insert("history".into(), json!({ "from": iso(n(&dv, &["start"])), "to": iso(n(&dv, &["start"]) + n(&dv, &["n"]) * n(&dv, &["stepS"])), "peakRps": num(r1(peak)) }));
     out.insert("slo".into(), g(&mv, &["slo"]).clone());
     // a headroom set by a service the model doesn't explain is a guess: say so where it is read
     let limit_fit = head.limited_by.as_ref().map(|id| s(&mv, &["services", id, "fit", "status"])).unwrap_or_default();
-    let mut headroom = json!({ "rps": num(r1(head.rps)), "limitedBy": head.limited_by, "overPeak": if peak > 0.0 { num(js_round((head.rps / peak) * 100.0) / 100.0) } else { Value::Null }, "limitTrusted": !matches!(limit_fit.as_str(), "poor" | "unexplained") });
+    // one with no latency metric: its limit is read from CPU, which is said instead
+    let cpu_alone = head.limited_by.as_ref().map(|id| arr(&mv, &["provenance", "latency", "without"]).iter().any(|x| x.as_str() == Some(id.as_str()))).unwrap_or(false);
+    let mut headroom = json!({ "rps": num(r1(head.rps)), "limitedBy": head.limited_by, "overPeak": if peak > 0.0 { num(js_round((head.rps / peak) * 100.0) / 100.0) } else { Value::Null }, "limitTrusted": cpu_alone || !matches!(limit_fit.as_str(), "poor" | "unexplained") });
+    if cpu_alone {
+        headroom["limitFromCpu"] = json!(true);
+    }
     if let Some(why) = &head.at_any_load {
         headroom["atAnyLoad"] = json!(why);
     }
@@ -114,6 +123,10 @@ pub fn review_capacity(ws: &Workspace, o: &Value) -> Result<Value, String> {
             None => Value::Null,
         },
     );
+    let grpc = grpc_restarts(&mv);
+    if !grpc.is_empty() {
+        out.insert("restartRisks".into(), json!(grpc));
+    }
     out.insert("throttled".into(), json!(throttled));
     out.insert("memoryNearLimit".into(), json!(memory));
     out.insert("fixes".into(), json!(arr(&sug, &["fixes"]).iter().take(5).map(|f| json!({ "name": g(f, &["name"]), "minutesOutOfSloDelta": g(f, &["minutesOutOfSloDelta"]), "failedRequestsDelta": g(f, &["failedRequestsDelta"]), "monthlyDelta": g(f, &["monthlyDelta"]) })).collect::<Vec<_>>()));
@@ -147,33 +160,39 @@ pub fn review_markdown(r: &Value) -> String {
         l.extend(summary_lines(r));
         l.push(String::new());
     }
-    l.push("## Headroom".into());
-    l.push(String::new());
-    let over = g(r, &["headroom", "overPeak"]);
-    match g(r, &["headroom", "atAnyLoad"]).as_str() {
-        Some(why) => l.push(format!("**Out of SLO at any load** — {}. That is no capacity limit: the model misses the SLO with almost no traffic, so fix or explain that first.", why)),
-        None => l.push(format!("Within SLO up to **{} req/s**{}; {}.", js_num(n(r, &["headroom", "rps"])), if truthy(over) { format!(" — {}× the busiest moment", js_num(n(r, &["headroom", "overPeak"]))) } else { String::new() }, match g(r, &["headroom", "limitedBy"]) { Value::Null => "nothing saturates in the range searched".to_string(), x => format!("{} saturates first", s(x, &[])) })),
-    }
-    l.push(String::new());
-    let st = g(r, &["stability"]);
-    if !arr(st, &["windows"]).is_empty() {
-        let ws: Vec<String> = arr(st, &["windows"]).iter().map(|w| format!("{} – {}: {}", when(&s(w, &["from"])), when(&s(w, &["to"])), if w.get("atAnyLoad").is_some() { "out of SLO at any load".to_string() } else { match g(w, &["limitedBy"]) { Value::Null => format!("more than {} req/s", js_num(n(w, &["rps"]))), x => format!("{} req/s, {} first", js_num(n(w, &["rps"])), s(x, &[])) } })).collect();
-        l.push(match uncertain(r) {
-            Some(u) => format!("**Uncertain:** {} Each third of the history's traffic, calibrated alone: {}.", u, ws.join("; ")),
-            None => format!("Each third of the history's traffic, calibrated alone, agrees: {}.", ws.join("; ")),
-        });
+    let no_traffic = g(r, &["noTraffic"]).as_bool().unwrap_or(false);
+    if no_traffic {
+        l.push("No service has request metrics, so there is no traffic to replay: headroom, busier days and losing a node can't be read; cost still can.".into());
+        l.push(String::new());
+    } else {
+        l.push("## Headroom".into());
+        l.push(String::new());
+        let over = g(r, &["headroom", "overPeak"]);
+        match g(r, &["headroom", "atAnyLoad"]).as_str() {
+            Some(why) => l.push(format!("**Out of SLO at any load** — {}. That is no capacity limit: the model misses the SLO with almost no traffic, so fix or explain that first.", why)),
+            None => l.push(format!("Within SLO up to **{} req/s**{}; {}.", js_num(n(r, &["headroom", "rps"])), if truthy(over) { format!(" — {}× the busiest moment", js_num(n(r, &["headroom", "overPeak"]))) } else { String::new() }, match g(r, &["headroom", "limitedBy"]) { Value::Null => "nothing saturates in the range searched".to_string(), x => format!("{} saturates first", s(x, &[])) })),
+        }
+        l.push(String::new());
+        let st = g(r, &["stability"]);
+        if !arr(st, &["windows"]).is_empty() {
+            let ws: Vec<String> = arr(st, &["windows"]).iter().map(|w| format!("{} – {}: {}", when(&s(w, &["from"])), when(&s(w, &["to"])), if w.get("atAnyLoad").is_some() { "out of SLO at any load".to_string() } else { match g(w, &["limitedBy"]) { Value::Null => format!("more than {} req/s", js_num(n(w, &["rps"]))), x => format!("{} req/s, {} first", js_num(n(w, &["rps"])), s(x, &[])) } })).collect();
+            l.push(match uncertain(r) {
+                Some(u) => format!("**Uncertain:** {} Each third of the history's traffic, calibrated alone: {}.", u, ws.join("; ")),
+                None => format!("Each third of the history's traffic, calibrated alone, agrees: {}.", ws.join("; ")),
+            });
+            l.push(String::new());
+        }
+        let t = g(r, &["today"]);
+        if !t.is_null() {
+            l.push(format!("- **The recorded day, replayed:** {}", if g(t, &["holds"]).as_bool().unwrap_or(false) { "holds".to_string() } else { format!("{} min out of SLO, {} failed requests — {}", js_num(n(t, &["minutesOutOfSlo"])), js_locale(n(t, &["failedRequests"])), s(t, &["worst"])) }));
+        }
+        for b in arr(r, &["busier"]) {
+            l.push(format!("- **{}× today's traffic:** {}", js_num(n(b, &["scale"])), if g(b, &["holds"]).as_bool().unwrap_or(false) { "holds".to_string() } else { format!("{} min out of SLO, {} failed requests — {}", js_num(n(b, &["minutesOutOfSlo"])), js_locale(n(b, &["failedRequests"])), s(b, &["worst"])) }));
+        }
         l.push(String::new());
     }
-    let t = g(r, &["today"]);
-    if !t.is_null() {
-        l.push(format!("- **The recorded day, replayed:** {}", if g(t, &["holds"]).as_bool().unwrap_or(false) { "holds".to_string() } else { format!("{} min out of SLO, {} failed requests — {}", js_num(n(t, &["minutesOutOfSlo"])), js_locale(n(t, &["failedRequests"])), s(t, &["worst"])) }));
-    }
-    for b in arr(r, &["busier"]) {
-        l.push(format!("- **{}× today's traffic:** {}", js_num(n(b, &["scale"])), if g(b, &["holds"]).as_bool().unwrap_or(false) { "holds".to_string() } else { format!("{} min out of SLO, {} failed requests — {}", js_num(n(b, &["minutesOutOfSlo"])), js_locale(n(b, &["failedRequests"])), s(b, &["worst"])) }));
-    }
-    l.push(String::new());
     let nl = g(r, &["nodeLoss"]);
-    if !nl.is_null() {
+    if !nl.is_null() && !no_traffic {
         l.push("## Losing a node at the busiest moment".into());
         l.push(String::new());
         let w = g(nl, &["worst"]);
@@ -197,6 +216,22 @@ pub fn review_markdown(r: &Value) -> String {
             l.push(String::new());
             let items: Vec<String> = arr(fx, &["change", "changes"]).iter().map(|c| format!("{}{}", s(c, &["service"]), if truthy(g(c, &["replicas"])) { format!(" → {}", js_num(n(c, &["replicas"]))) } else { String::new() })).collect();
             l.push(format!("Fix, backtested: {}, spread over the nodes — {}, {}.", items.join(", "), if g(fx, &["survives"]).as_bool().unwrap_or(false) { "survives every node" } else { "still fails a node" }, usd(n(fx, &["monthlyDelta"]))));
+        }
+        l.push(String::new());
+    }
+    let rr = arr(r, &["restartRisks"]);
+    if !rr.is_empty() {
+        l.push("## Risks the replay doesn't time".into());
+        l.push(String::new());
+        let callers = |x: &Value| arr(x, &["callers"]).iter().map(|c| s(c, &[])).collect::<Vec<_>>().join(", ");
+        if let [x] = rr.as_slice() {
+            l.push(format!("{}. {} runs one replica; {} call{} it over gRPC.", cap(&restart_said(&[s(x, &["service"])])), s(x, &["service"]), callers(x), if arr(x, &["callers"]).len() == 1 { "s" } else { "" }));
+        } else {
+            l.push("A restart of any of these single-replica services may leave callers' gRPC channels broken; check keepalive/reconnect settings — the replay times only the platform's recovery:".into());
+            l.push(String::new());
+            for x in rr {
+                l.push(format!("- **{}**, called over gRPC by {}", s(x, &["service"]), callers(x)));
+            }
         }
         l.push(String::new());
     }
@@ -282,7 +317,10 @@ pub fn review_markdown(r: &Value) -> String {
 fn trust(mv: &Value) -> Value {
     let svcs = g(mv, &["services"]).as_object().cloned().unwrap_or_default();
     let fit = |sv: &Value| s(sv, &["fit", "status"]);
-    let modelled: Vec<(&String, &Value)> = svcs.iter().filter(|(_, sv)| fit(sv) != "cost-only").collect();
+    // no latency metric: the fit has nothing to be scored on, and capacity rests on CPU alone
+    let blind: Vec<String> = arr(mv, &["provenance", "latency", "without"]).iter().map(|x| s(x, &[])).collect();
+    let cpu_only: Vec<&String> = svcs.iter().filter(|(id, sv)| blind.contains(*id) && fit(sv) == "unexplained").map(|(id, _)| id).collect();
+    let modelled: Vec<(&String, &Value)> = svcs.iter().filter(|(id, sv)| fit(sv) != "cost-only" && !cpu_only.contains(id)).collect();
     let good = modelled.iter().filter(|(_, sv)| matches!(fit(sv).as_str(), "good" | "fair")).count();
     let poor: Vec<&String> = modelled.iter().filter(|(_, sv)| matches!(fit(sv).as_str(), "poor" | "unexplained")).map(|(id, _)| *id).collect();
     // the p99 check on held-back history, the one number that says how the whole model predicts
@@ -291,10 +329,49 @@ fn trust(mv: &Value) -> Value {
     let mixed: Vec<&String> = svcs.iter().filter(|(_, sv)| !g(sv, &["fit", "regime"]).is_null()).map(|(id, _)| id).collect();
     let older: Vec<Value> = svcs.iter().filter(|(_, sv)| !g(sv, &["fit", "regime", "latest"]).is_null()).map(|(id, sv)| json!({ "service": id, "latest": g(sv, &["fit", "regime", "latest"]), "fittedHours": g(sv, &["fit", "regime", "busyHours"]) })).collect();
     let mut t = json!({ "services": modelled.len(), "fit": good, "untrusted": poor, "heldOutP99": held });
+    if !cpu_only.is_empty() {
+        t["cpuOnly"] = json!(cpu_only);
+    }
+    if let Some(w) = g(mv, &["provenance", "said"]).as_str() {
+        t["withoutTraces"] = json!(w);
+    }
     if !mixed.is_empty() {
         t["configurations"] = json!({ "mixed": mixed, "fittedOnOlder": older });
     }
     t
+}
+
+/// a gRPC call into a service that runs one replica: when it restarts, a client's channel can stay
+/// broken long after the pod is back — something the replay, which times the platform, can't see
+fn grpc_restarts(mv: &Value) -> Vec<Value> {
+    let mut by: indexmap::IndexMap<String, Vec<String>> = indexmap::IndexMap::new();
+    for c in arr(mv, &["provenance", "grpc", "calls"]) {
+        let at = |k: usize| c.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string();
+        let (a, b) = (at(0), at(1));
+        let to = g(mv, &["services", &b]);
+        if to.is_null() || truthy(g(to, &["hostedBy"])) || n(to, &["replicas"]) > 1.0 {
+            continue;
+        }
+        let callers = by.entry(b).or_default();
+        if !callers.contains(&a) {
+            callers.push(a);
+        }
+    }
+    by.into_iter().map(|(svc, callers)| json!({ "service": svc, "callers": callers })).collect()
+}
+
+fn cap(x: &str) -> String {
+    let mut c = x.chars();
+    c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
+}
+
+fn restart_said(svcs: &[String]) -> String {
+    let who = match svcs.len() {
+        1 => svcs[0].clone(),
+        k if k <= 3 => format!("{} or {}", svcs[..k - 1].join(", "), svcs[k - 1]),
+        k => format!("{} or {} other single-replica services (listed below)", svcs[..2].join(", "), k - 2),
+    };
+    format!("a restart of {} may leave callers' gRPC channels broken; check keepalive/reconnect settings — the replay times only the platform's recovery", who)
 }
 
 /// headroom recomputed on thirds of the history's traffic, each calibrated on its own: how much the
@@ -358,6 +435,19 @@ fn when(iso: &str) -> String {
 /// five lines a CTO reads first: risk, headroom, cost, the one change, how far to trust it
 fn summary_lines(r: &Value) -> Vec<String> {
     let mut l = vec![];
+    if g(r, &["noTraffic"]).as_bool().unwrap_or(false) {
+        // no load to replay: what can still be read is cost and where the pods run
+        l.push("- **Risk:** unknown — no service has request metrics, so there is no traffic to replay (ingress-nginx, a service mesh or HTTP server metrics would give it).".into());
+        l.push("- **Headroom:** unknown, for the same reason.".into());
+        let p = g(r, &["nodePool"]);
+        let fixed = !p.is_null() && !g(p, &["autoscaled"]).as_bool().unwrap_or(false);
+        let monthly = if fixed { n(p, &["nodes"]) * n(p, &["monthlyPerNode"]) } else { n(r, &["today", "monthly"]) };
+        l.push(format!("- **Cost:** {}.", if monthly > 0.0 { format!("about **{}/month** as run", usd_plain(monthly)) } else { "no price".to_string() }));
+        if let Some(w) = g(r, &["trust", "withoutTraces"]).as_str() {
+            l.push(format!("- **Trust:** {}.", cap(w)));
+        }
+        return l;
+    }
     let today = g(r, &["today"]);
     let busier = arr(r, &["busier"]);
     let nl = g(r, &["nodeLoss"]);
@@ -389,7 +479,13 @@ fn summary_lines(r: &Value) -> Vec<String> {
             js_num(n(r, &["headroom", "rps"])),
             over_s,
             s(x, &[]),
-            if g(r, &["headroom", "limitTrusted"]).as_bool().unwrap_or(true) { String::new() } else { format!(" Treat it as a guess: the model does not explain {} well.", s(x, &[])) }
+            if g(r, &["headroom", "limitFromCpu"]).as_bool().unwrap_or(false) {
+                format!(" Its limit is read from CPU alone: {} has no latency metric.", s(x, &[]))
+            } else if g(r, &["headroom", "limitTrusted"]).as_bool().unwrap_or(true) {
+                String::new()
+            } else {
+                format!(" Treat it as a guess: the model does not explain {} well.", s(x, &[]))
+            }
         ),
     });
     if let Some(u) = uncertain(r) {
@@ -426,6 +522,10 @@ fn summary_lines(r: &Value) -> Vec<String> {
         (false, _, None) => "nothing — no fix is needed and no saving passed.".to_string(),
     };
     l.push(format!("- **Do this:** {}{}", one, if one.starts_with("no") || one.starts_with("nothing") { "" } else { " Run `verify_change` on it before it ships." }));
+    let rr: Vec<String> = arr(r, &["restartRisks"]).iter().map(|x| s(x, &["service"])).collect();
+    if !rr.is_empty() {
+        l.push(format!("- **Also check:** {}.", restart_said(&rr)));
+    }
     let t = g(r, &["trust"]);
     if !t.is_null() {
         let un: Vec<String> = arr(t, &["untrusted"]).iter().map(|x| s(x, &[])).collect();
@@ -435,7 +535,19 @@ fn summary_lines(r: &Value) -> Vec<String> {
         } else {
             format!(" On history it was not fitted to, it predicts p99 within {}% ({}).", js_num(js_round(n(h, &["error"]) * 100.0)), if g(h, &["pass"]).as_bool().unwrap_or(false) { "inside the 20% tolerance" } else { "outside the 20% tolerance: read every number as directional" })
         };
-        l.push(format!("- **Trust:** {} of {} services fit the history well{}.{}{}", js_num(n(t, &["fit"])), js_num(n(t, &["services"])), if un.is_empty() { String::new() } else { format!("; not explained: {} — numbers that rest on them are guesses", un.join(", ")) }, held, configurations_said(t)));
+        let cpu: Vec<String> = arr(t, &["cpuOnly"]).iter().map(|x| s(x, &[])).collect();
+        let missing = g(t, &["withoutTraces"]).as_str().map(|w| format!(" {}.", cap(w))).unwrap_or_default();
+        l.push(format!(
+            "- **Trust:** {} of {} services fit the history well{}{}.{}{}{}",
+            js_num(n(t, &["fit"])),
+            js_num(n(t, &["services"])),
+            if un.is_empty() { String::new() } else { format!("; not explained: {} — numbers that rest on them are guesses", un.join(", ")) },
+            // the line without traces names them already
+            if cpu.is_empty() || !missing.is_empty() { String::new() } else { format!("; {} from CPU, throttling and memory alone (no latency metric)", cpu.join(", ")) },
+            missing,
+            held,
+            configurations_said(t)
+        ));
     }
     l
 }

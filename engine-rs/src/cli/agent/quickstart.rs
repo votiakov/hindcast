@@ -1,8 +1,9 @@
 //! `hindcast quickstart --prometheus <url> [--jaeger <url> | --tempo <url>] [--last 24h]`: the first
 //! answer in one command. It runs the agent tools a newcomer would run by hand — connect, collect,
 //! calibrate, review_capacity — prints each phase as it goes, and ends on the capacity review's
-//! summary, the report's path and what to ask next. Read-only towards the user's systems, as the
-//! tools are.
+//! summary, the report's path and what to ask next. Traces are optional: without them, who calls whom
+//! comes from the metrics (or a topology file) and the review says what that costs. Read-only towards
+//! the user's systems, as the tools are.
 
 use super::workspace::Workspace;
 use crate::cli::util::{pretty, Flags, Out};
@@ -10,7 +11,7 @@ use serde_json::{json, Map as JMap, Value};
 use std::io::Write;
 use std::time::Instant;
 
-pub const USAGE: &str = "hindcast quickstart --prometheus <url> [--jaeger <url> | --tempo <url>] [--last 24h] [--name \"my system\"] [--namespace shop] [--exclude jaeger,otel-collector] [--p99 500] [--errors 0.01] [--token-env PROM_TOKEN] [--workspace .hindcast] [--json]";
+pub const USAGE: &str = "hindcast quickstart --prometheus <url> [--jaeger <url> | --tempo <url> | --topology calls.yaml] [--last 24h] [--name \"my system\"] [--namespace shop] [--exclude jaeger,otel-collector] [--p99 500] [--errors 0.01] [--token-env PROM_TOKEN] [--workspace .hindcast] [--json]";
 
 fn say(s: &str) {
     let e = std::io::stderr();
@@ -39,7 +40,7 @@ fn phase(k: usize, name: &str, run: impl FnOnce() -> Result<Value, String>) -> R
 
 pub fn quickstart(f: &Flags, out: &mut Out) -> Result<i32, String> {
     if f.has("help") || f.has("h") {
-        out.log(&format!("{}\n\nConnects to Prometheus (and Jaeger or Tempo), collects the history, calibrates a model of the system from it and writes a capacity review: risk, headroom, cost, the one change to make, and how far to trust it. Read-only towards your systems; everything is written under the workspace (default ./.hindcast).", USAGE));
+        out.log(&format!("{}\n\nConnects to Prometheus (and Jaeger or Tempo), collects the history, calibrates a model of the system from it and writes a capacity review: risk, headroom, cost, the one change to make, and how far to trust it. Traces are optional: without them, who calls whom is read from service-mesh, service-graph or span metrics, or from --topology (a file of `calls: {{ caller: [callees] }}`), and the review says what is missing. Read-only towards your systems; everything is written under the workspace (default ./.hindcast).", USAGE));
         return Ok(0);
     }
     let prom = f.get("prometheus").filter(|u| u != "true").ok_or_else(|| format!("quickstart needs your Prometheus: {}", USAGE))?;
@@ -57,6 +58,9 @@ pub fn quickstart(f: &Flags, out: &mut Out) -> Result<i32, String> {
         connect.insert("jaeger".into(), json!({ "url": j }));
     } else if let Some(t) = f.get("tempo") {
         connect.insert("tempo".into(), json!({ "url": t }));
+    }
+    if let Some(t) = f.get("topology").filter(|t| t != "true") {
+        connect.insert("topologyFile".into(), json!(t));
     }
     let mut system = JMap::new();
     if let Some(name) = f.get("name") {
@@ -94,7 +98,7 @@ pub fn quickstart(f: &Flags, out: &mut Out) -> Result<i32, String> {
 
     let c = phase(1, &format!("connecting to {}", prom), || super::run_tool("connect_telemetry", &Value::Object(connect.clone())))?;
     // the tools name their JSON arguments; here they are flags
-    let problems: Vec<String> = strs(&c["problems"]).iter().map(|p| p.replace("give jaeger.url, tempo.url or traceFiles", "give --jaeger <url> or --tempo <url>").replace("prometheus.tokenEnv (quickstart: --token-env)", "--token-env")).collect();
+    let problems: Vec<String> = strs(&c["problems"]).iter().map(|p| p.replace("prometheus.tokenEnv (quickstart: --token-env)", "--token-env")).collect();
     if !c["ready"].as_bool().unwrap_or(false) {
         say("");
         for p in &problems {
@@ -110,7 +114,11 @@ pub fn quickstart(f: &Flags, out: &mut Out) -> Result<i32, String> {
     let hours = c["prometheus"]["data"]["hoursFound"].as_f64();
     say(&format!("      metrics: {}{}", presets, hours.map(|h| format!("; {} h of request history found", crate::math::js_num((h * 10.0).round() / 10.0))).unwrap_or_default()));
     if c["traces"].is_null() {
-        say("      no traces: give --jaeger or --tempo — without them the model can't tell which service calls which");
+        let from = c["calls"]["from"].as_str().unwrap_or("the metrics").replace("a topologyFile", "--topology");
+        say(&match from.strip_prefix("nowhere: ") {
+            Some(rest) => format!("      no traces, and {}", rest),
+            None => format!("      no traces: who calls whom from {}", from),
+        });
     } else {
         say(&format!("      traces: {} services, entering through {}", strs(&c["traces"]["services"]).len(), strs(&c["traces"]["entry"]).join(", ")));
     }
@@ -124,17 +132,18 @@ pub fn quickstart(f: &Flags, out: &mut Out) -> Result<i32, String> {
     }
     let col = phase(2, &format!("collecting {} of history", f.get("last").unwrap_or_else(|| "the last 24 h".into())), || super::run_tool("collect_telemetry", &with_ws(co.clone())))?;
     let num = |v: &Value| crate::math::js_num(v.as_f64().unwrap_or(0.0));
-    say(&format!("      {} services, {} endpoints, {} h in {} s buckets; {}", num(&col["services"]), col["endpoints"].as_array().map(|a| a.len()).unwrap_or(0), num(&col["window"]["hours"]), num(&col["window"]["stepS"]), col["traces"].as_str().unwrap_or("no traces")));
+    say(&format!("      {} services, {} endpoints, {} h in {} s buckets; {}", num(&col["services"]), col["endpoints"].as_array().map(|a| a.len()).unwrap_or(0), num(&col["window"]["hours"]), num(&col["window"]["stepS"]), col["traces"].as_str().map(String::from).or_else(|| col["withoutTraces"]["said"].as_str().map(String::from)).unwrap_or_else(|| "no traces".into())));
     let mut warnings = strs(&col["warnings"]);
 
     let cal = phase(3, "calibrating the model", || super::run_tool("calibrate_model", &with_ws(JMap::new())))?;
     warnings.extend(strs(&cal["warnings"]));
     let trust = &cal["trust"];
     say(&format!(
-        "      {} trusted, {} extrapolated, {} not explained{}",
+        "      {} trusted, {} extrapolated, {} not explained{}{}",
         strs(&trust["trusted"]).len(),
         strs(&trust["caution"]).len(),
         strs(&trust["untrusted"]).len(),
+        if strs(&trust["cpuOnly"]).is_empty() { String::new() } else { format!(", {} from CPU alone (no latency metric)", strs(&trust["cpuOnly"]).len()) },
         if strs(&trust["costOnly"]).is_empty() { String::new() } else { format!(", {} cost only", strs(&trust["costOnly"]).len()) }
     ));
     // a history that holds several configurations: which one each service is fitted on

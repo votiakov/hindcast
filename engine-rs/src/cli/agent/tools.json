@@ -2,7 +2,7 @@
  {
   "name": "connect_telemetry",
   "title": "Connect to telemetry (Prometheus, Jaeger/Tempo, bill)",
-  "description": "Point Hindcast at the system's live telemetry and probe it, read-only: which metric presets Prometheus supports, which services it names, how far back data goes; which services Jaeger or Tempo knows and which ones requests enter through. Saves the connection in the workspace (credentials only as env var names). Call this first; calling it again merges new settings. Returns problems to fix and what the model will be able to know.",
+  "description": "Point Hindcast at the system's live telemetry and probe it, read-only: which metric presets Prometheus supports, which services it names, how far back data goes; which services Jaeger or Tempo knows and which ones requests enter through. Traces are optional: without them, who calls whom is read from service-mesh (Istio, Linkerd), service-graph or span metrics, or a topologyFile, and the model says what that loses. Saves the connection in the workspace (credentials only as env var names). Call this first; calling it again merges new settings. Returns problems to fix and what the model will be able to know.",
   "inputSchema": {
    "$schema": "https://json-schema.org/draft/2020-12/schema",
    "type": "object",
@@ -37,8 +37,11 @@
         "enum": [
          "otel-spanmetrics",
          "http-server",
+         "http-server-legacy",
          "spring",
          "ingress-nginx",
+         "istio",
+         "linkerd",
          "cadvisor",
          "kubernetes"
         ]
@@ -138,6 +141,10 @@
      "items": {
       "type": "string"
      }
+    },
+    "topologyFile": {
+     "description": "without traces: a YAML file of who calls whom — calls: { caller: [callees] } or { caller: { callee: callsPerRequest } }, optional entry: [services] and grpc: [services]. Without traces or this file, calls are read from mesh, service-graph or span metrics",
+     "type": "string"
     },
     "bill": {
      "type": "object",
@@ -248,7 +255,7 @@
  {
   "name": "collect_telemetry",
   "title": "Collect history from the connected telemetry",
-  "description": "Query Prometheus over a window, fetch traces spread across it from Jaeger/Tempo, add the bill, and import everything into the workspace dataset. Reports per service which signals exist (request rate, errors, p99, CPU, CPU limit, replicas, traces) and what is missing. Longer history with a busy peak makes a better model: one overload in the history is worth more than a month of quiet days.",
+  "description": "Query Prometheus over a window, fetch traces spread across it from Jaeger/Tempo (without them, read who calls whom from the metrics), add the bill, and import everything into the workspace dataset. Reports per service which signals exist (request rate, errors, p99, CPU, CPU limit, replicas, traces) and what is missing. Longer history with a busy peak makes a better model: one overload in the history is worth more than a month of quiet days.",
   "inputSchema": {
    "$schema": "https://json-schema.org/draft/2020-12/schema",
    "type": "object",

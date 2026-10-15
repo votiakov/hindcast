@@ -41,7 +41,7 @@ fn join(parts: &[&str]) -> String {
 const SERVER: &str = "span_kind=\"SPAN_KIND_SERVER\"";
 const WORKERS: &str = "unless on (node) kube_node_role{role=~\"control-plane|master\"}";
 
-pub const PRESET_IDS: [&str; 6] = ["otel-spanmetrics", "http-server", "spring", "ingress-nginx", "cadvisor", "kubernetes"];
+pub const PRESET_IDS: [&str; 9] = ["otel-spanmetrics", "http-server", "http-server-legacy", "spring", "ingress-nginx", "istio", "linkerd", "cadvisor", "kubernetes"];
 
 #[derive(Clone, Debug)]
 pub struct Query {
@@ -106,27 +106,34 @@ fn preset(id: &str, o: &Opts) -> Option<Vec<Query>> {
             }
             v
         }
-        "http-server" => {
+        // OpenTelemetry HTTP server histograms: semantic conventions 1.x, or the pre-1.0 names in ms
+        "http-server" | "http-server-legacy" => {
+            let (base, unit, status, method) = if id == "http-server" { ("http_server_request_duration_seconds", "s", "http_response_status_code", "http_request_method") } else { ("http_server_duration_milliseconds", "ms", "http_status_code", "http_method") };
             let s = if sel.is_empty() { String::new() } else { format!("{{{}}}", sel) };
             let se = if sel.is_empty() { String::new() } else { format!("{},", sel) };
             let es = if entry.is_empty() { s.clone() } else { format!("{{{}}}", join(&[sel, &entry_matcher(entry)])) };
             let tpl: Vec<(&'static str, Value)> = if entry.is_empty() { vec![] } else { vec![("template", json!(true))] };
             let ep = |unit: Option<&str>| -> Vec<(&'static str, Value)> {
-                let mut x: Vec<(&'static str, Value)> = vec![("by", json!("service_name")), ("endpointBy", json!("http_route")), ("methodBy", json!("http_request_method"))];
+                let mut x: Vec<(&'static str, Value)> = vec![("by", json!("service_name")), ("endpointBy", json!("http_route")), ("methodBy", json!(method))];
                 if let Some(u) = unit {
                     x.push(("unit", json!(u)));
                 }
                 x.extend(tpl.iter().cloned());
                 x
             };
-            vec![
-                q("rps.json", format!("sum by (service_name) (rate(http_server_request_duration_seconds_count{s}[{w}]))"), m("rps", &[("by", json!("service_name"))])),
-                q("errors.json", format!("sum by (service_name) (rate(http_server_request_duration_seconds_count{{{se}http_response_status_code=~\"5..\"}}[{w}])) / sum by (service_name) (rate(http_server_request_duration_seconds_count{s}[{w}]))"), m("errorRate", &[("by", json!("service_name")), ("unit", json!("ratio"))])),
-                q("p99.json", format!("histogram_quantile(0.99, sum by (service_name, le) (rate(http_server_request_duration_seconds_bucket{s}[{w}])))"), m("p99Ms", &[("by", json!("service_name")), ("unit", json!("s"))])),
-                q("endpoint-rps.json", format!("sum by (service_name, http_route, http_request_method) (rate(http_server_request_duration_seconds_count{es}[{w}]))"), m("rps", &ep(None))),
-                q("endpoint-p99.json", format!("histogram_quantile(0.99, sum by (service_name, http_route, http_request_method, le) (rate(http_server_request_duration_seconds_bucket{es}[{w}])))"), m("p99Ms", &ep(Some("s")))),
-                q("endpoint-mean.json", format!("sum by (service_name, http_route, http_request_method) (rate(http_server_request_duration_seconds_sum{es}[{w}])) / sum by (service_name, http_route, http_request_method) (rate(http_server_request_duration_seconds_count{es}[{w}]))"), m("meanMs", &ep(Some("s")))),
-            ]
+            let mut v = vec![
+                q("rps.json", format!("sum by (service_name) (rate({base}_count{s}[{w}]))"), m("rps", &[("by", json!("service_name"))])),
+                q("errors.json", format!("sum by (service_name) (rate({base}_count{{{se}{status}=~\"5..\"}}[{w}])) / sum by (service_name) (rate({base}_count{s}[{w}]))"), m("errorRate", &[("by", json!("service_name")), ("unit", json!("ratio"))])),
+                q("p99.json", format!("histogram_quantile(0.99, sum by (service_name, le) (rate({base}_bucket{s}[{w}])))"), m("p99Ms", &[("by", json!("service_name")), ("unit", json!(unit))])),
+                q("endpoint-rps.json", format!("sum by (service_name, http_route, {method}) (rate({base}_count{es}[{w}]))"), m("rps", &ep(None))),
+                q("endpoint-p99.json", format!("histogram_quantile(0.99, sum by (service_name, http_route, {method}, le) (rate({base}_bucket{es}[{w}])))"), m("p99Ms", &ep(Some(unit)))),
+                q("endpoint-mean.json", format!("sum by (service_name, http_route, {method}) (rate({base}_sum{es}[{w}])) / sum by (service_name, http_route, {method}) (rate({base}_count{es}[{w}]))"), m("meanMs", &ep(Some(unit)))),
+            ];
+            if id != "http-server" {
+                // a service-level mean: self time without traces is read from it
+                v.insert(3, q("mean.json", format!("sum by (service_name) (rate({base}_sum{s}[{w}])) / sum by (service_name) (rate({base}_count{s}[{w}]))"), m("meanMs", &[("by", json!("service_name")), ("unit", json!(unit))])));
+            }
+            v
         }
         "spring" => {
             let base = join(&["uri!~\"/actuator.*\"", &ns_matcher(&o.namespaces), sel]);
@@ -165,6 +172,41 @@ fn preset(id: &str, o: &Opts) -> Option<Vec<Query>> {
                 q("errors.json", format!("(sum by ({by}) (rate(nginx_ingress_controller_requests{{{s},status=~\"5..|499\"}}[{w}])) or sum by ({by}) (rate(nginx_ingress_controller_requests{{{s}}}[{w}])) * 0) / sum by ({by}) (rate(nginx_ingress_controller_requests{{{s}}}[{w}]))"), m("errorRate", &mm(&[("unit", json!("ratio"))]))),
                 q("p99.json", format!("histogram_quantile(0.99, sum by ({by}, le) (rate(nginx_ingress_controller_request_duration_seconds_bucket{{{s}}}[{w}])))"), m("p99Ms", &mm(&[("unit", json!("s"))]))),
                 q("mean.json", format!("sum by ({by}) (rate(nginx_ingress_controller_request_duration_seconds_sum{{{s}}}[{w}])) / sum by ({by}) (rate(nginx_ingress_controller_request_duration_seconds_count{{{s}}}[{w}]))"), m("meanMs", &mm(&[("unit", json!("s"))]))),
+            ]
+        }
+        "istio" => {
+            // what each workload served, as its own sidecar saw it; gRPC errors ride on a 200
+            let ns = if o.namespaces.is_empty() { String::new() } else { ns_matcher(&o.namespaces).replacen("namespace=", "destination_workload_namespace=", 1) };
+            let s = join(&["reporter=\"destination\"", &ns, sel]);
+            let by = "destination_workload";
+            let b = |extra: &[(&'static str, Value)]| -> Vec<(&'static str, Value)> {
+                let mut x: Vec<(&'static str, Value)> = extra.to_vec();
+                x.push(("by", json!(by)));
+                x
+            };
+            let all = format!("sum by ({by}) (rate(istio_requests_total{{{s}}}[{w}]))");
+            vec![
+                q("rps.json", all.clone(), m("rps", &b(&[]))),
+                q("errors.json", format!("((sum by ({by}) (rate(istio_requests_total{{{s},response_code=~\"5..\"}}[{w}])) or {all} * 0) + (sum by ({by}) (rate(istio_requests_total{{{s},response_code!~\"5..\",grpc_response_status=~\"2|4|8|12|13|14\"}}[{w}])) or {all} * 0)) / {all}"), m("errorRate", &b(&[("unit", json!("ratio"))]))),
+                q("p99.json", format!("histogram_quantile(0.99, sum by ({by}, le) (rate(istio_request_duration_milliseconds_bucket{{{s}}}[{w}])))"), m("p99Ms", &b(&[("unit", json!("ms"))]))),
+                q("mean.json", format!("sum by ({by}) (rate(istio_request_duration_milliseconds_sum{{{s}}}[{w}])) / sum by ({by}) (rate(istio_request_duration_milliseconds_count{{{s}}}[{w}]))"), m("meanMs", &b(&[("unit", json!("ms"))]))),
+            ]
+        }
+        "linkerd" => {
+            // inbound: what each workload's proxy served (Deployments and StatefulSets alike)
+            let s = join(&["direction=\"inbound\"", &ns_matcher(&o.namespaces), sel]);
+            let wl = |expr: &str| format!("label_replace(label_replace({}, \"workload\", \"$1\", \"deployment\", \"(.+)\"), \"workload\", \"$1\", \"statefulset\", \"(.+)\")", expr);
+            let b = |extra: &[(&'static str, Value)]| -> Vec<(&'static str, Value)> {
+                let mut x: Vec<(&'static str, Value)> = extra.to_vec();
+                x.push(("by", json!("workload")));
+                x
+            };
+            let all = format!("sum by (workload) ({})", wl(&format!("rate(response_total{{{s}}}[{w}])")));
+            vec![
+                q("rps.json", all.clone(), m("rps", &b(&[]))),
+                q("errors.json", format!("(sum by (workload) ({}) or {all} * 0) / {all}", wl(&format!("rate(response_total{{{s},classification=\"failure\"}}[{w}])"))), m("errorRate", &b(&[("unit", json!("ratio"))]))),
+                q("p99.json", format!("histogram_quantile(0.99, sum by (workload, le) ({}))", wl(&format!("rate(response_latency_ms_bucket{{{s}}}[{w}])"))), m("p99Ms", &b(&[("unit", json!("ms"))]))),
+                q("mean.json", format!("sum by (workload) ({}) / sum by (workload) ({})", wl(&format!("rate(response_latency_ms_sum{{{s}}}[{w}])")), wl(&format!("rate(response_latency_ms_count{{{s}}}[{w}])"))), m("meanMs", &b(&[("unit", json!("ms"))]))),
             ]
         }
         "cadvisor" => {

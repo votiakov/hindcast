@@ -96,6 +96,11 @@ const CASES: Case[] = [
   call('verify_design', { spec: readFileSync('examples/shop.yaml', 'utf8'), rps: 2000, budgetMonthly: 500 }),
   call('suggest_changes', { workspace: ws('v'), draws: 3 }, true),
   call('review_capacity', { workspace: ws('n'), draws: 3 }, true),
+  // no traces: who calls whom from Istio's metrics
+  call('connect_telemetry', { workspace: ws('i'), prometheus: { url: `${TEL}/istio` } }),
+  call('collect_telemetry', { workspace: ws('i'), last: '6h' }, true),
+  call('calibrate_model', { workspace: ws('i') }),
+  call('review_capacity', { workspace: ws('i'), draws: 3 }),
 ];
 
 const mask = (s: string) =>

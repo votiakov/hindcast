@@ -1262,6 +1262,13 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
             if throttle.is_some() && capacity.limit == "cpu" {
                 capacity.throttle = throttle.clone();
             }
+        } else if let (Some(c), Some(cl), true) = (cpu.as_ref().filter(|c| c.per_req > 0.0 && c.r2 >= 0.3), truthy(cpu_limit), self_obs.iter().all(|x| x.is_none())) {
+            // no latency metric at all: the capacity is what the CPU limit (to its throttling knee) allows;
+            // with no service time known, a wide queue: no wait to speak of until the limit, then backlog
+            let usable = cl * throttle.as_ref().map(|t| t.knee).unwrap_or(1.0);
+            let k = (usable - c.base).max(0.0) / c.per_req;
+            capacity = Capacity { limit: "cpu".into(), servers: 32.0, per_replica_rps: k, band: None, samples: None, overloaded_rps: None, throttle: throttle.clone() };
+            notes.push(format!("no latency metric: capacity read from CPU alone, {} req/s per replica at {} of its {}-core limit", js_to_fixed(k, 1), if throttle.is_some() { "the throttling knee" } else { "all" }, js_num(cl)));
         } else if shape.is_some() {
             notes.push("too little load data to fit capacity; using trace averages".into());
         }

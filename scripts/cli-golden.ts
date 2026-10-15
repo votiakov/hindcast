@@ -130,6 +130,14 @@ export const CASES: string[][] = [
   ['quickstart', '--help'],
   ['quickstart', '--prometheus', `${TEL}/broken`, '--workspace', ws('qb')],
   ['quickstart', '--prometheus', `${TEL}/prom`, '--jaeger', `${TEL}/jaeger`, '--last', '6h', '--workspace', ws('q')],
+  // no traces: kube-prometheus-stack and ingress-nginx alone, the same with a topology file, and Istio
+  ['quickstart', '--prometheus', `${TEL}/kps`, '--last', '6h', '--workspace', ws('qk')],
+  ['quickstart', '--prometheus', `${TEL}/kps`, '--topology', `${fx}/topology.yaml`, '--last', '6h', '--workspace', ws('qt')],
+  ['quickstart', '--prometheus', `${TEL}/istio`, '--last', '6h', '--workspace', ws('qi')],
+  ['quickstart', '--prometheus', `${TEL}/linkerd`, '--last', '6h', '--workspace', ws('ql')],
+  // no request metrics left at all: nothing to replay, and the review says so
+  ['quickstart', '--prometheus', `${TEL}/kps`, '--exclude', 'web', '--last', '6h', '--workspace', ws('qx')],
+  agent('connect_telemetry', { workspace: ws('qn'), prometheus: { url: `${TEL}/kps` }, topologyFile: 'nowhere.yaml' }),
   ['outage', 'reference/shop/model.json', 'list'],
   ['outage', 'reference/shop/model.json', 'aws-use1-2025-10-20'],
   ['outage', 'reference/shop/model.json', 'slack-2021-01-04', 'reference/shop/strategies/1-autoscale-frontend.yaml', '--md', `${out}/OUT/o.md`],

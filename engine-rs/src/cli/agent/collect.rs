@@ -88,6 +88,7 @@ pub fn hpa_specs(url: &str, h: &[(String, String)], at: f64, namespaces: &[Strin
 
 pub fn coverage_of(d: &Value) -> Vec<Value> {
     let topo = d.get("topology").and_then(|t| t.get("services")).and_then(|s| s.as_object()).cloned().unwrap_or_default();
+    let inferred = d.get("provenance").and_then(|p| p.get("traces")).and_then(|t| t.as_bool()) == Some(false);
     let virtual_: Vec<String> = topo.iter().filter(|(_, s)| s.get("kind").and_then(|k| k.as_str()) != Some("server")).map(|(k, _)| k.clone()).collect();
     d.get("services")
         .and_then(|s| s.as_object())
@@ -98,7 +99,7 @@ pub fn coverage_of(d: &Value) -> Vec<Value> {
                     let rps = s.get("rps").and_then(|v| v.as_array()).cloned().unwrap_or_default();
                     let mut h: Vec<Value> = has.iter().map(|x| json!(x)).collect();
                     if topo.contains_key(id) {
-                        h.push(json!("traces"));
+                        h.push(json!(if inferred { "calls (inferred)" } else { "traces" }));
                     }
                     let missing: Vec<&str> = if virtual_.contains(id) { vec![] } else { KEY_METRICS.iter().copied().filter(|m| !has.contains(m)).collect() };
                     let filled = if rps.is_empty() { 0.0 } else { js_round((rps.iter().filter(|v| !v.is_null()).count() as f64 / rps.len() as f64) * 100.0) / 100.0 };
@@ -187,6 +188,10 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
     let mut ignore: Option<Vec<String>> = strs(system.get("ignore"));
     let jaeger = src.get("jaeger").cloned();
     let tempo = src.get("tempo").cloned();
+    let rename_map = system.get("rename").and_then(|r| r.as_object()).cloned().unwrap_or_default();
+    let rename_of = |x: &str| rename_map.get(x).and_then(|v| v.as_str()).unwrap_or(x).to_string();
+    let infer_prom = super::infer::Prom::new(&prom, &rename_map)?;
+    let mut inferred: Option<super::infer::Calls> = None;
     if jaeger.is_some() || tempo.is_some() {
         let kind = if jaeger.is_some() { "jaeger" } else { "tempo" };
         if entry.as_ref().map(|e| e.is_empty()).unwrap_or(true) {
@@ -253,13 +258,21 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
         }
         trace_note = format!("{} trace file(s)", trace_files.len());
     } else {
-        warnings.push("no traces: without them the model has no topology (which service calls which). Connect Jaeger or Tempo, or give trace files".into());
+        // no traces: the calls the metrics name, read before the export so the entry's endpoints are queried
+        super::progress("reading calls from the metrics (no traces)", 1.0, 4.0);
+        let known: Vec<String> = ["otel-spanmetrics", "http-server", "http-server-legacy", "spring"].iter().flat_map(|k| strs(probe.get("services").and_then(|s| s.get(*k))).unwrap_or_default()).map(|x| rename_of(&x)).collect();
+        let mut c = super::infer::read_calls(&infer_prom, &presets, &strs(probe.get("calls")).unwrap_or_default(), &parts, src.get("topologyFile").and_then(|x| x.as_str()), &known)?;
+        match entry.as_ref().filter(|e| !e.is_empty()) {
+            Some(e) => c.entry = e.clone(),
+            None => entry = Some(c.entry.clone()),
+        }
+        inferred = Some(c);
     }
 
     // ---- metrics
     super::progress("querying Prometheus", 2.0, 4.0);
     let po = crate::prom_export::Opts {
-        window: rate_window,
+        window: rate_window.clone(),
         selector: prom.get("selector").and_then(|x| x.as_str()).unwrap_or("").to_string(),
         entry: entry.clone().unwrap_or_default(),
         namespaces: strs(prom.get("namespaces")).unwrap_or_default(),
@@ -282,7 +295,7 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
     let empty: Vec<String> = exported.iter().filter(|e| e.1 == 0).map(|e| e.0.clone()).collect();
     let endpoint_series = exported.iter().any(|e| e.0.contains("endpoint-rps") && e.1 > 0);
     let ent = entry.clone().unwrap_or_default();
-    if !endpoint_series && !ent.is_empty() {
+    if !endpoint_series && !ent.is_empty() && inferred.is_none() {
         warnings.push(format!("no endpoint-level request metrics for {}: endpoint rates come from the traces, scaled by the measured sampling share", ent.join(", ")));
     }
     let mut raw_urls: Option<String> = None;
@@ -308,7 +321,8 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
         plan.clone()
     };
     if let Some(r) = &raw_urls {
-        warnings.push(format!("span names on {} carry raw URLs ({}): per-endpoint latency from span metrics is unusable, so it comes from the traces' call paths instead. Naming server spans by route (http.route) fixes it at the source", ent.join(","), r));
+        let instead = if inferred.is_some() { "and with no traces each of those services is modelled as one endpoint" } else { "so it comes from the traces' call paths instead" };
+        warnings.push(format!("span names on {} carry raw URLs ({}): per-endpoint latency from span metrics is unusable, {}. Naming server spans by route (http.route) fixes it at the source", ent.join(","), r, instead));
     }
 
     // ---- manifest
@@ -469,6 +483,24 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
             warnings.push(format!("in the metrics but in no trace: {}. If they belong to another system, connect_telemetry with system.exclude; if they are part of this one (load balancers, databases), they are priced but not modelled for latency", loose.join(", ")));
         }
     }
+    // without traces, the topology the metrics give; with or without, the gRPC calls in it
+    let mut prov = json!({ "traces": inferred.is_none() });
+    if let Some(c) = inferred.as_mut() {
+        c.out_ms = super::infer::outbound_ms(&infer_prom, &c.from, &parts, d["start"].as_f64().unwrap_or(0.0), d["stepS"].as_f64().unwrap_or(step_s), d["n"].as_f64().unwrap_or(0.0) as usize, &rate_window);
+    }
+    if let Some(c) = &inferred {
+        let a = super::infer::apply(&mut d, c);
+        warnings.insert(0, format!("{} — Jaeger or Tempo (or trace files) would give each endpoint its own path and measured self times", a.provenance["said"].as_str().unwrap_or("")));
+        warnings.extend(a.warnings);
+        prov = a.provenance;
+    }
+    let (grpc, grpc_how) = super::infer::grpc_servers(&infer_prom, &presets, &strs(probe.get("grpcMetrics")).unwrap_or_default(), &parts);
+    if let Some(g) = super::infer::grpc_provenance(&d, &grpc, &grpc_how) {
+        prov["grpc"] = g;
+    }
+    if inferred.is_some() || prov.get("grpc").is_some() {
+        d["provenance"] = prov.clone();
+    }
     ws.write_json("dataset.json", &d, false)?;
     let _ = std::fs::remove_file(ws.path("model.json"));
     let _ = std::fs::remove_file(ws.path("calibration.json"));
@@ -514,6 +546,9 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
     }
     out.insert("ignored".into(), json!(ignore.clone().unwrap_or_default()));
     out.insert("traces".into(), if trace_note.is_empty() { Value::Null } else { json!(trace_note) });
+    if inferred.is_some() {
+        out.insert("withoutTraces".into(), prov.clone());
+    }
     out.insert("services".into(), json!(d["services"].as_object().map(|s| s.len()).unwrap_or(0)));
     out.insert("endpoints".into(), json!(d["endpoints"].as_object().map(|s| s.keys().cloned().collect::<Vec<_>>()).unwrap_or_default()));
     out.insert("coverage".into(), json!(coverage));

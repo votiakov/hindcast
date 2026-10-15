@@ -8,11 +8,12 @@ and where it is documented.
 | capability | where | docs |
 |---|---|---|
 | Prometheus `query_range` JSON (any metric, by any label; endpoint and method labels) | A C | [backtest.md §1](backtest.md#1-data-in) |
-| Prometheus export presets: `otel-spanmetrics`, `http-server`, `cadvisor`, `kubernetes`, with a label selector | C | [tools.md](tools.md#backtesting-on-real-data) |
+| Prometheus export presets: `otel-spanmetrics`, `http-server`, `http-server-legacy`, `spring`, `ingress-nginx`, `istio`, `linkerd`, `cadvisor`, `kubernetes`, with a label selector | C | [tools.md](tools.md#backtesting-on-real-data) |
 | CloudWatch `get-metric-data` output (by Id or Label; count-per-period, % of N vCPU) | A C | [backtest.md §1](backtest.md#1-data-in) |
 | Long CSV (timestamp, service, metric, value[, endpoint]) and wide CSV / Grafana exports | A C | [backtest.md §1](backtest.md#1-data-in) |
 | Units: s, ms, µs, percent, ratio, cores, millicores, rpm, count-per-period | A C | [backtest.md §1](backtest.md#1-data-in) |
 | OpenTelemetry traces (OTLP JSON lines from the collector, one OTLP document) and Jaeger JSON; streamed, any size | A C | [calibration.md §2](calibration.md#2-traces--topology) |
+| No traces: who calls whom from Istio, Linkerd, service-graph or span metrics, or a topology file; the review says what is missing | C M | [agents.md](agents.md#without-traces) |
 | AWS Cost and Usage Report (legacy and 2.0) and GCP billing export (CSV or JSON lines), by tag or resource id | A C | [calibration.md §4](calibration.md#4-cost-from-the-bill) |
 | Renaming across sources; zones/regions per service; SLOs, deadline, in-process dependencies, per-endpoint SLOs as hints | A C | [backtest.md §1](backtest.md#1-data-in) |
 | Drop files in the app or `import` in the CLI: one dataset on a time grid, with a log of what each source gave | A C | [guide.md](guide.md#backtest) |

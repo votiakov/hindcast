@@ -4,7 +4,8 @@ An agent that changes infrastructure (Terraform, Helm, Kubernetes manifests, aut
 types) can ask Hindcast, before anything ships, *what this change would have done to the last
 week of production*: $ per month, minutes out of SLO, the worst moment and why, and how far to
 trust the answer. The agent does the tedious part itself: it connects to Prometheus and
-Jaeger/Tempo, collects the history, calibrates the model and reads the trust report. The user asks
+Jaeger/Tempo (traces are optional: [without them](#without-traces) who calls whom is read from the
+metrics), collects the history, calibrates the model and reads the trust report. The user asks
 a question and gets a verdict with evidence.
 
 ```
@@ -23,7 +24,9 @@ Before giving the tools to an agent, see what they say about your system:
 
 ```bash
 hindcast quickstart --prometheus http://prometheus:9090 --jaeger http://jaeger:16686
-#   --tempo <url> in place of --jaeger; --last 7d for more history (default: the last 24 h)
+#   --tempo <url> in place of --jaeger, or neither (Prometheus alone; see "Without traces")
+#   --topology calls.yaml: who calls whom, where no trace or metric says
+#   --last 7d for more history (default: the last 24 h)
 #   --namespace shop, --exclude jaeger,otel-collector, --p99 500 --errors 0.01, --token-env PROM_TOKEN
 ```
 
@@ -42,6 +45,53 @@ a path (`http://host/prometheus`), a refused connection that it isn't reachable 
 (`kubectl port-forward`), a 401/403 that it wants a token (`--token-env`). Every tool below works on
 the workspace it leaves, so the next questions are ordinary tool calls:
 `verify_change` with your manifest diff, `suggest_changes` with `traffic`, `check_node_loss`.
+
+### Without traces
+
+Many clusters have Prometheus (kube-prometheus-stack, often ingress-nginx or a service mesh) and
+no tracing. `quickstart --prometheus <url>` alone still gives a review, and says what it is missing.
+Who calls whom comes from the first of these that names any call:
+
+| source | metric | what it gives |
+|---|---|---|
+| Istio | `istio_requests_total` (source → destination workload, `request_protocol`), `istio_request_duration_milliseconds_*` | calls per request, per-service latency, the time each caller spends in its calls, gRPC |
+| Linkerd | `response_total` (outbound `deployment` → `dst_deployment`), `response_latency_ms_*` | the same; gRPC from `grpc_status` |
+| OpenTelemetry service graph | `traces_service_graph_request_total` (client → server) | calls per request; callers' time from `traces_service_graph_request_client_seconds` |
+| span metrics | client spans (`SPAN_KIND_CLIENT`) whose name matches a server span's elsewhere (`oteldemo.CartService/GetCart` ↔ `POST /oteldemo.CartService/GetCart`) | calls per request for RPC-named calls; HTTP client spans named `GET`/`POST` match nothing and are listed |
+| a topology file | `--topology calls.yaml` (`topologyFile` in `connect_telemetry`) | what you write: `calls: { web: [api] }` or `{ web: { api: 2 } }` (calls per request), `entry: [web]`, `grpc: [api]` |
+
+The entries are the services ingress-nginx routes to (monitoring UIs such as Jaeger or Grafana
+behind the same ingress are left out), the ones a gateway or load generator calls, and servers no
+other server calls. Where the entries are known, a server with traffic that no metric names a
+caller of (an HTTP call the span names can't match) is carried by the entry traffic in proportion
+to its own requests. With none of the sources above, each service with request metrics is its own
+entry, and the services without request metrics are read against the entry traffic: their CPU and
+memory are fitted per entry request, as if every request passed through them (exclude the ones that
+serve no requests, such as batch jobs).
+
+What you lose without traces, and what stands in:
+
+- **Each endpoint's own path.** Endpoints of a service share one path, the service's average calls
+  per request. Where the endpoints have no latency series of their own (span names that carry raw
+  URLs), they are modelled as one endpoint, `<service> (all requests)`.
+- **Measured self time.** A service's self time is its latency less the time its own calls took
+  (the caller's own measure of its calls where the source has one, else its callees' latency times
+  calls per request), as if the calls ran one after another.
+- **Exact call counts.** Client counters include calls that failed before reaching the callee and
+  retries; calls into a service are scaled down to what it served.
+- **Latency, where no metric has it.** A service with no latency metric gets its capacity from CPU
+  alone, up to its throttling knee, and no latency of its own: the review says its limit is read
+  from CPU, and `calibrate_model` lists it under `cpuOnly`, not `untrusted`.
+
+The review's Trust line names what is missing, e.g. *No traces: topology from istio metrics; no
+per-endpoint latency*, and `collect_telemetry` returns the same under `withoutTraces`.
+
+**gRPC.** Where a service with one replica is called over gRPC (Istio's `request_protocol`,
+Linkerd's `grpc_status`, span names of the form `package.Service/Method`, `grpc_server_*` or
+OpenTelemetry `rpc_server_*` metrics with `rpc_system="grpc"`), the review's risks say: *a restart
+of X may leave callers' gRPC channels broken; check keepalive/reconnect settings — the replay times
+only the platform's recovery*. The node-loss run on the reference cluster lasted 50% longer than
+the replay for exactly that reason. This advisory comes with traces too.
 
 ## Set up
 
@@ -148,7 +198,9 @@ It probes before anything is collected:
   flowed (the newest and oldest requests, bisected to minutes), and metrics under older names it
   can't read yet.
 - **Jaeger/Tempo**: the services, which ones requests *enter through*, which ones only start
-  traces as clients (load generators, which it then ignores), and the call edges.
+  traces as clients (load generators, which it then ignores), and the call edges. Without them,
+  `calls` says where who-calls-whom will come from ([Without traces](#without-traces)), and what is
+  lost.
 - **Renames**: container metrics often spell services differently from traces (`shop-worker` vs
   `worker`). Unambiguous renames are applied; a load balancer is never folded into its backend.
 - **Namespaces**: a cluster's Prometheus sees every namespace (coredns, the monitoring stack, other
@@ -214,6 +266,9 @@ The **trust report** sorts every service:
 | `caution` | good fit, but the history peaked at a fraction of its capacity: the limit is extrapolated |
 | `untrusted` | poor or unexplained fit: the model can't reproduce what was measured |
 | `costOnly` | in the bill or container metrics, never in traces: priced, not modelled for latency |
+| `cpuOnly` | no latency metric (without traces): capacity from CPU and throttling alone, no latency to score the fit on |
+
+Without traces, `withoutTraces` says where the topology came from and what latency there was.
 
 Per service: `historyPeakUtil` (the highest share of capacity the history ran it at) and
 `basis` (`limit seen in history`, `extrapolated`, `no limit seen`).
@@ -466,7 +521,7 @@ the system runs, calibrate it on telemetry for real numbers.
 
 | signal | where Hindcast reads it | without it |
 |---|---|---|
-| request rate, errors, latency per service | Prometheus: OpenTelemetry Collector **spanmetrics** (`traces_span_metrics_*`), OpenTelemetry **HTTP server** metrics (`http_server_request_duration_seconds_*`) or **Spring Boot / Micrometer** (`http_server_requests_seconds_*`, by `application` tag or scrape job; p99 needs `percentiles-histogram`) | nothing to model |
+| request rate, errors, latency per service | Prometheus: OpenTelemetry Collector **spanmetrics** (`traces_span_metrics_*`), OpenTelemetry **HTTP server** metrics (`http_server_request_duration_seconds_*`, or the pre-1.0 `http_server_duration_milliseconds_*`) or **Spring Boot / Micrometer** (`http_server_requests_seconds_*`, by `application` tag or scrape job; p99 needs `percentiles-histogram`) | nothing to model |
 | the same per endpoint, on entry services | the same metrics, by `span_name` or `http_route` | endpoint rates from traces, scaled by the measured sampling share |
 | requests, errors, latency at the edge | **ingress-nginx** (`nginx_ingress_controller_*`, by backend Service). Requests to an Ingress without a host are only counted with `--metrics-per-undefined-host=true` | the entry service's rates come from span metrics, which undercount sparse series |
 | CPU used, CPU limit, replicas, memory and its limit | **cAdvisor** (Docker Compose labels) or **Kubernetes** (kubelet cAdvisor + kube-state-metrics, grouped by the Deployment, StatefulSet or DaemonSet that owns each pod; CPU requests stand in where no limit is set; CFS throttling, peak working set, memory limits, requests and the nodes are collected) | capacity only from latency; resize strategies can't be priced |
@@ -475,12 +530,14 @@ the system runs, calibrate it on telemetry for real numbers.
 | nodes and requests | kube-state-metrics `kube_node_info`, `kube_node_status_allocatable`, `kube_node_role` (control-plane nodes left out), `kube_pod_container_resource_requests`, `kube_pod_status_phase` | Fargate list prices per replica; request cuts can't be told apart from savings |
 | HorizontalPodAutoscalers | kube-state-metrics `kube_horizontalpodautoscaler_info`, `_spec_min_replicas`, `_spec_max_replicas`, `_spec_target_metric` at the end of the window | the node-loss fix sets fixed replicas instead of raising an HPA's minimum |
 | pods per node, node zones | kube-state-metrics `kube_pod_info` (`node` label) at the end of the window; zones from `kube_node_info`'s `provider_id` on AWS and GCP | no node- or zone-loss checks |
-| topology, self time per service | **Jaeger** (`/api/traces`), **Tempo** (`/api/search` + `/api/traces/{id}`), or OTLP / Jaeger JSON files | no topology: which service calls which is unknown |
+| topology, self time per service | **Jaeger** (`/api/traces`), **Tempo** (`/api/search` + `/api/traces/{id}`), or OTLP / Jaeger JSON files | who calls whom from Istio, Linkerd, service-graph or span metrics, or a topology file; self time estimated from latency metrics ([Without traces](#without-traces)) |
+| request rate, errors, latency from a mesh | **Istio** (`istio_requests_total`, `istio_request_duration_milliseconds_*`, destination side) or **Linkerd** (`response_total`, `response_latency_ms_*`, inbound) | from the app's own metrics, or none |
 | cost | AWS CUR or GCP billing export (file) | AWS Fargate list prices from CPU and memory limits |
 
 Older names are recognised and reported as `nearMisses` with what to do, but not read: spanmetrics
-`calls_total` from the old processor, `http_server_duration_milliseconds`. A recording rule that
-renames them makes them work. `selector`
+`calls_total` from the old processor. A recording rule that renames them makes them work. OpenTelemetry
+HTTP metrics under the pre-1.0 name (`http_server_duration_milliseconds_*`, with `http_method` and
+`http_status_code`) are read by the `http-server-legacy` preset. `selector`
 adds label matchers to every query (`cluster="prod-eu"`); `namespaces` scopes the Kubernetes and
 ingress metrics. `exclude` drops another system's services.
 
@@ -520,7 +577,7 @@ or dropped on the app's Backtest screen.
 
 | tool | inputs | returns |
 |---|---|---|
-| `connect_telemetry` | `prometheus{url, selector?, namespaces?, presets?, tokenEnv?…}`, `jaeger{url}` \| `tempo{url}` \| `traceFiles[]`, `bill{cur\|gcp, tag?}`, `system{name, slo, timeoutMs, rename, hostedBy, entry, ignore, exclude}` | probes, renames applied, `problems`, `ready` |
+| `connect_telemetry` | `prometheus{url, selector?, namespaces?, presets?, tokenEnv?…}`, `jaeger{url}` \| `tempo{url}` \| `traceFiles[]` \| `topologyFile` (all optional), `bill{cur\|gcp, tag?}`, `system{name, slo, timeoutMs, rename, hostedBy, entry, ignore, exclude}` | probes, renames applied, `calls` (without traces), `problems`, `ready` |
 | `collect_telemetry` | `last` \| `start`/`end` \| `windows[]`, `stepS?`, `maxTraces?` | window, coverage per service, endpoints, warnings |
 | `calibrate_model` | `holdout?` (0.3), `slo?`, `timeoutMs?`, `listPrices?` | services with capacity, band, limit, basis, cost; accuracy; trust lists |
 | `model_status` | — | what the workspace holds, warnings, next step |
@@ -627,6 +684,11 @@ so in `notes`) rather than running 30 draws for 4 minutes.
   the bill for real numbers.
 - Supported trace backends: Jaeger and Tempo APIs, and OTLP/Jaeger files. Datadog, Honeycomb and
   X-Ray need an export to OTLP files first.
+- Without traces, the review rests on the estimates under [Without traces](#without-traces). On
+  the reference kind cluster, from span metrics alone, it found the 11 gRPC call edges of the 27 the
+  traces show (HTTP and Redis client spans don't name their callee). It put the headroom at 460 req/s,
+  with the frontend's CPU limit first. Traced runs put it at 500–780 req/s, varying with the trace
+  sample, with recommendation first.
 - Prometheus-compatible only (Prometheus, Thanos, Mimir, Cortex, VictoriaMetrics, Amazon Managed
   Prometheus behind a SigV4 proxy). CloudWatch works through files with the CLI
   ([backtest.md](backtest.md#1-data-in)).
