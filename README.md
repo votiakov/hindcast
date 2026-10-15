@@ -49,6 +49,13 @@ one change worth making, and how far to trust it.
 hindcast quickstart --prometheus http://localhost:9090 --jaeger http://localhost:16686 --last 24h
 ```
 
+Traces are optional. With Prometheus alone, who calls whom comes from Istio or Linkerd metrics, the
+OpenTelemetry service graph, or span metrics' client spans; failing those, from a topology file
+(`--topology`), or each service stands on its own. Without traces you lose each endpoint's own path
+and measured self times (self time is estimated from latency metrics). A service with no latency
+metric gets its capacity from CPU, throttling and memory alone. The review's Trust line says which
+of these applied.
+
 Draw a system (or import it from Terraform or Kubernetes manifests, or paste a YAML spec), push traffic and failures through
 it, and watch where it gives out. Then run the failure audit: every component dying, every dependency
 turning slow, caches restarting cold, zones going dark, a traffic surge. Each incident is graded by what

@@ -26,6 +26,13 @@ hindcast quickstart --prometheus http://prometheus:9090 --jaeger http://jaeger:1
 It leaves `dataset.json` and `model.json` in `.hindcast/`, so `hindcast backtest .hindcast/model.json
 .hindcast/dataset.json <strategy.yaml>` works on them next ([agents.md](agents.md#quickstart-one-command-a-capacity-review)).
 
+Traces are optional there. With Prometheus alone, who calls whom comes from Istio or Linkerd
+metrics, the OpenTelemetry service graph or span metrics' client spans, or from `--topology
+calls.yaml`; self time is estimated as a service's latency less its calls'. Endpoints lose their own
+paths (they share their service's), and a service with no latency metric gets its capacity from CPU
+alone. The review's Trust line says which applied
+([agents.md](agents.md#without-traces)).
+
 ## 1. Data in
 
 An import manifest names the files and says what each series is.
@@ -79,8 +86,9 @@ model:                                 # hints for calibration
 (OpenTelemetry Collector spanmetrics connector), `http-server` (OTel HTTP semantic-convention
 histograms, with per-route series), `spring` (Spring Boot / Micrometer `http_server_requests_seconds`,
 per application, Actuator's own scrapes left out), `ingress-nginx` (requests, errors and latency at the edge, per
-backend Service — they replace span-metric values for the same service), `cadvisor` (Docker Compose
-labels), `kubernetes` (kubelet + kube-state-metrics, grouped by owning workload; requests stand in
+backend Service — they replace span-metric values for the same service), `istio` (Istio sidecar
+metrics, per destination workload), `linkerd` (Linkerd proxy metrics, inbound, per workload),
+`cadvisor` (Docker Compose labels), `kubernetes` (kubelet + kube-state-metrics, grouped by owning workload; requests stand in
 for missing CPU limits). `--selector 'namespace="shop"'` scopes every query.
 
 What each source gives the model:
@@ -90,6 +98,7 @@ What each source gives the model:
 | request metrics | load per service and endpoint, latency and errors per bucket |
 | CPU, limits, replicas | CPU per request, capacity per replica, replica-hours |
 | traces | the topology; for every endpoint which services it visits and how often; the critical path (how many ms of each request each service owns); self time per service per bucket; payload sizes; uninstrumented databases, caches and queues as their own components (from `db.system`, `messaging.system`, `peer.service`) |
+| no traces (`quickstart`, the agent tools) | a topology from mesh, service-graph or span metrics, or a topology file: calls per request per service, the same for every endpoint of a service; self time estimated from latency metrics; no payload sizes or uninstrumented components |
 | bill | $ per replica-hour, per request and per GB for each component; spend no component explains |
 
 ## 2. The calibrated model
