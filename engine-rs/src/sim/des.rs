@@ -430,6 +430,8 @@ struct DNode {
     down_since: Option<f64>,
     /// a replica: replication lag behind its primary, s
     repl_lag: f64,
+    /// a search index: when the last write arrived
+    last_write: Option<f64>,
     /// a database: writes that arrived this second, and whether its promotion's loss was counted
     writes_win: f64,
     writes_rate: f64,
@@ -651,7 +653,7 @@ impl<'a> Des<'a> {
         n.flush_seen = n.raw.flushes.unwrap_or(0.0);
         n.dead_since = if up(n) { None } else { n.dead_since.or(Some(now)) };
         let d = &n.data;
-        let reach = if n.pooled || d.kind == "llm" { instances_up(d) } else { instances_up(d).min(1.0) };
+        let reach = if n.pooled || d.kind == "llm" || super::catalog::clustered(&d.kind) { instances_up(d) } else { instances_up(d).min(1.0) };
         let cap = capacity_of(d, Some(reach)).max(1e-6);
         let lat = base_latency_of(d).max(0.05);
         let kind = d.kind.as_str();
@@ -820,6 +822,18 @@ impl<'a> Des<'a> {
         let kind = self.nodes[i].kind;
         if kind == "replica" && read && self.nodes[i].repl_lag > 1.0 {
             self.stale_reads += 1.0;
+        }
+        if kind == "search" && up(&self.nodes[i]) {
+            // a write is searchable after the indexing backlog ahead of it and the next refresh: a read
+            // in that window misses it
+            let n = &mut self.nodes[i];
+            let cap = if n.svc_mean_ms > 0.0 { n.workers / n.svc_mean_ms * 1000.0 } else { 0.0 };
+            n.repl_lag = super::catalog::index_lag_s(&n.data, n.queue.len() as f64, cap);
+            if !read {
+                n.last_write = Some(self.now);
+            } else if n.repl_lag > 1.0 && n.last_write.map_or(false, |t| self.now - t < n.repl_lag) {
+                self.stale_reads += 1.0;
+            }
         }
         if kind == "db" && !read {
             self.nodes[i].writes_win += 1.0;
@@ -1189,7 +1203,7 @@ impl<'a> Des<'a> {
                 return;
             }
         }
-        if kind == "db" || kind == "replica" {
+        if kind == "db" || kind == "replica" || kind == "search" {
             return self.deliver(done, OK);
         }
         if self.nodes[n].children.is_empty() {
@@ -1542,7 +1556,7 @@ impl<'a> Des<'a> {
                 latency_ms: 0.0,
                 success: if w.arrivals != 0.0 { 1.0 - w.drops / w.arrivals } else { 1.0 },
                 hit_rps: w.hits / win_s,
-                reachable: if n.pooled { instances_up(&n.data) } else { instances_up(&n.data).min(1.0) },
+                reachable: if n.pooled || super::catalog::clustered(&n.data.kind) { instances_up(&n.data) } else { instances_up(&n.data).min(1.0) },
                 lag_s: 0.0,
                 repl_lag_s: n.repl_lag,
                 cold_frac: 0.0,
@@ -1749,6 +1763,7 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
             warm: 0.0,
             down_since: None,
             repl_lag: 0.0,
+            last_write: None,
             writes_win: 0.0,
             writes_rate: 0.0,
             promoted_counted: false,
@@ -1984,6 +1999,7 @@ fn static_kind(k: &str) -> &'static str {
         "kv" => "kv",
         "dns" => "dns",
         "stream" => "stream",
+        "search" => "search",
         _ => "server",
     }
 }

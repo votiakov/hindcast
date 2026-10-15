@@ -5,7 +5,7 @@ import { z } from 'zod';
  * (app, CLI, MCP server, future engines). Plain data, JSON or YAML.
  */
 
-export const KIND_VALUES = ['client', 'cdn', 'lb', 'gateway', 'server', 'worker', 'function', 'cache', 'db', 'replica', 'storage', 'queue', 'llm', 'llmapi', 'external', 'kv', 'dns', 'stream'] as const;
+export const KIND_VALUES = ['client', 'cdn', 'lb', 'gateway', 'server', 'worker', 'function', 'cache', 'db', 'replica', 'storage', 'queue', 'llm', 'llmapi', 'external', 'kv', 'dns', 'stream', 'search'] as const;
 
 export const ComponentSpec = z
   .object({
@@ -45,6 +45,7 @@ export const ComponentSpec = z
     shards: z.number().int().min(1).max(256).optional().describe('db/replica: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash (give a sharded database\'s replica the same count)'),
     hotKeyShare: z.number().min(0).max(1).optional().describe('db/kv: share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which saturates first'),
     partitions: z.number().int().min(1).max(1024).optional().describe('stream: partitions (default 4) — 1,000 messages/s in each, and a subscriber can use at most one consumer instance per partition'),
+    refreshS: z.number().min(0).max(3600).optional().describe('search: how often the index refreshes, s (default 1) — a document is searchable only after the next refresh; a longer interval indexes faster but searches miss recent writes for longer'),
     ttlS: z.number().min(0).max(86400).optional().describe('dns: how long clients cache an answer, s (default 60) — a dead target keeps getting traffic until it expires'),
     healthCheckS: z.number().min(0).max(3600).optional().describe('dns: how long health checks take to notice a dead target, s (default 30; 3 checks × 10 s)'),
     threads: z.number().int().min(1).max(10000).optional().describe('server/worker: threads per instance — every request in flight holds one, waiting on its calls included (thread-per-request, e.g. Tomcat 200). Unset: asynchronous, waiting holds nothing'),

@@ -18,7 +18,8 @@ export type Kind =
   | 'external'
   | 'kv'
   | 'dns'
-  | 'stream';
+  | 'stream'
+  | 'search';
 export type Tier = 'S' | 'M' | 'L';
 
 /** how a node spreads its outgoing calls across children */
@@ -101,6 +102,8 @@ export interface SystemNodeData extends Record<string, unknown> {
   skew?: number;
   /** stream: partitions — 1,000 messages/s in each, and one consumer each per subscriber (default 4) */
   partitions?: number;
+  /** search: how often the index refreshes, s (default 1) — a write is searchable only after the next refresh */
+  refreshS?: number;
   /** dns: how long clients cache an answer, s (default 60) */
   ttlS?: number;
   /** dns: how long health checks take to notice a dead target, s (default 30) */
@@ -273,6 +276,11 @@ export const KINDS: Record<Kind, KindSpec> = {
     capacity: 40000, baseLatencyMs: 5, costPerHour: 0, costPerRequest: 0.45 / 1_000_000, tiered: false,
     description: 'Managed NoSQL (DynamoDB on demand): no box to size and billed per request — but one partition takes 3,000 reads or 1,000 writes a second, so a hot key throttles whatever the table allows.',
   },
+  search: {
+    kind: 'search', label: 'Search Index', prefix: 'search', color: '#fcd34d',
+    capacity: 200, baseLatencyMs: 20, costPerHour: 0.2, tiered: true, scalable: true,
+    description: 'Full-text search (OpenSearch, Elasticsearch): data nodes that share the queries between them — no load balancer needed. A write is searchable only after the next refresh (1 s by default), later still when indexing queues behind busy nodes.',
+  },
   external: {
     kind: 'external', label: 'External API', prefix: 'ext', color: '#38bdf8',
     capacity: 1000, baseLatencyMs: 200, costPerHour: 0, tiered: false,
@@ -290,7 +298,7 @@ export const CATEGORIES: { id: string; label: string; kinds: Kind[] }[] = [
   { id: 'traffic', label: 'Traffic', kinds: ['client'] },
   { id: 'edge', label: 'Edge & Network', kinds: ['dns', 'cdn', 'lb', 'gateway'] },
   { id: 'compute', label: 'Compute', kinds: ['server', 'worker', 'function'] },
-  { id: 'data', label: 'Data', kinds: ['cache', 'db', 'replica', 'kv', 'storage'] },
+  { id: 'data', label: 'Data', kinds: ['cache', 'db', 'replica', 'kv', 'storage', 'search'] },
   { id: 'async', label: 'Messaging', kinds: ['queue', 'stream'] },
   { id: 'ai', label: 'AI', kinds: ['llm', 'llmapi'] },
   { id: 'outside', label: 'Third party', kinds: ['external'] },
@@ -362,6 +370,11 @@ export const hotPrefixShare = (d: SystemNodeData): number => {
   const h = Math.min(1, Math.max(0, d.hotKeyShare ?? 0));
   return h + (1 - h) / prefixesOf(d);
 };
+
+/** a cluster that spreads requests over its own nodes (no load balancer needed in front) */
+export const clustered = (kind: Kind): boolean => kind === 'search';
+/** a search index's refresh interval, s */
+export const refreshSOf = (d: SystemNodeData): number => Math.max(0, d.refreshS ?? 1);
 
 /** a stream's partitions (1 for everything else) */
 export const partitionsOf = (d: SystemNodeData): number => (d.kind === 'stream' ? Math.max(1, Math.floor(d.partitions ?? 4)) : 1);

@@ -560,7 +560,7 @@ struct Ctx<'a> {
 
 fn reachable(c: &Ctx) -> f64 {
     let up = (c.d.instances.unwrap_or(1.0) - c.d.down.unwrap_or(0.0)).max(0.0);
-    if c.pooled || c.d.kind == "llm" {
+    if c.pooled || c.d.kind == "llm" || clustered(&c.d.kind) {
         up
     } else {
         up.min(1.0)
@@ -877,8 +877,9 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
             r.routes = Some(vec![]);
             r
         }
-        // a read replica is a data store: it answers, it does not call on (as a primary only reaches its replicas)
-        "replica" => {
+        // a read replica is a data store: it answers, it does not call on (as a primary only reaches its replicas);
+        // so is a search index — its nodes share the queries between them
+        "replica" | "search" => {
             let mut r = process_through(c, st);
             r.forward = 0.0;
             r.routes = Some(vec![]);
@@ -1296,6 +1297,15 @@ impl Engine {
                 let ctx = Ctx { d, data: &data, arrivals, dt, cfg, read_ratio, routes, pooled: pooled[i], edge_sync: &edge_sync, edge_lat: &edge_lat, lags: &lags, dead: &dead, now };
                 process(&ctx, &mut st)
             };
+            // a search index: a write is searchable after the indexing backlog ahead of it and the next
+            // refresh; reads in that window miss the writes made in it
+            if d.kind == "search" {
+                st.repl_lag = index_lag_s(d, st.queue, capacity_of(d, Some(st.reachable)));
+                let writes_s = arrivals * (1.0 - read_ratio) / dt;
+                if st.repl_lag > 1.0 && r.up {
+                    stale_now += arrivals * read_ratio * (1.0 - (-writes_s * st.repl_lag).js_exp());
+                }
+            }
             // gray failure: the node answers a share of what it handles with errors
             if let Some(fr) = d.fault_rate.filter(|x| *x != 0.0 && !x.is_nan()) {
                 if r.up && d.kind != "client" {

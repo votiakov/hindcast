@@ -6,8 +6,8 @@ use super::engine::{EdgeData, SimEdge, SimNode};
 use crate::math::js_num;
 use serde_json::{json, Map as JMap, Value};
 
-const KINDS: [&str; 18] = ["client", "cdn", "lb", "gateway", "server", "worker", "function", "cache", "db", "replica", "storage", "queue", "llm", "llmapi", "external", "kv", "dns", "stream"];
-const DATA_KEYS: [&str; 42] = ["tier", "instances", "runtime", "hitRate", "limit", "batching", "retries", "retryPolicy", "timeoutMs", "breaker", "fallback", "routing", "fanout", "stallRate", "stallMs", "queueS", "capacity", "latencyMs", "costPerHour", "autoscale", "warmupS", "writePolicy", "workingSetGb", "skew", "shards", "hotKeyShare", "ttlS", "healthCheckS", "partitions", "threads", "bulkhead", "provisioned", "prefixes", "hotRowShare", "burst", "maxReceives", "visibilityS", "maxConnections", "connectionS", "everyS", "batch", "batchS"];
+const KINDS: [&str; 19] = ["client", "cdn", "lb", "gateway", "server", "worker", "function", "cache", "db", "replica", "storage", "queue", "llm", "llmapi", "external", "kv", "dns", "stream", "search"];
+const DATA_KEYS: [&str; 43] = ["tier", "instances", "runtime", "hitRate", "limit", "batching", "retries", "retryPolicy", "timeoutMs", "breaker", "fallback", "routing", "fanout", "stallRate", "stallMs", "queueS", "capacity", "latencyMs", "costPerHour", "autoscale", "warmupS", "writePolicy", "workingSetGb", "skew", "shards", "hotKeyShare", "ttlS", "healthCheckS", "partitions", "threads", "bulkhead", "provisioned", "prefixes", "hotRowShare", "burst", "maxReceives", "visibilityS", "maxConnections", "connectionS", "everyS", "batch", "batchS", "refreshS"];
 
 #[derive(Clone, Debug, Default)]
 pub struct Issue {
@@ -190,6 +190,7 @@ fn check_component(c: &JMap<String, Value>, path: Vec<Value>, issues: &mut Vec<I
     v.number("everyS", false, Some((0.0, false)), None, false);
     v.number("batch", false, Some((0.0, true)), None, false);
     v.number("batchS", false, Some((0.0, false)), None, false);
+    v.number("refreshS", false, Some((0.0, true)), Some(3600.0), false);
     v.number("capacity", false, Some((0.0, false)), None, false);
     v.number("latencyMs", false, Some((0.0, true)), None, false);
     v.number("costPerHour", false, Some((0.0, true)), None, false);

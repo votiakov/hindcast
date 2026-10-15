@@ -345,3 +345,26 @@ describe('a scheduled job', () => {
     }
   });
 });
+
+describe('a search index: searchable after the refresh, nodes share the queries', () => {
+  const index = (extra: Record<string, unknown>) => ({ components: [{ id: 'users', kind: 'client' }, { id: 'idx', kind: 'search', ...extra }], connections: [['users', 'idx']] });
+  const sc = { duration: 40, rps: 100, readRatio: 0.8 };
+
+  for (const [name, run] of [['fluid', simulate], ['des', (s: never, c: never) => simulateDes(s, c, { seed: 3 })]] as const) {
+    it(`${name}: a 30 s refresh makes searches miss what was written in the last 30 s; a 1 s refresh does not`, () => {
+      const slow = run(index({ refreshS: 30 }) as never, sc as never).summary;
+      const fast = run(index({}) as never, sc as never).summary;
+      // 80 searches a second for 40 s, with writes every few milliseconds: nearly all miss a recent one
+      expect(slow.staleReads ?? 0).toBeGreaterThan(2800);
+      expect(fast.staleReads ?? 0).toBe(0);
+      expect(slow.meanErrorRate).toBeLessThan(0.01);
+    });
+
+    it(`${name}: two data nodes take twice the queries with no load balancer in front`, () => {
+      const one = run(index({}) as never, { duration: 40, rps: 300, readRatio: 0.8 } as never).summary;
+      const two = run(index({ instances: 2 }) as never, { duration: 40, rps: 300, readRatio: 0.8 } as never).summary;
+      expect(one.meanErrorRate).toBeGreaterThan(0.2);
+      expect(two.meanErrorRate).toBeLessThan(0.01);
+    });
+  }
+});

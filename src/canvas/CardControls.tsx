@@ -234,6 +234,18 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
           <input className="nc-num" type="number" min={1} max={1024} step={1} value={data.partitions ?? 4} onChange={(e) => set({ partitions: Math.max(1, Math.min(1024, Math.round(+e.target.value) || 1)) })} />
         </div>
       )}
+      {data.kind === 'search' && (
+        <div className="nc-row" title="Refresh interval: a written document is searchable only after the next refresh. Longer intervals index faster (fewer, bigger segments), but searches miss recent writes for longer">
+          <span className="nc-l">refresh</span>
+          <select value={data.refreshS ?? 1} onChange={(e) => set({ refreshS: +e.target.value })}>
+            {pick(data.refreshS ?? 1, [1, 5, 30, 60]).map((n) => (
+              <option key={n} value={n}>
+                {n >= 60 ? `${n / 60} min` : `${n}s`}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       {data.kind === 'dns' && (
         <div className="nc-row" title="Clients cache an answer for the TTL; health checks notice a dead target after a few failed checks. Until both pass, users keep going to the dead one.">
           <span className="nc-l">TTL</span>

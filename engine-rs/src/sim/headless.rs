@@ -106,7 +106,7 @@ pub fn node_view(d0: &NodeData, st: Option<&NodeStats>, running: bool, has_outgo
         up,
         failed_over: d.kind == "db" && failover == "promoted",
         electing: failover == "electing",
-        unreachable: spec(&d.kind).scalable && d.kind != "llm" && iu > 1.0 && st.map(|s| s.reachable).unwrap_or(1.0) < iu && running,
+        unreachable: spec(&d.kind).scalable && d.kind != "llm" && !clustered(&d.kind) && iu > 1.0 && st.map(|s| s.reachable).unwrap_or(1.0) < iu && running,
         no_origin: (d.kind == "cache" || d.kind == "cdn") && !has_outgoing,
     }
 }
@@ -149,6 +149,13 @@ pub fn explain(d: &NodeData, st: Option<&NodeStats>, v: &View) -> Option<String>
         format!("Backlog of {} messages: consumers are {} behind. Producers are unaffected — work completes later.", fmt(st.queue), if st.lag_s.is_finite() { format!("{}s", js_to_fixed(st.lag_s, 0)) } else { "indefinitely".into() })
     } else if d.kind == "dns" && st.drop_rps > 0.5 {
         format!("{}/s of clients still hold an answer pointing at a dead target and time out: they keep going there until the health checks notice ({} s) and their cached answer expires (TTL {} s).", fmt(st.drop_rps), js_num(d.health_check_s.unwrap_or(30.0)), js_num(d.ttl_s.unwrap_or(60.0)))
+    } else if d.kind == "search" && st.repl_lag_s > 1.0 {
+        format!(
+            "New documents show up in search {} after they are written: the index refreshes every {} s{}. Searches in that window miss them — fine for a catalogue, wrong for \"I just posted it, where is it?\".",
+            fmt_ms(st.repl_lag_s * 1000.0),
+            js_num(refresh_s_of(d)),
+            if st.repl_lag_s > refresh_s_of(d) + 0.5 { ", and indexing is queued behind the queries the nodes are busy with" } else { "" }
+        )
     } else if d.kind == "db" && d.hot_row_share.unwrap_or(0.0) > 0.0 && st.drop_rps > 1.0 {
         format!(
             "Hot row: {}% of the writes update one key, and its row lock takes them one at a time ({} each) — at most {}/s however big the database. The rest wait, then time out. Batch the updates, split the counter over several rows, or keep it in a cache.",

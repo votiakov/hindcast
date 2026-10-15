@@ -150,6 +150,10 @@ pub struct NodeData {
     pub batch: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub batch_s: Option<f64>,
+    /// search: how often the index refreshes, s (default 1) — a write is searchable only after the
+    /// next refresh
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refresh_s: Option<f64>,
     /// a network partition's side this component is on (set by the partition action): links between
     /// components on different sides are cut
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -205,6 +209,10 @@ pub fn spec(kind: &str) -> KindSpec {
         "stream" => k(1000.0, 5.0, 0.015, false),
         // DNS with health-checked failover (Route 53): cached everywhere, so effectively free and instant
         "dns" => k(1e9, 1.0, 0.001, false),
+        // a search index (OpenSearch, Elasticsearch): data nodes that share the queries between them;
+        // per S node (2 vCPU, r7g.large.search-like) a search thread pool of vCPU × 1.5 + 1 = 4 threads
+        // at ~20 ms a query ≈ 200 queries/s
+        "search" => KindSpec { scalable: true, ..k(200.0, 20.0, 0.2, true) },
         "kv" => KindSpec { cost_per_request: Some(0.45 / 1_000_000.0), ..k(40000.0, 5.0, 0.0, false) },
         _ => k(250.0, 25.0, 0.1, true),
     }
@@ -317,6 +325,8 @@ pub fn kind_pricing(profile: &str, kind: &str) -> Option<KindPricing> {
             // Kinesis provisioned: $0.015 per shard-hour + $0.014 per million PUT payload units
             "stream" => Some(KindPricing { fixed: Some(0.015), per_request: Some(0.014 / 1_000_000.0), ..Default::default() }),
             "dns" => Some(KindPricing { fixed: Some(DNS_ZONE_HOURLY), ..Default::default() }),
+            // OpenSearch Service r7g.large/xlarge/2xlarge.search data nodes
+            "search" => tiers(0.178, 0.356, 0.712),
             _ => None,
         },
         "gcp-us-central1" => match kind {
@@ -336,6 +346,8 @@ pub fn kind_pricing(profile: &str, kind: &str) -> Option<KindPricing> {
             // Pub/Sub topic with subscriptions: billed by throughput, not partitions
             "stream" => per(0.11 / 1_000_000.0),
             "dns" => Some(KindPricing { fixed: Some(0.2 / 730.0), ..Default::default() }),
+            // no managed OpenSearch: self-run on Compute Engine n2-highmem-2/4/8
+            "search" => tiers(0.131, 0.262, 0.524),
             _ => None,
         },
         // Azure Retail Prices API (prices.azure.com), East US, pay as you go, 2026-10-15
@@ -358,6 +370,8 @@ pub fn kind_pricing(profile: &str, kind: &str) -> Option<KindPricing> {
             // Event Hubs Standard: $0.03 per throughput unit-hour (1,000 events/s in) + $0.028 per million events
             "stream" => Some(KindPricing { fixed: Some(0.03), per_request: Some(0.028 / 1_000_000.0), ..Default::default() }),
             "dns" => Some(KindPricing { fixed: Some(DNS_ZONE_HOURLY), ..Default::default() }),
+            // Azure AI Search, per search unit: Basic, Standard S1, Standard S2
+            "search" => tiers(0.101, 0.336, 1.344),
             _ => None,
         },
         _ => None,
@@ -444,6 +458,23 @@ pub fn capacity_of(d: &NodeData, reachable: Option<f64>) -> f64 {
         d.capacity.unwrap_or(sp.capacity) * t * batch * rt * (if sp.scalable { reachable.max(1.0) } else { 1.0 }) * shards_of(d) * partitions_of(d)
     };
     cap * d.degraded.unwrap_or(1.0)
+}
+
+/// a cluster that spreads its requests over its own nodes (no load balancer needed in front)
+pub fn clustered(kind: &str) -> bool {
+    kind == "search"
+}
+
+/// a search index's refresh interval, s
+pub fn refresh_s_of(d: &NodeData) -> f64 {
+    d.refresh_s.unwrap_or(1.0).max(0.0)
+}
+
+/// how long until a write just made is searchable: the indexing backlog ahead of it, then the next
+/// refresh — to a tenth of a second (a few milliseconds' wait in a busy pool is not a lag)
+pub fn index_lag_s(d: &NodeData, backlog: f64, cap: f64) -> f64 {
+    let lag = refresh_s_of(d) + if cap > 0.0 { backlog / cap } else if backlog > 0.0 { f64::INFINITY } else { 0.0 };
+    if lag.is_finite() { crate::math::js_round(lag * 10.0) / 10.0 } else { lag }
 }
 
 /// a database's (or its replica's) shard count (1 for everything else)

@@ -188,6 +188,17 @@
       "scalesHorizontally": false
     },
     {
+      "kind": "search",
+      "label": "Search Index",
+      "description": "Full-text search (OpenSearch, Elasticsearch): data nodes that share the queries between them — no load balancer needed. A write is searchable only after the next refresh (1 s by default), later still when indexing queues behind busy nodes.",
+      "capacityPerInstanceRps": 200,
+      "baseLatencyMs": 20,
+      "costPerHour": 0.2,
+      "costPerRequest": null,
+      "sizable": true,
+      "scalesHorizontally": true
+    },
+    {
       "kind": "external",
       "label": "External API",
       "description": "Someone else's service: a payment provider, a partner API, the websites a crawler fetches. You cannot size it — only respect its rate limit and live with its latency and errors.",
@@ -443,6 +454,24 @@
             "source": "https://aws.amazon.com/kinesis/data-streams/pricing/",
             "note": "provisioned mode: one shard per partition (1,000 records/s in)"
           },
+          "search": {
+            "tiers": {
+              "S": {
+                "sku": "r7g.large.search",
+                "hourly": 0.178
+              },
+              "M": {
+                "sku": "r7g.xlarge.search",
+                "hourly": 0.356
+              },
+              "L": {
+                "sku": "r7g.2xlarge.search",
+                "hourly": 0.712
+              }
+            },
+            "source": "https://instances.vantage.sh/aws/opensearch/r7g.large.search",
+            "note": "OpenSearch Service data node, per node; storage (EBS) and dedicated masters not included"
+          },
           "dns": {
             "fixed": {
               "sku": "Route 53 hosted zone",
@@ -623,6 +652,24 @@
             },
             "source": "https://cloud.google.com/pubsub/pricing",
             "note": "billed by throughput, not partitions"
+          },
+          "search": {
+            "tiers": {
+              "S": {
+                "sku": "n2-highmem-2",
+                "hourly": 0.131
+              },
+              "M": {
+                "sku": "n2-highmem-4",
+                "hourly": 0.262
+              },
+              "L": {
+                "sku": "n2-highmem-8",
+                "hourly": 0.524
+              }
+            },
+            "source": "https://gcloud-compute.com/n2-highmem-2.html",
+            "note": "no managed OpenSearch on Google Cloud: OpenSearch/Elasticsearch run on Compute Engine, per node"
           },
           "dns": {
             "fixed": {
@@ -808,6 +855,24 @@
             },
             "source": "https://prices.azure.com/api/retail/prices",
             "note": "one throughput unit per partition (1,000 events/s in)"
+          },
+          "search": {
+            "tiers": {
+              "S": {
+                "sku": "AI Search Basic",
+                "hourly": 0.101
+              },
+              "M": {
+                "sku": "AI Search Standard S1",
+                "hourly": 0.336
+              },
+              "L": {
+                "sku": "AI Search Standard S2",
+                "hourly": 1.344
+              }
+            },
+            "source": "https://prices.azure.com/api/retail/prices",
+            "note": "Azure AI Search, per search unit (replica × partition); S2 is about four S1s, so calibrate capacity"
           },
           "dns": {
             "fixed": {

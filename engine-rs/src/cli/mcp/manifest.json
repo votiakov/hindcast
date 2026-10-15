@@ -15,7 +15,7 @@
    "name": "hindcast",
    "version": "1.0.0"
   },
-  "instructions": "Hindcast lets an agent check infrastructure decisions before they ship.\n\nREAL SYSTEMS (production telemetry): connect_telemetry (Prometheus URL, plus Jaeger or Tempo for traces, optionally the cloud bill) → collect_telemetry (history into the workspace) → calibrate_model (read its trust report) → suggest_changes for \"what should we change / where can we save\", and verify_change for any change you propose or are asked about: a strategy, a Kubernetes manifest diff, a Terraform plan, or edited manifests against read_cluster's snapshot. Start a session with model_status: the workspace (./.hindcast) may already hold a fresh model.\nReport verify_change results with their verdict AND confidence. \"pass\" with confidence \"low\" means the change pushes a service past anything the history showed: say so and recommend a load test instead of calling it safe. Quote the money as a range when the band is wide, and say when prices are list prices rather than the bill. Never present a backtest as a guarantee.\nEverything is read-only towards the user's systems; nothing is applied. Credentials are passed as env var names, never as values.\n\nDESIGNS ON PAPER: verify_design checks a spec you wrote (failures, headroom, cost vs budget) and returns fixes as exact spec changes; apply them and verify again until it passes.\n\nENGINE DETAILS: Hindcast simulates distributed-system architectures under load and failure.\nTwo engines: \"fluid\" (queueing model, milliseconds, used for quick checks and search) and \"des\" (discrete-event, every request simulated: real p50/p99/p99.9, emergent retry storms/timeouts/breakers, seeded). Use analyze for Monte Carlo confidence intervals and optimize_cost for the cheapest sizing that meets an SLO.\nDescribe a system as an architecture spec: components (id, kind, optional knobs) + connections ([caller, callee]) + optional zones (failure domains).\nKinds: client (traffic source), cdn, lb, gateway, server, worker, function, cache, db, replica, storage, queue, llm (self-hosted GPU), llmapi (hosted model API), external (someone else's service: its rate limit and latency, not its capacity), kv (managed NoSQL on demand: billed per request, a hot key throttles at one partition), dns (health-checked answers; failover lags by the health check and the TTL), stream (pub/sub log: every subscriber gets every message; partitions cap ingest and each subscriber's consumers).\nRules: instances are only reachable behind lb/gateway/queue/stream; db shares reads with replica children and fails over to them, and splits its keys over `shards` (a hot key still lands on one); cache/cdn need an origin behind them.\nDynamics: server/worker/llm can autoscale ({ min, max, targetUtil, warmupS, cooldownS }); caches go cold after a restart or flush-cache and re-warm over warmupS (thundering herd on the origin); a connection can carry network latency ({ from, to, latencyMs }).\nScenarios: duration, constant rps or traffic keyframes, readRatio, timed events (kill-id, kill, fail-zone, degrade, inject-errors, inject-latency, flush-cache, restore…), SLO.\nFor \"is this design production-ready / what breaks first / what should we fix\", call audit_resilience: it replays every failure mode, grades user impact, and returns verified fixes priced in $/month.\nCalibrate to a real system by overriding capacity (req/s per instance), latencyMs and costPerHour per component.\nResults are directional: good for comparing designs and finding bottlenecks, not a substitute for load tests.\nFor real systems with recorded telemetry, use backtest_strategy (replays production history through a calibrated model, with measured accuracy) and replay_outage (famous public outages against that model)."
+  "instructions": "Hindcast lets an agent check infrastructure decisions before they ship.\n\nREAL SYSTEMS (production telemetry): connect_telemetry (Prometheus URL, plus Jaeger or Tempo for traces, optionally the cloud bill) → collect_telemetry (history into the workspace) → calibrate_model (read its trust report) → suggest_changes for \"what should we change / where can we save\", and verify_change for any change you propose or are asked about: a strategy, a Kubernetes manifest diff, a Terraform plan, or edited manifests against read_cluster's snapshot. Start a session with model_status: the workspace (./.hindcast) may already hold a fresh model.\nReport verify_change results with their verdict AND confidence. \"pass\" with confidence \"low\" means the change pushes a service past anything the history showed: say so and recommend a load test instead of calling it safe. Quote the money as a range when the band is wide, and say when prices are list prices rather than the bill. Never present a backtest as a guarantee.\nEverything is read-only towards the user's systems; nothing is applied. Credentials are passed as env var names, never as values.\n\nDESIGNS ON PAPER: verify_design checks a spec you wrote (failures, headroom, cost vs budget) and returns fixes as exact spec changes; apply them and verify again until it passes.\n\nENGINE DETAILS: Hindcast simulates distributed-system architectures under load and failure.\nTwo engines: \"fluid\" (queueing model, milliseconds, used for quick checks and search) and \"des\" (discrete-event, every request simulated: real p50/p99/p99.9, emergent retry storms/timeouts/breakers, seeded). Use analyze for Monte Carlo confidence intervals and optimize_cost for the cheapest sizing that meets an SLO.\nDescribe a system as an architecture spec: components (id, kind, optional knobs) + connections ([caller, callee]) + optional zones (failure domains).\nKinds: client (traffic source), cdn, lb, gateway, server, worker, function, cache, db, replica, storage, queue, llm (self-hosted GPU), llmapi (hosted model API), external (someone else's service: its rate limit and latency, not its capacity), kv (managed NoSQL on demand: billed per request, a hot key throttles at one partition), dns (health-checked answers; failover lags by the health check and the TTL), stream (pub/sub log: every subscriber gets every message; partitions cap ingest and each subscriber's consumers), search (OpenSearch-like index: data nodes share the queries; a write is searchable only after refreshS and any indexing backlog).\nRules: instances are only reachable behind lb/gateway/queue/stream (a search index's nodes share its queries themselves); db shares reads with replica children and fails over to them, and splits its keys over `shards` (a hot key still lands on one); cache/cdn need an origin behind them.\nDynamics: server/worker/llm can autoscale ({ min, max, targetUtil, warmupS, cooldownS }); caches go cold after a restart or flush-cache and re-warm over warmupS (thundering herd on the origin); a connection can carry network latency ({ from, to, latencyMs }).\nScenarios: duration, constant rps or traffic keyframes, readRatio, timed events (kill-id, kill, fail-zone, degrade, inject-errors, inject-latency, flush-cache, restore…), SLO.\nFor \"is this design production-ready / what breaks first / what should we fix\", call audit_resilience: it replays every failure mode, grades user impact, and returns verified fixes priced in $/month.\nCalibrate to a real system by overriding capacity (req/s per instance), latencyMs and costPerHour per component.\nResults are directional: good for comparing designs and finding bottlenecks, not a substitute for load tests.\nFor real systems with recorded telemetry, use backtest_strategy (replays production history through a calibrated model, with measured accuracy) and replay_outage (famous public outages against that model)."
  },
  "tools": [
   {
@@ -106,7 +106,8 @@
             "external",
             "kv",
             "dns",
-            "stream"
+            "stream",
+            "search"
            ],
            "description": "Component type — see list_components for capacities, latency and price"
           },
@@ -291,6 +292,12 @@
            "type": "integer",
            "minimum": 1,
            "maximum": 1024
+          },
+          "refreshS": {
+           "description": "search: how often the index refreshes, s (default 1) — a document is searchable only after the next refresh; a longer interval indexes faster but searches miss recent writes for longer",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 3600
           },
           "ttlS": {
            "description": "dns: how long clients cache an answer, s (default 60) — a dead target keeps getting traffic until it expires",
@@ -613,7 +620,8 @@
             "external",
             "kv",
             "dns",
-            "stream"
+            "stream",
+            "search"
            ],
            "description": "Component type — see list_components for capacities, latency and price"
           },
@@ -798,6 +806,12 @@
            "type": "integer",
            "minimum": 1,
            "maximum": 1024
+          },
+          "refreshS": {
+           "description": "search: how often the index refreshes, s (default 1) — a document is searchable only after the next refresh; a longer interval indexes faster but searches miss recent writes for longer",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 3600
           },
           "ttlS": {
            "description": "dns: how long clients cache an answer, s (default 60) — a dead target keeps getting traffic until it expires",
@@ -1151,7 +1165,8 @@
                 "external",
                 "kv",
                 "dns",
-                "stream"
+                "stream",
+                "search"
                ]
               },
               "pick": {
@@ -1538,7 +1553,8 @@
             "external",
             "kv",
             "dns",
-            "stream"
+            "stream",
+            "search"
            ],
            "description": "Component type — see list_components for capacities, latency and price"
           },
@@ -1723,6 +1739,12 @@
            "type": "integer",
            "minimum": 1,
            "maximum": 1024
+          },
+          "refreshS": {
+           "description": "search: how often the index refreshes, s (default 1) — a document is searchable only after the next refresh; a longer interval indexes faster but searches miss recent writes for longer",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 3600
           },
           "ttlS": {
            "description": "dns: how long clients cache an answer, s (default 60) — a dead target keeps getting traffic until it expires",
@@ -2034,7 +2056,8 @@
                "external",
                "kv",
                "dns",
-               "stream"
+               "stream",
+               "search"
               ],
               "description": "Component type — see list_components for capacities, latency and price"
              },
@@ -2219,6 +2242,12 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 1024
+             },
+             "refreshS": {
+              "description": "search: how often the index refreshes, s (default 1) — a document is searchable only after the next refresh; a longer interval indexes faster but searches miss recent writes for longer",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 3600
              },
              "ttlS": {
               "description": "dns: how long clients cache an answer, s (default 60) — a dead target keeps getting traffic until it expires",
@@ -2656,6 +2685,12 @@
                 "minimum": 1,
                 "maximum": 1024
                },
+               "refreshS": {
+                "description": "search: how often the index refreshes, s (default 1) — a document is searchable only after the next refresh; a longer interval indexes faster but searches miss recent writes for longer",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 3600
+               },
                "ttlS": {
                 "description": "dns: how long clients cache an answer, s (default 60) — a dead target keeps getting traffic until it expires",
                 "type": "number",
@@ -2801,7 +2836,8 @@
                  "external",
                  "kv",
                  "dns",
-                 "stream"
+                 "stream",
+                 "search"
                 ],
                 "description": "Component type — see list_components for capacities, latency and price"
                },
@@ -2986,6 +3022,12 @@
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 1024
+               },
+               "refreshS": {
+                "description": "search: how often the index refreshes, s (default 1) — a document is searchable only after the next refresh; a longer interval indexes faster but searches miss recent writes for longer",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 3600
                },
                "ttlS": {
                 "description": "dns: how long clients cache an answer, s (default 60) — a dead target keeps getting traffic until it expires",
@@ -3310,7 +3352,8 @@
                 "external",
                 "kv",
                 "dns",
-                "stream"
+                "stream",
+                "search"
                ]
               },
               "pick": {
@@ -3681,7 +3724,8 @@
             "external",
             "kv",
             "dns",
-            "stream"
+            "stream",
+            "search"
            ],
            "description": "Component type — see list_components for capacities, latency and price"
           },
@@ -3866,6 +3910,12 @@
            "type": "integer",
            "minimum": 1,
            "maximum": 1024
+          },
+          "refreshS": {
+           "description": "search: how often the index refreshes, s (default 1) — a document is searchable only after the next refresh; a longer interval indexes faster but searches miss recent writes for longer",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 3600
           },
           "ttlS": {
            "description": "dns: how long clients cache an answer, s (default 60) — a dead target keeps getting traffic until it expires",
@@ -4204,7 +4254,8 @@
             "external",
             "kv",
             "dns",
-            "stream"
+            "stream",
+            "search"
            ],
            "description": "Component type — see list_components for capacities, latency and price"
           },
@@ -4389,6 +4440,12 @@
            "type": "integer",
            "minimum": 1,
            "maximum": 1024
+          },
+          "refreshS": {
+           "description": "search: how often the index refreshes, s (default 1) — a document is searchable only after the next refresh; a longer interval indexes faster but searches miss recent writes for longer",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 3600
           },
           "ttlS": {
            "description": "dns: how long clients cache an answer, s (default 60) — a dead target keeps getting traffic until it expires",
@@ -4742,7 +4799,8 @@
                 "external",
                 "kv",
                 "dns",
-                "stream"
+                "stream",
+                "search"
                ]
               },
               "pick": {
@@ -5118,7 +5176,8 @@
             "external",
             "kv",
             "dns",
-            "stream"
+            "stream",
+            "search"
            ],
            "description": "Component type — see list_components for capacities, latency and price"
           },
@@ -5303,6 +5362,12 @@
            "type": "integer",
            "minimum": 1,
            "maximum": 1024
+          },
+          "refreshS": {
+           "description": "search: how often the index refreshes, s (default 1) — a document is searchable only after the next refresh; a longer interval indexes faster but searches miss recent writes for longer",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 3600
           },
           "ttlS": {
            "description": "dns: how long clients cache an answer, s (default 60) — a dead target keeps getting traffic until it expires",
@@ -5656,7 +5721,8 @@
                 "external",
                 "kv",
                 "dns",
-                "stream"
+                "stream",
+                "search"
                ]
               },
               "pick": {
@@ -6041,7 +6107,8 @@
             "external",
             "kv",
             "dns",
-            "stream"
+            "stream",
+            "search"
            ],
            "description": "Component type — see list_components for capacities, latency and price"
           },
@@ -6226,6 +6293,12 @@
            "type": "integer",
            "minimum": 1,
            "maximum": 1024
+          },
+          "refreshS": {
+           "description": "search: how often the index refreshes, s (default 1) — a document is searchable only after the next refresh; a longer interval indexes faster but searches miss recent writes for longer",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 3600
           },
           "ttlS": {
            "description": "dns: how long clients cache an answer, s (default 60) — a dead target keeps getting traffic until it expires",
@@ -6632,7 +6705,8 @@
             "external",
             "kv",
             "dns",
-            "stream"
+            "stream",
+            "search"
            ],
            "description": "Component type — see list_components for capacities, latency and price"
           },
@@ -6817,6 +6891,12 @@
            "type": "integer",
            "minimum": 1,
            "maximum": 1024
+          },
+          "refreshS": {
+           "description": "search: how often the index refreshes, s (default 1) — a document is searchable only after the next refresh; a longer interval indexes faster but searches miss recent writes for longer",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 3600
           },
           "ttlS": {
            "description": "dns: how long clients cache an answer, s (default 60) — a dead target keeps getting traffic until it expires",
@@ -7125,7 +7205,8 @@
               "external",
               "kv",
               "dns",
-              "stream"
+              "stream",
+              "search"
              ],
              "description": "Component type — see list_components for capacities, latency and price"
             },
@@ -7310,6 +7391,12 @@
              "type": "integer",
              "minimum": 1,
              "maximum": 1024
+            },
+            "refreshS": {
+             "description": "search: how often the index refreshes, s (default 1) — a document is searchable only after the next refresh; a longer interval indexes faster but searches miss recent writes for longer",
+             "type": "number",
+             "minimum": 0,
+             "maximum": 3600
             },
             "ttlS": {
              "description": "dns: how long clients cache an answer, s (default 60) — a dead target keeps getting traffic until it expires",
@@ -7747,6 +7834,12 @@
                "minimum": 1,
                "maximum": 1024
               },
+              "refreshS": {
+               "description": "search: how often the index refreshes, s (default 1) — a document is searchable only after the next refresh; a longer interval indexes faster but searches miss recent writes for longer",
+               "type": "number",
+               "minimum": 0,
+               "maximum": 3600
+              },
               "ttlS": {
                "description": "dns: how long clients cache an answer, s (default 60) — a dead target keeps getting traffic until it expires",
                "type": "number",
@@ -7892,7 +7985,8 @@
                 "external",
                 "kv",
                 "dns",
-                "stream"
+                "stream",
+                "search"
                ],
                "description": "Component type — see list_components for capacities, latency and price"
               },
@@ -8077,6 +8171,12 @@
                "type": "integer",
                "minimum": 1,
                "maximum": 1024
+              },
+              "refreshS": {
+               "description": "search: how often the index refreshes, s (default 1) — a document is searchable only after the next refresh; a longer interval indexes faster but searches miss recent writes for longer",
+               "type": "number",
+               "minimum": 0,
+               "maximum": 3600
               },
               "ttlS": {
                "description": "dns: how long clients cache an answer, s (default 60) — a dead target keeps getting traffic until it expires",
@@ -8400,7 +8500,8 @@
                 "external",
                 "kv",
                 "dns",
-                "stream"
+                "stream",
+                "search"
                ]
               },
               "pick": {
@@ -8770,7 +8871,8 @@
             "external",
             "kv",
             "dns",
-            "stream"
+            "stream",
+            "search"
            ],
            "description": "Component type — see list_components for capacities, latency and price"
           },
@@ -8955,6 +9057,12 @@
            "type": "integer",
            "minimum": 1,
            "maximum": 1024
+          },
+          "refreshS": {
+           "description": "search: how often the index refreshes, s (default 1) — a document is searchable only after the next refresh; a longer interval indexes faster but searches miss recent writes for longer",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 3600
           },
           "ttlS": {
            "description": "dns: how long clients cache an answer, s (default 60) — a dead target keeps getting traffic until it expires",
@@ -9263,7 +9371,8 @@
               "external",
               "kv",
               "dns",
-              "stream"
+              "stream",
+              "search"
              ],
              "description": "Component type — see list_components for capacities, latency and price"
             },
@@ -9448,6 +9557,12 @@
              "type": "integer",
              "minimum": 1,
              "maximum": 1024
+            },
+            "refreshS": {
+             "description": "search: how often the index refreshes, s (default 1) — a document is searchable only after the next refresh; a longer interval indexes faster but searches miss recent writes for longer",
+             "type": "number",
+             "minimum": 0,
+             "maximum": 3600
             },
             "ttlS": {
              "description": "dns: how long clients cache an answer, s (default 60) — a dead target keeps getting traffic until it expires",
@@ -9885,6 +10000,12 @@
                "minimum": 1,
                "maximum": 1024
               },
+              "refreshS": {
+               "description": "search: how often the index refreshes, s (default 1) — a document is searchable only after the next refresh; a longer interval indexes faster but searches miss recent writes for longer",
+               "type": "number",
+               "minimum": 0,
+               "maximum": 3600
+              },
               "ttlS": {
                "description": "dns: how long clients cache an answer, s (default 60) — a dead target keeps getting traffic until it expires",
                "type": "number",
@@ -10030,7 +10151,8 @@
                 "external",
                 "kv",
                 "dns",
-                "stream"
+                "stream",
+                "search"
                ],
                "description": "Component type — see list_components for capacities, latency and price"
               },
@@ -10215,6 +10337,12 @@
                "type": "integer",
                "minimum": 1,
                "maximum": 1024
+              },
+              "refreshS": {
+               "description": "search: how often the index refreshes, s (default 1) — a document is searchable only after the next refresh; a longer interval indexes faster but searches miss recent writes for longer",
+               "type": "number",
+               "minimum": 0,
+               "maximum": 3600
               },
               "ttlS": {
                "description": "dns: how long clients cache an answer, s (default 60) — a dead target keeps getting traffic until it expires",
@@ -10538,7 +10666,8 @@
                 "external",
                 "kv",
                 "dns",
-                "stream"
+                "stream",
+                "search"
                ]
               },
               "pick": {
