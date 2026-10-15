@@ -319,7 +319,8 @@ fn trust(mv: &Value) -> Value {
     let fit = |sv: &Value| s(sv, &["fit", "status"]);
     // no latency metric: the fit has nothing to be scored on, and capacity rests on CPU alone
     let blind: Vec<String> = arr(mv, &["provenance", "latency", "without"]).iter().map(|x| s(x, &[])).collect();
-    let cpu_only: Vec<&String> = svcs.iter().filter(|(id, sv)| blind.contains(*id) && fit(sv) == "unexplained").map(|(id, _)| id).collect();
+    // marked by calibration (capacity.cpuAlone); models from before the mark: no latency metric and an unexplained fit
+    let cpu_only: Vec<&String> = svcs.iter().filter(|(id, sv)| g(sv, &["capacity", "cpuAlone"]).as_bool() == Some(true) || (blind.contains(*id) && fit(sv) == "unexplained")).map(|(id, _)| id).collect();
     let modelled: Vec<(&String, &Value)> = svcs.iter().filter(|(id, sv)| fit(sv) != "cost-only" && !cpu_only.contains(id)).collect();
     let good = modelled.iter().filter(|(_, sv)| matches!(fit(sv).as_str(), "good" | "fair")).count();
     let poor: Vec<&String> = modelled.iter().filter(|(_, sv)| matches!(fit(sv).as_str(), "poor" | "unexplained")).map(|(id, _)| *id).collect();

@@ -153,7 +153,9 @@ fn summary(m: &Value, cal: &Value, warnings: &[String]) -> Value {
     let caution: Vec<String> = svcs.iter().filter(ok).filter(|x| s(x, &["basis"]) == "extrapolated").map(|x| format!("{}: capacity extrapolated (history peaked at {} of it)", s(x, &["service"]), pct(g(x, &["historyPeakUtil"]).as_f64().unwrap_or(0.0)))).collect();
     // no latency metric: nothing to fit latency on, so the fit can't be scored — capacity rests on CPU
     let blind: Vec<String> = arr(m, &["provenance", "latency", "without"]).iter().map(|x| s(x, &[])).collect();
-    let cpu_only: Vec<String> = svcs.iter().filter(|x| blind.contains(&s(x, &["service"])) && s(x, &["fit"]) == "unexplained").map(|x| s(x, &["service"])).collect();
+    // marked by calibration (capacity.cpuAlone); models from before the mark: no latency metric and an unexplained fit
+    let cpu_alone = |id: &str| g(m, &["services", id, "capacity", "cpuAlone"]).as_bool() == Some(true);
+    let cpu_only: Vec<String> = svcs.iter().filter(|x| cpu_alone(&s(x, &["service"])) || (blind.contains(&s(x, &["service"])) && s(x, &["fit"]) == "unexplained")).map(|x| s(x, &["service"])).collect();
     let untrusted: Vec<String> = svcs.iter().filter(|x| matches!(s(x, &["fit"]).as_str(), "poor" | "unexplained") && !cpu_only.contains(&s(x, &["service"]))).map(|x| format!("{}: fit {} — {}", s(x, &["service"]), s(x, &["fit"]), why_untrusted(arr(x, &["notes"])))).collect();
     let cost_only: Vec<String> = svcs.iter().filter(|x| s(x, &["fit"]) == "cost-only").map(|x| s(x, &["service"])).collect();
     let mut o = JMap::new();
