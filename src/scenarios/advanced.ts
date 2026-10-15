@@ -583,4 +583,50 @@ const hotRow: Scenario = {
   },
 };
 
-export const ADVANCED: Scenario[] = [recovery, retryLayers, cells, shed, tail, llmFailover, elasticity, regions, readScale, warmup, bulkhead, hotRow];
+// 13 ─ the export that takes the shop down: a batch job on the primary vs on a replica
+const batchJob: Scenario = {
+  id: 'export-on-replica',
+  title: 'The Nightly Export: Primary vs a Read Replica',
+  tagline: 'A reporting export reads 8,000 rows in ten seconds. Where it reads from decides who pays.',
+  watch: 'Both run the same export at second 10. A reads the primary the shop uses; B pays for a replica that only the export reads.',
+  readRatio: 0.8,
+  a: {
+    title: 'The export reads the primary',
+    graph: graph(
+      [
+        ['shoppers', 'client', X[0], 120],
+        ['export', 'client', X[0], 340, { name: 'nightly export', everyS: 600, batch: 8000, batchS: 10 }],
+        ['lb', 'lb', X[1], 120],
+        ['api', 'server', X[2], 120, { instances: 4, name: 'shop api' }],
+        ['db', 'db', X[3], 230, { name: 'primary' }],
+      ],
+      [['shoppers', 'lb'], ['lb', 'api'], ['api', 'db'], ['export', 'db']],
+    ),
+  },
+  b: {
+    title: 'The export reads a replica',
+    graph: graph(
+      [
+        ['shoppers', 'client', X[0], 120],
+        ['export', 'client', X[0], 340, { name: 'nightly export', everyS: 600, batch: 8000, batchS: 10 }],
+        ['lb', 'lb', X[1], 120],
+        ['api', 'server', X[2], 120, { instances: 4, name: 'shop api' }],
+        ['db', 'db', X[3], 120, { name: 'primary' }],
+        ['replica', 'replica', X[3], 340, { name: 'reporting replica' }],
+      ],
+      [['shoppers', 'lb'], ['lb', 'api'], ['api', 'db'], ['export', 'replica']],
+    ),
+  },
+  timeline: [
+    { at: 0, rps: 500, caption: 'An ordinary evening: 500 req/s of shoppers.' },
+    { at: 40, rps: 500 },
+  ],
+  events: [{ at: 10, message: '📦 The nightly export starts: 8,000 reads in 10 s', a: { type: 'revive-all' }, b: { type: 'revive-all' } }],
+  takeaway: {
+    a: 'For ten seconds the export doubled what the primary had to serve. The shoppers’ requests queued behind its reads and some failed — on a quiet evening, with nothing broken.',
+    b: 'The export read a replica nobody else used. It ran just as fast and the shoppers never saw it — for the price of the replica, about $255 a month.',
+    lesson: 'Batch jobs compete with users for whatever they call. Point exports, reports and backfills at a replica (or throttle them) so their peaks are not your users’ outage.',
+  },
+};
+
+export const ADVANCED: Scenario[] = [recovery, retryLayers, cells, shed, tail, llmFailover, elasticity, regions, readScale, warmup, bulkhead, hotRow, batchJob];
