@@ -75,35 +75,55 @@ Backtest verdicts: **5 right**, 0 inconclusive (it said to load-test), 0 wrong, 
 
 | run | question | measured (k6, every request) | backtest before the day | model on the day’s real traffic | naive CPU ratio |
 |---|---|---|---|---|---|
-| `launch-2c` | 2 frontend replicas at 1 core instead of 3 at half a core, on launch day? | **fail**: p99 596 ms, errors 0.33%, 3.5 min out of SLO | inconclusive ⚠️ (low confidence), 0 min | p99 72 ms, errors 0.00%, 0 min | pass ❌ at 63% CPU |
+| `launch-2c` | 2 frontend replicas at 1 core instead of 3 at half a core, on launch day? | **fail**: p99 596 ms, errors 0.33%, 3.5 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | p99 72 ms, errors 0.00%, 0 min | pass ❌ at 63% CPU |
 | `normal-1c` | 1 frontend replica at 1 core, on an ordinary day? | **pass**: p99 28 ms, errors 0.00%, 0 min out of SLO | pass ✅ (medium confidence), 0 min | p99 46 ms, errors 0.00%, 0 min | pass ✅ at 57% CPU |
 | `normal-1-750` | 1 frontend replica at 750m, on an ordinary day? | **pass**: p99 55 ms, errors 0.00%, 0 min out of SLO | pass ✅ (medium confidence), 0 min | p99 65 ms, errors 0.00%, 0 min | pass ✅ at 76% CPU |
 | `launch-x1.3` | As built, on a launch day with 30% more traffic? | **fail**: p99 1178 ms, errors 0.29%, 5.5 min out of SLO | fail ✅, 9 min | p99 5000 ms, errors 5.3%, 3.5 min | fail ✅ at 109% CPU |
 
-Backtest verdicts: **3 right**, 1 inconclusive (it said to load-test), 0 wrong, of 4. Naive CPU ratio: 3 right.
+Backtest verdicts: **3 right**, 1 inconclusive (it said to load-test; 0 of them leaned the right way), 0 wrong, of 4. Naive CPU ratio: 3 right.
+
+*Out of sample* — round 2, chosen after round 1 was scored; the verdicts are the ones committed in `validation/predictions-oos-2.json` before each run was recorded:
+
+| run | question | measured (k6, every request) | backtest before the day | model on the day’s real traffic | naive CPU ratio |
+|---|---|---|---|---|---|
+| `launch-x1.3-4` | 4 frontend replicas, on a launch day with 30% more traffic? | **pass**: p99 321 ms, errors 0.14%, 1 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | p99 5000 ms, errors 5.3%, 6 min | pass ✅ at 82% CPU |
+| `launch-x1.3-hpa` | An HPA (2–5 replicas at 50% CPU), on a launch day with 30% more traffic? | **pass**: p99 327 ms, errors 0.10%, 0.5 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | p99 268 ms, errors 0.00%, 0.5 min | pass ✅ at 65% CPU |
+| `launch-2-750` | 2 frontend replicas at 750m instead of 3 at half a core, on launch day? | **fail**: p99 293 ms, errors 0.54%, 4.5 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | p99 67 ms, errors 0.00%, 0 min | pass ❌ at 84% CPU |
+
+Backtest verdicts: **0 right**, 3 inconclusive (it said to load-test; 2 of them leaned the right way), 0 wrong, of 3. Naive CPU ratio: 2 right.
 
 **Calibrated on the ordinary day and a 12-minute load test:**
 
 | run | question | measured (k6, every request) | backtest before the day | model on the day’s real traffic | naive CPU ratio |
 |---|---|---|---|---|---|
 | `launch` | As built (3 frontend replicas), on launch day? | **pass**: p99 419 ms, errors 0.00%, 0.5 min out of SLO | pass ✅, 0 min | p99 150 ms, errors 0.00%, 0 min | pass ✅ at 84% CPU |
-| `normal-2` | 2 frontend replicas instead of 3, on an ordinary day? | **pass**: p99 142 ms, errors 0.02%, 1 min out of SLO | inconclusive ⚠️ (low confidence), 0 min | p99 118 ms, errors 0.00%, 0 min | pass ✅ at 57% CPU |
+| `normal-2` | 2 frontend replicas instead of 3, on an ordinary day? | **pass**: p99 142 ms, errors 0.02%, 1 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | p99 118 ms, errors 0.00%, 0 min | pass ✅ at 57% CPU |
 | `launch-2` | 2 frontend replicas instead of 3, on launch day? | **fail**: p99 5233 ms, errors 45.3%, 11.5 min out of SLO | fail ✅ (low confidence), 4 min | p99 5000 ms, errors 21.7%, 9.5 min | fail ✅ at 126% CPU |
-| `normal-1` | 1 frontend replica, on an ordinary day? | **fail**: p99 5007 ms, errors 27.9%, 19.5 min out of SLO | inconclusive ⚠️ (low confidence), 0 min | p99 212 ms, errors 0.00%, 0 min | fail ✅ at 113% CPU |
-| `launch-hpa` | An HPA (1–3 replicas at 60% CPU) instead of 3 fixed, on launch day? | **fail**: p99 159 ms, errors 0.08%, 1.5 min out of SLO | inconclusive ⚠️ (low confidence), 0.5 min | p99 179 ms, errors 0.00%, 0 min | pass ❌ at 84% CPU |
+| `normal-1` | 1 frontend replica, on an ordinary day? | **fail**: p99 5007 ms, errors 27.9%, 19.5 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | p99 212 ms, errors 0.00%, 0 min | fail ✅ at 113% CPU |
+| `launch-hpa` | An HPA (1–3 replicas at 60% CPU) instead of 3 fixed, on launch day? | **fail**: p99 159 ms, errors 0.08%, 1.5 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0.5 min | p99 179 ms, errors 0.00%, 0 min | pass ❌ at 84% CPU |
 
-Backtest verdicts: **2 right**, 3 inconclusive (it said to load-test), 0 wrong, of 5. Naive CPU ratio: 4 right.
+Backtest verdicts: **2 right**, 3 inconclusive (it said to load-test; 1 of them leaned the right way), 0 wrong, of 5. Naive CPU ratio: 4 right.
 
 *Out of sample* — added after the throttle model was designed on the runs above; the verdicts are the ones committed in `validation/predictions-oos.json` before each run was recorded:
 
 | run | question | measured (k6, every request) | backtest before the day | model on the day’s real traffic | naive CPU ratio |
 |---|---|---|---|---|---|
-| `launch-2c` | 2 frontend replicas at 1 core instead of 3 at half a core, on launch day? | **fail**: p99 596 ms, errors 0.33%, 3.5 min out of SLO | inconclusive ⚠️ (low confidence), 0 min | p99 134 ms, errors 0.00%, 0 min | pass ❌ at 63% CPU |
-| `normal-1c` | 1 frontend replica at 1 core, on an ordinary day? | **pass**: p99 28 ms, errors 0.00%, 0 min out of SLO | inconclusive ⚠️ (low confidence), 0 min | p99 88 ms, errors 0.00%, 0 min | pass ✅ at 57% CPU |
-| `normal-1-750` | 1 frontend replica at 750m, on an ordinary day? | **pass**: p99 55 ms, errors 0.00%, 0 min out of SLO | inconclusive ⚠️ (low confidence), 0 min | p99 101 ms, errors 0.00%, 0 min | pass ✅ at 76% CPU |
+| `launch-2c` | 2 frontend replicas at 1 core instead of 3 at half a core, on launch day? | **fail**: p99 596 ms, errors 0.33%, 3.5 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | p99 134 ms, errors 0.00%, 0 min | pass ❌ at 63% CPU |
+| `normal-1c` | 1 frontend replica at 1 core, on an ordinary day? | **pass**: p99 28 ms, errors 0.00%, 0 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | p99 88 ms, errors 0.00%, 0 min | pass ✅ at 57% CPU |
+| `normal-1-750` | 1 frontend replica at 750m, on an ordinary day? | **pass**: p99 55 ms, errors 0.00%, 0 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | p99 101 ms, errors 0.00%, 0 min | pass ✅ at 76% CPU |
 | `launch-x1.3` | As built, on a launch day with 30% more traffic? | **fail**: p99 1178 ms, errors 0.29%, 5.5 min out of SLO | pass ❌, 0 min | p99 335 ms, errors 0.00%, 0.5 min | fail ✅ at 109% CPU |
 
-Backtest verdicts: **0 right**, 3 inconclusive (it said to load-test), 1 wrong, of 4. Naive CPU ratio: 3 right.
+Backtest verdicts: **0 right**, 3 inconclusive (it said to load-test; 2 of them leaned the right way), 1 wrong, of 4. Naive CPU ratio: 3 right.
+
+*Out of sample* — round 2, chosen after round 1 was scored; the verdicts are the ones committed in `validation/predictions-oos-2.json` before each run was recorded:
+
+| run | question | measured (k6, every request) | backtest before the day | model on the day’s real traffic | naive CPU ratio |
+|---|---|---|---|---|---|
+| `launch-x1.3-4` | 4 frontend replicas, on a launch day with 30% more traffic? | **pass**: p99 321 ms, errors 0.14%, 1 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | p99 2887 ms, errors 0.05%, 1.5 min | pass ✅ at 82% CPU |
+| `launch-x1.3-hpa` | An HPA (2–5 replicas at 50% CPU), on a launch day with 30% more traffic? | **pass**: p99 327 ms, errors 0.10%, 0.5 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | p99 352 ms, errors 0.05%, 0.5 min | pass ✅ at 65% CPU |
+| `launch-2-750` | 2 frontend replicas at 750m instead of 3 at half a core, on launch day? | **fail**: p99 293 ms, errors 0.54%, 4.5 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | p99 110 ms, errors 0.00%, 0 min | pass ❌ at 84% CPU |
+
+Backtest verdicts: **0 right**, 3 inconclusive (it said to load-test; 2 of them leaned the right way), 0 wrong, of 3. Naive CPU ratio: 2 right.
 
 **A node failure, for real:** check_node_loss from the ordinary day and the pod placement at the instant of the kill, the model on the day’s own traffic, and the client’s measurement — each against the as-built ordinary day.
 
@@ -111,7 +131,7 @@ Backtest verdicts: **0 right**, 3 inconclusive (it said to load-test), 1 wrong, 
 |---|---|---|---|---|---|
 | `normal-nodeloss` | bnk8s-worker at minute 19.3 | ad, cart, email, jaeger, payment, quote, shipping | +7 min, +21,221 failed | +7 min, +16,804 failed | +10.5 min, +32,886 failed |
 
-The first 2 minutes of every run are left out of the scoring, measured and predicted alike (pods restarted minutes earlier). Generated by `npx tsx reference/k8s/evaluate.ts`, 2026-10-14.
+The first 2 minutes of every run are left out of the scoring, measured and predicted alike (pods restarted minutes earlier). Generated by `npx tsx reference/k8s/evaluate.ts`, 2026-10-15.
 <!-- /RESULTS -->
 
 ## What it says
@@ -154,6 +174,26 @@ The first 2 minutes of every run are left out of the scoring, measured and predi
   The CPU-ratio rule also got 3 right but called that last run safe. The model calibrated with the
   load test did worse: it called the +30% day a pass, and it failed for 5.5 minutes. It hedged on
   the other three.
+- **Round 2: three more questions, all hedged, two of three leaning the right way.** Both models
+  answered inconclusive (leaning pass) to all three, committed in
+  [predictions-oos-2.json](shop/validation/predictions-oos-2.json) before the runs:
+  - 4 frontends on a launch day with 30% more traffic: passed (1 min out of SLO, as built had 5.5).
+  - an autoscaler (2–5 at 50% CPU) on the same day: passed.
+  - 2 frontends at 750m instead of 3 at half a core on launch day: **failed** for 4.5 minutes. The
+    CPU-ratio rule also called it safe.
+
+  Every hedge said why: the changes pushed the frontend (and `recommendation`) past any load the
+  ordinary day showed. Two misses the hedges were right to warn about:
+  - **A frontend pod gives out at about 145–165 req/s whatever its CPU limit.** Across all twelve
+    runs, pods failed at 141–168 req/s at half a core, 750m and a full core alike, and held at
+    112–154. The model reads capacity as CPU per request × the limit, so a change that adds CPU
+    (750m, 1 core) is credited with capacity the pod does not have. The ceiling is in the Node.js
+    process, not the quota, and the history never came near it.
+  - **`recommendation` held 99 req/s on the +30% day**; calibrated from a day that never took it
+    past 29% of its capacity, the model put it at 71, so its replay of the 4-frontend run fails
+    where the real one did not.
+
+  Neither is tuned away here: the next model change should be judged on runs it has not seen.
 - **Losing a node: the prediction was right about what breaks, and Kubernetes recovered on time.
   The outage still ran 50% longer, because of the clients.** `check_node_loss` ran on the ordinary
   day with the pod placement at the moment of the kill. It said seven services would lose their

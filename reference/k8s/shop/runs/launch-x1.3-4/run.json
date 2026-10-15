@@ -1,0 +1,13 @@
+{
+  "system": "shop",
+  "run": "launch-x1.3-4",
+  "start": 1792051277,
+  "end": 1792053678,
+  "day": "13/Jul/1995",
+  "minutes": 40,
+  "scale": "x108",
+  "steps": null,
+  "manifests": "variants/frontend-4.yaml",
+  "note": null,
+  "recordedAt": "2026-10-15T08:42:05.574Z"
+}

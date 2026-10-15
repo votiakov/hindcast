@@ -1,0 +1,13 @@
+{
+  "system": "shop",
+  "run": "launch-2-750",
+  "start": 1792058503,
+  "end": 1792060904,
+  "day": "13/Jul/1995",
+  "minutes": 40,
+  "scale": "x83",
+  "steps": null,
+  "manifests": "variants/frontend-2-750m.yaml",
+  "note": null,
+  "recordedAt": "2026-10-15T10:42:31.035Z"
+}
