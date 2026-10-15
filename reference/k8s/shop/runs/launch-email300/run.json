@@ -1,0 +1,13 @@
+{
+  "system": "shop",
+  "run": "launch-email300",
+  "start": 1792068693,
+  "end": 1792071094,
+  "day": "13/Jul/1995",
+  "minutes": 40,
+  "scale": "x83",
+  "steps": null,
+  "manifests": "variants/email-300mi.yaml",
+  "note": null,
+  "recordedAt": "2026-10-15T13:32:21.241Z"
+}

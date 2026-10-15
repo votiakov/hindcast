@@ -543,7 +543,8 @@ async function main() {
       const mem = day.services[svc]?.memoryMaxBytes ?? day.services[svc]?.memoryBytes ?? [];
       const observed: number[] = [];
       for (let i = 1; i < mem.length; i++) if (mem[i] != null && mem[i - 1] != null && mem[i]! < mem[i - 1]! * 0.7) observed.push((i * day.stepS) / 60);
-      const committed = c.oos ? (predictionsOf('calm', c.oos)?.[c.run] as { ooms?: Record<string, number[]> } | undefined)?.ooms?.[svc] : undefined;
+      const forecastOoms = c.oos ? (predictionsOf('calm', c.oos)?.[c.run] as { ooms?: Record<string, number[]> } | undefined)?.ooms : undefined;
+      const committed = forecastOoms ? (forecastOoms[svc] ?? []) : undefined;
       leakRows.push(`| \`${c.run}\` | ${svc} | ${committed ? mins(committed) : '—'} | ${mins(predictedOnDay)} | ${mins(observed)} |`);
     }
   }
