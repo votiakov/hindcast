@@ -3,17 +3,17 @@
 <div>
 <h2>The board</h2>
 <ol class="pins">
-<li data-pin="palette"><h3>Components</h3><p>Users, CDN, Load Balancer, API Gateway, API Server, Worker, Serverless Fn, Cache, Database, Read Replica, Object Storage, Queue, GPU Inference, LLM Provider API. Drag onto the board or click; connect right handle to left handle.</p></li>
+<li data-pin="palette"><h3>Components</h3><p>Users, DNS, CDN, Load Balancer, API Gateway, API Server, Worker, Serverless Fn, Cache, Database, Read Replica, Key-Value Store, Object Storage, Queue, Stream, GPU Inference, LLM Provider API, Third-party API. Drag onto the board or click; connect right handle to left handle. ⌘C ⌘V ⌘D copy, paste and duplicate (the links between copies come along); Shift-drag selects several; N adds a note.</p></li>
 <li data-pin="node"><h3>A component, live</h3><p>Load in, dropped, capacity, CPU and instances. Its edge and status turn red when it saturates.</p></li>
 <li data-pin="flow"><h3>Requests flowing</h3><p>Each connection shows its rate. Particles turn red where requests fail.</p></li>
-<li data-pin="metrics"><h3>What users see</h3><p>Throughput, error rate, p99, cost. Click for the cost breakdown per component, $ per million requests and the error-budget burn rate.</p></li>
-<li data-pin="design"><h3>Design</h3><p>Save (⌘S), open, save a copy, download YAML, share a link, embed code, templates, a new blank design.</p></li>
+<li data-pin="metrics"><h3>What users see</h3><p>Throughput, error rate, p99, cost. Click for the cost breakdown per component and per cloud, $ per million requests, <b>where requests fail</b> (each component dropping requests, and why) and the error-budget burn rate.</p></li>
+<li data-pin="design"><h3>Design</h3><p>Save (⌘S), open, save a copy, download YAML, download the board as PNG or SVG, share a link, embed code, a new blank design — and templates: the lessons’ boards, every comparison’s two sides, and six real systems (chat, video, ride dispatch, payments, timelines, an AI assistant) rebuilt from their engineers’ public write-ups.</p></li>
 <li data-pin="spec"><h3>Architecture as code</h3><p>The design as YAML, synced with the board both ways.</p></li>
 <li data-pin="audit"><h3>Failure audit</h3><p>What breaks first, and what it costs. See <a href="audit.html">failure audit</a>.</p></li>
-<li data-pin="analysis"><h3>Analysis</h3><p>Monte Carlo, breaking point, cheapest sizing.</p></li>
+<li data-pin="analysis"><h3>Analysis</h3><p>Monte Carlo with confidence intervals and <b>why requests failed</b> (where each failure started: overloaded, out of threads, rate limited, timed out, a cut link…), breaking point, cheapest sizing.</p></li>
 <li data-pin="timeline"><h3>Rewind</h3><p>Every run is recorded. Drag to rewind the whole board to any moment; ←/→ steps. <b>copy timeline</b> gives the run as an incident timeline in Markdown.</p></li>
 <li data-pin="traffic"><h3>Traffic</h3><p>Requests per second, the share of reads, and the pattern: steady, day/night, spiky or a ramp. Drop a CSV of real traffic (time, req/s) on the board to replay it.</p></li>
-<li data-pin="chaos"><h3>Chaos</h3><p>Spike ×3, kill a server, kill the database, heal everything. More per component.</p></li>
+<li data-pin="chaos"><h3>Chaos</h3><p>Spike ×3, kill a server, kill the database, heal everything. More per component; select a link to cut it.</p></li>
 <li data-pin="minimap"><h3>Minimap</h3><p>Where you are on a large board.</p></li>
 </ol>
 </div>
@@ -30,7 +30,7 @@
 <li data-pin="runtime"><h3>Runtime</h3><p>Node.js, Python, Java, Go or Rust. Changes throughput per instance, latency, cold starts and the serverless bill.</p></li>
 <li data-pin="resilience"><h3>Resilience</h3><p>Opens the settings below; it opens by itself when any of them is set.</p></li>
 <li data-pin="retries"><h3>Retries</h3><p>Per failed call: immediate, with backoff, or with a budget.</p></li>
-<li data-pin="breaker"><h3>Circuit breaker</h3><p>Stop calling a failing dependency for a while, with an optional degraded fallback.</p></li>
+<li data-pin="breaker"><h3>Circuit breaker</h3><p>Stop calling a failing dependency for a while, with an optional degraded fallback. Servers and workers can also hold a <b>thread</b> per request (Tomcat-style: a slow dependency then starves everything) with a <b>bulkhead</b> per dependency.</p></li>
 <li data-pin="routing"><h3>Routing</h3><p>How calls spread over what it connects to: split, fan-out to all, or failover.</p></li>
 <li data-pin="fanout"><h3>Fan-out</h3><p>Scatter-gather: each call goes to N partitions and waits for the slowest. The tail at scale, made visible.</p></li>
 <li data-pin="queue"><h3>Queue</h3><p>A bounded queue: how many seconds of work it holds before it sheds load.</p></li>
