@@ -29,7 +29,7 @@ copyFileSync(join(root, 'src/backtest/wasm/hindcast_engine_bg.wasm'), join(dist,
 mkdirSync(join(here, 'media'), { recursive: true });
 copyFileSync(join(root, 'public/favicon.svg'), join(here, 'media/icon.svg'));
 
-execFileSync(join(root, 'node_modules/.bin/vite'), ['build', '--config', 'vite.webview.config.ts', '--logLevel', 'warn'], { cwd: here, stdio: 'inherit' });
+execFileSync(join(root, 'node_modules/.bin/vite'), ['build', '--config', 'vite.webview.config.mts', '--logLevel', 'warn'], { cwd: here, stdio: 'inherit' });
 // nothing from the network: the Terminal theme's web fonts fall back to the system's
 const page = join(dist, 'webview/index.html');
 writeFileSync(page, readFileSync(page, 'utf8').replace(/@import\s*(url\()?["']https:\/\/fonts\.googleapis\.com[^"']*["']\)?;/g, ''));
