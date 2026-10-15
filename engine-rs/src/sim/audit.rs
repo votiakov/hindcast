@@ -378,6 +378,9 @@ fn candidate_fixes(inc: &Incident, a: &Architecture, nm: &dyn Fn(&str) -> String
     let id = get_str(c, "id").unwrap_or("").to_string();
     let ps = parents(&id);
     let ks = children(&id);
+    // failover routing applies to all of a caller's dependencies: a caller that also calls
+    // something else would stop calling it, so those fixes are only offered where it doesn't
+    let only_calls = |p: &str, allowed: &[&String]| children(p).iter().all(|k| allowed.contains(&k));
     if inc.kind == "component" || inc.kind == "instance" {
         if kind_spec(kind).scalable {
             let fed = ps.iter().any(|p| matches!(by_id(p).and_then(|x| get_str(x, "kind")), Some("lb") | Some("gateway") | Some("queue") | Some("stream")));
@@ -409,7 +412,7 @@ fn candidate_fixes(inc: &Incident, a: &Architecture, nm: &dyn Fn(&str) -> String
                 }
                 out.push(Cand { title: format!("Add a read replica to {}", nm(&id)), why: "A replica serves reads and is promoted to primary in seconds when the primary dies.".into(), changes: vec![json!({ "op": "add", "component": comp }), json!({ "op": "connect", "from": id, "to": rep })] });
             }
-        } else if (kind == "cache" || kind == "cdn") && !ks.is_empty() {
+        } else if (kind == "cache" || kind == "cdn") && !ks.is_empty() && ps.iter().all(|p| only_calls(p, &std::iter::once(&id).chain(ks.iter()).collect::<Vec<_>>())) {
             // callers bypass a dead cache and go straight to its origin
             let mut changes = vec![];
             for p in &ps {
@@ -422,7 +425,7 @@ fn candidate_fixes(inc: &Incident, a: &Architecture, nm: &dyn Fn(&str) -> String
                 }
             }
             out.push(Cand { title: format!("Bypass {} when it is down", nm(&id)), why: "Callers fail over to the origin instead of failing — the cache is an optimisation, not a dependency.".into(), changes });
-        } else if kind != "client" {
+        } else if kind != "client" && ps.iter().all(|p| only_calls(p, &[&id])) {
             let twin = unique_id(a, &format!("{}-b", id));
             // { ...rest, id: twin, name }: id moves to the end, a name keeps its place
             let mut comp = c.clone();
@@ -564,7 +567,9 @@ pub fn audit(input: &Architecture, o: &AuditOptions, progress: &mut dyn FnMut(f6
         s["events"] = json!(inc.events);
         s
     };
-    let base = sim(&spec, json!({ "name": "expected load", "duration": 30, "rps": rps, "readRatio": read_ratio, "slo": slo_v }))?;
+    // base and every fix are priced over the same run: with an autoscaler the mean cost depends on its length
+    let expected = json!({ "name": "expected load", "duration": 30, "rps": rps, "readRatio": read_ratio, "slo": slo_v });
+    let base = sim(&spec, expected.clone())?;
     let base_cost = base.summary.mean_cost_per_hour;
     let bt = &base.timeline[base.timeline.len().saturating_sub(10)..];
     let berr = avg(&bt.iter().map(|x| x.error_rate).collect::<Vec<_>>());
@@ -651,7 +656,7 @@ pub fn audit(input: &Architecture, o: &AuditOptions, progress: &mut dyn FnMut(f6
                 if !better {
                     continue;
                 }
-                let cost = sim(&variant, json!({ "duration": 20, "rps": rps, "readRatio": read_ratio, "slo": slo_v }))?.summary.mean_cost_per_hour;
+                let cost = sim(&variant, expected.clone())?.summary.mean_cost_per_hour;
                 f.fixes.push(Fix { title: cand.title, why: cand.why, changes: cand.changes, monthly_delta: monthly(cost - base_cost), after: After { severity: sev_after.into(), error_rate: after.error_rate, peak_p99_ms: after.peak_p99_ms, failed_requests: after.failed_requests } });
             }
             js_sort_by(&mut f.fixes, |a, b| {
@@ -708,7 +713,7 @@ pub fn audit(input: &Architecture, o: &AuditOptions, progress: &mut dyn FnMut(f6
                 if r2 <= ratio * 1.1 {
                     continue;
                 }
-                let cost = sim(&variant, json!({ "duration": 20, "rps": rps, "readRatio": read_ratio, "slo": slo_v }))?.summary.mean_cost_per_hour;
+                let cost = sim(&variant, expected.clone())?.summary.mean_cost_per_hour;
                 headroom.fixes.push(Fix {
                     why: format!("{} Sustains {} req/s ({}×){}.", cand.why, js_num(js_round(bp2.max_rps)), js_to_fixed(r2, 1), bp2.limited_by.as_ref().map(|x| format!(", then {} is next", nm(x))).unwrap_or_default()),
                     title: cand.title,
