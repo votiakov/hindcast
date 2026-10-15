@@ -519,6 +519,24 @@ fn mix_mean_p99(dist: &[[f64; 3]]) -> (f64, f64) {
     (mean, hi)
 }
 
+/// a mixture's q-quantile (the share above it is 1 − q)
+pub fn mix_quantile(dist: &[[f64; 3]], q: f64) -> f64 {
+    let w: f64 = dist.iter().map(|c| c[0]).sum();
+    if w <= 0.0 {
+        return 0.0;
+    }
+    let (mut lo, mut hi) = (0.0, dist.iter().map(|c| c[1] + 4.0 * c[2] + 1.0).fold(0.0, f64::max));
+    for _ in 0..40 {
+        let mid = (lo + hi) / 2.0;
+        if mix_late(dist, mid) > 1.0 - q {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    hi
+}
+
 /// at most four components: the two closest in mean merge until it fits
 fn mix_merge(mut dist: Vec<[f64; 3]>) -> Vec<[f64; 3]> {
     dist.retain(|c| c[0] > 1e-12 && c[1].is_finite());
@@ -1122,6 +1140,28 @@ impl Engine {
 
     pub fn reset(&mut self) {
         *self = Engine::default();
+    }
+
+    /// the users' successful answers this tick as a mixture of (share of the traffic, mean, p99 − mean):
+    /// the clients' answer mixtures, each client sending an equal share and answered at its success
+    /// (by share, not by the clients' smoothed arrival rate: the first ticks' answers count in full)
+    pub fn answer_mix(&self, nodes: &[SimNode]) -> Vec<[f64; 3]> {
+        let clients: Vec<&SimNode> = nodes.iter().filter(|n| n.data.kind == "client" && n.data.alive).collect();
+        let mut out = vec![];
+        for n in &clients {
+            if let Some(st) = self.nodes.get(&n.id) {
+                let ok = st.success / clients.len() as f64;
+                if ok <= 0.0 {
+                    continue;
+                }
+                if st.dist.is_empty() {
+                    out.push([ok, st.latency_ms, st.tail_ms]);
+                } else {
+                    out.extend(mix_then(&st.dist, 0.0, 0.0, ok));
+                }
+            }
+        }
+        out
     }
 
     /// writes acknowledged and then lost so far

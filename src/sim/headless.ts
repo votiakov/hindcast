@@ -15,6 +15,8 @@ export interface SimOptions {
   /** timeline sample interval (s) */
   sampleEvery?: number;
   cfg?: Partial<EngineConfig>;
+  /** also report the successful answers' p50 and p99 (scripts/engine-crosscheck.ts) */
+  answers?: boolean;
 }
 
 export interface ComponentReport {
@@ -61,6 +63,9 @@ export interface SimResult {
   components: Record<string, ComponentReport>;
   bottlenecks: { id: string; peakUtil: number; droppedTotal: number; note: string | null }[];
   events: { t: number; what: string }[];
+  /** with `answers`: the successful answers' latency over the run, as the discrete-event engine's
+   * histogram measures it (summary.meanP99Ms counts failures as timeouts once they pass 1%) */
+  answers?: { p50Ms: number; p99Ms: number };
 }
 
 export function simulate(specInput: unknown, scenarioInput: unknown = {}, opts: SimOptions = {}): SimResult {

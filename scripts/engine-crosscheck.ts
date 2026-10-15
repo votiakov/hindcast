@@ -58,22 +58,63 @@ function generate(kinds = KINDS) {
 }
 const describe = (spec: ReturnType<typeof generate>) =>
   `${spec.components.map((c: any) => c.id + (c.instances ? 'x' + c.instances : '') + (c.retries ? ' r' + c.retries : '') + (c.timeoutMs ? ' t' + c.timeoutMs : '') + (c.routing ? ' ' + c.routing : '') + (c.hitRate ? ' h' + c.hitRate : '') + (c.refreshS ? ' refresh' + c.refreshS : '') + (c.recall ? ' recall' + c.recall : '') + (c.vectorsM ? ' ' + c.vectorsM + 'M' : '') + (c.retrieval ? ' ' + c.retrieval : '') + (c.edgeShare ? ' share' + c.edgeShare : '') + (c.cpuMs ? ' cpu' + c.cpuMs : '')).join(', ')} | ${spec.connections.map((c) => c.join('>')).join(' ')}`;
+// Latency: the successful answers' p50 and p99 over the run (the DES's histogram; the fluid engine's
+// per-tick answer mixtures pooled the same way), on the boards both engines serve healthily (under 5%
+// errors in both). The DES's percentiles are a sample: the same board gives a p99 8% apart between
+// seeds at the median, and 60% apart for one board in ten — the ones whose p99 sits where two modes
+// meet (a cache's hits and misses, a function's warm and cold answers), so that a few answers either
+// way move it from one mode to the other. So the noise band is measured, board by board: the range of
+// five seeds. Past it, the fluid engine is allowed 25% for being an approximation: its answer shape
+// (40% above the mean, exponential to and past the p99) is within 2–7% of the DES's lognormal service
+// times from p50 to p99.9 (p50 0.87 vs 0.86 × mean, p90 1.79 vs 1.75, p99.9 4.43 vs 4.75), and its M/M/c waits scaled for that variability (Allen–Cunneen) are off by
+// 10–20% at high load; plus 5 ms for what neither engine resolves (the DES's 0.3 ms hops, its 2.5%
+// histogram buckets, rounding). Boards with a component at a load of 0.97 or more are counted apart:
+// there the wait has no steady state over a 40 s run (an M/M/c queue relaxes in about
+// 1 / (capacity × (1 − √load)²): 44 s for a 100/s pool at 0.97, eight minutes at 0.99), so the DES's
+// percentiles depend on the path a run takes and the fluid engine's on its 98% cap (#101 above, for
+// errors). The generator makes many: 200 req/s split two ways is exactly a 100/s worker's capacity.
+
+const SEEDS = 5;
+const TOLERANCE = 0.25;
+const FLOOR_MS = 5;
+const SATURATED = 0.97;
 function crosscheck(n: number, kinds: string[], label: string) {
   const rows: string[] = [];
+  const slow: string[] = [];
   let withNew = 0;
+  let healthy = 0;
+  let saturated = 0;
   for (let k = 0; k < n; k++) {
     const spec = generate(kinds);
     if (spec.components.some((c: any) => !KINDS.includes(c.kind) && c.kind !== 'client')) withNew++;
     const rps = pick([20, 200, 2000]);
     try {
-      const f = simulate(spec, { duration: 40, rps }).summary;
+      const fr = simulate(spec, { duration: 40, rps }, { answers: true });
+      const f = fr.summary;
       const d = simulateDes(spec, { duration: 40, rps }, { seed: 1 }).summary;
       const diff = Math.abs(f.meanErrorRate - d.meanErrorRate);
       if (diff > 0.05) rows.push(`#${k} ${rps}/s fluid ${(f.meanErrorRate * 100).toFixed(1)}% des ${(d.meanErrorRate * 100).toFixed(1)}%  ${describe(spec)}`);
+      if (f.meanErrorRate >= 0.05 || d.meanErrorRate >= 0.05 || !fr.answers) continue;
+      if (Object.values(fr.components).some((c) => c.meanUtil >= SATURATED && !c.async && !['client', 'queue', 'stream'].includes(c.kind))) {
+        saturated++;
+        continue;
+      }
+      healthy++;
+      const ds = [d, ...Array.from({ length: SEEDS - 1 }, (_, s) => simulateDes(spec, { duration: 40, rps }, { seed: s + 2 }).summary)];
+      const out: string[] = [];
+      for (const [q, fluid] of [['p50', fr.answers.p50Ms], ['p99', fr.answers.p99Ms]] as const) {
+        const des = ds.map((x) => (q === 'p50' ? x.p50Ms : x.p99Ms));
+        const lo = Math.min(...des) / (1 + TOLERANCE) - FLOOR_MS;
+        const hi = Math.max(...des) * (1 + TOLERANCE) + FLOOR_MS;
+        if (fluid < lo || fluid > hi) out.push(`${q} fluid ${fluid} ms des ${Math.min(...des)}–${Math.max(...des)}`);
+      }
+      if (out.length) slow.push(`#${k} ${rps}/s ${out.join(', ')}  ${describe(spec)}`);
     } catch (e) { rows.push(`#${k} threw ${(e as Error).message}`); }
   }
   console.log(rows.length, `of ${n} disagree by >5 points${label}${kinds === KINDS ? '' : ` (${withNew} with a search, vector, archive or edge component)`}`);
   if (rows.length) console.log(rows.join('\n'));
+  console.log(slow.length, `of ${healthy} healthy boards disagree on latency (p50 or p99 outside the DES's ${SEEDS}-seed range ±${TOLERANCE * 100}% + ${FLOOR_MS} ms; ${saturated} more at a load ≥ ${SATURATED} left out)${label}`);
+  if (slow.length) console.log(slow.join('\n'));
 }
 crosscheck(200, KINDS, '');
 rnd = lcg(29);
