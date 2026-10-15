@@ -422,7 +422,8 @@ pub fn run_plan(plan: &Plan, traffic: &Traffic, opts: &Opts) -> RunResult {
                 }
                 let down = f.down || now < ss.oom_until;
                 if !down && per_rep.is_finite() {
-                    ss.served += per_rep * dt;
+                    // what a container served, not what was offered to it
+                    ss.served += (if k_cap.is_finite() { per_rep.min(k_cap) } else { per_rep }) * dt;
                 }
                 let mut wait_mean = 0.0;
                 let mut wait_p99 = 0.0;

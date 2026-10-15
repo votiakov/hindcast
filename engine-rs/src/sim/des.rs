@@ -364,10 +364,13 @@ struct Win {
     /// thread-per-request: seconds threads were held, and how many requests released one
     held_s: f64,
     held_n: f64,
+    /// a queue: messages sent to its dead-letter queue; a database: seconds its hot row's lock was held
+    dead: f64,
+    lock_s: f64,
 }
 
 fn new_win() -> Win {
-    Win { arrivals: 0.0, drops: 0.0, hits: 0.0, busy_area: 0.0, calls: 0.0, attempts: 0.0, late: 0.0, usage_reqs: 0.0, hot_area: 0.0, held_s: 0.0, held_n: 0.0 }
+    Win { arrivals: 0.0, drops: 0.0, hits: 0.0, busy_area: 0.0, calls: 0.0, attempts: 0.0, late: 0.0, usage_reqs: 0.0, hot_area: 0.0, held_s: 0.0, held_n: 0.0, dead: 0.0, lock_s: 0.0 }
 }
 
 struct DNode {
@@ -402,6 +405,7 @@ struct DNode {
     /// a database: the hot row's lock (held or not) and the writes waiting for it
     lock_busy: bool,
     lock_q: VecDeque<Job>,
+    lock_t0: f64,
     /// an object store: each prefix's bucket of prefix-seconds, and when it was last topped up
     px_bucket: Vec<f64>,
     px_t: Vec<f64>,
@@ -765,9 +769,10 @@ impl<'a> Des<'a> {
                     if let Some(max) = self.nodes[queue].data.max_receives.filter(|m| *m >= 1.0) {
                         if (tries as f64 + 1.0) < max {
                             let vis = self.nodes[queue].data.visibility_s.unwrap_or(30.0).max(0.0) * 1000.0;
-                            self.at(vis, Ev::Redrive { n: queue, read, tries: tries + 1 });
+                            self.at(vis, Ev::Redrive { n: queue, read, tries: tries.saturating_add(1) });
                         } else {
                             self.dead_letters += 1.0;
+                            self.nodes[queue].win.dead += 1.0;
                         }
                     }
                 }
@@ -1070,6 +1075,7 @@ impl<'a> Des<'a> {
                 continue;
             }
             self.nodes[n].lock_busy = true;
+            self.nodes[n].lock_t0 = self.now;
             let svc = self.rng.lognormal(1000.0 / super::catalog::row_lock_rps(&self.nodes[n].data), self.cfg.service_cv);
             self.at(svc, Ev::LockDone { n, job });
             return;
@@ -1427,10 +1433,12 @@ impl<'a> Des<'a> {
             }
         }
         let gap = if rate > 0.0 { self.rng.exp(1.0 / rate) } else { f64::INFINITY };
-        if gap <= 0.25 {
+        // look again at least every 250 ms, and the moment a scheduled job's run starts or ends
+        let horizon = 0.25_f64.min(super::catalog::job_next_change(&self.nodes[c].data, self.now));
+        if gap <= horizon {
             self.q.push(self.now + gap, Ev::Generate { c, emit: true });
         } else {
-            self.q.push(self.now + 0.25, Ev::Generate { c, emit: false });
+            self.q.push(self.now + horizon, Ev::Generate { c, emit: false });
         }
     }
 
@@ -1515,6 +1523,8 @@ impl<'a> Des<'a> {
             let w = &n.win;
             let workers = if n.workers.is_finite() { n.workers } else { 1.0 };
             let util = if n.sh_workers > 0.0 { w.hot_area / (n.sh_workers * win_s) } else if n.data.kind == "queue" { n.backlog.len() as f64 / QUEUE_BACKLOG_MAX as f64 } else if n.data.kind == "stream" { n.sub_backlog.iter().map(|q| q.len()).max().unwrap_or(0) as f64 / QUEUE_BACKLOG_MAX as f64 } else if n.rate.is_finite() { w.arrivals / (n.rate * win_s).max(1e-9) } else { w.busy_area / (workers * win_s) };
+            // a hot row's lock is a one-writer resource: its busy share is the database's too
+            let util = if n.lock_busy || w.lock_s > 0.0 { util.max(w.lock_s / win_s) } else { util };
             // thread-per-request: the threads the offered load needs (rate × hold time, Little's law) over those there are
             let util = if n.threads_cap.is_finite() && w.held_n > 0.0 { util.max((w.arrivals / win_s) * (w.held_s / w.held_n) / n.threads_cap.max(1e-9)) } else { util };
             let billed = if n.data.kind == "function" || n.data.kind == "llmapi" || n.data.kind == "external" || n.data.kind == "kv" || n.data.kind == "storage" { w.usage_reqs } else if n.data.kind == "client" { 0.0 } else { w.arrivals };
@@ -1555,7 +1565,7 @@ impl<'a> Des<'a> {
                 // what a thread was held for beyond the work itself
                 hold_ms: if w.held_n > 0.0 { (w.held_s / w.held_n * 1000.0 - n.svc_mean_ms).max(0.0) } else { 0.0 },
                 own_ms: n.svc_mean_ms,
-                dead_letter_rps: 0.0,
+                dead_letter_rps: w.dead / win_s,
             };
             let arrivals = w.arrivals;
             if (n.data.kind == "cache" || n.data.kind == "cdn") && !up(n) {
@@ -1648,11 +1658,17 @@ impl<'a> Des<'a> {
                 let now = self.now;
                 if self.nodes[n].backlog.len() < QUEUE_BACKLOG_MAX {
                     self.nodes[n].backlog.push_back(Job { read, t_in: now, done: None, shard: NO_SHARD, tries });
+                } else {
+                    // nowhere to come back to: as good as dead-lettered
+                    self.dead_letters += 1.0;
+                    self.nodes[n].win.dead += 1.0;
                 }
                 self.pump(n);
             }
             Ev::LockDone { n, job } => {
                 self.nodes[n].lock_busy = false;
+                let held = self.now - self.nodes[n].lock_t0;
+                self.nodes[n].win.lock_s += held;
                 self.next_lock(n);
                 self.after_service(n, job);
             }
@@ -1715,6 +1731,7 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
             px_t: vec![],
             lock_busy: false,
             lock_q: VecDeque::new(),
+            lock_t0: 0.0,
             conns: 0.0,
             dead_since: None,
             sub_backlog: vec![],

@@ -592,7 +592,7 @@ pub fn bulkhead_admit(d: &NodeData, reachable: f64, rps: f64, latency_ms: f64) -
 /// thread-per-request: a thread is held for the work and every call it waits on, so the instances'
 /// threads finish at most threads ÷ hold time requests a second (Little's law). Unlimited when async
 pub fn threads_capacity(d: &NodeData, reachable: f64, hold_ms: f64) -> f64 {
-    match d.threads.filter(|t| *t > 0.0) {
+    match d.threads.filter(|t| *t > 0.0 && (d.kind == "server" || d.kind == "worker")) {
         Some(t) => t * reachable.max(0.0) / ((base_latency_of(d) + hold_ms.max(0.0)) / 1000.0).max(1e-4),
         None => f64::INFINITY,
     }
@@ -1242,7 +1242,7 @@ impl Engine {
             let arrivals = if d.kind == "client" {
                 match (d.alive, job_rate(d, now)) {
                     (false, _) => 0.0,
-                    (true, Some(r)) => r * dt,
+                    (true, Some(_)) => job_volume(d, now, now + dt).unwrap_or(0.0),
                     (true, None) => per_client,
                 }
             } else {
@@ -1388,7 +1388,9 @@ impl Engine {
                         continue;
                     }
                     let t = targets.iter().find(|x| x.e == e).unwrap().t;
-                    let (v, v_r) = ((vr + vw) * edge_calls[e], vr * edge_calls[e]);
+                    // a bulkhead refuses what is past its share at the caller: it never reaches the dependency
+                    let admit = bulkhead_admit(d, st.reachable, (vr + vw) / dt, self.nodes[sidx[t]].latency_ms + edge_lat[e]);
+                    let (v, v_r) = ((vr + vw) * edge_calls[e] * admit, vr * edge_calls[e] * admit);
                     if done[t] {
                         let c = self.carry.entry(nodes_in[t].id.clone()).or_insert((0.0, 0.0));
                         c.0 += v;
@@ -1447,8 +1449,9 @@ impl Engine {
                     if edge_cut[e] {
                         continue;
                     }
-                    let v = v0 * edge_calls[e];
                     let t = targets.iter().find(|x| x.e == e).unwrap().t;
+                    let admit = bulkhead_admit(d, st.reachable, v0 / dt, self.nodes[sidx[t]].latency_ms + edge_lat[e]);
+                    let v = v0 * edge_calls[e] * admit;
                     if done[t] {
                         // a call back into a component that already ran this tick (a cycle): next tick
                         let c = self.carry.entry(nodes_in[t].id.clone()).or_insert((0.0, 0.0));

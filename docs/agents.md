@@ -50,9 +50,12 @@ HINDCAST_MCP_TOKEN=… hindcast mcp --http --port 8787            # http://127.0
 hindcast mcp --http --host 0.0.0.0 --port 8787                  # reachable from other machines
 ```
 
-Streamable HTTP with JSON responses: POST a JSON-RPC message (or a batch) to `/mcp`; `GET /health`
-answers `ok`. It listens on loopback unless `--host` says otherwise, and asks for
-`Authorization: Bearer <token>` when `HINDCAST_MCP_TOKEN` is set. Over HTTP it offers only the tools
+Streamable HTTP with JSON responses: POST a JSON-RPC message (or a batch of up to 16) to `/mcp`;
+`GET /health` answers `ok`. It listens on loopback unless `--host` says otherwise — and then refuses
+to start without `HINDCAST_MCP_TOKEN` (clients send `Authorization: Bearer <token>`) unless you pass
+`--no-auth`. On loopback it answers only to a local `Host`, and a browser only from a local `Origin`
+(`HINDCAST_MCP_ORIGINS` adds others), so a web page can't drive it by DNS rebinding. Requests are
+bounded: 4 MiB bodies, 30 s to send one, 8 at once. Over HTTP it offers only an allowlist of tools
 that compute on what they are given — designing, simulating, auditing, importing Terraform or
 Kubernetes, `verify_design`. The workspace tools (they read and write local files and query your
 Prometheus or cluster), `backtest_strategy` / `replay_outage` (they read paths) and `open_in_app`

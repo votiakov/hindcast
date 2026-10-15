@@ -183,7 +183,7 @@ fn check_component(c: &JMap<String, Value>, path: Vec<Value>, issues: &mut Vec<I
     v.number("prefixes", false, Some((1.0, true)), Some(100000.0), true);
     v.number("hotRowShare", false, Some((0.0, true)), Some(1.0), false);
     v.number("burst", false, Some((0.0, false)), None, false);
-    v.number("maxReceives", false, Some((1.0, true)), Some(1000.0), true);
+    v.number("maxReceives", false, Some((1.0, true)), Some(100.0), true);
     v.number("visibilityS", false, Some((0.0, true)), Some(43200.0), false);
     v.number("maxConnections", false, Some((1.0, true)), None, true);
     v.number("connectionS", false, Some((0.0, false)), Some(86400.0), false);

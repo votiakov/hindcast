@@ -26,7 +26,7 @@ const USAGE: &str = r#"Hindcast CLI — the simulation engine without the UI. (I
   hindcast import-terraform <terraform-show.json> [--name "My system"] [--out arch.yaml]
   hindcast import-k8s      <manifests.yaml …> [--name "My system"] [--out arch.yaml]      (Deployments, HPAs, StatefulSets, Services, Ingress)
   hindcast catalog
-  hindcast mcp            [--http [--port 8787] [--host 127.0.0.1] [--all-tools]]   (MCP server: stdio, or Streamable HTTP)
+  hindcast mcp            [--http [--port 8787] [--host 127.0.0.1] [--all-tools] [--no-auth]]   (MCP server: stdio, or Streamable HTTP)
 
 Backtesting on real data (files only; see docs/backtest.md):
   hindcast export-prometheus --url http://prom:9090 --start 2026-09-01 --end 2026-09-15 [--step 60] [--preset otel-spanmetrics,cadvisor] --out telemetry/
@@ -72,7 +72,7 @@ fn run(args: &[String], out: &mut Out) -> Result<i32, String> {
             let val = |k: &str| rest.iter().position(|a| a == k).and_then(|i| rest.get(i + 1)).cloned();
             let port = val("--port").and_then(|p| p.parse().ok()).unwrap_or(8787);
             let host = val("--host").unwrap_or_else(|| "127.0.0.1".into());
-            return Ok(mcp::serve_http(&host, port, rest.iter().any(|a| a == "--all-tools")));
+            return Ok(mcp::serve_http(&host, port, rest.iter().any(|a| a == "--all-tools"), rest.iter().any(|a| a == "--no-auth")));
         }
         return Ok(mcp::serve());
     }

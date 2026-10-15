@@ -113,6 +113,16 @@ describe('threads and bulkheads', () => {
     expect(des.summary.p50Ms).toBeLessThan(100);
   });
 
+  it('a bulkhead spares the slow dependency too: what it refuses never reaches it, in both engines', () => {
+    const spec = slow({ bulkhead: 10 });
+    const fluidPay = simulate(spec as never, steady(400, 40)).components.pay.meanUtil;
+    const desPay = simulateDes(spec, steady(400, 40), { seed: 2 }).components.pay.meanUtil;
+    const unprotected = simulate(slow({}) as never, steady(400, 40)).components.pay.meanUtil;
+    // 2 × 10 calls in flight at 2 s each: ~10 calls a second reach it, not ~200
+    expect(fluidPay).toBeLessThan(unprotected * 0.25);
+    expect(Math.abs(fluidPay - desPay)).toBeLessThan(Math.max(fluidPay, desPay) * 0.5 + 1e-3);
+  });
+
   it('a timeout gives the threads back sooner', () => {
     const { fluid, des } = both(slow({ timeoutMs: 300 }));
     expect(fluid).toBeLessThan(0.6);

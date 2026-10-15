@@ -343,7 +343,7 @@
            "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
            "type": "integer",
            "minimum": 1,
-           "maximum": 1000
+           "maximum": 100
           },
           "visibilityS": {
            "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
@@ -850,7 +850,7 @@
            "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
            "type": "integer",
            "minimum": 1,
-           "maximum": 1000
+           "maximum": 100
           },
           "visibilityS": {
            "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
@@ -1775,7 +1775,7 @@
            "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
            "type": "integer",
            "minimum": 1,
-           "maximum": 1000
+           "maximum": 100
           },
           "visibilityS": {
            "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
@@ -2271,7 +2271,7 @@
               "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
               "type": "integer",
               "minimum": 1,
-              "maximum": 1000
+              "maximum": 100
              },
              "visibilityS": {
               "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
@@ -2707,7 +2707,7 @@
                 "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
                 "type": "integer",
                 "minimum": 1,
-                "maximum": 1000
+                "maximum": 100
                },
                "visibilityS": {
                 "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
@@ -3038,7 +3038,7 @@
                 "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
                 "type": "integer",
                 "minimum": 1,
-                "maximum": 1000
+                "maximum": 100
                },
                "visibilityS": {
                 "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
@@ -3918,7 +3918,7 @@
            "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
            "type": "integer",
            "minimum": 1,
-           "maximum": 1000
+           "maximum": 100
           },
           "visibilityS": {
            "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
@@ -4441,7 +4441,7 @@
            "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
            "type": "integer",
            "minimum": 1,
-           "maximum": 1000
+           "maximum": 100
           },
           "visibilityS": {
            "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
@@ -5355,7 +5355,7 @@
            "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
            "type": "integer",
            "minimum": 1,
-           "maximum": 1000
+           "maximum": 100
           },
           "visibilityS": {
            "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
@@ -6278,7 +6278,7 @@
            "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
            "type": "integer",
            "minimum": 1,
-           "maximum": 1000
+           "maximum": 100
           },
           "visibilityS": {
            "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
@@ -6869,7 +6869,7 @@
            "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
            "type": "integer",
            "minimum": 1,
-           "maximum": 1000
+           "maximum": 100
           },
           "visibilityS": {
            "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
@@ -7362,7 +7362,7 @@
              "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
              "type": "integer",
              "minimum": 1,
-             "maximum": 1000
+             "maximum": 100
             },
             "visibilityS": {
              "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
@@ -7798,7 +7798,7 @@
                "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
                "type": "integer",
                "minimum": 1,
-               "maximum": 1000
+               "maximum": 100
               },
               "visibilityS": {
                "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
@@ -8129,7 +8129,7 @@
                "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
                "type": "integer",
                "minimum": 1,
-               "maximum": 1000
+               "maximum": 100
               },
               "visibilityS": {
                "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
@@ -9007,7 +9007,7 @@
            "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
            "type": "integer",
            "minimum": 1,
-           "maximum": 1000
+           "maximum": 100
           },
           "visibilityS": {
            "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
@@ -9500,7 +9500,7 @@
              "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
              "type": "integer",
              "minimum": 1,
-             "maximum": 1000
+             "maximum": 100
             },
             "visibilityS": {
              "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
@@ -9936,7 +9936,7 @@
                "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
                "type": "integer",
                "minimum": 1,
-               "maximum": 1000
+               "maximum": 100
               },
               "visibilityS": {
                "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
@@ -10267,7 +10267,7 @@
                "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
                "type": "integer",
                "minimum": 1,
-               "maximum": 1000
+               "maximum": 100
               },
               "visibilityS": {
                "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",

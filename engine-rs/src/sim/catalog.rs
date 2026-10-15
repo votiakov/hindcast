@@ -546,6 +546,41 @@ pub fn job_rate(d: &NodeData, t: f64) -> Option<f64> {
     Some(if since >= 0.0 && since % every < span { d.batch.unwrap_or(0.0).max(0.0) / span } else { 0.0 })
 }
 
+/// a scheduled job's requests in [t0, t1): its batch spread over each run's window, so a window
+/// shorter than a tick is neither multiplied nor missed (None: users)
+pub fn job_volume(d: &NodeData, t0: f64, t1: f64) -> Option<f64> {
+    let every = d.every_s.filter(|e| *e > 0.0 && d.kind == "client")?;
+    let span = d.batch_s.unwrap_or(10.0).max(0.1).min(every);
+    let per_s = d.batch.unwrap_or(0.0).max(0.0) / span;
+    let (a, b) = (t0 - 10.0, t1 - 10.0);
+    if b <= 0.0 {
+        return Some(0.0);
+    }
+    let mut v = 0.0;
+    let mut k = (a.max(0.0) / every).floor();
+    while k * every < b {
+        let (w0, w1) = (k * every, k * every + span);
+        v += (w1.min(b) - w0.max(a)).max(0.0) * per_s;
+        k += 1.0;
+    }
+    Some(v)
+}
+
+/// seconds until a scheduled job's next run starts or ends (∞: users)
+pub fn job_next_change(d: &NodeData, t: f64) -> f64 {
+    let every = match d.every_s.filter(|e| *e > 0.0 && d.kind == "client") {
+        Some(e) => e,
+        None => return f64::INFINITY,
+    };
+    let span = d.batch_s.unwrap_or(10.0).max(0.1).min(every);
+    let since = t - 10.0;
+    if since < 0.0 {
+        return -since;
+    }
+    let phase = since % every;
+    (if phase < span { span - phase } else { every - phase }).max(1e-6)
+}
+
 /// Erlang B: the share of arrivals refused by c connections at an offered load of a (arrival rate ×
 /// holding time) — exact by recursion up to 20,000 connections, the fluid limit max(0, 1 − c/a) above
 pub fn erlang_b(c: f64, a: f64) -> f64 {

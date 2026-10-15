@@ -80,11 +80,11 @@ pub fn serve() -> i32 {
     0
 }
 
-/// tools that only compute on what they are given: no workspace on disk, no cluster, no browser —
-/// the ones a server reachable over the network offers by default
+/// tools that only compute on what they are given — no workspace on disk, no paths, no cluster, no
+/// browser: the ones a server reachable over the network offers by default (an allowlist, so a tool
+/// added later is not exposed until it is judged safe)
 pub fn network_safe(tool: &str) -> bool {
-    // backtest_strategy and replay_outage read a model, a dataset and strategies from paths
-    !matches!(tool, "open_in_app" | "backtest_strategy" | "replay_outage" | "connect_telemetry" | "collect_telemetry" | "calibrate_model" | "model_status" | "verify_change" | "suggest_changes" | "find_headroom" | "review_capacity" | "check_node_loss" | "read_cluster")
+    matches!(tool, "list_components" | "validate_architecture" | "simulate" | "compare_architectures" | "find_breaking_point" | "analyze" | "optimize_cost" | "audit_resilience" | "import_terraform" | "import_kubernetes" | "show_architecture" | "verify_design")
 }
 
 /// one JSON-RPC message: its reply (none for a notification); progress notifications go to `sink`
@@ -129,9 +129,16 @@ pub fn handle(m: &Value, msg: &Value, allow: &dyn Fn(&str) -> bool, sink: &mut V
 }
 
 /// the MCP server over HTTP (Streamable HTTP, JSON responses): POST /mcp takes a JSON-RPC message or a
-/// batch; GET /health answers ok. Loopback unless a host is given; a bearer token if
-/// HINDCAST_MCP_TOKEN is set; only network-safe tools unless `all_tools`
-pub fn serve_http(host: &str, port: u16, all_tools: bool) -> i32 {
+/// batch; GET /health answers ok. Loopback unless a host is given — and then only with a bearer token
+/// (HINDCAST_MCP_TOKEN) unless `no_auth`; only network-safe tools unless `all_tools`. Host and Origin
+/// are checked (DNS rebinding), requests are bounded in size, time and number at once
+pub fn serve_http(host: &str, port: u16, all_tools: bool, no_auth: bool) -> i32 {
+    let token = std::env::var("HINDCAST_MCP_TOKEN").ok().filter(|t| !t.is_empty());
+    let loopback = matches!(host, "127.0.0.1" | "localhost" | "::1");
+    if !loopback && token.is_none() && !no_auth {
+        eprintln!("refusing to listen on {} without a token: set HINDCAST_MCP_TOKEN (or pass --no-auth on a network you trust)", host);
+        return 1;
+    }
     let listener = match std::net::TcpListener::bind((host, port)) {
         Ok(l) => l,
         Err(e) => {
@@ -139,36 +146,65 @@ pub fn serve_http(host: &str, port: u16, all_tools: bool) -> i32 {
             return 1;
         }
     };
-    let token = std::env::var("HINDCAST_MCP_TOKEN").ok().filter(|t| !t.is_empty());
     eprintln!("hindcast MCP on http://{}:{}/mcp{}{}", host, port, if token.is_some() { " (bearer token required)" } else { "" }, if all_tools { " — all tools, local files included" } else { "" });
     let m = std::sync::Arc::new(manifest());
     let token = std::sync::Arc::new(token);
+    let busy = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     for stream in listener.incoming().flatten() {
-        let (m, token) = (m.clone(), token.clone());
+        let (m, token, busy) = (m.clone(), token.clone(), busy.clone());
         std::thread::spawn(move || {
-            let _ = http_one(stream, &m, token.as_deref(), all_tools);
+            let _ = http_one(stream, &m, token.as_deref(), all_tools, loopback, &busy);
         });
     }
     0
 }
 
-fn http_one(stream: std::net::TcpStream, m: &Value, token: Option<&str>, all_tools: bool) -> std::io::Result<()> {
+const MAX_LINE: usize = 8 * 1024;
+const MAX_HEADERS: usize = 64;
+const MAX_BODY: usize = 4 << 20;
+const MAX_BATCH: usize = 16;
+const MAX_AT_ONCE: usize = 8;
+
+fn ct_eq(a: &str, b: &str) -> bool {
+    a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+/// localhost by name or address, any port
+fn is_local_host(h: &str) -> bool {
+    let h = h.trim();
+    let name = if let Some(rest) = h.strip_prefix('[') { rest.split(']').next().unwrap_or("") } else { h.rsplit_once(':').map(|x| x.0).unwrap_or(h) };
+    matches!(name, "localhost" | "127.0.0.1" | "::1")
+}
+
+fn http_one(stream: std::net::TcpStream, m: &Value, token: Option<&str>, all_tools: bool, loopback: bool, busy: &std::sync::atomic::AtomicUsize) -> std::io::Result<()> {
     use std::io::Read;
+    use std::sync::atomic::Ordering;
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(30)))?;
+    stream.set_write_timeout(Some(std::time::Duration::from_secs(30)))?;
     let mut reader = std::io::BufReader::new(stream.try_clone()?);
+    let mut read_line = |out: &mut String| -> std::io::Result<usize> {
+        let n = (&mut reader).take(MAX_LINE as u64).read_line(out)?;
+        if n >= MAX_LINE && !out.ends_with('\n') {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "line too long"));
+        }
+        Ok(n)
+    };
     let mut line = String::new();
-    reader.read_line(&mut line)?;
+    read_line(&mut line)?;
     let mut parts = line.split_whitespace();
     let (method, path) = (parts.next().unwrap_or("").to_string(), parts.next().unwrap_or("").to_string());
-    let (mut length, mut auth) = (0usize, String::new());
-    loop {
+    let (mut length, mut auth, mut host_h, mut origin) = (0usize, String::new(), String::new(), String::new());
+    for _ in 0..=MAX_HEADERS {
         let mut h = String::new();
-        if reader.read_line(&mut h)? == 0 || h.trim().is_empty() {
+        if read_line(&mut h)? == 0 || h.trim().is_empty() {
             break;
         }
         if let Some((k, v)) = h.split_once(':') {
             match k.trim().to_ascii_lowercase().as_str() {
-                "content-length" => length = v.trim().parse().unwrap_or(0),
+                "content-length" => length = v.trim().parse().unwrap_or(usize::MAX),
                 "authorization" => auth = v.trim().to_string(),
+                "host" => host_h = v.trim().to_string(),
+                "origin" => origin = v.trim().to_string(),
                 _ => {}
             }
         }
@@ -187,33 +223,54 @@ fn http_one(stream: std::net::TcpStream, m: &Value, token: Option<&str>, all_too
     if method != "POST" {
         return reply(&mut out, "405 Method Not Allowed", "text/plain", "POST JSON-RPC to /mcp");
     }
+    // DNS rebinding: a loopback server answers only to a local Host, and a browser page only from a
+    // local origin (HINDCAST_MCP_ORIGINS adds more, comma-separated)
+    if loopback && !host_h.is_empty() && !is_local_host(&host_h) {
+        return reply(&mut out, "403 Forbidden", "text/plain", "host not allowed");
+    }
+    if !origin.is_empty() {
+        let extra = std::env::var("HINDCAST_MCP_ORIGINS").unwrap_or_default();
+        let host_of_origin = origin.split("://").nth(1).unwrap_or("");
+        if !is_local_host(host_of_origin) && !extra.split(',').any(|o| !o.trim().is_empty() && o.trim() == origin) {
+            return reply(&mut out, "403 Forbidden", "text/plain", "origin not allowed");
+        }
+    }
     if let Some(t) = token {
-        if auth != format!("Bearer {}", t) {
+        if !ct_eq(&auth, &format!("Bearer {}", t)) {
             return reply(&mut out, "401 Unauthorized", "text/plain", "a bearer token is required");
         }
     }
-    if length > 16 << 20 {
+    if length > MAX_BODY {
         return reply(&mut out, "413 Payload Too Large", "text/plain", "too large");
     }
-    let mut body = vec![0u8; length];
-    reader.read_exact(&mut body)?;
-    let msg: Value = match serde_json::from_slice(&body) {
-        Ok(v) => v,
-        Err(e) => return reply(&mut out, "400 Bad Request", "application/json", &json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32700, "message": format!("Parse error: {}", e) } }).to_string()),
-    };
-    let allow = |t: &str| all_tools || network_safe(t);
-    let mut sink = vec![];
-    let answer = match &msg {
-        Value::Array(batch) => {
-            let rs: Vec<Value> = batch.iter().filter_map(|x| handle(m, x, &allow, &mut sink)).collect();
-            if rs.is_empty() { None } else { Some(Value::Array(rs)) }
-        }
-        one => handle(m, one, &allow, &mut sink),
-    };
-    match answer {
-        Some(a) => reply(&mut out, "200 OK", "application/json", &a.to_string()),
-        None => reply(&mut out, "202 Accepted", "text/plain", ""),
+    if busy.fetch_add(1, Ordering::SeqCst) >= MAX_AT_ONCE {
+        busy.fetch_sub(1, Ordering::SeqCst);
+        return reply(&mut out, "503 Service Unavailable", "text/plain", "busy: too many requests at once");
     }
+    let r = (|| -> std::io::Result<()> {
+        let mut body = vec![0u8; length];
+        reader.read_exact(&mut body)?;
+        let msg: Value = match serde_json::from_slice(&body) {
+            Ok(v) => v,
+            Err(e) => return reply(&mut out, "400 Bad Request", "application/json", &json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32700, "message": format!("Parse error: {}", e) } }).to_string()),
+        };
+        let allow = |t: &str| all_tools || network_safe(t);
+        let mut sink = vec![];
+        let answer = match &msg {
+            Value::Array(batch) if batch.len() > MAX_BATCH => return reply(&mut out, "400 Bad Request", "application/json", &json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32600, "message": format!("at most {} messages in a batch", MAX_BATCH) } }).to_string()),
+            Value::Array(batch) => {
+                let rs: Vec<Value> = batch.iter().filter_map(|x| handle(m, x, &allow, &mut sink)).collect();
+                if rs.is_empty() { None } else { Some(Value::Array(rs)) }
+            }
+            one => handle(m, one, &allow, &mut sink),
+        };
+        match answer {
+            Some(a) => reply(&mut out, "200 OK", "application/json", &a.to_string()),
+            None => reply(&mut out, "202 Accepted", "text/plain", ""),
+        }
+    })();
+    busy.fetch_sub(1, Ordering::SeqCst);
+    r
 }
 
 fn canvas_html() -> String {
