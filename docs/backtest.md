@@ -16,6 +16,16 @@ hindcast backtest  model.json dataset.json fewer-replicas.yaml --scale 2.2      
 or open the app's **Backtest** tab (or go straight to `#backtest`). Drop the files (or a `dataset.json` + `model.json`)
 on it.
 
+With a Prometheus you can reach, one command does the export, import and calibration and ends on a
+capacity review (its summary: risk, headroom, cost, the one change, how far to trust it):
+
+```
+hindcast quickstart --prometheus http://prometheus:9090 --jaeger http://jaeger:16686 [--last 7d]
+```
+
+It leaves `dataset.json` and `model.json` in `.hindcast/`, so `hindcast backtest .hindcast/model.json
+.hindcast/dataset.json <strategy.yaml>` works on them next ([agents.md](agents.md#quickstart-one-command-a-capacity-review)).
+
 ## 1. Data in
 
 An import manifest names the files and says what each series is.

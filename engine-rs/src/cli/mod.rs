@@ -15,6 +15,9 @@ use util::*;
 
 const USAGE: &str = r#"Hindcast CLI — the simulation engine without the UI. (In a checkout of the repository, use "npm run sim --" in place of "hindcast".)
 
+Start here, on a running system (read-only; one command → a capacity review):
+  hindcast quickstart      --prometheus http://prom:9090 [--jaeger http://jaeger:16686 | --tempo http://tempo:3200] [--last 24h]
+
   hindcast validate        <arch.yaml>
   hindcast simulate        <arch.yaml> [scenario.yaml] [--rps 800 | --traffic metrics.csv] [--duration 60] [--engine fluid|des] [--seed 1] [--json]
   hindcast analyze         <arch.yaml> [scenario.yaml] [--runs 20]       (discrete-event Monte Carlo, 95% CIs)
@@ -39,9 +42,11 @@ Backtesting on real data (files only; see docs/backtest.md):
   hindcast diff-strategy --base <dir> --head <dir> [--model model.json] [--out strategy.yaml]   (k8s manifests before/after → strategy)
 
 For agents (the MCP tools, from a shell; JSON in, JSON out; see docs/agents.md):
+  hindcast agent setup [claude|cursor|vscode|desktop|windsurf] [--write]   register the MCP server with an agent host
   hindcast agent list
   hindcast agent <tool> '<json args>' | @args.json | -      e.g. agent connect_telemetry '{"prometheus":{"url":"http://prom:9090"}}'
-  tools: connect_telemetry collect_telemetry calibrate_model model_status verify_change find_headroom verify_design read_cluster
+  tools: connect_telemetry collect_telemetry calibrate_model model_status review_capacity suggest_changes verify_change
+         check_node_loss find_headroom verify_design read_cluster
 
 Files may be YAML or JSON. A variants file is either a list of variants or { variants, scenario }."#;
 
@@ -64,6 +69,9 @@ fn run(args: &[String], out: &mut Out) -> Result<i32, String> {
     let rest = if args.is_empty() { &[][..] } else { &args[1..] };
     if cmd == "agent" {
         return agent::command(rest, out);
+    }
+    if cmd == "quickstart" {
+        return agent::quickstart::quickstart(&flags(rest), out);
     }
     if cmd == "mcp" {
         out.flush();

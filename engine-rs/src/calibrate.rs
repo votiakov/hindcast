@@ -701,7 +701,7 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
 
         // memory against load: an OOM kill comes when one container's working set passes its limit
         let mut memory: Option<MemoryModel> = None;
-        if mem_vals.len() >= 5 && !hosted {
+        if mem_vals.len() >= 5 && !hosted && (0..n).any(|i| mem_used[i].is_some() && lam[i].is_some()) {
             let (mut xs, mut ys) = (vec![], vec![]);
             for i in 0..n {
                 let (y, _) = match (mem_used[i], lam[i]) {

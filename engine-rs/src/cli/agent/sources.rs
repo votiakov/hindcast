@@ -71,7 +71,18 @@ pub fn probe_prometheus(cfg: &Value, now: f64) -> Result<Value, String> {
     let start = js_num(now - 30.0 * 86400.0);
     let mut names: Vec<&str> = PRESET_SIGNATURE.iter().map(|p| p.1).collect();
     names.extend(NEAR_MISSES.iter().map(|n| n.0));
-    let found = get_json(&api(&url, "api/v1/label/__name__/values", &[("match[]", format!("{{__name__=~\"{}\"}}", names.join("|"))), ("start", start.clone()), ("end", js_num(now))]), &h, 30_000)?;
+    let found = get_json(&api(&url, "api/v1/label/__name__/values", &[("match[]", format!("{{__name__=~\"{}\"}}", names.join("|"))), ("start", start.clone()), ("end", js_num(now))]), &h, 30_000).map_err(|e| {
+        // the two ways a first connection usually fails, with what to try
+        if e.contains("answered 404") {
+            format!("{} — is Prometheus served under a path (e.g. {}/prometheus)? Give the URL that /api/v1/query sits under", e, url.trim_end_matches('/'))
+        } else if e.contains("answered 401") || e.contains("answered 403") {
+            format!("{} — it wants credentials: put a token in an environment variable and name it with prometheus.tokenEnv (quickstart: --token-env)", e)
+        } else if e.starts_with("fetch failed") {
+            format!("{} — is it reachable from here? In a cluster: kubectl port-forward svc/<prometheus> 9090, then http://localhost:9090", e)
+        } else {
+            e
+        }
+    })?;
     let ok = found.get("status").and_then(|x| x.as_str()) == Some("success");
     let have: IndexSet<String> = strs(found.get("data").unwrap_or(&Value::Null)).into_iter().collect();
     for (id, metric, label) in PRESET_SIGNATURE {

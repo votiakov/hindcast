@@ -99,7 +99,13 @@ impl Workspace {
     pub fn read_json(&self, file: &str) -> Result<Value, String> {
         let p = self.path(file);
         if !Path::new(&p).exists() {
-            return Err(format!("{} is not in the workspace ({}) yet", file, self.dir_str()));
+            // say which step makes it: the agent (or person) then knows what to run
+            let step = match file {
+                "model.json" | "calibration.json" => " — run calibrate_model first (after connect_telemetry and collect_telemetry), or `hindcast quickstart --prometheus <url>` for all three",
+                "dataset.json" => " — run collect_telemetry first (after connect_telemetry), or `hindcast quickstart --prometheus <url>`",
+                _ => "",
+            };
+            return Err(format!("{} is not in the workspace ({}) yet{}", file, self.dir_str(), step));
         }
         serde_json::from_str(&std::fs::read_to_string(&p).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
     }
@@ -241,15 +247,17 @@ pub fn get_json(url: &str, headers: &[(String, String)], timeout_ms: u64) -> Res
     let mut resp = match req.call() {
         Ok(r) => r,
         Err(ureq::Error::Timeout(_)) => return Err(format!("{} did not answer within {} s", url, crate::math::js_num(timeout_ms as f64 / 1000.0))),
-        Err(_) => return Err("fetch failed".into()),
+        Err(e) => return Err(format!("fetch failed: {} ({})", url.split('?').next().unwrap_or(url), e)),
     };
     let status = resp.status().as_u16();
-    let text = resp.body_mut().read_to_string().map_err(|e| e.to_string())?;
+    let text = resp.body_mut().with_config().limit(crate::cli::http::BODY_LIMIT).read_to_string().map_err(|e| crate::cli::http::body_error(url, &e))?;
     if !(200..300).contains(&status) {
         let path = url.split("://").nth(1).and_then(|r| r.find('/').map(|i| &r[i..])).unwrap_or("/");
         let path = path.split('?').next().unwrap_or(path);
+        // an HTML error page says it in its title; the rest is markup
+        let title = text.find("<title").and_then(|i| text[i..].find('>').map(|j| i + j + 1)).and_then(|a| text[a..].find("</title>").map(|b| text[a..a + b].trim().to_string()));
         let t: Vec<u16> = text.encode_utf16().collect();
-        let head = String::from_utf16_lossy(&t[..t.len().min(300)]);
+        let head = title.unwrap_or_else(|| String::from_utf16_lossy(&t[..t.len().min(300)]));
         return Err(format!("{} answered {}: {}", path, status, head));
     }
     serde_json::from_str(&text).map_err(|e| format!("Unexpected token in JSON: {}", e))

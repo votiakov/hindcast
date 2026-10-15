@@ -149,6 +149,7 @@ pub fn connect_telemetry(ws: &Workspace, input: &Value) -> Result<Value, String>
     next.insert("system".into(), Value::Object(sys.clone()));
     ws.save_sources(&Value::Object(next.clone()))?;
     let ready = next.get("prometheus").is_some() && prom_report.as_ref().and_then(|p| p.get("presets")).and_then(|x| x.as_array()).map(|a| !a.is_empty()).unwrap_or(false);
+    let on_nodes = prom_report.as_ref().and_then(|p| p.get("presets")).and_then(|x| x.as_array()).map(|a| a.iter().any(|x| x == "kubernetes")).unwrap_or(false);
     let mut out = JMap::new();
     out.insert("workspace".into(), json!(ws.dir_str()));
     out.insert("ready".into(), json!(ready));
@@ -157,7 +158,11 @@ pub fn connect_telemetry(ws: &Workspace, input: &Value) -> Result<Value, String>
         out.insert("prometheus".into(), p);
     }
     out.insert("traces".into(), traces_report.or(files_report).unwrap_or(Value::Null));
-    out.insert("bill".into(), bill_report.unwrap_or(json!("none — services will be priced at AWS Fargate list prices from their CPU and memory limits")));
+    out.insert("bill".into(), bill_report.unwrap_or(json!(if on_nodes {
+        "none — each service will be priced as its requests' share of a node, at the node size's on-demand list price (AWS Fargate list prices where there are no node metrics)"
+    } else {
+        "none — services will be priced at AWS Fargate list prices from their CPU and memory limits"
+    })));
     out.insert("renamed".into(), Value::Object(suggested));
     if let Some(s) = scoped {
         out.insert("namespaces".into(), json!(format!("Kubernetes metrics kept to {} — where the traced services run (connect again with prometheus.namespaces to change)", s.join(", "))));

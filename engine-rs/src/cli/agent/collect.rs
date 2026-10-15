@@ -216,7 +216,7 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
             traces += got.traces;
             requests += got.requests;
         }
-        trace_note = format!("{} traces from {} through {} ({} requests)", crate::math::js_locale(traces as f64), kind, ent.join(", "), requests);
+        trace_note = format!("{} traces from {} through {} ({} queries)", crate::math::js_locale(traces as f64), kind, ent.join(", "), requests);
         if traces < 50 {
             warnings.push(format!("only {} traces in the window — topology and self times rest on few requests", traces));
         }
@@ -496,7 +496,11 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
         }
     }
     if d.get("bill").map(|b| b.is_null()).unwrap_or(true) {
-        warnings.push("no bill: calibrate_model prices services at AWS Fargate list prices from their CPU and memory limits".into());
+        warnings.push(if d.get("cluster").map(|c| !c.is_null()).unwrap_or(false) {
+            "no bill: calibrate_model prices each service as its requests' share of a node, at the node size's on-demand list price".into()
+        } else {
+            "no bill: calibrate_model prices services at AWS Fargate list prices from their CPU and memory limits".into()
+        });
     }
     let (ds, dn, dstep) = (d["start"].as_f64().unwrap_or(0.0), d["n"].as_f64().unwrap_or(0.0), d["stepS"].as_f64().unwrap_or(0.0));
     let mut out = JMap::new();
