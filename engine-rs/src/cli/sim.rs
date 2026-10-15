@@ -509,6 +509,11 @@ pub fn validate(input: &Value) -> Validated {
         if (k == "lb" || k == "gateway" || k == "queue" || k == "stream" || k == "dns") && kids.is_empty() {
             out.push(("error", format!("{} \"{}\" has nothing behind it — every request fails", k, cid)));
         }
+        // leaves: both engines answer at these and send nothing on, so a link out of one is dead
+        if !kids.is_empty() && matches!(k.as_str(), "llmapi" | "external" | "kv" | "storage" | "archive" | "search" | "vector") {
+            let what = if k == "llmapi" || k == "external" { "a third-party API: it answers itself and does not call your components" } else { "a data store: it answers itself and calls nothing" };
+            out.push(("warning", format!("{} \"{}\" is {} — its link{} to {} carr{} no traffic", k, cid, what, if kids.len() > 1 { "s" } else { "" }, kids.iter().map(|x| format!("\"{}\"", x)).collect::<Vec<_>>().join(", "), if kids.len() > 1 { "y" } else { "ies" })));
+        }
         if (k == "cache" || k == "cdn") && kids.is_empty() {
             out.push(("warning", format!("{} \"{}\" has no origin — every miss fails", k, cid)));
         }
@@ -536,4 +541,18 @@ pub fn validate(input: &Value) -> Validated {
         }
     }
     Validated { ok: !out.iter().any(|i| i.0 == "error"), issues: out, spec: Some(spec) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_link_out_of_a_leaf_is_flagged() {
+        let v = validate(&json!({ "components": [{ "id": "users", "kind": "client" }, { "id": "pay", "kind": "external" }, { "id": "app", "kind": "server" }, { "id": "kv", "kind": "kv" }], "connections": ["users -> pay", "pay -> app", "users -> kv", "kv -> app"] }));
+        assert!(v.ok);
+        let msgs: Vec<&str> = v.issues.iter().map(|i| i.1.as_str()).collect();
+        assert!(msgs.contains(&"external \"pay\" is a third-party API: it answers itself and does not call your components — its link to \"app\" carries no traffic"), "{:?}", msgs);
+        assert!(msgs.iter().any(|m| m.starts_with("kv \"kv\" is a data store")), "{:?}", msgs);
+    }
 }

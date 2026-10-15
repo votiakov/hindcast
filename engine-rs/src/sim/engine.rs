@@ -842,12 +842,10 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
         "llmapi" | "external" | "archive" => {
             let cap = capacity_of(c.d, None) * c.dt;
             let processed = c.arrivals.min(cap);
-            let mut r = res(processed, c.arrivals - processed, processed, c.arrivals / cap, true);
-            // an archive is storage: it answers, it does not call on (its answer never waited for them)
-            if c.d.kind == "archive" {
-                r.forward = 0.0;
-                r.routes = Some(vec![]);
-            }
+            // a third-party API answers itself: it does not call your components (a link out of it is
+            // flagged by validate and carries nothing), and an archive is storage, which answers too
+            let mut r = res(processed, c.arrivals - processed, 0.0, c.arrivals / cap, true);
+            r.routes = Some(vec![]);
             r
         }
         // a managed key-value store: the table's limit, then the hot key's partition; it answers itself
@@ -942,7 +940,8 @@ fn fold(c: &FoldCtx, st: &NodeState) -> (f64, f64) {
             let cold = if c.cfg.cold_start_ms > 0.0 && c.d.runtime.as_deref().map(|r| !r.is_empty()).unwrap_or(false) { runtime(c.d.runtime.as_deref().unwrap()).2 } else { c.cfg.cold_start_ms };
             (c.keep * kids_succ, base_latency_of(c.d) + st.cold_frac * cold + kids_lat)
         }
-        "llmapi" | "external" | "kv" => (c.keep * kids_succ, c.d.latency_ms.unwrap_or(spec(&c.d.kind).base_latency_ms) + kids_lat),
+        // leaves: they answer themselves (their routes are empty, so they have no kids)
+        "llmapi" | "external" | "kv" => (c.keep, c.d.latency_ms.unwrap_or(spec(&c.d.kind).base_latency_ms)),
         "archive" => (c.keep, base_latency_of(c.d)),
         _ => (c.keep * kids_succ, service_latency(c.d, st) + kids_lat),
     }
