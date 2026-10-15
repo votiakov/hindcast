@@ -18,6 +18,10 @@ function itemFor(k: Kind): Item {
     : k === 'external' ? 'not yours · rate-limited'
     : k === 'stream' ? `1k msg/s · $${s.costPerHour}/h per partition`
     : k === 'dns' ? 'cached · health-checked'
+    : k === 'edge' ? 'runs before the origin · $0.30/1M req + CPU'
+    : k === 'archive' ? '$0.004/GB-mo · ms to hours to read'
+    : k === 'vector' ? `${fmtCap(s.capacity)}/s per node at recall 0.95`
+    : k === 'search' ? `${fmtCap(s.capacity)}/s per node · $${s.costPerHour.toFixed(2)}/h`
     : k === 'kv' ? `on demand · $${(s.costPerRequest! * 1e6).toFixed(2)}/1M req`
     : `${fmtCap(s.capacity)}/s · $${(s.costPerHour * TIERS.S.cost).toFixed(2)}/h`;
   return { kind: k, label: s.label, meta, color: s.color, Icon: KIND_ICONS[k], description: s.description };

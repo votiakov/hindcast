@@ -30,7 +30,7 @@ zones:                          # optional failure domains
 | field | applies to | meaning |
 |---|---|---|
 | `id` | all | unique id |
-| `kind` | all | `client cdn lb gateway server worker function cache db replica storage queue llm llmapi external kv dns stream` |
+| `kind` | all | `client cdn lb gateway server worker function cache db replica storage queue llm llmapi external kv dns stream search vector archive edge` |
 | `name` | all | display name |
 | `tier` | sizable kinds | `S` (×1 capacity, ×1 cost), `M` (×2, ×2.2), `L` (×4, ×4.8) |
 | `instances` | server, worker, llm | horizontal instances (1–500); reachable only behind lb/gateway/queue |
@@ -61,6 +61,11 @@ zones:                          # optional failure domains
 | `writePolicy` | cache, cdn | `through` (default): writes go on to the origin. `behind`: acknowledged at the cache and flushed ~5 s later — writes are fast and the origin sees them smoothed, but the buffered ones are lost if the cache dies (`lostWrites`) |
 | `workingSetGb`, `skew` | cache | the data the cache fronts (GB) and how concentrated reads are on popular keys (Zipf exponent, default 1): with them the hit rate follows from the cache's memory (S 6.4, M 13, L 26 GB) instead of `hitRate` |
 | `shards` | db, replica | horizontal partitions (1–256), each a full database holding part of the keys: capacity and cost × shards. Writes split with the data, which replicas and caches cannot do. Give a sharded database's replica the same count (a replica per shard) |
+| `refreshS` | search | how often the index refreshes, s (default 1): a document is searchable only after the next refresh, later still while indexing queues behind busy nodes; searches in that window miss it |
+| `edgeShare`, `cpuMs`, `cpuLimitMs` | edge | the share it answers itself (default 0.5; the rest go on to the origin), CPU time per request (default 1 ms, exponentially spread) and the platform's limit (default 10 ms; ~1 for CloudFront Functions, 30,000 for Workers paid) — the share past the limit is killed |
+| `retrieval` | archive | `instant` (default: milliseconds, Glacier Instant Retrieval, 5,500 reads/s), `expedited` (a 1–5 min restore, $10 per 1,000) or `standard` (3–5 h); restores are capped at 1,000/s per account. `workingSetGb` is the data it holds (default 1,000 GB), priced per GB-month |
+| `recall` | vector | the recall queries are tuned for (default 0.95, 0.5–0.999): work per query × 0.05 ÷ (1 − recall), so 0.99 takes five times the capacity of 0.95 |
+| `vectorsM` | vector | vectors in the index, millions (default 1; 768 dimensions, 3.52 GB of graph a million); what does not fit in the nodes' memory (4 / 8 / 16 GB a node by size) is read from disk at ~10× the cost |
 | `partitions` | stream | partitions (default 4): 1,000 messages/s in and $0.015/h each, and the most consumer instances any one subscriber can use |
 | `ttlS`, `healthCheckS` | dns | how long clients cache an answer (default 60 s) and how long health checks take to notice a dead target (default 30 s): after a target dies, everyone sent there fails until the checks notice, then fewer as caches expire |
 | `hotKeyShare` | db, kv | share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which takes `hotKeyShare + (1 − hotKeyShare) / shards` of the load and saturates first |

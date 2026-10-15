@@ -23,6 +23,10 @@ component to calibrate to a real system. `npm run sim -- catalog` prints the liv
 | `stream` | Stream | 1,000 msg/s per partition (default 4) | 5 ms ack | $0.015/h per partition | | | pub/sub log: every subscriber reads every message with its own backlog; a subscriber runs at most one consumer per partition; past retention (200,000 behind) the oldest expire unread |
 | `dns` | DNS | — (cached everywhere) | 1 ms | ~$0 | | | health-checked answers (`routing: failover` or an even split); a dead target keeps getting traffic for `healthCheckS` (30 s), then less as cached answers expire over `ttlS` (60 s) |
 | `kv` | Key-Value Store | table limit (default 40,000 req/s) | 5 ms | $0.45 / 1M req | | | managed NoSQL on demand; one partition takes 3,000 reads or 1,000 writes a second — a hot key throttles (reads take the partition first) |
+| `edge` | Edge Function | 100,000 req/s | 2 ms + `cpuMs` | $0.30 / 1M req + $0.02 / 1M CPU-ms | | | CloudFront Functions, Cloudflare Workers: runs on every request before the origin and answers `edgeShare` (default 0.5) of them itself, reads and writes alike; CPU time per request is exponential around `cpuMs` (default 1), and the share past `cpuLimitMs` (default 10, as Workers Free; ~1 for CloudFront Functions, 30,000 for Workers paid) is killed. Priced as [Workers Standard](https://developers.cloudflare.com/workers/platform/pricing/) unless the profile has an edge price; `aws-us-east-1`: [CloudFront Functions](https://aws.amazon.com/cloudfront/pricing/) $0.10 per million invocations; GCP and Azure have no first-party edge functions |
+| `archive` | Archive Storage | 5,500 reads/s (instant) or 1,000 restores/s | 40 ms · 1–5 min · 3–5 h | $0.004/GB-month + per read | | | S3 Glacier: `retrieval: instant` (Instant Retrieval, answers like S3), `expedited` or `standard` (a Flexible Retrieval restore). Limits: S3's 5,500 GETs/s per prefix, [1,000 restore requests/s per account](https://docs.aws.amazon.com/AmazonS3/latest/userguide/restoring-objects-retrieval-options.html). Priced as S3 Glacier us-east-1 under every profile ([S3 pricing](https://aws.amazon.com/s3/pricing/)): per read of a 1 MB object $0.01/1,000 + $0.03/GB (instant), $10/1,000 + $0.03/GB (expedited), $0.05/1,000 + $0.01/GB (standard), billed when requested; holding `workingSetGb` (default 1,000 GB) at $0.004 (instant) or $0.0036 per GB-month |
+| `search` | Search Index | 200 queries/s per data node | 20 ms | $0.20/h per node | ✓ | ✓ | OpenSearch/Elasticsearch: the nodes share the queries themselves (no lb needed); a write is searchable after the indexing backlog ahead of it and the next refresh (`refreshS`, default 1 s) — searches in that window miss it (counted as stale reads when more than a second behind). 200/s: a 2-vCPU node's search pool of vCPU × 1.5 + 1 = 4 threads at ~20 ms a query |
+| `vector` | Vector Database | 300 queries/s per data node at recall 0.95 | 10 ms | $0.20/h per node | ✓ | ✓ | OpenSearch k-NN, pgvector: an HNSW graph over its nodes (no lb needed). Work per query × 0.05 ÷ (1 − `recall`): 0.99 costs 5× 0.95, close to the curve measured for pgvector HNSW ([Alibaba Cloud's test](https://help.aliyun.com/en/rds/apsaradb-rds-for-postgresql/pgvector-performance-test-based-on-hnsw-indexes): 1,635 q/s at 97% recall, 435 at 99.3% — 3.8×, the rule says 4.3×). The graph takes 3.52 GB per million 768-dimension vectors (`vectorsM`; 1.1 × (4·d + 8·M) bytes, the OpenSearch k-NN sizing formula); nodes keep a quarter of RAM for it (4 / 8 / 16 GB by size); the share that does not fit is read from disk at 10× the cost (illustrative) |
 | `external` | External API | rate limit (default 1,000 req/s) | 200 ms | — | | | someone else's service (payments, partners, the web a crawler fetches): only its limit, latency and errors are yours to live with |
 
 ## Tiers
@@ -71,6 +75,8 @@ component as a concrete SKU or usage line, on-demand, checked 2026-10-02:
 | queue | SQS standard | $1.20 per million messages | [SQS pricing](https://cloudburn.io/blog/amazon-sqs-pricing): $0.40/M calls × send+receive+delete |
 | function | Lambda | $0.20/M + $0.0000166667 per GB-s | [Lambda pricing](https://aws.amazon.com/lambda/pricing/); memory from the runtime profile |
 | llmapi | GPT-4o-mini-class API | ≈ $0.00033 per request | [token prices](https://pricepertoken.com/pricing-page/model/openai-gpt-4o-mini): $0.15/$0.60 per M tokens, ~1,000 in + 300 out |
+| edge | CloudFront Functions | $0.10 per million invocations | [CloudFront pricing](https://aws.amazon.com/cloudfront/pricing/); CPU is capped, not billed |
+| search, vector | r7g.large / .xlarge / .2xlarge.search | $0.178 / $0.356 / $0.712 per node-hour | [Vantage: r7g.large.search](https://instances.vantage.sh/aws/opensearch/r7g.large.search), OpenSearch Service data node; EBS and dedicated masters not included |
 
 `gcp-us-central1` (checked 2026-10-07):
 
@@ -87,6 +93,7 @@ component as a concrete SKU or usage line, on-demand, checked 2026-10-02:
 | queue | Pub/Sub | ≈ $0.11 per million messages | [Pub/Sub pricing](https://cloud.google.com/pubsub/pricing): $40/TiB, 1 KB minimum × publish/pull/ack |
 | function | Cloud Run | $0.40/M requests (+ compute, approximated Lambda-like) | [Cloud Run pricing](https://cloud.google.com/run/pricing) |
 | llmapi | same hosted model as AWS | ≈ $0.00033 per request | provider prices don't depend on your cloud |
+| search, vector | n2-highmem-2 / -4 / -8 | $0.131 / $0.262 / $0.524 per node-hour | [gcloud-compute.com: n2-highmem-2](https://gcloud-compute.com/n2-highmem-2.html); no managed OpenSearch on Google Cloud, so self-run on Compute Engine |
 
 `azure-eastus` (checked 2026-10-15; every line read from Microsoft's
 [Retail Prices API](https://prices.azure.com/api/retail/prices) for East US, pay as you go, unless noted):
@@ -106,6 +113,7 @@ component as a concrete SKU or usage line, on-demand, checked 2026-10-02:
 | kv | Cosmos DB serverless | $0.45 per million | $0.25/M RUs; 1 RU a 1 KB read, ~5 a write, 80% reads |
 | stream | Event Hubs Standard | $0.03 per throughput unit-hour + $0.028/M events | one TU (1,000 events/s in) per partition |
 | dns | Azure DNS zone | $0.50 per month | queries not priced: resolvers cache answers for the TTL |
+| search, vector | AI Search Basic / Standard S1 / Standard S2 | $0.101 / $0.336 / $1.344 per search unit-hour | S2 is about four S1s, not two: calibrate `capacity` |
 
 Streams and DNS in the other clouds: Kinesis at $0.015 per shard-hour + $0.014 per million records
 (AWS), Pub/Sub by throughput (GCP); a hosted zone at $0.50 (Route 53) or $0.20 (Cloud DNS) a month.

@@ -150,6 +150,32 @@ pub struct NodeData {
     pub batch: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub batch_s: Option<f64>,
+    /// search: how often the index refreshes, s (default 1) — a write is searchable only after the
+    /// next refresh
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refresh_s: Option<f64>,
+    /// vector: the recall the queries are tuned for (default 0.95) — each halving of what they miss
+    /// doubles the work per query
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recall: Option<f64>,
+    /// vector: vectors in the index, millions (default 1; 768 dimensions)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vectors_m: Option<f64>,
+    /// archive: how a read gets its object back — "instant" (milliseconds, Glacier Instant Retrieval),
+    /// "expedited" (1–5 min) or "standard" (3–5 h) restores (Glacier Flexible Retrieval)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retrieval: Option<String>,
+    /// edge: the share of requests the edge function answers itself (default 0.5); the rest go on to
+    /// the origin
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub edge_share: Option<f64>,
+    /// edge: CPU time per request, ms (default 1; exponentially spread)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpu_ms: Option<f64>,
+    /// edge: the platform's CPU limit per request, ms (default 10, as Workers Free; ~1 for CloudFront
+    /// Functions) — a request past it is killed with an error
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpu_limit_ms: Option<f64>,
     /// a network partition's side this component is on (set by the partition action): links between
     /// components on different sides are cut
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -205,6 +231,17 @@ pub fn spec(kind: &str) -> KindSpec {
         "stream" => k(1000.0, 5.0, 0.015, false),
         // DNS with health-checked failover (Route 53): cached everywhere, so effectively free and instant
         "dns" => k(1e9, 1.0, 0.001, false),
+        // a search index (OpenSearch, Elasticsearch): data nodes that share the queries between them;
+        // per S node (2 vCPU, r7g.large.search-like) a search thread pool of vCPU × 1.5 + 1 = 4 threads
+        // at ~20 ms a query ≈ 200 queries/s
+        "search" => KindSpec { scalable: true, ..k(200.0, 20.0, 0.2, true) },
+        // a vector database (OpenSearch k-NN, pgvector): an HNSW index over its nodes; 300 queries/s per
+        // S node at recall 0.95 with the graph in memory
+        "vector" => KindSpec { scalable: true, ..k(300.0, 10.0, 0.2, true) },
+        // cold storage (S3 Glacier): pennies to keep, slow and priced per retrieval to read back
+        // code at the edge (CloudFront Functions, Workers): runs before the origin on every request
+        "edge" => KindSpec { cost_per_request: Some((0.3 + 0.02) / 1_000_000.0), ..k(100000.0, 2.0, 0.0, false) },
+        "archive" => KindSpec { cost_per_request: Some(ARCHIVE_INSTANT_PER_REQ), ..k(5500.0, 40.0, 0.0, false) },
         "kv" => KindSpec { cost_per_request: Some(0.45 / 1_000_000.0), ..k(40000.0, 5.0, 0.0, false) },
         _ => k(250.0, 25.0, 0.1, true),
     }
@@ -317,6 +354,10 @@ pub fn kind_pricing(profile: &str, kind: &str) -> Option<KindPricing> {
             // Kinesis provisioned: $0.015 per shard-hour + $0.014 per million PUT payload units
             "stream" => Some(KindPricing { fixed: Some(0.015), per_request: Some(0.014 / 1_000_000.0), ..Default::default() }),
             "dns" => Some(KindPricing { fixed: Some(DNS_ZONE_HOURLY), ..Default::default() }),
+            // OpenSearch Service r7g.large/xlarge/2xlarge.search data nodes
+            "search" | "vector" => tiers(0.178, 0.356, 0.712),
+            // CloudFront Functions: $0.10 per million invocations
+            "edge" => per(0.1 / 1_000_000.0),
             _ => None,
         },
         "gcp-us-central1" => match kind {
@@ -336,6 +377,8 @@ pub fn kind_pricing(profile: &str, kind: &str) -> Option<KindPricing> {
             // Pub/Sub topic with subscriptions: billed by throughput, not partitions
             "stream" => per(0.11 / 1_000_000.0),
             "dns" => Some(KindPricing { fixed: Some(0.2 / 730.0), ..Default::default() }),
+            // no managed OpenSearch: self-run on Compute Engine n2-highmem-2/4/8
+            "search" | "vector" => tiers(0.131, 0.262, 0.524),
             _ => None,
         },
         // Azure Retail Prices API (prices.azure.com), East US, pay as you go, 2026-10-15
@@ -358,6 +401,8 @@ pub fn kind_pricing(profile: &str, kind: &str) -> Option<KindPricing> {
             // Event Hubs Standard: $0.03 per throughput unit-hour (1,000 events/s in) + $0.028 per million events
             "stream" => Some(KindPricing { fixed: Some(0.03), per_request: Some(0.028 / 1_000_000.0), ..Default::default() }),
             "dns" => Some(KindPricing { fixed: Some(DNS_ZONE_HOURLY), ..Default::default() }),
+            // Azure AI Search, per search unit: Basic, Standard S1, Standard S2
+            "search" | "vector" => tiers(0.101, 0.336, 1.344),
             _ => None,
         },
         _ => None,
@@ -433,7 +478,9 @@ pub fn is_up(d: &NodeData) -> bool {
 pub fn capacity_of(d: &NodeData, reachable: Option<f64>) -> f64 {
     let sp = spec(&d.kind);
     let reachable = reachable.unwrap_or_else(|| instances_up(d));
-    let cap = if d.kind == "storage" {
+    let cap = if d.kind == "archive" {
+        archive_limit(d)
+    } else if d.kind == "storage" {
         d.capacity.unwrap_or(PREFIX_READS * prefixes_of(d))
     } else if d.kind == "function" || d.kind == "llmapi" || d.kind == "external" || d.kind == "kv" || d.kind == "gateway" {
         d.limit.unwrap_or(sp.capacity)
@@ -441,9 +488,127 @@ pub fn capacity_of(d: &NodeData, reachable: Option<f64>) -> f64 {
         let t = if sp.tiered { tier(&d.tier).0 } else { 1.0 };
         let batch = if d.kind == "llm" && d.batching == Some(true) { BATCHING_CAPACITY } else { 1.0 };
         let rt = d.runtime.as_deref().filter(|r| !r.is_empty()).map(|r| runtime(r).0).unwrap_or(1.0);
-        d.capacity.unwrap_or(sp.capacity) * t * batch * rt * (if sp.scalable { reachable.max(1.0) } else { 1.0 }) * shards_of(d) * partitions_of(d)
+        d.capacity.unwrap_or(sp.capacity) * t * batch * rt * (if sp.scalable { reachable.max(1.0) } else { 1.0 }) * shards_of(d) * partitions_of(d) / vector_work(d)
     };
     cap * d.degraded.unwrap_or(1.0)
+}
+
+/// a cluster that spreads its requests over its own nodes (no load balancer needed in front)
+pub fn clustered(kind: &str) -> bool {
+    kind == "search" || kind == "vector"
+}
+
+/// an HNSW index's memory per million vectors, GB: 1.1 × (4 × 768 dimensions + 8 × M=16 links) bytes
+/// a vector (the OpenSearch k-NN sizing formula)
+pub const VECTOR_GB_PER_M: f64 = 3.52;
+/// a graph lookup that misses memory and reads the disk costs this many in-memory ones
+pub const VECTOR_DISK_FACTOR: f64 = 10.0;
+
+/// what a vector database's nodes keep in memory for the graph, GB: a quarter of RAM each (half the
+/// RAM is the JVM heap, half of the rest the k-NN circuit breaker allows) — 16/32/64 GiB nodes
+pub fn vector_memory_gb(d: &NodeData) -> f64 {
+    let per = match d.tier.as_str() {
+        "M" => 8.0,
+        "L" => 16.0,
+        _ => 4.0,
+    };
+    per * instances_up(d).max(1.0)
+}
+
+/// the share of a vector database's graph its nodes hold in memory
+pub fn vector_fit(d: &NodeData) -> f64 {
+    let index = d.vectors_m.unwrap_or(1.0).max(0.0) * VECTOR_GB_PER_M;
+    if index > 0.0 { (vector_memory_gb(d) / index).min(1.0) } else { 1.0 }
+}
+
+/// a vector query's work relative to recall 0.95 with the whole graph in memory: each halving of
+/// what it may miss (1 − recall) doubles it; the share of the graph that does not fit is read from disk
+pub fn vector_work(d: &NodeData) -> f64 {
+    if d.kind != "vector" {
+        return 1.0;
+    }
+    let recall = d.recall.unwrap_or(0.95).clamp(0.5, 0.999);
+    let fit = vector_fit(d);
+    (0.05 / (1.0 - recall)) * (fit + (1.0 - fit) * VECTOR_DISK_FACTOR)
+}
+
+/// a search index's refresh interval, s
+pub fn refresh_s_of(d: &NodeData) -> f64 {
+    d.refresh_s.unwrap_or(1.0).max(0.0)
+}
+
+/// how long until a write just made is searchable: the indexing backlog ahead of it, then the next
+/// refresh — to a tenth of a second (a few milliseconds' wait in a busy pool is not a lag)
+pub fn index_lag_s(d: &NodeData, backlog: f64, cap: f64) -> f64 {
+    let lag = refresh_s_of(d) + if cap > 0.0 { backlog / cap } else if backlog > 0.0 { f64::INFINITY } else { 0.0 };
+    if lag.is_finite() { crate::math::js_round(lag * 10.0) / 10.0 } else { lag }
+}
+
+/// an edge function's CPU time per request, ms
+pub fn cpu_ms_of(d: &NodeData) -> f64 {
+    d.cpu_ms.unwrap_or(1.0).max(0.0)
+}
+
+/// the share of an edge function's requests that run past its CPU limit (CPU time exponentially
+/// spread around `cpu_ms`)
+pub fn edge_cpu_fail(d: &NodeData) -> f64 {
+    if d.kind != "edge" {
+        return 0.0;
+    }
+    let (cpu, limit) = (cpu_ms_of(d), d.cpu_limit_ms.unwrap_or(10.0).max(0.0));
+    if cpu <= 0.0 { 0.0 } else { (-limit / cpu).js_exp() }
+}
+
+/// the share of requests an edge function answers itself
+pub fn edge_share_of(d: &NodeData) -> f64 {
+    d.edge_share.unwrap_or(0.5).clamp(0.0, 1.0)
+}
+
+/// an archived object read back, MB (retrieval is priced per GB)
+pub const ARCHIVE_OBJECT_MB: f64 = 1.0;
+/// Glacier Instant Retrieval: $0.01 per 1,000 GETs + $0.03 per GB retrieved
+pub const ARCHIVE_INSTANT_PER_REQ: f64 = 0.01 / 1000.0 + 0.03 * ARCHIVE_OBJECT_MB / 1024.0;
+
+/// an archive's retrieval option
+pub fn retrieval_of(d: &NodeData) -> &str {
+    match d.retrieval.as_deref() {
+        Some("expedited") => "expedited",
+        Some("standard") => "standard",
+        _ => "instant",
+    }
+}
+
+/// an archive's time to the first byte, ms: Instant Retrieval answers like S3; a Flexible Retrieval
+/// restore takes 1–5 min (expedited) or 3–5 h (standard)
+pub fn archive_latency_ms(d: &NodeData) -> f64 {
+    match retrieval_of(d) {
+        "expedited" => 180_000.0,
+        "standard" => 4.0 * 3_600_000.0,
+        _ => 40.0,
+    }
+}
+
+/// an archive's request limit: S3's 5,500 GETs a second (a prefix) for Instant Retrieval; 1,000 restore
+/// requests a second (per account) for Flexible Retrieval
+pub fn archive_limit(d: &NodeData) -> f64 {
+    d.limit.unwrap_or(if retrieval_of(d) == "instant" { 5500.0 } else { 1000.0 })
+}
+
+/// an archive's $ per read (1 MB objects): Glacier Instant Retrieval $0.01/1,000 + $0.03/GB; Flexible
+/// expedited $10/1,000 + $0.03/GB, standard $0.05/1,000 + $0.01/GB
+pub fn archive_request_price(d: &NodeData) -> f64 {
+    match retrieval_of(d) {
+        "expedited" => 10.0 / 1000.0 + 0.03 * ARCHIVE_OBJECT_MB / 1024.0,
+        "standard" => 0.05 / 1000.0 + 0.01 * ARCHIVE_OBJECT_MB / 1024.0,
+        _ => ARCHIVE_INSTANT_PER_REQ,
+    }
+}
+
+/// what an archive costs to keep, $/h: the data it holds (`workingSetGb`, default 1,000 GB) at
+/// $0.004 (Instant Retrieval) or $0.0036 (Flexible Retrieval) per GB-month
+pub fn archive_storage_h(d: &NodeData) -> f64 {
+    let gb = d.working_set_gb.unwrap_or(1000.0).max(0.0);
+    gb * (if retrieval_of(d) == "instant" { 0.004 } else { 0.0036 }) / 730.0
 }
 
 /// a database's (or its replica's) shard count (1 for everything else)
@@ -631,7 +796,13 @@ pub fn per_instance_capacity(d: &NodeData) -> f64 {
 
 pub fn base_latency_of(d: &NodeData) -> f64 {
     let rt = d.runtime.as_deref().filter(|r| !r.is_empty()).map(|r| runtime(r).1).unwrap_or(1.0);
-    d.latency_ms.unwrap_or(spec(&d.kind).base_latency_ms) * rt + (if d.kind == "llm" && d.batching == Some(true) { BATCHING_LATENCY_MS } else { 0.0 })
+    if d.kind == "archive" {
+        return d.latency_ms.unwrap_or_else(|| archive_latency_ms(d));
+    }
+    if d.kind == "edge" {
+        return d.latency_ms.unwrap_or(spec("edge").base_latency_ms) + cpu_ms_of(d);
+    }
+    d.latency_ms.unwrap_or(spec(&d.kind).base_latency_ms) * rt * vector_work(d) + (if d.kind == "llm" && d.batching == Some(true) { BATCHING_LATENCY_MS } else { 0.0 })
 }
 
 /// serverless $ per request: flat catalogue price, or memory × duration when a runtime is chosen
@@ -652,6 +823,9 @@ pub fn cost_of(d: &NodeData, profile: &str) -> f64 {
 
 fn fixed_cost_of(d: &NodeData, profile: &str) -> f64 {
     let sp = spec(&d.kind);
+    if d.kind == "archive" && d.cost_per_hour.is_none() {
+        return archive_storage_h(d);
+    }
     let n = d.instances.unwrap_or(1.0) * shards_of(d) * partitions_of(d);
     let p = if d.cost_per_hour.is_none() { kind_pricing(profile, &d.kind) } else { None };
     if let Some(p) = p {
@@ -673,6 +847,13 @@ fn fixed_cost_of(d: &NodeData, profile: &str) -> f64 {
 pub fn request_price(d: &NodeData, profile: &str) -> f64 {
     if d.kind == "function" {
         return fn_cost_per_request(d, profile);
+    }
+    if d.kind == "archive" {
+        return archive_request_price(d);
+    }
+    // no profile price: Workers Standard, $0.30 per million requests + $0.02 per million CPU-ms
+    if d.kind == "edge" && kind_pricing(profile, "edge").is_none() {
+        return 0.3 / 1_000_000.0 + 0.02 / 1_000_000.0 * cpu_ms_of(d);
     }
     if let Some(p) = kind_pricing(profile, &d.kind).and_then(|p| p.per_request) {
         return p;

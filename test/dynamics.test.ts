@@ -345,3 +345,85 @@ describe('a scheduled job', () => {
     }
   });
 });
+
+describe('a search index: searchable after the refresh, nodes share the queries', () => {
+  const index = (extra: Record<string, unknown>) => ({ components: [{ id: 'users', kind: 'client' }, { id: 'idx', kind: 'search', ...extra }], connections: [['users', 'idx']] });
+  const sc = { duration: 40, rps: 100, readRatio: 0.8 };
+
+  for (const [name, run] of [['fluid', simulate], ['des', (s: never, c: never) => simulateDes(s, c, { seed: 3 })]] as const) {
+    it(`${name}: a 30 s refresh makes searches miss what was written in the last 30 s; a 1 s refresh does not`, () => {
+      const slow = run(index({ refreshS: 30 }) as never, sc as never).summary;
+      const fast = run(index({}) as never, sc as never).summary;
+      // 80 searches a second for 40 s, with writes every few milliseconds: nearly all miss a recent one
+      expect(slow.staleReads ?? 0).toBeGreaterThan(2800);
+      expect(fast.staleReads ?? 0).toBe(0);
+      expect(slow.meanErrorRate).toBeLessThan(0.01);
+    });
+
+    it(`${name}: two data nodes take twice the queries with no load balancer in front`, () => {
+      const one = run(index({}) as never, { duration: 40, rps: 300, readRatio: 0.8 } as never).summary;
+      const two = run(index({ instances: 2 }) as never, { duration: 40, rps: 300, readRatio: 0.8 } as never).summary;
+      expect(one.meanErrorRate).toBeGreaterThan(0.2);
+      expect(two.meanErrorRate).toBeLessThan(0.01);
+    });
+  }
+});
+
+describe('a vector database: recall and memory decide its capacity', () => {
+  const vdb = (extra: Record<string, unknown>) => ({ components: [{ id: 'users', kind: 'client' }, { id: 'v', kind: 'vector', ...extra }], connections: [['users', 'v']] });
+
+  for (const [name, run] of [['fluid', simulate], ['des', (s: never, c: never) => simulateDes(s, c, { seed: 3 })]] as const) {
+    it(`${name}: recall 0.99 walks five times the graph of 0.95 — the same node takes a fifth of the queries`, () => {
+      const sc = { duration: 40, rps: 150, readRatio: 1 } as never;
+      expect(run(vdb({}) as never, sc).summary.meanErrorRate).toBeLessThan(0.01);
+      const strict = run(vdb({ recall: 0.99 }) as never, sc).summary.meanErrorRate;
+      expect(strict).toBeGreaterThan(0.5); // 60/s of 150
+      expect(strict).toBeLessThan(0.7);
+    });
+
+    it(`${name}: a graph that does not fit in memory reads the disk; nodes enough to hold it fix it`, () => {
+      const sc = { duration: 40, rps: 100, readRatio: 1 } as never;
+      // 3 million vectors: 10.6 GB of graph against 4 GB on one S node, 12 GB on three
+      expect(run(vdb({ vectorsM: 3 }) as never, sc).summary.meanErrorRate).toBeGreaterThan(0.4);
+      expect(run(vdb({ vectorsM: 3, instances: 3 }) as never, sc).summary.meanErrorRate).toBeLessThan(0.01);
+    });
+  }
+});
+
+describe('archive storage: cheap to keep, slow and priced to read back', () => {
+  const arc = (extra: Record<string, unknown>) => ({ components: [{ id: 'users', kind: 'client', timeoutMs: 10000 }, { id: 'a', kind: 'archive', ...extra }], connections: [['users', 'a']] });
+  const sc = { duration: 40, rps: 10, readRatio: 1 } as never;
+
+  for (const [name, run] of [['fluid', simulate], ['des', (s: never, c: never) => simulateDes(s, c, { seed: 3 })]] as const) {
+    it(`${name}: Instant Retrieval answers users; an expedited restore (1–5 min) cannot, and costs a thousand times more a read`, () => {
+      const instant = run(arc({}) as never, sc).summary;
+      const restore = run(arc({ retrieval: 'expedited' }) as never, sc).summary;
+      expect(instant.meanErrorRate).toBeLessThan(0.01);
+      expect(restore.meanErrorRate).toBeGreaterThan(0.95); // every user gave up after 10 s
+      // 10 reads a second at $10 per 1,000 restores: ~$360 an hour, against ~$1.40 instant
+      expect(restore.meanCostPerHour).toBeGreaterThan(300);
+      expect(instant.meanCostPerHour).toBeLessThan(3);
+    });
+  }
+});
+
+describe('an edge function: answers its share before the origin, within a CPU limit', () => {
+  const edge = (extra: Record<string, unknown>) => ({
+    components: [{ id: 'users', kind: 'client' }, { id: 'e', kind: 'edge', ...extra }, { id: 'origin', kind: 'server' }],
+    connections: [['users', 'e'], ['e', 'origin']],
+  });
+  const sc = { duration: 40, rps: 1000, readRatio: 0.8 } as never;
+
+  for (const [name, run] of [['fluid', simulate], ['des', (s: never, c: never) => simulateDes(s, c, { seed: 3 })]] as const) {
+    it(`${name}: what it answers itself never reaches the origin — reads and writes alike`, () => {
+      // one 250/s server behind 1,000 req/s: answering 80% at the edge leaves it 200/s
+      expect(run(edge({ edgeShare: 0.8 }) as never, sc).summary.meanErrorRate).toBeLessThan(0.01);
+      expect(run(edge({ edgeShare: 0 }) as never, sc).summary.meanErrorRate).toBeGreaterThan(0.6);
+    });
+
+    it(`${name}: CPU time past the platform's limit is killed (5 ms on average against 10 ms: e^-2 ≈ 13.5%)`, () => {
+      const r = run(edge({ edgeShare: 1, cpuMs: 5, cpuLimitMs: 10 }) as never, { duration: 40, rps: 200, readRatio: 0.8 } as never).summary;
+      expect(Math.abs(r.meanErrorRate - Math.exp(-2))).toBeLessThan(0.02);
+    });
+  }
+});

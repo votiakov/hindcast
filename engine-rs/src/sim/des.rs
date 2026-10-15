@@ -247,6 +247,7 @@ const R_BULKHEAD: u8 = 11;
 const R_THREADS: u8 = 12;
 const R_LOCK: u8 = 13;
 const R_CONN: u8 = 14;
+const R_CPU: u8 = 15;
 
 fn why(n: usize, r: u8) -> Why {
     ((n as u32 + 1) << 8) | r as u32
@@ -269,6 +270,7 @@ fn reason_text(r: u8) -> &'static str {
         R_THREADS => "out of threads (all waiting on calls)",
         R_LOCK => "waited too long for a row lock",
         R_CONN => "connection refused (all connections in use)",
+        R_CPU => "killed at its CPU time limit",
         _ => "failed",
     }
 }
@@ -430,6 +432,8 @@ struct DNode {
     down_since: Option<f64>,
     /// a replica: replication lag behind its primary, s
     repl_lag: f64,
+    /// a search index: when the last write arrived
+    last_write: Option<f64>,
     /// a database: writes that arrived this second, and whether its promotion's loss was counted
     writes_win: f64,
     writes_rate: f64,
@@ -651,7 +655,7 @@ impl<'a> Des<'a> {
         n.flush_seen = n.raw.flushes.unwrap_or(0.0);
         n.dead_since = if up(n) { None } else { n.dead_since.or(Some(now)) };
         let d = &n.data;
-        let reach = if n.pooled || d.kind == "llm" { instances_up(d) } else { instances_up(d).min(1.0) };
+        let reach = if n.pooled || d.kind == "llm" || super::catalog::clustered(&d.kind) { instances_up(d) } else { instances_up(d).min(1.0) };
         let cap = capacity_of(d, Some(reach)).max(1e-6);
         let lat = base_latency_of(d).max(0.05);
         let kind = d.kind.as_str();
@@ -660,6 +664,10 @@ impl<'a> Des<'a> {
             n.rate = f64::INFINITY;
             n.workers = f64::INFINITY;
             n.svc_mean_ms = d.latency_ms.unwrap_or(spec(kind).base_latency_ms);
+        } else if kind == "archive" {
+            n.rate = capacity_of(d, None);
+            n.workers = f64::INFINITY;
+            n.svc_mean_ms = base_latency_of(d);
         } else if kind == "gateway" || kind == "llmapi" || kind == "external" || kind == "kv" || kind == "stream" {
             n.rate = d.limit.unwrap_or(spec(kind).capacity);
             n.workers = f64::INFINITY;
@@ -821,6 +829,18 @@ impl<'a> Des<'a> {
         if kind == "replica" && read && self.nodes[i].repl_lag > 1.0 {
             self.stale_reads += 1.0;
         }
+        if kind == "search" && up(&self.nodes[i]) {
+            // a write is searchable after the indexing backlog ahead of it and the next refresh: a read
+            // in that window misses it
+            let n = &mut self.nodes[i];
+            let cap = if n.svc_mean_ms > 0.0 { n.workers / n.svc_mean_ms * 1000.0 } else { 0.0 };
+            n.repl_lag = super::catalog::index_lag_s(&n.data, n.queue.len() as f64, cap);
+            if !read {
+                n.last_write = Some(self.now);
+            } else if n.repl_lag > 1.0 && n.last_write.map_or(false, |t| self.now - t < n.repl_lag) {
+                self.stale_reads += 1.0;
+            }
+        }
         if kind == "db" && !read {
             self.nodes[i].writes_win += 1.0;
         }
@@ -923,13 +943,17 @@ impl<'a> Des<'a> {
             }
             n.px_bucket[k] -= cost;
         }
-        if kind == "llmapi" || kind == "external" || kind == "kv" || kind == "storage" {
+        if kind == "llmapi" || kind == "external" || kind == "kv" || kind == "storage" || kind == "archive" {
             // provider capacity is not your problem — only its rate limit and latency are
             let n = &self.nodes[i];
             let (mean, fl) = (n.svc_mean_ms, n.data.fault_latency_ms.unwrap_or(0.0));
             let cv = self.cfg.service_cv * 0.5;
             let svc = self.rng.lognormal(mean, cv) + fl;
             let fault = self.nodes[i].data.fault_rate.unwrap_or(0.0);
+            // a restore is billed when it is requested, however long it takes
+            if kind == "archive" {
+                self.nodes[i].win.usage_reqs += 1.0;
+            }
             self.at(svc, Ev::LlmDone { n: i, done, fault });
             return;
         }
@@ -1181,6 +1205,21 @@ impl<'a> Des<'a> {
                 return self.fail(Some(n), why(n, R_NO_ROUTE), done, 0.0);
             }
         }
+        if kind == "edge" {
+            // CPU time past the platform's limit kills the request; its share is answered at the edge
+            let d = &self.nodes[n].data;
+            let (fail, share) = (super::catalog::edge_cpu_fail(d), super::catalog::edge_share_of(d));
+            if self.rng.next() < fail {
+                return self.fail(Some(n), why(n, R_CPU), done, 0.0);
+            }
+            if self.rng.next() < share {
+                self.nodes[n].win.hits += 1.0;
+                return self.deliver(done, OK);
+            }
+            if self.nodes[n].children.is_empty() {
+                return self.fail(Some(n), why(n, R_NO_ROUTE), done, 0.0);
+            }
+        }
         if kind == "db" && !job.read {
             // every synchronous replica acknowledges before the write is answered
             let wait = self.nodes[n].children.iter().filter(|&&c| self.link_sync.contains(&(n, c))).map(|&c| self.link_ms.get(&(n, c)).copied().unwrap_or(0.0) + self.cfg.hop_ms + self.nodes[c].svc_mean_ms).fold(0.0, f64::max);
@@ -1189,7 +1228,7 @@ impl<'a> Des<'a> {
                 return;
             }
         }
-        if kind == "db" || kind == "replica" {
+        if kind == "db" || kind == "replica" || kind == "search" || kind == "vector" {
             return self.deliver(done, OK);
         }
         if self.nodes[n].children.is_empty() {
@@ -1527,7 +1566,7 @@ impl<'a> Des<'a> {
             let util = if n.lock_busy || w.lock_s > 0.0 { util.max(w.lock_s / win_s) } else { util };
             // thread-per-request: the threads the offered load needs (rate × hold time, Little's law) over those there are
             let util = if n.threads_cap.is_finite() && w.held_n > 0.0 { util.max((w.arrivals / win_s) * (w.held_s / w.held_n) / n.threads_cap.max(1e-9)) } else { util };
-            let billed = if n.data.kind == "function" || n.data.kind == "llmapi" || n.data.kind == "external" || n.data.kind == "kv" || n.data.kind == "storage" { w.usage_reqs } else if n.data.kind == "client" { 0.0 } else { w.arrivals };
+            let billed = if n.data.kind == "function" || n.data.kind == "llmapi" || n.data.kind == "external" || n.data.kind == "kv" || n.data.kind == "storage" || n.data.kind == "archive" { w.usage_reqs } else if n.data.kind == "client" { 0.0 } else { w.arrivals };
             let usage = billed * request_price(&n.data, &self.pricing) * 3600.0;
             let cost_h = match &n.scaler {
                 Some(s) => cost_of(&NodeData { instances: Some(s.live + s.pending.len() as f64), ..n.data.clone() }, &self.pricing),
@@ -1542,7 +1581,7 @@ impl<'a> Des<'a> {
                 latency_ms: 0.0,
                 success: if w.arrivals != 0.0 { 1.0 - w.drops / w.arrivals } else { 1.0 },
                 hit_rps: w.hits / win_s,
-                reachable: if n.pooled { instances_up(&n.data) } else { instances_up(&n.data).min(1.0) },
+                reachable: if n.pooled || super::catalog::clustered(&n.data.kind) { instances_up(&n.data) } else { instances_up(&n.data).min(1.0) },
                 lag_s: 0.0,
                 repl_lag_s: n.repl_lag,
                 cold_frac: 0.0,
@@ -1673,7 +1712,9 @@ impl<'a> Des<'a> {
                 self.after_service(n, job);
             }
             Ev::LlmDone { n, done, fault } => {
-                self.nodes[n].win.usage_reqs += 1.0;
+                if self.nodes[n].kind != "archive" {
+                    self.nodes[n].win.usage_reqs += 1.0;
+                }
                 if fault != 0.0 && !fault.is_nan() && self.rng.next() < fault {
                     return self.fail(Some(n), why(n, R_ERROR), done, 0.0);
                 }
@@ -1749,6 +1790,7 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
             warm: 0.0,
             down_since: None,
             repl_lag: 0.0,
+            last_write: None,
             writes_win: 0.0,
             writes_rate: 0.0,
             promoted_counted: false,
@@ -1984,6 +2026,10 @@ fn static_kind(k: &str) -> &'static str {
         "kv" => "kv",
         "dns" => "dns",
         "stream" => "stream",
+        "search" => "search",
+        "vector" => "vector",
+        "archive" => "archive",
+        "edge" => "edge",
         _ => "server",
     }
 }

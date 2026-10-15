@@ -51,6 +51,10 @@ fn label_of(kind: &str) -> &'static str {
         "kv" => "Key-Value Store",
         "dns" => "DNS",
         "stream" => "Stream",
+        "search" => "Search Index",
+        "vector" => "Vector Database",
+        "archive" => "Archive Storage",
+        "edge" => "Edge Function",
         _ => "Component",
     }
 }

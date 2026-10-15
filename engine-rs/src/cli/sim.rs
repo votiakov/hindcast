@@ -514,7 +514,7 @@ pub fn validate(input: &Value) -> Validated {
         }
         let fanned = parents_ids.iter().any(|p| ids.get(p).and_then(|i| comps[*i].get("fanout")).and_then(|x| x.as_f64()).unwrap_or(1.0) > 1.0);
         let inst = c.get("instances").and_then(|x| x.as_f64()).unwrap_or(1.0);
-        if inst > 1.0 && k != "llm" && !fanned && !parents.iter().any(|p| matches!(p.as_deref(), Some("lb" | "gateway" | "queue" | "stream"))) {
+        if inst > 1.0 && k != "llm" && !crate::sim::catalog::clustered(&k) && !fanned && !parents.iter().any(|p| matches!(p.as_deref(), Some("lb" | "gateway" | "queue" | "stream"))) {
             out.push(("warning", format!("\"{}\" has {} instances but no lb/gateway/queue in front — only one receives traffic", cid, js_num(inst))));
         }
         if k == "replica" && !parents.iter().any(|p| p.as_deref() == Some("db")) {

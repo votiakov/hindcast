@@ -188,6 +188,50 @@
       "scalesHorizontally": false
     },
     {
+      "kind": "search",
+      "label": "Search Index",
+      "description": "Full-text search (OpenSearch, Elasticsearch): data nodes that share the queries between them — no load balancer needed. A write is searchable only after the next refresh (1 s by default), later still when indexing queues behind busy nodes.",
+      "capacityPerInstanceRps": 200,
+      "baseLatencyMs": 20,
+      "costPerHour": 0.2,
+      "costPerRequest": null,
+      "sizable": true,
+      "scalesHorizontally": true
+    },
+    {
+      "kind": "vector",
+      "label": "Vector Database",
+      "description": "Nearest-neighbour search over embeddings (OpenSearch k-NN, pgvector): an HNSW graph spread over its nodes. Higher recall walks more of the graph — 0.99 costs five times 0.95 — and a graph that does not fit in memory is read from disk.",
+      "capacityPerInstanceRps": 300,
+      "baseLatencyMs": 10,
+      "costPerHour": 0.2,
+      "costPerRequest": null,
+      "sizable": true,
+      "scalesHorizontally": true
+    },
+    {
+      "kind": "edge",
+      "label": "Edge Function",
+      "description": "Code at the edge (CloudFront Functions, Cloudflare Workers): runs before the origin on every request, answers some itself (redirects, auth checks, A/B, personalisation) in milliseconds and passes the rest on. Each request gets a CPU time limit — heavy work past it is killed.",
+      "capacityPerInstanceRps": 100000,
+      "baseLatencyMs": 2,
+      "costPerHour": 0,
+      "costPerRequest": 3.2e-7,
+      "sizable": false,
+      "scalesHorizontally": false
+    },
+    {
+      "kind": "archive",
+      "label": "Archive Storage",
+      "description": "Cold storage (S3 Glacier): a tenth of the price of hot storage to keep, priced per retrieval to read. Instant Retrieval answers in milliseconds; Flexible Retrieval restores take minutes (expedited) or hours (standard) — no user can wait for that.",
+      "capacityPerInstanceRps": 5500,
+      "baseLatencyMs": 40,
+      "costPerHour": 0,
+      "costPerRequest": 0.000039296875,
+      "sizable": false,
+      "scalesHorizontally": false
+    },
+    {
       "kind": "external",
       "label": "External API",
       "description": "Someone else's service: a payment provider, a partner API, the websites a crawler fetches. You cannot size it — only respect its rate limit and live with its latency and errors.",
@@ -443,6 +487,50 @@
             "source": "https://aws.amazon.com/kinesis/data-streams/pricing/",
             "note": "provisioned mode: one shard per partition (1,000 records/s in)"
           },
+          "search": {
+            "tiers": {
+              "S": {
+                "sku": "r7g.large.search",
+                "hourly": 0.178
+              },
+              "M": {
+                "sku": "r7g.xlarge.search",
+                "hourly": 0.356
+              },
+              "L": {
+                "sku": "r7g.2xlarge.search",
+                "hourly": 0.712
+              }
+            },
+            "source": "https://instances.vantage.sh/aws/opensearch/r7g.large.search",
+            "note": "OpenSearch Service data node, per node; storage (EBS) and dedicated masters not included"
+          },
+          "edge": {
+            "perRequest": {
+              "price": 1.0000000000000001e-7,
+              "basis": "CloudFront Functions: $0.10 per million invocations"
+            },
+            "source": "https://aws.amazon.com/cloudfront/pricing/",
+            "note": "CPU time is capped (about 1 ms, as \"compute utilization\"), not billed"
+          },
+          "vector": {
+            "tiers": {
+              "S": {
+                "sku": "r7g.large.search",
+                "hourly": 0.178
+              },
+              "M": {
+                "sku": "r7g.xlarge.search",
+                "hourly": 0.356
+              },
+              "L": {
+                "sku": "r7g.2xlarge.search",
+                "hourly": 0.712
+              }
+            },
+            "source": "https://instances.vantage.sh/aws/opensearch/r7g.large.search",
+            "note": "OpenSearch Service k-NN on a memory-optimised data node, per node"
+          },
           "dns": {
             "fixed": {
               "sku": "Route 53 hosted zone",
@@ -623,6 +711,42 @@
             },
             "source": "https://cloud.google.com/pubsub/pricing",
             "note": "billed by throughput, not partitions"
+          },
+          "search": {
+            "tiers": {
+              "S": {
+                "sku": "n2-highmem-2",
+                "hourly": 0.131
+              },
+              "M": {
+                "sku": "n2-highmem-4",
+                "hourly": 0.262
+              },
+              "L": {
+                "sku": "n2-highmem-8",
+                "hourly": 0.524
+              }
+            },
+            "source": "https://gcloud-compute.com/n2-highmem-2.html",
+            "note": "no managed OpenSearch on Google Cloud: OpenSearch/Elasticsearch run on Compute Engine, per node"
+          },
+          "vector": {
+            "tiers": {
+              "S": {
+                "sku": "n2-highmem-2",
+                "hourly": 0.131
+              },
+              "M": {
+                "sku": "n2-highmem-4",
+                "hourly": 0.262
+              },
+              "L": {
+                "sku": "n2-highmem-8",
+                "hourly": 0.524
+              }
+            },
+            "source": "https://gcloud-compute.com/n2-highmem-2.html",
+            "note": "a vector database (OpenSearch k-NN, pgvector) self-run on Compute Engine, per node"
           },
           "dns": {
             "fixed": {
@@ -808,6 +932,42 @@
             },
             "source": "https://prices.azure.com/api/retail/prices",
             "note": "one throughput unit per partition (1,000 events/s in)"
+          },
+          "search": {
+            "tiers": {
+              "S": {
+                "sku": "AI Search Basic",
+                "hourly": 0.101
+              },
+              "M": {
+                "sku": "AI Search Standard S1",
+                "hourly": 0.336
+              },
+              "L": {
+                "sku": "AI Search Standard S2",
+                "hourly": 1.344
+              }
+            },
+            "source": "https://prices.azure.com/api/retail/prices",
+            "note": "Azure AI Search, per search unit (replica × partition); S2 is about four S1s, so calibrate capacity"
+          },
+          "vector": {
+            "tiers": {
+              "S": {
+                "sku": "AI Search Basic",
+                "hourly": 0.101
+              },
+              "M": {
+                "sku": "AI Search Standard S1",
+                "hourly": 0.336
+              },
+              "L": {
+                "sku": "AI Search Standard S2",
+                "hourly": 1.344
+              }
+            },
+            "source": "https://prices.azure.com/api/retail/prices",
+            "note": "Azure AI Search vector indexes, per search unit; its vector quota per unit is not the memory model here, so calibrate"
           },
           "dns": {
             "fixed": {

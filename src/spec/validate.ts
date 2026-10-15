@@ -40,9 +40,10 @@ export function validateSpec(input: unknown): { ok: boolean; issues: Issue[]; sp
     const kids = out.get(c.id) ?? [];
     const parents = (into.get(c.id) ?? []).map((p) => ids.get(p)?.kind);
     if ((c.kind === 'lb' || c.kind === 'gateway' || c.kind === 'queue' || c.kind === 'stream' || c.kind === 'dns') && !kids.length) issues.push({ level: 'error', message: `${c.kind} "${c.id}" has nothing behind it — every request fails`, path: at(c) });
+    if (c.kind === 'edge' && (c.edgeShare ?? 0.5) < 1 && !kids.length) issues.push({ level: 'warning', message: `edge "${c.id}" has no origin — what it passes on fails`, path: at(c) });
     if ((c.kind === 'cache' || c.kind === 'cdn') && !kids.length) issues.push({ level: 'warning', message: `${c.kind} "${c.id}" has no origin — every miss fails`, path: at(c) });
     const fannedInto = (into.get(c.id) ?? []).some((p) => (ids.get(p)?.fanout ?? 1) > 1);
-    if ((c.instances ?? 1) > 1 && c.kind !== 'llm' && !fannedInto && !parents.some((k) => k === 'lb' || k === 'gateway' || k === 'queue' || k === 'stream')) issues.push({ level: 'warning', message: `"${c.id}" has ${c.instances} instances but no lb/gateway/queue in front — only one receives traffic`, path: at(c) });
+    if ((c.instances ?? 1) > 1 && c.kind !== 'llm' && c.kind !== 'search' && c.kind !== 'vector' && !fannedInto && !parents.some((k) => k === 'lb' || k === 'gateway' || k === 'queue' || k === 'stream')) issues.push({ level: 'warning', message: `"${c.id}" has ${c.instances} instances but no lb/gateway/queue in front — only one receives traffic`, path: at(c) });
     if (c.kind === 'replica' && !parents.includes('db')) issues.push({ level: 'warning', message: `replica "${c.id}" is not connected from a db — it will be treated as a plain server`, path: at(c) });
     if (c.kind !== 'client' && !(into.get(c.id) ?? []).length) issues.push({ level: 'warning', message: `"${c.id}" receives no traffic (nothing connects to it)`, path: at(c) });
     if (c.fallback && !c.breaker) issues.push({ level: 'warning', message: `"${c.id}" has fallback without breaker — fallback only applies while a breaker is open`, path: at(c) });

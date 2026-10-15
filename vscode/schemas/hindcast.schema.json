@@ -63,7 +63,11 @@
               "external",
               "kv",
               "dns",
-              "stream"
+              "stream",
+              "search",
+              "vector",
+              "archive",
+              "edge"
             ],
             "description": "Component type — see list_components for capacities, latency and price"
           },
@@ -221,7 +225,7 @@
             ]
           },
           "workingSetGb": {
-            "description": "cache: the data it fronts, GB — with it the hit rate follows from the cache size (S 6.4, M 13, L 26 GB) and `skew`",
+            "description": "archive: the data it holds, GB (default 1,000), priced per GB-month; cache: the data it fronts, GB — with it the hit rate follows from the cache size (S 6.4, M 13, L 26 GB) and `skew`",
             "type": "number",
             "exclusiveMinimum": 0
           },
@@ -248,6 +252,51 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 1024
+          },
+          "refreshS": {
+            "description": "search: how often the index refreshes, s (default 1) — a document is searchable only after the next refresh; a longer interval indexes faster but searches miss recent writes for longer",
+            "type": "number",
+            "minimum": 0,
+            "maximum": 3600
+          },
+          "edgeShare": {
+            "description": "edge: the share of requests the edge function answers itself (default 0.5: redirects, auth checks, cached personalisation); the rest go on to the origin",
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "cpuMs": {
+            "description": "edge: CPU time per request, ms (default 1; exponentially spread)",
+            "type": "number",
+            "minimum": 0,
+            "maximum": 300000
+          },
+          "cpuLimitMs": {
+            "description": "edge: the platform's CPU limit per request, ms (default 10 as Workers Free; about 1 for CloudFront Functions, 30,000 for Workers paid) — requests past it are killed with an error",
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 300000
+          },
+          "retrieval": {
+            "description": "archive: how a read gets its object back — instant (default: milliseconds, Glacier Instant Retrieval, 5,500 reads/s), or a Glacier Flexible Retrieval restore: expedited (1–5 min, $10 per 1,000) or standard (3–5 h) at 1,000 restores/s",
+            "type": "string",
+            "enum": [
+              "instant",
+              "expedited",
+              "standard"
+            ]
+          },
+          "recall": {
+            "description": "vector: the recall queries are tuned for (default 0.95) — each halving of the neighbours a search may miss doubles its work: 0.99 costs five times 0.95",
+            "type": "number",
+            "minimum": 0.5,
+            "maximum": 0.999
+          },
+          "vectorsM": {
+            "description": "vector: vectors in the index, millions (default 1; 768 dimensions, 3.5 GB of graph a million) — what does not fit in the nodes' memory (4/8/16 GB a node by size) is read from disk at ~10× the cost",
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 100000
           },
           "ttlS": {
             "description": "dns: how long clients cache an answer, s (default 60) — a dead target keeps getting traffic until it expires",

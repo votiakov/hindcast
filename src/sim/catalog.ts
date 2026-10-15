@@ -18,7 +18,11 @@ export type Kind =
   | 'external'
   | 'kv'
   | 'dns'
-  | 'stream';
+  | 'stream'
+  | 'search'
+  | 'vector'
+  | 'archive'
+  | 'edge';
 export type Tier = 'S' | 'M' | 'L';
 
 /** how a node spreads its outgoing calls across children */
@@ -101,6 +105,20 @@ export interface SystemNodeData extends Record<string, unknown> {
   skew?: number;
   /** stream: partitions — 1,000 messages/s in each, and one consumer each per subscriber (default 4) */
   partitions?: number;
+  /** search: how often the index refreshes, s (default 1) — a write is searchable only after the next refresh */
+  refreshS?: number;
+  /** vector: the recall queries are tuned for (default 0.95) — each halving of what they miss doubles the work */
+  recall?: number;
+  /** vector: vectors in the index, millions (default 1; 768 dimensions) */
+  vectorsM?: number;
+  /** archive: instant (ms, Glacier Instant Retrieval), or a restore — expedited (1–5 min) or standard (3–5 h) */
+  retrieval?: 'instant' | 'expedited' | 'standard';
+  /** edge: the share of requests the edge function answers itself (default 0.5) */
+  edgeShare?: number;
+  /** edge: CPU time per request, ms (default 1; exponentially spread) */
+  cpuMs?: number;
+  /** edge: the platform's CPU limit per request, ms (default 10, Workers Free; ~1 for CloudFront Functions) */
+  cpuLimitMs?: number;
   /** dns: how long clients cache an answer, s (default 60) */
   ttlS?: number;
   /** dns: how long health checks take to notice a dead target, s (default 30) */
@@ -273,6 +291,26 @@ export const KINDS: Record<Kind, KindSpec> = {
     capacity: 40000, baseLatencyMs: 5, costPerHour: 0, costPerRequest: 0.45 / 1_000_000, tiered: false,
     description: 'Managed NoSQL (DynamoDB on demand): no box to size and billed per request — but one partition takes 3,000 reads or 1,000 writes a second, so a hot key throttles whatever the table allows.',
   },
+  search: {
+    kind: 'search', label: 'Search Index', prefix: 'search', color: '#fcd34d',
+    capacity: 200, baseLatencyMs: 20, costPerHour: 0.2, tiered: true, scalable: true,
+    description: 'Full-text search (OpenSearch, Elasticsearch): data nodes that share the queries between them — no load balancer needed. A write is searchable only after the next refresh (1 s by default), later still when indexing queues behind busy nodes.',
+  },
+  vector: {
+    kind: 'vector', label: 'Vector Database', prefix: 'vectors', color: '#f0abfc',
+    capacity: 300, baseLatencyMs: 10, costPerHour: 0.2, tiered: true, scalable: true,
+    description: 'Nearest-neighbour search over embeddings (OpenSearch k-NN, pgvector): an HNSW graph spread over its nodes. Higher recall walks more of the graph — 0.99 costs five times 0.95 — and a graph that does not fit in memory is read from disk.',
+  },
+  edge: {
+    kind: 'edge', label: 'Edge Function', prefix: 'edge', color: '#93c5fd',
+    capacity: 100000, baseLatencyMs: 2, costPerHour: 0, costPerRequest: (0.3 + 0.02) / 1_000_000, tiered: false,
+    description: 'Code at the edge (CloudFront Functions, Cloudflare Workers): runs before the origin on every request, answers some itself (redirects, auth checks, A/B, personalisation) in milliseconds and passes the rest on. Each request gets a CPU time limit — heavy work past it is killed.',
+  },
+  archive: {
+    kind: 'archive', label: 'Archive Storage', prefix: 'glacier', color: '#7dd3fc',
+    capacity: 5500, baseLatencyMs: 40, costPerHour: 0, costPerRequest: 0.01 / 1000 + 0.03 / 1024, tiered: false,
+    description: 'Cold storage (S3 Glacier): a tenth of the price of hot storage to keep, priced per retrieval to read. Instant Retrieval answers in milliseconds; Flexible Retrieval restores take minutes (expedited) or hours (standard) — no user can wait for that.',
+  },
   external: {
     kind: 'external', label: 'External API', prefix: 'ext', color: '#38bdf8',
     capacity: 1000, baseLatencyMs: 200, costPerHour: 0, tiered: false,
@@ -288,9 +326,9 @@ export const TIERS: Record<Tier, { capacity: number; cost: number; label: string
 
 export const CATEGORIES: { id: string; label: string; kinds: Kind[] }[] = [
   { id: 'traffic', label: 'Traffic', kinds: ['client'] },
-  { id: 'edge', label: 'Edge & Network', kinds: ['dns', 'cdn', 'lb', 'gateway'] },
+  { id: 'edge', label: 'Edge & Network', kinds: ['dns', 'cdn', 'edge', 'lb', 'gateway'] },
   { id: 'compute', label: 'Compute', kinds: ['server', 'worker', 'function'] },
-  { id: 'data', label: 'Data', kinds: ['cache', 'db', 'replica', 'kv', 'storage'] },
+  { id: 'data', label: 'Data', kinds: ['cache', 'db', 'replica', 'kv', 'storage', 'archive', 'search', 'vector'] },
   { id: 'async', label: 'Messaging', kinds: ['queue', 'stream'] },
   { id: 'ai', label: 'AI', kinds: ['llm', 'llmapi'] },
   { id: 'outside', label: 'Third party', kinds: ['external'] },
@@ -331,13 +369,14 @@ export const cacheHitRate = (d: SystemNodeData): number => (d.kind === 'cache' &
 export function capacityOf(d: SystemNodeData, reachable = instancesUp(d)): number {
   const spec = KINDS[d.kind];
   let cap: number;
-  if (d.kind === 'storage') cap = d.capacity ?? PREFIX_READS * prefixesOf(d);
+  if (d.kind === 'archive') cap = archiveLimit(d);
+  else if (d.kind === 'storage') cap = d.capacity ?? PREFIX_READS * prefixesOf(d);
   else if (d.kind === 'function' || d.kind === 'llmapi' || d.kind === 'external' || d.kind === 'kv' || d.kind === 'gateway') cap = d.limit ?? spec.capacity;
   else {
     const tier = spec.tiered ? TIERS[d.tier].capacity : 1;
     const batch = d.kind === 'llm' && d.batching ? BATCHING.capacity : 1;
     const rt = d.runtime ? RUNTIMES[d.runtime].throughput : 1;
-    cap = (d.capacity ?? spec.capacity) * tier * batch * rt * (spec.scalable ? Math.max(1, reachable) : 1) * shardsOf(d) * partitionsOf(d);
+    cap = ((d.capacity ?? spec.capacity) * tier * batch * rt * (spec.scalable ? Math.max(1, reachable) : 1) * shardsOf(d) * partitionsOf(d)) / vectorWork(d);
   }
   return cap * (d.degraded ?? 1);
 }
@@ -363,6 +402,53 @@ export const hotPrefixShare = (d: SystemNodeData): number => {
   return h + (1 - h) / prefixesOf(d);
 };
 
+/** a cluster that spreads requests over its own nodes (no load balancer needed in front) */
+export const clustered = (kind: Kind): boolean => kind === 'search' || kind === 'vector';
+
+/** an HNSW index's memory per million vectors, GB: 1.1 × (4 × 768 dimensions + 8 × M=16 links) bytes (OpenSearch k-NN sizing) */
+export const VECTOR_GB_PER_M = 3.52;
+/** a graph lookup that misses memory costs this many in-memory ones */
+export const VECTOR_DISK_FACTOR = 10;
+/** what a vector database's nodes keep in memory for the graph, GB: a quarter of RAM each (16/32/64 GiB nodes) */
+export const vectorMemoryGb = (d: SystemNodeData): number => ({ S: 4, M: 8, L: 16 })[d.tier] * Math.max(1, instancesUp(d));
+/** the share of a vector database's graph its nodes hold in memory */
+export function vectorFit(d: SystemNodeData): number {
+  const index = Math.max(0, d.vectorsM ?? 1) * VECTOR_GB_PER_M;
+  return index > 0 ? Math.min(1, vectorMemoryGb(d) / index) : 1;
+}
+/** a vector query's work relative to recall 0.95 with the graph in memory (mirrors the engine) */
+export function vectorWork(d: SystemNodeData): number {
+  if (d.kind !== 'vector') return 1;
+  const recall = Math.min(0.999, Math.max(0.5, d.recall ?? 0.95));
+  const fit = vectorFit(d);
+  return (0.05 / (1 - recall)) * (fit + (1 - fit) * VECTOR_DISK_FACTOR);
+}
+/** a search index's refresh interval, s */
+export const refreshSOf = (d: SystemNodeData): number => Math.max(0, d.refreshS ?? 1);
+
+/** an edge function's CPU time per request, ms */
+export const cpuMsOf = (d: SystemNodeData): number => Math.max(0, d.cpuMs ?? 1);
+/** the share of an edge function's requests past its CPU limit (CPU time exponentially spread; mirrors the engine) */
+export function edgeCpuFail(d: SystemNodeData): number {
+  if (d.kind !== 'edge') return 0;
+  const cpu = cpuMsOf(d);
+  return cpu <= 0 ? 0 : Math.exp(-Math.max(0, d.cpuLimitMs ?? 10) / cpu);
+}
+/** the share of requests an edge function answers itself */
+export const edgeShareOf = (d: SystemNodeData): number => Math.min(1, Math.max(0, d.edgeShare ?? 0.5));
+
+/** an archive's retrieval option */
+export const retrievalOf = (d: SystemNodeData): 'instant' | 'expedited' | 'standard' => d.retrieval ?? 'instant';
+/** an archive's time to the first byte, ms (mirrors the engine) */
+export const archiveLatencyMs = (d: SystemNodeData): number => ({ instant: 40, expedited: 180_000, standard: 4 * 3_600_000 })[retrievalOf(d)];
+/** an archive's request limit: S3's 5,500 GETs/s for Instant Retrieval, 1,000 restores/s per account for Flexible */
+export const archiveLimit = (d: SystemNodeData): number => d.limit ?? (retrievalOf(d) === 'instant' ? 5500 : 1000);
+/** an archive's $ per read of a 1 MB object (Glacier pricing; mirrors the engine) */
+export const archiveRequestPrice = (d: SystemNodeData): number =>
+  ({ instant: 0.01 / 1000 + 0.03 / 1024, expedited: 10 / 1000 + 0.03 / 1024, standard: 0.05 / 1000 + 0.01 / 1024 })[retrievalOf(d)];
+/** what an archive costs to keep, $/h: the GB it holds (workingSetGb, default 1,000) at $0.004 / $0.0036 per GB-month */
+export const archiveStorageH = (d: SystemNodeData): number => (Math.max(0, d.workingSetGb ?? 1000) * (retrievalOf(d) === 'instant' ? 0.004 : 0.0036)) / 730;
+
 /** a stream's partitions (1 for everything else) */
 export const partitionsOf = (d: SystemNodeData): number => (d.kind === 'stream' ? Math.max(1, Math.floor(d.partitions ?? 4)) : 1);
 
@@ -383,7 +469,9 @@ export function threadsCapacity(d: SystemNodeData, reachable: number, holdMs: nu
 
 export function baseLatencyOf(d: SystemNodeData): number {
   const rt = d.runtime ? RUNTIMES[d.runtime].latency : 1;
-  return (d.latencyMs ?? KINDS[d.kind].baseLatencyMs) * rt + (d.kind === 'llm' && d.batching ? BATCHING.latencyMs : 0);
+  if (d.kind === 'archive') return d.latencyMs ?? archiveLatencyMs(d);
+  if (d.kind === 'edge') return (d.latencyMs ?? KINDS.edge.baseLatencyMs) + cpuMsOf(d);
+  return (d.latencyMs ?? KINDS[d.kind].baseLatencyMs) * rt * vectorWork(d) + (d.kind === 'llm' && d.batching ? BATCHING.latencyMs : 0);
 }
 
 /** serverless $ per request: flat catalog price, or memory × duration when a runtime is chosen */
@@ -409,6 +497,7 @@ export function costOf(d: SystemNodeData): number {
 
 function fixedCostOf(d: SystemNodeData): number {
   const spec = KINDS[d.kind];
+  if (d.kind === 'archive' && d.costPerHour === undefined) return archiveStorageH(d);
   const n = (d.instances ?? 1) * shardsOf(d) * partitionsOf(d);
   const p = d.costPerHour === undefined ? kindPricing(d.kind) : undefined;
   if (p?.tiers) return p.tiers[spec.tiered ? d.tier : 'S'].hourly * n;

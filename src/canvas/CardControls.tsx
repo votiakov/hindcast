@@ -24,8 +24,8 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
   const instances = data.instances ?? 1;
   const set = (patch: Partial<SystemNodeData>) => updateNode(b, id, patch);
   const caller = CALLERS.has(data.kind);
-  const bounded = data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'external' && data.kind !== 'kv' && data.kind !== 'function' && data.kind !== 'queue' && data.kind !== 'stream';
-  const calibratable = data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'external' && data.kind !== 'kv' && data.kind !== 'function' && data.kind !== 'queue' && data.kind !== 'stream';
+  const bounded = data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'external' && data.kind !== 'kv' && data.kind !== 'archive' && data.kind !== 'function' && data.kind !== 'queue' && data.kind !== 'stream';
+  const calibratable = data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'external' && data.kind !== 'kv' && data.kind !== 'archive' && data.kind !== 'function' && data.kind !== 'queue' && data.kind !== 'stream';
   const tuned = (data.retries ?? 0) > 0 || !!data.breaker || !!data.timeoutMs || (data.routing && data.routing !== 'split') || (data.fanout ?? 1) > 1 || data.queueS !== undefined;
   const [more, setMore] = useState(tuned);
   const [cal, setCal] = useState(false);
@@ -232,6 +232,61 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
         <div className="nc-row" title="Partitions: 1,000 messages/s in each, $0.015/h each — and a subscriber cannot use more consumer instances than there are partitions">
           <span className="nc-l">partitions</span>
           <input className="nc-num" type="number" min={1} max={1024} step={1} value={data.partitions ?? 4} onChange={(e) => set({ partitions: Math.max(1, Math.min(1024, Math.round(+e.target.value) || 1)) })} />
+        </div>
+      )}
+      {data.kind === 'search' && (
+        <div className="nc-row" title="Refresh interval: a written document is searchable only after the next refresh. Longer intervals index faster (fewer, bigger segments), but searches miss recent writes for longer">
+          <span className="nc-l">refresh</span>
+          <select value={data.refreshS ?? 1} onChange={(e) => set({ refreshS: +e.target.value })}>
+            {pick(data.refreshS ?? 1, [1, 5, 30, 60]).map((n) => (
+              <option key={n} value={n}>
+                {n >= 60 ? `${n / 60} min` : `${n}s`}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      {data.kind === 'vector' && (
+        <div className="nc-row" title="Recall: the share of the true nearest neighbours a search finds. Each halving of what it may miss doubles the graph it walks. Vectors: the index size — 3.5 GB of graph per million 768-dimension vectors; what does not fit in the nodes' memory is read from disk">
+          <span className="nc-l">recall</span>
+          <select value={data.recall ?? 0.95} onChange={(e) => set({ recall: +e.target.value })}>
+            {pick(data.recall ?? 0.95, [0.9, 0.95, 0.98, 0.99, 0.999]).map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+          <span className="nc-l">vectors (M)</span>
+          <input className="nc-num" type="number" min={0.1} max={100000} step={0.5} value={data.vectorsM ?? 1} onChange={(e) => set({ vectorsM: Math.max(0.1, Math.min(100000, +e.target.value || 1)) })} />
+        </div>
+      )}
+      {data.kind === 'edge' && (
+        <div className="nc-row" title="Answered at the edge: the share of requests the function handles itself (redirects, auth checks, A/B, personalisation); the rest go on to the origin. CPU: time per request, and the platform's limit — CloudFront Functions about 1 ms, Workers Free 10 ms, Workers paid 30 s">
+          <span className="nc-l">at edge</span>
+          <input type="range" min={0} max={1} step={0.05} value={data.edgeShare ?? 0.5} onChange={(e) => set({ edgeShare: +e.target.value })} />
+          <b className="nc-v">{Math.round((data.edgeShare ?? 0.5) * 100)}%</b>
+          <span className="nc-l">CPU ms</span>
+          <input className="nc-num" type="number" min={0} max={300000} step={0.5} value={data.cpuMs ?? 1} onChange={(e) => set({ cpuMs: Math.max(0, +e.target.value || 0) })} />
+          <span className="nc-l">limit</span>
+          <select value={data.cpuLimitMs ?? 10} onChange={(e) => set({ cpuLimitMs: +e.target.value })}>
+            {pick(data.cpuLimitMs ?? 10, [1, 5, 10, 50, 30000]).map((n) => (
+              <option key={n} value={n}>
+                {n >= 1000 ? `${n / 1000} s` : `${n} ms`}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      {data.kind === 'archive' && (
+        <div className="nc-row" title="Retrieval: Instant Retrieval reads in milliseconds ($0.01 per 1,000 + $0.03/GB); a Flexible Retrieval restore takes 1–5 min (expedited, $10 per 1,000) or 3–5 h (standard). Data: what it holds, at $0.004 (instant) or $0.0036 per GB-month">
+          <span className="nc-l">retrieval</span>
+          <select value={data.retrieval ?? 'instant'} onChange={(e) => set({ retrieval: e.target.value as SystemNodeData['retrieval'] })}>
+            <option value="instant">instant (ms)</option>
+            <option value="expedited">expedited (1–5 min)</option>
+            <option value="standard">standard (3–5 h)</option>
+          </select>
+          <span className="nc-l">data (GB)</span>
+          <input className="nc-num" type="number" min={1} step={100} value={data.workingSetGb ?? 1000} onChange={(e) => set({ workingSetGb: Math.max(1, +e.target.value || 1000) })} />
         </div>
       )}
       {data.kind === 'dns' && (

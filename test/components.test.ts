@@ -46,6 +46,12 @@ const HARNESS: Record<Exclude<Kind, 'client'>, Harness> = {
   llmapi: alone('llmapi'),
   external: alone('external'),
   kv: alone('kv'),
+  // a cluster: its nodes share the queries without a balancer in front
+  search: alone('search', { instances: 2 }),
+  vector: alone('vector'),
+  archive: alone('archive'),
+  // runs on every request, answers half itself: past its capacity it sheds before the origin sees anything
+  edge: { comps: [U, { id: 'x', kind: 'edge' }, sink('origin')], conns: [['users', 'x'], ['x', 'origin']], cap: KINDS.edge.capacity, over: 'shed' },
   // past what its subscriber drains: producers are still answered, the subscriber falls behind
   stream: { comps: [U, { id: 'x', kind: 'stream' }, { id: 'w', kind: 'worker' }], conns: [['users', 'x'], ['x', 'w']], cap: KINDS.worker.capacity, over: 'queue' },
   // a name that only answers: what is behind it overloads, and the board says so there

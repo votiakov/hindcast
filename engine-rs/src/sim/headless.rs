@@ -106,8 +106,8 @@ pub fn node_view(d0: &NodeData, st: Option<&NodeStats>, running: bool, has_outgo
         up,
         failed_over: d.kind == "db" && failover == "promoted",
         electing: failover == "electing",
-        unreachable: spec(&d.kind).scalable && d.kind != "llm" && iu > 1.0 && st.map(|s| s.reachable).unwrap_or(1.0) < iu && running,
-        no_origin: (d.kind == "cache" || d.kind == "cdn") && !has_outgoing,
+        unreachable: spec(&d.kind).scalable && d.kind != "llm" && !clustered(&d.kind) && iu > 1.0 && st.map(|s| s.reachable).unwrap_or(1.0) < iu && running,
+        no_origin: (d.kind == "cache" || d.kind == "cdn" || (d.kind == "edge" && edge_share_of(&d) < 1.0)) && !has_outgoing,
     }
 }
 
@@ -149,6 +149,28 @@ pub fn explain(d: &NodeData, st: Option<&NodeStats>, v: &View) -> Option<String>
         format!("Backlog of {} messages: consumers are {} behind. Producers are unaffected — work completes later.", fmt(st.queue), if st.lag_s.is_finite() { format!("{}s", js_to_fixed(st.lag_s, 0)) } else { "indefinitely".into() })
     } else if d.kind == "dns" && st.drop_rps > 0.5 {
         format!("{}/s of clients still hold an answer pointing at a dead target and time out: they keep going there until the health checks notice ({} s) and their cached answer expires (TTL {} s).", fmt(st.drop_rps), js_num(d.health_check_s.unwrap_or(30.0)), js_num(d.ttl_s.unwrap_or(60.0)))
+    } else if d.kind == "vector" && vector_fit(d) < 0.999 && (v.health == "hot" || v.health == "warm") {
+        format!(
+            "The index does not fit in memory: {} GB of graph against the {} GB its nodes keep for it, so {}% of lookups read the disk at ~{}× the cost. Add nodes (or bigger ones) until it fits — that buys more than CPU would.",
+            fmt(d.vectors_m.unwrap_or(1.0) * VECTOR_GB_PER_M),
+            fmt(vector_memory_gb(d)),
+            pct(1.0 - vector_fit(d)),
+            js_num(VECTOR_DISK_FACTOR)
+        )
+    } else if d.kind == "vector" && d.recall.unwrap_or(0.95) > 0.95 && (v.health == "hot" || v.health == "warm") {
+        format!(
+            "Recall {} costs {}× the work of 0.95 per query: each halving of the neighbours a search may miss doubles the graph it walks. Is the last bit of recall worth {}% of the capacity?",
+            js_num(d.recall.unwrap_or(0.95)),
+            js_to_fixed(0.05 / (1.0 - d.recall.unwrap_or(0.95).min(0.999)), 1),
+            pct(1.0 - (1.0 - d.recall.unwrap_or(0.95).min(0.999)) / 0.05)
+        )
+    } else if d.kind == "search" && st.repl_lag_s > 1.0 {
+        format!(
+            "New documents show up in search {} after they are written: the index refreshes every {} s{}. Searches in that window miss them — fine for a catalogue, wrong for \"I just posted it, where is it?\".",
+            fmt_ms(st.repl_lag_s * 1000.0),
+            js_num(refresh_s_of(d)),
+            if st.repl_lag_s > refresh_s_of(d) + 0.5 { ", and indexing is queued behind the queries the nodes are busy with" } else { "" }
+        )
     } else if d.kind == "db" && d.hot_row_share.unwrap_or(0.0) > 0.0 && st.drop_rps > 1.0 {
         format!(
             "Hot row: {}% of the writes update one key, and its row lock takes them one at a time ({} each) — at most {}/s however big the database. The rest wait, then time out. Batch the updates, split the counter over several rows, or keep it in a cache.",
@@ -172,6 +194,27 @@ pub fn explain(d: &NodeData, st: Option<&NodeStats>, v: &View) -> Option<String>
             fmt(cap),
             pct(1.0 - connection_admit(d, st.in_rps))
         )
+    } else if d.kind == "edge" && edge_cpu_fail(d) > 0.005 && st.in_rps > 0.01 {
+        format!(
+            "{}% of requests run past the {} ms CPU limit and are killed: CPU time here averages {} ms. Edge functions are for small, fast work (redirects, headers, auth checks); move the heavy part to the origin, or to a platform with a higher limit.",
+            pct(edge_cpu_fail(d)),
+            js_num(d.cpu_limit_ms.unwrap_or(10.0)),
+            js_num(cpu_ms_of(d))
+        )
+    } else if d.kind == "archive" && st.drop_rps > 1.0 {
+        format!(
+            "Archive request limit: {}/s refused (503 SlowDown) above {}/s — {}. Archives are for data nobody reads in a hurry; put what users read in hot storage or a cache.",
+            fmt(st.drop_rps),
+            fmt(archive_limit(d)),
+            if retrieval_of(d) == "instant" { "Instant Retrieval shares S3's 5,500 GETs a second per prefix" } else { "restore requests are capped at 1,000 a second per account" }
+        )
+    } else if d.kind == "archive" && retrieval_of(d) != "instant" && st.in_rps > 0.01 {
+        format!(
+            "Every read here is a restore that takes {} ({} retrieval) and costs ${} a request. Anyone waiting on it synchronously has long timed out: put a queue and a worker in front and notify when it is back, or keep what users read in Instant Retrieval.",
+            if retrieval_of(d) == "expedited" { "1–5 minutes" } else { "3–5 hours" },
+            retrieval_of(d),
+            js_to_fixed(archive_request_price(d), if retrieval_of(d) == "expedited" { 3 } else { 5 })
+        )
     } else if (d.kind == "gateway" || d.kind == "llmapi" || d.kind == "external" || d.kind == "kv") && st.drop_rps > 1.0 {
         format!("Rate limit reached: {}/s rejected with HTTP 429 to protect what is behind it.", fmt(st.drop_rps))
     } else if d.kind == "function" && st.cold_frac > 0.05 {
@@ -192,7 +235,7 @@ pub fn explain(d: &NodeData, st: Option<&NodeStats>, v: &View) -> Option<String>
     } else if v.unreachable {
         "Extra instances receive no traffic: without a load balancer, clients only know one address.".into()
     } else if v.no_origin {
-        "No origin behind this cache: every miss has nowhere to go and fails.".into()
+        if d.kind == "edge" { "No origin behind this edge function: what it passes on has nowhere to go and fails.".into() } else { "No origin behind this cache: every miss has nowhere to go and fails.".into() }
     } else {
         return None;
     })
