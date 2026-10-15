@@ -584,6 +584,10 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
     let mut o = JMap::new();
     o.insert("name".into(), g(st, &["name"]).clone());
     o.insert("verdict".into(), json!(verdict));
+    // which way an inconclusive verdict leans: what the median replay says, before confidence
+    if verdict == "inconclusive" {
+        o.insert("leans".into(), json!(if p50 > gate { "fail" } else { "pass" }));
+    }
     o.insert("summary".into(), json!(crate::cli::reports::headline(st, base)));
     o.insert("reasons".into(), json!(reasons));
     o.insert("change".into(), spec.clone());

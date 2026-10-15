@@ -289,6 +289,7 @@ function forecast(c: Case, ws: Workspace, base: string) {
   return {
     verdict: asBuilt ? (asBuiltMin > 0.5 ? 'fail' : 'pass') : res?.verdict,
     confidence: asBuilt ? null : (res?.confidence.level ?? null),
+    leans: asBuilt ? null : ((res?.leans as string | undefined) ?? null),
     minutesOutOfSlo: asBuilt ? asBuiltMin : (res?.reliability.minutesOutOfSlo ?? null),
     peakP99Ms: asBuilt ? null : (res?.reliability.peakP99Ms ?? null),
     monthlyDelta: asBuilt ? null : (res?.cost.monthlyDelta ?? null),
@@ -480,10 +481,13 @@ async function main() {
 
   // the README's results tables, one per model
   const pc = (v: number) => `${(v * 100).toFixed(v < 0.01 ? 2 : 1)}%`;
-  const mark = (v: string | null | undefined, ok: boolean) => `${v ?? '—'} ${ok ? '✅' : v === 'inconclusive' ? '⚠️' : '❌'}`;
+  const mark = (v: string | null | undefined, ok: boolean, leans?: string | null) => `${v ?? '—'} ${ok ? '✅' : v === 'inconclusive' ? '⚠️' : '❌'}${v === 'inconclusive' && leans ? ` leans ${leans}` : ''}`;
   type Row = (typeof models)[number]['rows'][number];
-  const row = (r: Row) => `| \`${r.run}\` | ${r.question} | **${r.truth}**: p99 ${r.measured.p99Ms} ms, errors ${pc(r.measured.errorRate)}, ${r.measured.minutesOutOfSlo} min out of SLO | ${mark(r.exAnte.verdict, r.agrees.backtest)}${r.exAnte.confidence ? ` (${r.exAnte.confidence} confidence)` : ''}, ${r.exAnte.minutesOutOfSlo ?? '—'} min | p99 ${r.exPost.p99Ms} ms, errors ${pc(r.exPost.errorRate)}, ${r.exPost.minutesOutOfSlo} min | ${mark(r.naive.verdict, r.agrees.naive)} at ${Math.round(r.naive.predictedPeakUtil * 100)}% CPU |`;
-  const tally = (rows: Row[]) => `Backtest verdicts: **${rows.filter((r) => r.agrees.backtest).length} right**, ${rows.filter((r) => r.exAnte.verdict === 'inconclusive').length} inconclusive (it said to load-test), ${rows.filter((r) => !r.agrees.backtest && r.exAnte.verdict !== 'inconclusive').length} wrong, of ${rows.length}. Naive CPU ratio: ${rows.filter((r) => r.agrees.naive).length} right.`;
+  const row = (r: Row) => `| \`${r.run}\` | ${r.question} | **${r.truth}**: p99 ${r.measured.p99Ms} ms, errors ${pc(r.measured.errorRate)}, ${r.measured.minutesOutOfSlo} min out of SLO | ${mark(r.exAnte.verdict, r.agrees.backtest, r.exAnte.leans ?? (r.exAnte.verdict === 'inconclusive' && (r.exAnte.minutesOutOfSlo ?? 0) <= 0.5 ? 'pass' : null))}${r.exAnte.confidence ? ` (${r.exAnte.confidence} confidence)` : ''}, ${r.exAnte.minutesOutOfSlo ?? '—'} min | p99 ${r.exPost.p99Ms} ms, errors ${pc(r.exPost.errorRate)}, ${r.exPost.minutesOutOfSlo} min | ${mark(r.naive.verdict, r.agrees.naive)} at ${Math.round(r.naive.predictedPeakUtil * 100)}% CPU |`;
+  const leanOf = (r: Row) => r.exAnte.leans ?? (r.exAnte.verdict === 'inconclusive' && (r.exAnte.minutesOutOfSlo ?? 0) <= 0.5 ? 'pass' : null);
+  const hedged = (rows: Row[]) => rows.filter((r) => r.exAnte.verdict === 'inconclusive');
+  const tally = (rows: Row[]) =>
+    `Backtest verdicts: **${rows.filter((r) => r.agrees.backtest).length} right**, ${hedged(rows).length} inconclusive (it said to load-test${hedged(rows).length ? `; ${hedged(rows).filter((r) => leanOf(r) === r.truth).length} of them leaned the right way` : ''}), ${rows.filter((r) => !r.agrees.backtest && r.exAnte.verdict !== 'inconclusive').length} wrong, of ${rows.length}. Naive CPU ratio: ${rows.filter((r) => r.agrees.naive).length} right.`;
   const head = ['| run | question | measured (k6, every request) | backtest before the day | model on the day’s real traffic | naive CPU ratio |', '|---|---|---|---|---|---|'];
   const md = models
     .map((mod) => {

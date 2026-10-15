@@ -244,7 +244,8 @@ And for a human:
 
 - **fail**: the median adds more than `gateMinutes` (default 0.5) minutes out of SLO over the window.
 - **inconclusive**: the median passes but the worst 10% of capacity draws don't, *or* confidence is
-  low, *or* the change cuts headroom below traffic the system has already seen.
+  low, *or* the change cuts headroom below traffic the system has already seen. `leans` says which
+  way the median replay went (`pass` or `fail`): what the backtest would say if it trusted itself.
 - **pass**: otherwise.
 
 #### How confidence is decided
