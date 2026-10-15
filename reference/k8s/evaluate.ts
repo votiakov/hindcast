@@ -32,6 +32,7 @@ import { nodeLoss } from '../../src/backtest/resilience';
 import { fileAccess } from '../../scripts/files';
 import type { K8sReference } from './record';
 import { loadEngine } from '../../src/backtest/native';
+import { backtest } from '../../src/backtest/backtest';
 
 await loadEngine();
 
@@ -71,6 +72,8 @@ const CASES: Case[] = [
   { run: 'launch-x1.3-4', asBuilt: 'launch-x1.3', head: 'variants/frontend-4.yaml', scale: LAUNCH * 1.3, oos: 2, question: '4 frontend replicas, on a launch day with 30% more traffic?' },
   { run: 'launch-x1.3-hpa', asBuilt: 'launch-x1.3', head: 'variants/frontend-hpa-2-5.yaml', scale: LAUNCH * 1.3, oos: 2, question: 'An HPA (2–5 replicas at 50% CPU), on a launch day with 30% more traffic?' },
   { run: 'launch-2-750', asBuilt: 'launch', head: 'variants/frontend-2-750m.yaml', scale: LAUNCH, cpu: 0.75, oos: 2, question: '2 frontend replicas at 750m instead of 3 at half a core, on launch day?' },
+  { run: 'normal-x1.5', asBuilt: 'normal-x1.5', scale: 1.5, oos: 3, question: 'As built, on an ordinary day with 50% more traffic?' },
+  { run: 'launch-email300', asBuilt: 'launch', head: 'variants/email-300mi.yaml', scale: LAUNCH, oos: 3, question: 'email with 300 MiB instead of 150, on launch day?' },
 ];
 const AS_BUILT_CPU = 0.5;
 
@@ -268,13 +271,14 @@ function naive(history: Dataset, replicasAfter: number | 'hpa', scale: number, c
 }
 
 const strategyName = (head: string) => {
+  if (head.includes('email-300')) return 'email with 300 MiB';
   const hpa = /hpa-(\d)-(\d)/.exec(head);
   if (hpa) return `Frontend on an HPA, ${hpa[1]}–${hpa[2]} replicas`;
   if (head.includes('hpa')) return 'Frontend on an HPA, 1–3 replicas';
   const [, n, cpu] = /frontend-(\d)(?:-(\w+))?\.yaml/.exec(head)!;
   return `Frontend at ${n} replica${n === '1' ? '' : 's'}${cpu ? `, ${cpu.replace('cpu', ' core')} each` : ''}`;
 };
-const replicasOfHead = (head: string) => Number(/frontend-(\d)/.exec(head)![1]);
+const replicasOfHead = (head: string) => Number(/frontend-(\d)/.exec(head)?.[1] ?? 3);
 
 /** what verify_change says before the day, from the calibration history alone */
 function forecast(c: Case, ws: Workspace, base: string) {
@@ -285,6 +289,17 @@ function forecast(c: Case, ws: Workspace, base: string) {
   const exAnte = agent('verify_change', ws, { changes: [head ? { kubernetes: { base, head } } : { strategy: { name: 'as built', changes: [] } }], traffic, window, report: false });
   const res = exAnte.results[0];
   const asBuilt = c.run === c.asBuilt;
+  // OOM kills the replay predicts on the ordinary day at this load, by service: minutes into the day
+  const m = reviveModel(ws.readJson<Model>('model.json'));
+  const day = ws.readJson<Dataset>('dataset.json');
+  const strat = head ? strategyFromManifests(base, head, ws.path('model.json')) : undefined;
+  const bt = backtest(m, day, strat ? [strat] : [], { draws: 1, ...(traffic ? { load: traffic } : {}) });
+  const evs = strat ? bt.strategies[0]?.events ?? [] : bt.baseline.events;
+  const ooms: Record<string, number[]> = {};
+  for (const e of evs) {
+    const k = /^(\S+): OOM-killed/.exec(e.what);
+    if (k) (ooms[k[1]] ??= []).push(Math.round(((e.t - day.start) / 60) * 10) / 10);
+  }
   const asBuiltMin = exAnte.asBuilt?.minutesOutOfSlo ?? 0;
   return {
     verdict: asBuilt ? (asBuiltMin > 0.5 ? 'fail' : 'pass') : res?.verdict,
@@ -295,6 +310,7 @@ function forecast(c: Case, ws: Workspace, base: string) {
     monthlyDelta: asBuilt ? null : (res?.cost.monthlyDelta ?? null),
     reasons: asBuilt ? [] : (res?.reasons ?? []),
     warnings: asBuilt ? [] : (res?.confidence.warnings ?? []),
+    ooms,
   };
 }
 

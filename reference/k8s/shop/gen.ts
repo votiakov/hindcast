@@ -233,7 +233,7 @@ const services: Svc[] = [
   },
 ];
 
-function manifests(o: { frontendReplicas: number; frontendCpu?: string; hpa?: { min: number; max: number; cpu: number } }): string {
+function manifests(o: { frontendReplicas: number; frontendCpu?: string; hpa?: { min: number; max: number; cpu: number }; emailMem?: string }): string {
   const docs: object[] = [{ apiVersion: 'v1', kind: 'Namespace', metadata: { name: NS } }];
 
   for (const s of services) {
@@ -266,8 +266,8 @@ function manifests(o: { frontendReplicas: number; frontendCpu?: string; hpa?: { 
                     }
                   : {}),
                 resources: {
-                  requests: { cpu: (s.name === 'frontend' && o.frontendCpu) || s.cpu, memory: s.mem },
-                  limits: { cpu: (s.name === 'frontend' && o.frontendCpu) || s.cpu, memory: s.mem },
+                  requests: { cpu: (s.name === 'frontend' && o.frontendCpu) || s.cpu, memory: (s.name === 'email' && o.emailMem) || s.mem },
+                  limits: { cpu: (s.name === 'frontend' && o.frontendCpu) || s.cpu, memory: (s.name === 'email' && o.emailMem) || s.mem },
                 },
                 ...(s.mounts
                   ? {
@@ -573,4 +573,6 @@ writeFileSync(join(HERE, 'variants', 'frontend-1-750m.yaml'), manifests({ fronte
 writeFileSync(join(HERE, 'variants', 'frontend-4.yaml'), manifests({ frontendReplicas: 4 }));
 writeFileSync(join(HERE, 'variants', 'frontend-hpa-2-5.yaml'), manifests({ frontendReplicas: 2, hpa: { min: 2, max: 5, cpu: 50 } }));
 writeFileSync(join(HERE, 'variants', 'frontend-2-750m.yaml'), manifests({ frontendReplicas: 2, frontendCpu: '750m' }));
-console.log('wrote shop.yaml and 9 variants');
+// out of sample, third round: the memory leak — email with twice the memory
+writeFileSync(join(HERE, 'variants', 'email-300mi.yaml'), manifests({ frontendReplicas: 3, emailMem: '300Mi' }));
+console.log('wrote shop.yaml and 10 variants');
