@@ -95,6 +95,17 @@ const describe = (spec: ReturnType<typeof generate>) =>
 //    worker shedding two thirds of its calls a 1.2 s p99 read 1.5 s. A shed call fails in 0.5 ms (the
 //    DES's); fixed: each component carries how long its failures take (at once when shed, the deadline
 //    when late, the failed calls' time when downstream failed), and a retry costs that.
+//  - The lower half of an answer: below its mean the fluid shape was exponential, with far too many
+//    answers near zero, so a p50 that falls between a cache's hits and the slower answers behind it
+//    read 9 ms where it is 27 (#132). DES right (its service times are lognormal); fixed with a
+//    lognormal's body below the mean, of the mean and p99 the fluid engine has (deadlines shorter than
+//    the mean answer use it too).
+// Still apart, as an approximation: #1 (users > function00 t200 > function10, users > worker01 >
+// function10 at 20 req/s; p99 fluid 311 ms, DES 410–500). Its p99 is the boundary between warm and
+// cold answers, and the DES cold-starts function10 twice: once for the worker's calls, again 0.4 s
+// later when function00's own cold starts end and release their calls at once. The fluid engine passes
+// a request through a component within the tick, so both reach function10 together and it cold-starts
+// once: fewer cold answers, a p99 just inside the warm mode.
 
 const SEEDS = 5;
 const TOLERANCE = 0.25;

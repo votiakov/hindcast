@@ -388,17 +388,30 @@ fn window_above(p: f64, n: f64, t: f64) -> f64 {
 }
 
 /// share of answers slower than a deadline, for answers with this mean and p99 − mean: right-skewed,
-/// about 40% above the mean, 1% above the p99, decaying exponentially in between and beyond
+/// about 40% above the mean, 1% above the p99, decaying exponentially in between and beyond. Below the
+/// mean, the body of a lognormal with that mean and p99 (none answer in no time: a quarter of the mean
+/// holds about 1% of the answers at the services' spread, as the discrete-event engine samples them)
 fn late_share(mean: f64, tail: f64, deadline: f64) -> f64 {
     if !mean.is_finite() {
         return 1.0;
     }
-    let x = (deadline - mean) / tail.max(1e-6).max(mean * 0.05);
+    let spread = tail.max(1e-6).max(mean * 0.05);
+    let x = (deadline - mean) / spread;
     if x >= 0.0 {
-        0.4 * 0.025_f64.js_pow(x)
-    } else {
-        1.0 - 0.6 * (3.0 * x).js_exp()
+        return 0.4 * 0.025_f64.js_pow(x);
     }
+    if deadline <= 0.0 {
+        return 1.0;
+    }
+    // σ of the lognormal whose p99 / mean is this: exp(−σ²/2 + 2.326σ) = p99 / mean
+    let r = ((mean + spread) / mean).min(14.9);
+    let z99 = 2.326;
+    let s = z99 - (z99 * z99 - 2.0 * r.js_ln()).max(0.0).sqrt();
+    if s < 1e-6 {
+        return 1.0;
+    }
+    let below = |z: f64| 1.0 - crate::math::normal_tail(z);
+    1.0 - 0.6 * below(((deadline / mean).js_ln() + s * s / 2.0) / s) / below(s / 2.0)
 }
 
 /// an outgoing connection: edge index, target node index, target up

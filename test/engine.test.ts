@@ -177,6 +177,14 @@ describe('latency of the successful answers, in both engines', () => {
       near(e.p99Ms, 1220, 0.06);
     }
   });
+
+  it('the lower half of an answer: none in no time', () => {
+    // a cache that hits 40%: the p50 is the server's answers' 17th percentile, lognormal 25 ms ×
+    // e^(−σ²/2 − 0.97σ) ≈ 12.5 ms, plus the cache, the wait and the hops: the DES says 16. The fluid
+    // shape below the mean was exponential, with far too many answers near zero: p50 12 ms
+    const a = both({ components: [{ id: 'users', kind: 'client' }, { id: 'c', kind: 'cache', hitRate: 0.4 }, { id: 'api', kind: 'server' }], connections: [['users', 'c'], ['c', 'api']] }, 100);
+    for (const e of [a.f, a.d]) near(e.p50Ms, 16, 0.12);
+  });
 });
 
 describe('retry amplification', () => {
