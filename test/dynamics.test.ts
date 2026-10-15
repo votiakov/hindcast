@@ -127,3 +127,30 @@ describe('threads and bulkheads', () => {
     expect(fluid).toBeLessThan(0.02);
   });
 });
+
+describe('provisioned concurrency', () => {
+  // a Java function (1.8 s cold starts) hit by a burst
+  const fn = (extra: Record<string, unknown>) => ({
+    pricing: 'aws-us-east-1',
+    components: [
+      { id: 'u', kind: 'client' },
+      { id: 'fn', kind: 'function', runtime: 'java', ...extra },
+    ],
+    connections: [['u', 'fn']],
+  });
+  const burst = { duration: 30, traffic: [{ at: 0, rps: 20 }, { at: 10, rps: 20 }, { at: 11, rps: 400 }, { at: 30, rps: 400 }] };
+
+  it('keeps executions warm through a burst, and bills them by the hour', () => {
+    const cold = simulateDes(fn({}), burst, { seed: 4 });
+    const warm = simulateDes(fn({ provisioned: 100 }), burst, { seed: 4 });
+    // the burst's worst second: cold starts (1.8 s for Java) vs warm executions
+    expect(cold.summary.peakP99Ms).toBeGreaterThan(1000);
+    expect(warm.summary.peakP99Ms).toBeLessThan(300);
+    expect(simulate(fn({}) as never, burst as never).summary.peakP99Ms).toBeGreaterThan(1000);
+    expect(simulate(fn({ provisioned: 100 }) as never, burst as never).summary.peakP99Ms).toBeLessThan(300);
+    // 100 × 0.5 GB × $0.0000041667 per GB-s × 3600 = $0.75/h on top
+    expect(warm.summary.meanCostPerHour - cold.summary.meanCostPerHour).toBeCloseTo(0.75, 1);
+    const f = simulate(fn({ provisioned: 100 }) as never, burst as never);
+    expect(f.summary.meanCostPerHour - simulate(fn({}) as never, burst as never).summary.meanCostPerHour).toBeCloseTo(0.75, 1);
+  });
+});

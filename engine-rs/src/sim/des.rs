@@ -986,7 +986,7 @@ impl<'a> Des<'a> {
         svc += self.nodes[n].data.fault_latency_ms.unwrap_or(0.0);
         if self.nodes[n].data.kind == "function" {
             let x = &mut self.nodes[n];
-            if x.busy > x.warm {
+            if x.busy > x.warm.max(x.data.provisioned.unwrap_or(0.0)) {
                 x.warm = x.busy;
                 if self.cfg.cold_start_ms > 0.0 {
                     svc += match x.data.runtime.as_deref().filter(|r| !r.is_empty()) {

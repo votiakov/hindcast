@@ -109,6 +109,8 @@ export interface SystemNodeData extends Record<string, unknown> {
   threads?: number;
   /** calls that may wait on any one dependency at once, per instance; past it a call fails at once */
   bulkhead?: number;
+  /** function: provisioned concurrency — executions kept warm (no cold start up to it), billed hourly */
+  provisioned?: number;
   /** db: horizontal partitions (capacity and cost × shards) */
   shards?: number;
   /** db: share of its traffic on one key — all of it on one shard */
@@ -344,7 +346,20 @@ export function fnCostPerRequest(d: SystemNodeData): number {
 }
 
 /** fixed hourly cost (usage cost is added by the engine) — follows the active pricing profile */
+/** Lambda provisioned concurrency, $ per GB-second it is configured (us-east-1, x86) */
+const FN_PROVISIONED_PER_GB_S = 0.0000041667;
+
+/** a function's provisioned concurrency, $/h: memory × executions kept warm, used or not */
+export function provisionedCostH(d: SystemNodeData): number {
+  if (d.kind !== 'function' || !d.provisioned || d.provisioned <= 0) return 0;
+  return d.provisioned * (RUNTIMES[d.runtime ?? 'node'].memoryMB / 1024) * FN_PROVISIONED_PER_GB_S * 3600;
+}
+
 export function costOf(d: SystemNodeData): number {
+  return fixedCostOf(d) + provisionedCostH(d);
+}
+
+function fixedCostOf(d: SystemNodeData): number {
   const spec = KINDS[d.kind];
   const n = (d.instances ?? 1) * shardsOf(d) * partitionsOf(d);
   const p = d.costPerHour === undefined ? kindPricing(d.kind) : undefined;

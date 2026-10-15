@@ -110,6 +110,10 @@ pub struct NodeData {
     /// instead of taking another thread (a bulkhead)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bulkhead: Option<f64>,
+    /// function: provisioned concurrency — executions kept warm (no cold start up to it), billed
+    /// by the hour whether used or not
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provisioned: Option<f64>,
     /// a network partition's side this component is on (set by the partition action): links between
     /// components on different sides are cut
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -188,6 +192,24 @@ pub fn runtime(r: &str) -> (f64, f64, f64, f64) {
 
 pub const FN_PER_REQUEST: f64 = 0.2 / 1_000_000.0;
 pub const FN_PER_GB_SECOND: f64 = 0.0000166667;
+/// Lambda provisioned concurrency, $ per GB-second it is configured (us-east-1, x86)
+pub const FN_PROVISIONED_PER_GB_S: f64 = 0.0000041667;
+
+/// a function's provisioned concurrency, $/h: memory × executions kept warm, used or not
+pub fn provisioned_cost_h(d: &NodeData) -> f64 {
+    match d.provisioned.filter(|p| *p > 0.0 && d.kind == "function") {
+        Some(p) => p * (runtime(d.runtime.as_deref().filter(|r| !r.is_empty()).unwrap_or("node")).3 / 1024.0) * FN_PROVISIONED_PER_GB_S * 3600.0,
+        None => 0.0,
+    }
+}
+
+/// the request rate a function's provisioned concurrency serves warm
+pub fn provisioned_rps(d: &NodeData) -> f64 {
+    match d.provisioned.filter(|p| *p > 0.0 && d.kind == "function") {
+        Some(p) => p / (base_latency_of(d).max(1.0) / 1000.0),
+        None => 0.0,
+    }
+}
 pub const BATCHING_CAPACITY: f64 = 4.0;
 pub const BATCHING_LATENCY_MS: f64 = 400.0;
 pub const QUEUE_MAX_BACKLOG: f64 = 200_000.0;
@@ -456,6 +478,10 @@ pub fn fn_cost_per_request(d: &NodeData, profile: &str) -> f64 {
 
 /// fixed hourly cost under a pricing profile (usage cost is added by the engine)
 pub fn cost_of(d: &NodeData, profile: &str) -> f64 {
+    fixed_cost_of(d, profile) + provisioned_cost_h(d)
+}
+
+fn fixed_cost_of(d: &NodeData, profile: &str) -> f64 {
     let sp = spec(&d.kind);
     let n = d.instances.unwrap_or(1.0) * shards_of(d) * partitions_of(d);
     let p = if d.cost_per_hour.is_none() { kind_pricing(profile, &d.kind) } else { None };

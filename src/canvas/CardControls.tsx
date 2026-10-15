@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useReactFlow } from '@xyflow/react';
 import { HeartPulse, Minus, Plus, Skull, Trash2 } from 'lucide-react';
-import { KINDS, RUNTIME_KINDS, RUNTIMES, TIERS, cacheHitRate, hotShardShare, isUp, type RetryPolicy, type RouteMode, type Runtime, type SystemNodeData, type Tier } from '../sim/catalog';
+import { KINDS, RUNTIME_KINDS, RUNTIMES, TIERS, cacheHitRate, hotShardShare, isUp, provisionedCostH, type RetryPolicy, type RouteMode, type Runtime, type SystemNodeData, type Tier } from '../sim/catalog';
 import { useSim } from '../sim/store';
 import { useBoardId } from './BoardContext';
 import { fmt } from './nodeModel';
@@ -245,6 +245,20 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
           <span className="nc-l">{data.kind === 'function' ? 'max conc.' : 'rate limit'}</span>
           <input type="range" min={data.kind === 'llmapi' ? 10 : data.kind === 'kv' ? 1000 : 100} max={data.kind === 'llmapi' ? 1000 : data.kind === 'kv' ? 100000 : 10000} step={data.kind === 'llmapi' ? 10 : data.kind === 'kv' ? 1000 : 100} value={data.limit ?? 1000} onChange={(e) => set({ limit: +e.target.value })} />
           <b className="nc-v">{fmt(data.limit ?? 1000)}/s</b>
+        </div>
+      )}
+      {data.kind === 'function' && (
+        <div className="nc-row" title="Provisioned concurrency: executions kept warm — no cold start up to it — billed by the hour whether used or not">
+          <span className="nc-l">provisioned</span>
+          <select value={data.provisioned ?? 0} onChange={(e) => set({ provisioned: +e.target.value || undefined })}>
+            <option value={0}>none</option>
+            {[5, 10, 25, 50, 100, 250].map((n) => (
+              <option key={n} value={n}>
+                {n} warm
+              </option>
+            ))}
+          </select>
+          {data.provisioned ? <b className="nc-v">+${(provisionedCostH(data) * 730).toFixed(0)}/mo</b> : null}
         </div>
       )}
 

@@ -150,7 +150,7 @@ pub fn explain(d: &NodeData, st: Option<&NodeStats>, v: &View) -> Option<String>
     } else if (d.kind == "gateway" || d.kind == "llmapi" || d.kind == "external" || d.kind == "kv") && st.drop_rps > 1.0 {
         format!("Rate limit reached: {}/s rejected with HTTP 429 to protect what is behind it.", fmt(st.drop_rps))
     } else if d.kind == "function" && st.cold_frac > 0.05 {
-        format!("{}% of invocations hit a cold start while new instances spin up.", pct(st.cold_frac))
+        format!("{}% of invocations hit a cold start while new instances spin up.{}", pct(st.cold_frac), if d.provisioned.is_some() { "" } else { " Provisioned concurrency keeps some warm, for a price by the hour." })
     } else if let Some(t) = d.threads.filter(|_| st.drop_rps > 1.0 && super::engine::threads_capacity(d, st.reachable, st.hold_ms) < cap * 0.95) {
         format!(
             "Out of threads: {} threads, one per request in flight, each held {} — mostly waiting on its calls — so only {} req/s get one. A slow dependency is holding them: a timeout gives them back sooner; a bulkhead stops one dependency from taking them all.",

@@ -782,6 +782,8 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
             let demand = c.arrivals / c.dt;
             let k = |tau: f64| 1.0 - (-c.dt / tau).js_exp();
             st.warm += (demand - st.warm) * k(if demand > st.warm { 4.0 } else { 1.0 });
+            // provisioned concurrency is warm whatever the demand
+            st.warm = st.warm.max(provisioned_rps(c.d));
             st.cold_frac = if demand > 0.5 { ((demand - st.warm) / demand).max(0.0) } else { 0.0 };
             res(processed, c.arrivals - processed, processed, c.arrivals / cap, true)
         }

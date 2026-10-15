@@ -307,6 +307,12 @@
            "minimum": 1,
            "maximum": 10000
           },
+          "provisioned": {
+           "description": "function: provisioned concurrency — executions kept warm, so no cold start up to it; billed by the hour whether used or not ($0.0000041667 per GB-s)",
+           "type": "integer",
+           "minimum": 0,
+           "maximum": 10000
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -713,6 +719,12 @@
            "description": "calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread",
            "type": "integer",
            "minimum": 1,
+           "maximum": 10000
+          },
+          "provisioned": {
+           "description": "function: provisioned concurrency — executions kept warm, so no cold start up to it; billed by the hour whether used or not ($0.0000041667 per GB-s)",
+           "type": "integer",
+           "minimum": 0,
            "maximum": 10000
           },
           "capacity": {
@@ -1498,6 +1510,12 @@
            "minimum": 1,
            "maximum": 10000
           },
+          "provisioned": {
+           "description": "function: provisioned concurrency — executions kept warm, so no cold start up to it; billed by the hour whether used or not ($0.0000041667 per GB-s)",
+           "type": "integer",
+           "minimum": 0,
+           "maximum": 10000
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -1895,6 +1913,12 @@
               "minimum": 1,
               "maximum": 10000
              },
+             "provisioned": {
+              "description": "function: provisioned concurrency — executions kept warm, so no cold start up to it; billed by the hour whether used or not ($0.0000041667 per GB-s)",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000
+             },
              "capacity": {
               "description": "override: req/s per size-S instance",
               "type": "number",
@@ -2241,6 +2265,12 @@
                 "minimum": 1,
                 "maximum": 10000
                },
+               "provisioned": {
+                "description": "function: provisioned concurrency — executions kept warm, so no cold start up to it; billed by the hour whether used or not ($0.0000041667 per GB-s)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000
+               },
                "capacity": {
                 "description": "override: req/s per size-S instance",
                 "type": "number",
@@ -2508,6 +2538,12 @@
                 "description": "calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread",
                 "type": "integer",
                 "minimum": 1,
+                "maximum": 10000
+               },
+               "provisioned": {
+                "description": "function: provisioned concurrency — executions kept warm, so no cold start up to it; billed by the hour whether used or not ($0.0000041667 per GB-s)",
+                "type": "integer",
+                "minimum": 0,
                 "maximum": 10000
                },
                "capacity": {
@@ -3276,6 +3312,12 @@
            "minimum": 1,
            "maximum": 10000
           },
+          "provisioned": {
+           "description": "function: provisioned concurrency — executions kept warm, so no cold start up to it; billed by the hour whether used or not ($0.0000041667 per GB-s)",
+           "type": "integer",
+           "minimum": 0,
+           "maximum": 10000
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -3698,6 +3740,12 @@
            "description": "calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread",
            "type": "integer",
            "minimum": 1,
+           "maximum": 10000
+          },
+          "provisioned": {
+           "description": "function: provisioned concurrency — executions kept warm, so no cold start up to it; billed by the hour whether used or not ($0.0000041667 per GB-s)",
+           "type": "integer",
+           "minimum": 0,
            "maximum": 10000
           },
           "capacity": {
@@ -4470,6 +4518,12 @@
            "description": "calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread",
            "type": "integer",
            "minimum": 1,
+           "maximum": 10000
+          },
+          "provisioned": {
+           "description": "function: provisioned concurrency — executions kept warm, so no cold start up to it; billed by the hour whether used or not ($0.0000041667 per GB-s)",
+           "type": "integer",
+           "minimum": 0,
            "maximum": 10000
           },
           "capacity": {
@@ -5253,6 +5307,12 @@
            "minimum": 1,
            "maximum": 10000
           },
+          "provisioned": {
+           "description": "function: provisioned concurrency — executions kept warm, so no cold start up to it; billed by the hour whether used or not ($0.0000041667 per GB-s)",
+           "type": "integer",
+           "minimum": 0,
+           "maximum": 10000
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -5745,6 +5805,12 @@
            "minimum": 1,
            "maximum": 10000
           },
+          "provisioned": {
+           "description": "function: provisioned concurrency — executions kept warm, so no cold start up to it; billed by the hour whether used or not ($0.0000041667 per GB-s)",
+           "type": "integer",
+           "minimum": 0,
+           "maximum": 10000
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -6139,6 +6205,12 @@
              "minimum": 1,
              "maximum": 10000
             },
+            "provisioned": {
+             "description": "function: provisioned concurrency — executions kept warm, so no cold start up to it; billed by the hour whether used or not ($0.0000041667 per GB-s)",
+             "type": "integer",
+             "minimum": 0,
+             "maximum": 10000
+            },
             "capacity": {
              "description": "override: req/s per size-S instance",
              "type": "number",
@@ -6485,6 +6557,12 @@
                "minimum": 1,
                "maximum": 10000
               },
+              "provisioned": {
+               "description": "function: provisioned concurrency — executions kept warm, so no cold start up to it; billed by the hour whether used or not ($0.0000041667 per GB-s)",
+               "type": "integer",
+               "minimum": 0,
+               "maximum": 10000
+              },
               "capacity": {
                "description": "override: req/s per size-S instance",
                "type": "number",
@@ -6752,6 +6830,12 @@
                "description": "calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread",
                "type": "integer",
                "minimum": 1,
+               "maximum": 10000
+              },
+              "provisioned": {
+               "description": "function: provisioned concurrency — executions kept warm, so no cold start up to it; billed by the hour whether used or not ($0.0000041667 per GB-s)",
+               "type": "integer",
+               "minimum": 0,
                "maximum": 10000
               },
               "capacity": {
@@ -7518,6 +7602,12 @@
            "minimum": 1,
            "maximum": 10000
           },
+          "provisioned": {
+           "description": "function: provisioned concurrency — executions kept warm, so no cold start up to it; billed by the hour whether used or not ($0.0000041667 per GB-s)",
+           "type": "integer",
+           "minimum": 0,
+           "maximum": 10000
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -7912,6 +8002,12 @@
              "minimum": 1,
              "maximum": 10000
             },
+            "provisioned": {
+             "description": "function: provisioned concurrency — executions kept warm, so no cold start up to it; billed by the hour whether used or not ($0.0000041667 per GB-s)",
+             "type": "integer",
+             "minimum": 0,
+             "maximum": 10000
+            },
             "capacity": {
              "description": "override: req/s per size-S instance",
              "type": "number",
@@ -8258,6 +8354,12 @@
                "minimum": 1,
                "maximum": 10000
               },
+              "provisioned": {
+               "description": "function: provisioned concurrency — executions kept warm, so no cold start up to it; billed by the hour whether used or not ($0.0000041667 per GB-s)",
+               "type": "integer",
+               "minimum": 0,
+               "maximum": 10000
+              },
               "capacity": {
                "description": "override: req/s per size-S instance",
                "type": "number",
@@ -8525,6 +8627,12 @@
                "description": "calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread",
                "type": "integer",
                "minimum": 1,
+               "maximum": 10000
+              },
+              "provisioned": {
+               "description": "function: provisioned concurrency — executions kept warm, so no cold start up to it; billed by the hour whether used or not ($0.0000041667 per GB-s)",
+               "type": "integer",
+               "minimum": 0,
                "maximum": 10000
               },
               "capacity": {
