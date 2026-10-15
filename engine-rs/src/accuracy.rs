@@ -385,6 +385,9 @@ fn as_obs(r: &RunResult) -> Obs {
 pub struct BreakingPoint {
     pub rps: f64,
     pub limited_by: Option<String>,
+    /// out of SLO at the lowest load tried: not a capacity, so rps is 0 and this says what breaks it
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub at_any_load: Option<String>,
 }
 
 /// model-only breaking point: step the traffic up with the endpoint mix until the SLO breaks
@@ -438,7 +441,33 @@ pub fn model_breaking_point(model: &Model, plan: Option<&Plan>, max_rps: Option<
         s.replicas = r;
     }
     let r = run_plan(&fixed, &traffic, &Opts::default());
-    let (bp, _) = breaking_point_of(&as_obs(&r), model.slo.p99_ms, model.slo.error_rate);
+    let (bp, plateaus) = breaking_point_of(&as_obs(&r), model.slo.p99_ms, model.slo.error_rate);
+    // out of SLO at the first step (a twentieth of the capacity guess): nothing is near saturation,
+    // so the number is no capacity — say which endpoints miss the SLO with almost no traffic
+    let lowest = plateaus.iter().fold(None, |a: Option<&Plateau>, p| match a { Some(x) if x.rps <= p.rps => Some(x), _ => Some(p) });
+    if let Some(p0) = lowest.filter(|p| p.score > 1.0) {
+        let i = (per as usize).saturating_sub(1).min(n.saturating_sub(1));
+        let mut why: Vec<(f64, String)> = vec![];
+        for (id, e) in &r.endpoints {
+            let slo = model.endpoints.get(id).map(|m| m.slo.clone()).unwrap_or_else(|| model.slo.clone());
+            let (p99, err) = (e.p99_ms.get(i).copied().unwrap_or(0.0), e.error_rate.get(i).copied().unwrap_or(0.0));
+            if e.rps.get(i).copied().unwrap_or(0.0) <= 0.0 {
+                continue;
+            }
+            if p99 > slo.p99_ms {
+                why.push((p99 / slo.p99_ms, format!("{} (p99 {} ms)", id, js_num(js_round(p99)))));
+            } else if err > slo.error_rate {
+                why.push((err / slo.error_rate, format!("{} ({}% errors)", id, js_to_fixed(err * 100.0, 1))));
+            }
+        }
+        js_sort_by(&mut why, |a, b| b.0 - a.0);
+        let names: Vec<String> = why.into_iter().take(3).map(|x| x.1).collect();
+        return BreakingPoint {
+            rps: 0.0,
+            limited_by: None,
+            at_any_load: Some(format!("{} already at {} req/s", if names.is_empty() { "the whole mix".to_string() } else { names.join(", ") }, js_to_fixed(p0.rps, 1))),
+        };
+    }
     // which service was saturated just past the breaking point
     let i = r.rps.iter().position(|x| *x > bp * 1.02);
     let mut limited_by: Option<String> = None;
@@ -464,7 +493,7 @@ pub fn model_breaking_point(model: &Model, plan: Option<&Plan>, max_rps: Option<
             ));
         }
     }
-    BreakingPoint { rps: bp, limited_by }
+    BreakingPoint { rps: bp, limited_by, at_any_load: None }
 }
 
 fn check(metric: &str, predicted: f64, measured: f64, tolerance: f64, note: String) -> AccuracyCheck {

@@ -90,7 +90,11 @@ pub fn review_capacity(ws: &Workspace, o: &Value) -> Result<Value, String> {
     out.insert("slo".into(), g(&mv, &["slo"]).clone());
     // a headroom set by a service the model doesn't explain is a guess: say so where it is read
     let limit_fit = head.limited_by.as_ref().map(|id| s(&mv, &["services", id, "fit", "status"])).unwrap_or_default();
-    out.insert("headroom".into(), json!({ "rps": num(r1(head.rps)), "limitedBy": head.limited_by, "overPeak": if peak > 0.0 { num(js_round((head.rps / peak) * 100.0) / 100.0) } else { Value::Null }, "limitTrusted": !matches!(limit_fit.as_str(), "poor" | "unexplained") }));
+    let mut headroom = json!({ "rps": num(r1(head.rps)), "limitedBy": head.limited_by, "overPeak": if peak > 0.0 { num(js_round((head.rps / peak) * 100.0) / 100.0) } else { Value::Null }, "limitTrusted": !matches!(limit_fit.as_str(), "poor" | "unexplained") });
+    if let Some(why) = &head.at_any_load {
+        headroom["atAnyLoad"] = json!(why);
+    }
+    out.insert("headroom".into(), headroom);
     out.insert("today".into(), today);
     out.insert("trust".into(), trust(&mv));
     out.insert("busier".into(), json!(busier));
@@ -145,7 +149,10 @@ pub fn review_markdown(r: &Value) -> String {
     l.push("## Headroom".into());
     l.push(String::new());
     let over = g(r, &["headroom", "overPeak"]);
-    l.push(format!("Within SLO up to **{} req/s**{}; {}.", js_num(n(r, &["headroom", "rps"])), if truthy(over) { format!(" — {}× the busiest moment", js_num(n(r, &["headroom", "overPeak"]))) } else { String::new() }, match g(r, &["headroom", "limitedBy"]) { Value::Null => "nothing saturates in the range searched".to_string(), x => format!("{} saturates first", s(x, &[])) }));
+    match g(r, &["headroom", "atAnyLoad"]).as_str() {
+        Some(why) => l.push(format!("**Out of SLO at any load** — {}. That is no capacity limit: the model misses the SLO with almost no traffic, so fix or explain that first.", why)),
+        None => l.push(format!("Within SLO up to **{} req/s**{}; {}.", js_num(n(r, &["headroom", "rps"])), if truthy(over) { format!(" — {}× the busiest moment", js_num(n(r, &["headroom", "overPeak"]))) } else { String::new() }, match g(r, &["headroom", "limitedBy"]) { Value::Null => "nothing saturates in the range searched".to_string(), x => format!("{} saturates first", s(x, &[])) })),
+    }
     l.push(String::new());
     let t = g(r, &["today"]);
     if !t.is_null() {
@@ -310,6 +317,7 @@ fn summary_lines(r: &Value) -> Vec<String> {
     let over = g(r, &["headroom", "overPeak"]);
     let over_s = if truthy(over) { format!(", {}× the busiest moment ({} req/s)", js_num(n(r, &["headroom", "overPeak"])), js_num(n(r, &["history", "peakRps"]))) } else { String::new() };
     l.push(match g(r, &["headroom", "limitedBy"]) {
+        _ if g(r, &["headroom", "atAnyLoad"]).is_string() => format!("- **Headroom:** none to read — out of SLO at any load: {}. Not a capacity limit; fix or explain that first.", s(r, &["headroom", "atAnyLoad"])),
         // nothing gave out before the search's ceiling
         Value::Null => format!("- **Headroom:** more than {} req/s within SLO{} — nothing saturates in the range searched.", js_num(n(r, &["headroom", "rps"])), over_s),
         x => format!(

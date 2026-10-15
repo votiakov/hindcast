@@ -766,9 +766,13 @@ pub fn find_headroom(ws: &Workspace, a: &Value) -> Result<Value, String> {
     let mv = ws.read_json("model.json")?;
     let m = model_of(&mv)?;
     let base = crate::backtest::base_plan(&m, None);
-    let now = breaking(&m, &base);
+    let now = crate::accuracy::model_breaking_point(&m, Some(&base), None, None, None);
     let mut out = JMap::new();
-    out.insert("asBuilt".into(), json!({ "rps": num(r1(now.0)), "limitedBy": now.1 }));
+    let mut built = json!({ "rps": num(r1(now.rps)), "limitedBy": now.limited_by });
+    if let Some(why) = &now.at_any_load {
+        built["atAnyLoad"] = json!(why);
+    }
+    out.insert("asBuilt".into(), built);
     if let Some(p) = mv.get("traffic").and_then(|t| t.get("peak")) {
         out.insert("historyPeakRps".into(), p.clone());
     }
