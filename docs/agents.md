@@ -57,7 +57,7 @@ Who calls whom comes from the first of these that names any call:
 | Istio | `istio_requests_total` (source → destination workload, `request_protocol`), `istio_request_duration_milliseconds_*` | calls per request, per-service latency, the time each caller spends in its calls, gRPC |
 | Linkerd | `response_total` (outbound `deployment` → `dst_deployment`), `response_latency_ms_*` | the same; gRPC from `grpc_status` |
 | OpenTelemetry service graph | `traces_service_graph_request_total` (client → server) | calls per request; callers' time from `traces_service_graph_request_client_seconds` |
-| span metrics | client spans (`SPAN_KIND_CLIENT`) whose name matches a server span's elsewhere (`oteldemo.CartService/GetCart` ↔ `POST /oteldemo.CartService/GetCart`) | calls per request for RPC-named calls; HTTP client spans named `GET`/`POST` match nothing and are listed |
+| span metrics | client spans (`SPAN_KIND_CLIENT`) whose name matches a server span's elsewhere (`oteldemo.CartService/GetCart` ↔ `POST /oteldemo.CartService/GetCart`) | calls per request for RPC-named calls. HTTP and database client spans are named by method alone (`GET`, `HGET`): where the connector keeps the peer as a dimension (`peer.service`, `server.address` or `net.peer.name`, read as `peer_service`, `server_address`, `net_peer_name`), the host names the callee (port and `.ns.svc.cluster.local` stripped), including a workload with no spans of its own; without it they match nothing and are listed |
 | a topology file | `--topology calls.yaml` (`topologyFile` in `connect_telemetry`) | what you write: `calls: { web: [api] }` or `{ web: { api: 2 } }` (calls per request), `entry: [web]`, `grpc: [api]` |
 
 The entries are the services ingress-nginx routes to (monitoring UIs such as Jaeger or Grafana
@@ -81,7 +81,12 @@ What you lose without traces, and what stands in:
   retries; calls into a service are scaled down to what it served.
 - **Latency, where no metric has it.** A service with no latency metric gets its capacity from CPU
   alone, up to its throttling knee, and no latency of its own: the review says its limit is read
-  from CPU, and `calibrate_model` lists it under `cpuOnly`, not `untrusted`.
+  from CPU, and `calibrate_model` lists it under `cpuOnly`, not `untrusted` (the model marks it
+  `capacity.cpuAlone`). A CPU resize keeps it that way: the capacity moves to the new limit (to the
+  same knee, as a share of it), and the wide queue calibration gave it stays, rather than taking
+  its width from the core count and inventing a service time. `verify_change` rates a change to it
+  medium confidence at most, and low once the change runs it past the history's peak (see
+  [How confidence is decided](#how-confidence-is-decided)).
 
 The review's Trust line names what is missing, e.g. *No traces: topology from istio metrics; no
 per-endpoint latency*, and `collect_telemetry` returns the same under `withoutTraces`.
@@ -368,6 +373,12 @@ For every service the change touches, or that the change pushes harder (above 60
   fairly, *or* the model missed an accuracy check, *or* accuracy was never measured, *or* the
   history is shorter than a day.
 - **high**: otherwise.
+
+A service with no latency metric (capacity from CPU alone, `cpuOnly: true` in
+`confidence.services`) is judged on its own rule instead of as unexplained: **medium** at most,
+since its CPU limit is known but not how its latency grows near it, and **low** when the change
+runs it more than 10% past the history's peak share of that capacity, where CPU per request is
+extrapolated. The reasons say which applied and why.
 
 The cost basis is stated separately: `your bill`, `list price` (AWS Fargate on-demand, us-east-1,
 from CPU and memory limits, used when there is no bill) or `unpriced`.
@@ -688,7 +699,12 @@ so in `notes`) rather than running 30 draws for 4 minutes.
   the reference kind cluster, from span metrics alone, it found the 11 gRPC call edges of the 27 the
   traces show (HTTP and Redis client spans don't name their callee). It put the headroom at 460 req/s,
   with the frontend's CPU limit first. Traced runs put it at 500–780 req/s, varying with the trace
-  sample, with recommendation first.
+  sample, with recommendation first. That run predates reading the peer's address from span
+  metrics, and the reference collector does not keep `server.address` as a dimension; the
+  peer-address matching, the CPU-only resize and the CPU-only confidence rule are tested on mock
+  Prometheus data only, not yet on a live cluster.
+- A CPU-only service keeps calibration's wide queue (32 at a time), which still waits a little as
+  it nears its capacity (the M/M/c wait of that width): a stand-in, not a measured latency.
 - Prometheus-compatible only (Prometheus, Thanos, Mimir, Cortex, VictoriaMetrics, Amazon Managed
   Prometheus behind a SigV4 proxy). CloudWatch works through files with the CLI
   ([backtest.md](backtest.md#1-data-in)).
