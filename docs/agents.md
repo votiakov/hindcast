@@ -284,14 +284,19 @@ the history never tested. The MCP instructions tell agents to say so and recomme
 ### `suggest_changes`: what should we change?
 
 ```json
-{ "goal": "both" }          // "reliability" | "cost" | "both"
+{ "goal": "both" }                                   // "reliability" | "cost" | "both"
+{ "goal": "reliability", "traffic": { "scale": 2.2 } }  // what does launch day need?
 ```
 
-Candidates come from the history itself:
+With `traffic`, the history is replayed at that load (×`scale`, or `peakRps` at its busiest
+moment) and every candidate is judged there. Candidates come from the history itself:
 
 - **Fixes** for every service that ran at ≥ 85% of its capacity: one more replica (or double, from
   two), of the *host* when the service runs in-process (HotROD's mysql → more `customer`
   replicas). When CPU is the limit, it also tries twice the CPU and CPU autoscaling.
+- **Memory** for a service whose history peaked at ≥ 90% of its limit (half again), and for one
+  that leaks and is OOM-killed at the replayed load: twice the limit (the kill moves later, by what
+  the extra holds) and twice the replicas (each container serves half the requests).
 - **Savings** for every priced service that stayed under 35% (`idleBelow`) at its busiest, along
   with everything running inside it: one replica fewer, half the CPU, Graviton.
 
@@ -461,7 +466,7 @@ or dropped on the app's Backtest screen.
 | `calibrate_model` | `holdout?` (0.3), `slo?`, `timeoutMs?`, `listPrices?` | services with capacity, band, limit, basis, cost; accuracy; trust lists |
 | `model_status` | — | what the workspace holds, warnings, next step |
 | `verify_change` | `changes[]`, `last?`, `traffic?{scale \| peakRps}`, `gateMinutes?`, `draws?` (30, fewer on long histories to fit ~40 s) | per change: verdict, confidence, cost, reliability, headroom, reasons; reports and `app.open` |
-| `suggest_changes` | `goal?` (reliability \| cost \| both), `last?`, `draws?`, `gateMinutes?`, `idleBelow?` | saturated services; fixes and savings that pass, each judged; the savings combined; rejected candidates |
+| `suggest_changes` | `goal?` (reliability \| cost \| both), `traffic?` ({scale} \| {peakRps}), `last?`, `draws?`, `gateMinutes?`, `idleBelow?` | saturated services; fixes and savings that pass, each judged; the savings combined; rejected candidates |
 | `find_headroom` | `strategy?` | req/s within SLO, what binds, history peak |
 | `review_capacity` | `draws?` | headroom, 1.5× and 2× load, node loss and its fix, throttled and memory-bound services, node pool fill, fixes and savings; a Markdown report |
 | `check_node_loss` | `strategy?`, `traffic?{scale \| peakRps}`, `recoverS?`, `zones?` | per node: services lost or degraded, minutes out of SLO and failed requests added; single points of failure |

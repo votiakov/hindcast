@@ -10756,6 +10756,21 @@
       "type": "number",
       "minimum": 0.05,
       "maximum": 0.8
+     },
+     "traffic": {
+      "description": "replay the history at another load — scale ×N, or peakRps for its busiest moment — and suggest what that day needs (\"what do we change before launch day?\"); every candidate is judged at that load",
+      "type": "object",
+      "properties": {
+       "scale": {
+        "type": "number",
+        "exclusiveMinimum": 0
+       },
+       "peakRps": {
+        "type": "number",
+        "exclusiveMinimum": 0
+       }
+      },
+      "additionalProperties": false
      }
     }
    },

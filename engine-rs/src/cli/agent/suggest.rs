@@ -41,6 +41,8 @@ struct Ctx<'a> {
     before: (f64, Option<String>),
     draws: Option<f64>,
     notes: Vec<String>,
+    /// the history replayed at another load (launch day), or as it was
+    load: Option<crate::backtest::LoadOpts>,
 }
 
 fn breaking(m: &crate::model::Model, plan: &crate::types::Plan) -> (f64, Option<String>) {
@@ -64,7 +66,7 @@ fn evaluate(c: &mut Ctx, list: &[Value]) -> Result<Vec<Value>, String> {
             dr
         }
     };
-    let r = crate::backtest::backtest(c.m, c.d, list, &crate::backtest::BacktestOptions { draws: Some(draws), ..Default::default() })?;
+    let r = crate::backtest::backtest(c.m, c.d, list, &crate::backtest::BacktestOptions { draws: Some(draws), load: c.load.clone(), ..Default::default() })?;
     let mut rv = to_json(&r);
     rv.as_object_mut().unwrap().insert("accuracy".into(), g(c.mv, &["accuracy"]).clone());
     let base = crate::backtest::base_plan(c.m, None);
@@ -102,7 +104,10 @@ pub fn suggest_changes(ws: &Workspace, o: &Value) -> Result<Value, String> {
     let cal = if ws.has("calibration.json") { Some(ws.read_json("calibration.json")?) } else { None };
     let goal = o.get("goal").and_then(|x| x.as_str()).unwrap_or("both").to_string();
     let idle = o.get("idleBelow").and_then(|x| x.as_f64()).unwrap_or(0.35);
-    let as_built = to_json(&crate::backtest::backtest(&m, &d, &[], &crate::backtest::BacktestOptions { draws: Some(1.0), ..Default::default() })?.baseline);
+    let load = o.get("traffic").filter(|t| t.get("scale").is_some() || t.get("peakRps").is_some()).map(|t| crate::backtest::LoadOpts { scale: t.get("scale").and_then(|x| x.as_f64()), peak_rps: t.get("peakRps").and_then(|x| x.as_f64()) });
+    let as_built = to_json(&crate::backtest::backtest(&m, &d, &[], &crate::backtest::BacktestOptions { draws: Some(1.0), load: load.clone(), ..Default::default() })?.baseline);
+    // services the replay OOM-kills at this load
+    let oom_killed: Vec<String> = arr(&as_built, &["events"]).iter().filter_map(|e| s(e, &["what"]).split_once(": OOM-killed").map(|(id, _)| id.to_string())).collect();
     let peak = g(&as_built, &["peakUtil"]).as_object().cloned().unwrap_or_default();
     let pk = |id: &str| peak.get(id).and_then(|x| x.as_f64()).unwrap_or(0.0);
     let svc = |id: &str| g(&mv, &["services", id]).clone();
@@ -183,7 +188,15 @@ pub fn suggest_changes(ws: &Workspace, o: &Value) -> Result<Value, String> {
                 add(&mut savings, json!({ "name": format!("{}: memory {} → {} MiB per replica (peak {} MiB)", id, js_num(mib(limit)), js_num(to), js_num(mib(mp))), "changes": [{ "service": id, "memoryGb": num(to / 1024.0) }] }));
             }
         }
-        if goal != "cost" && mp / limit >= 0.9 {
+        let leak = n(mem, &["leak"]);
+        if goal != "cost" && leak > 0.0 && oom_killed.contains(&id) {
+            // a leak only waits: more memory moves the kill later, by what the extra holds
+            let to = ((limit * 2.0 * 1024.0) / 64.0).ceil() * 64.0;
+            let reqs = js_round(((to / 1024.0 - n(mem, &["base"]) - n(mem, &["spike"])) / leak).max(0.0));
+            add(&mut fixes, json!({ "name": format!("{}: memory {} → {} MiB per replica (it leaks: OOM-killed at this load; the kill moves to ~{} requests per container)", id, js_num(mib(limit)), js_num(to), crate::math::js_locale(reqs)), "changes": [{ "service": id, "memoryGb": num(to / 1024.0) }] }));
+            let r = js_round(n(&sv, &["replicas"])).max(1.0);
+            add(&mut fixes, json!({ "name": format!("{}: {} → {} replicas (it leaks: each container serves half the requests, so it takes twice as long to reach its limit)", id, js_num(r), js_num(r * 2.0)), "changes": [{ "service": id, "replicas": num(r * 2.0) }] }));
+        } else if goal != "cost" && mp / limit >= 0.9 {
             let to = ((mp * 1.5 * 1024.0) / 64.0).ceil() * 64.0;
             add(&mut fixes, json!({ "name": format!("{}: memory {} → {} MiB per replica (the history peaked at {}% of the limit)", id, js_num(mib(limit)), js_num(to), js_num(js_round((mp / limit) * 100.0))), "changes": [{ "service": id, "memoryGb": num(to / 1024.0) }] }));
         }
@@ -192,7 +205,10 @@ pub fn suggest_changes(ws: &Workspace, o: &Value) -> Result<Value, String> {
     let gate = o.get("gateMinutes").and_then(|x| x.as_f64()).unwrap_or(0.5);
     let base = crate::backtest::base_plan(&m, None);
     let before = breaking(&m, &base);
-    let mut c = Ctx { mv: &mv, m: &m, d: &d, cal: cal.as_ref(), gate, before, draws: o.get("draws").and_then(|x| x.as_f64()), notes: vec![] };
+    let mut c = Ctx { mv: &mv, m: &m, d: &d, cal: cal.as_ref(), gate, before, draws: o.get("draws").and_then(|x| x.as_f64()), notes: vec![], load: load.clone() };
+    if let Some(l) = &load {
+        c.notes.push(format!("every candidate is judged on the history replayed at {}", match (l.scale, l.peak_rps) { (Some(x), _) => format!("{}× its load", js_num(x)), (_, Some(p)) => format!("a busiest moment of {} req/s", js_num(p)), _ => "its own load".into() }));
+    }
     if savings.iter().any(|x| arr(x, &["changes"]).iter().any(|ch| ch.get("memoryGb").map(|v| !v.is_null()).unwrap_or(false))) {
         c.notes.push("memory cuts are judged on the working set the history showed: a heap sized to the old limit (JVM -Xmx or MaxRAMPercentage, GOMEMLIMIT, Node --max-old-space-size) can grow into the new one — set it below the new limit with the change".into());
     }
