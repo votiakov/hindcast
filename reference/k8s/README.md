@@ -183,12 +183,16 @@ The first 2 minutes of every run are left out of the scoring, measured and predi
     CPU-ratio rule also called it safe.
 
   Every hedge said why: the changes pushed the frontend (and `recommendation`) past any load the
-  ordinary day showed. Two misses the hedges were right to warn about:
-  - **A frontend pod gives out at about 145–165 req/s whatever its CPU limit.** Across all twelve
-    runs, pods failed at 141–168 req/s at half a core, 750m and a full core alike, and held at
-    112–154. The model reads capacity as CPU per request × the limit, so a change that adds CPU
-    (750m, 1 core) is credited with capacity the pod does not have. The ceiling is in the Node.js
-    process, not the quota, and the history never came near it.
+  ordinary day showed. What actually failed the 750m run was not the frontend:
+  - **Every checkout timed out for four minutes (minutes 24–27), after `email` was OOM-killed.**
+    All 1,611 failures were `POST /api/checkout`, each at the 5 s timeout, and none at the traffic
+    peak (minutes 14–16). `email` (limit 150 MiB) climbs steadily through every launch-day run and
+    is OOM-killed between minutes 20 and 24 in all of them; in most, checkout recovers within a
+    minute, here it stayed stuck for four. Round 1's `launch-2c` failed the same way (minutes
+    24–26). Both are judged on whether that restart happened to take long, not on the frontend
+    change they test — so neither says much about the frontend, and the replay has no term for a
+    memory leak (memory that grows with requests served, not with load) or for callers that stay
+    broken after a restart.
   - **`recommendation` held 99 req/s on the +30% day**; calibrated from a day that never took it
     past 29% of its capacity, the model put it at 71, so its replay of the 4-frontend run fails
     where the real one did not.
