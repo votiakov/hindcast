@@ -134,6 +134,13 @@ pub struct NodeData {
     /// queue: how long a received message stays hidden before it can be received again, s (default 30)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub visibility_s: Option<f64>,
+    /// lb/gateway: connections it can hold at once; each request holds one for `connection_s`
+    /// (a websocket session, a streamed answer, a long poll) — past it, new ones are refused
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_connections: Option<f64>,
+    /// lb/gateway: how long each request holds its connection, s (default 30)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub connection_s: Option<f64>,
     /// a network partition's side this component is on (set by the partition action): links between
     /// components on different sides are cut
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -521,6 +528,35 @@ pub fn hot_prefix_share(d: &NodeData) -> f64 {
     h + (1.0 - h) / p
 }
 
+
+/// Erlang B: the share of arrivals refused by c connections at an offered load of a (arrival rate ×
+/// holding time) — exact by recursion up to 20,000 connections, the fluid limit max(0, 1 − c/a) above
+pub fn erlang_b(c: f64, a: f64) -> f64 {
+    if a <= 0.0 {
+        return 0.0;
+    }
+    if c <= 0.0 {
+        return 1.0;
+    }
+    if c > 20_000.0 {
+        return (1.0 - c / a).max(0.0);
+    }
+    let mut b = 1.0;
+    let mut k = 1.0;
+    while k <= c.floor() {
+        b = a * b / (k + a * b);
+        k += 1.0;
+    }
+    b
+}
+
+/// the share of requests a connection limit lets in at `rps` (1 without one)
+pub fn connection_admit(d: &NodeData, rps: f64) -> f64 {
+    match d.max_connections.filter(|c| *c > 0.0 && (d.kind == "lb" || d.kind == "gateway")) {
+        Some(c) => 1.0 - erlang_b(c, rps * d.connection_s.unwrap_or(30.0).max(0.0)),
+        None => 1.0,
+    }
+}
 
 /// a hot row: writes to one key take its lock one at a time, each for a write's time, so at most
 /// this many a second however big the database (reads don't lock: MVCC)

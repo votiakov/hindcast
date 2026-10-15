@@ -278,6 +278,31 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
           <b className="nc-v">{fmt(data.limit ?? 1000)}/s</b>
         </div>
       )}
+      {(data.kind === 'lb' || data.kind === 'gateway') && (
+        <div className="nc-row" title="Connections: each request holds one for its duration (a websocket session, a streamed answer, a long poll). Past the limit new ones are refused — Erlang B">
+          <span className="nc-l">connections</span>
+          <select value={data.maxConnections ?? 0} onChange={(e) => set({ maxConnections: +e.target.value || undefined })}>
+            <option value={0}>unlimited</option>
+            {[1000, 5000, 10000, 50000, 100000].map((n) => (
+              <option key={n} value={n}>
+                {fmt(n)}
+              </option>
+            ))}
+          </select>
+          {data.maxConnections ? (
+            <>
+              <span className="nc-l">held</span>
+              <select value={data.connectionS ?? 30} onChange={(e) => set({ connectionS: +e.target.value })}>
+                {[1, 10, 30, 120, 600].map((n) => (
+                  <option key={n} value={n}>
+                    {n >= 60 ? `${n / 60} min` : `${n}s`}
+                  </option>
+                ))}
+              </select>
+            </>
+          ) : null}
+        </div>
+      )}
       {data.kind === 'gateway' && (
         <div className="nc-row" title="Burst: the token bucket's size — a burst above the rate passes until it is empty (API Gateway: rate 10,000/s, burst 5,000)">
           <span className="nc-l">burst</span>

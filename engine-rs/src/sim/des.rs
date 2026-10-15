@@ -246,6 +246,7 @@ const R_SYNC: u8 = 10;
 const R_BULKHEAD: u8 = 11;
 const R_THREADS: u8 = 12;
 const R_LOCK: u8 = 13;
+const R_CONN: u8 = 14;
 
 fn why(n: usize, r: u8) -> Why {
     ((n as u32 + 1) << 8) | r as u32
@@ -267,6 +268,7 @@ fn reason_text(r: u8) -> &'static str {
         R_BULKHEAD => "bulkhead full (call refused at once)",
         R_THREADS => "out of threads (all waiting on calls)",
         R_LOCK => "waited too long for a row lock",
+        R_CONN => "connection refused (all connections in use)",
         _ => "failed",
     }
 }
@@ -304,6 +306,8 @@ enum Ev {
     LockDone { n: usize, job: Job },
     /// a failed message is visible in its queue again
     Redrive { n: usize, read: bool, tries: u8 },
+    /// a request's connection to a balancer or gateway closes
+    ConnClose { n: usize },
     /// fault: the node's fault rate when the request arrived
     LlmDone { n: usize, done: ContId, fault: f64 },
     Attempt { call: usize, k: f64 },
@@ -393,6 +397,8 @@ struct DNode {
     /// a key-value store: the hot key's partition, in partition-seconds of work available
     kv_bucket: f64,
     kv_t: f64,
+    /// lb/gateway with a connection limit: connections held now
+    conns: f64,
     /// a database: the hot row's lock (held or not) and the writes waiting for it
     lock_busy: bool,
     lock_q: VecDeque<Job>,
@@ -816,6 +822,18 @@ impl<'a> Des<'a> {
         let kind: &str = kind;
         if !up(&self.nodes[i]) {
             return self.fail(Some(i), why(i, R_DOWN), done, 0.5);
+        }
+        // a connection limit: each request holds a connection for connectionS (exponential); a new
+        // one finding them all in use is refused
+        if kind == "lb" || kind == "gateway" {
+            if let Some(cap) = self.nodes[i].data.max_connections.filter(|c| *c > 0.0) {
+                if self.nodes[i].conns >= cap {
+                    return self.fail(Some(i), why(i, R_CONN), done, 1.0);
+                }
+                self.nodes[i].conns += 1.0;
+                let hold = self.rng.exp(self.nodes[i].data.connection_s.unwrap_or(30.0).max(1e-3)) * 1000.0;
+                self.at(hold, Ev::ConnClose { n: i });
+            }
         }
         let now = self.now;
         {
@@ -1618,6 +1636,9 @@ impl<'a> Des<'a> {
             Ev::Arrive { i, read, done } => self.arrive(i, read, done),
             Ev::Deliver { done, why } => self.deliver(done, why),
             Ev::Finish { n, job } => self.finish(n, job),
+            Ev::ConnClose { n } => {
+                self.nodes[n].conns = (self.nodes[n].conns - 1.0).max(0.0);
+            }
             Ev::Redrive { n, read, tries } => {
                 let now = self.now;
                 if self.nodes[n].backlog.len() < QUEUE_BACKLOG_MAX {
@@ -1689,6 +1710,7 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
             px_t: vec![],
             lock_busy: false,
             lock_q: VecDeque::new(),
+            conns: 0.0,
             dead_since: None,
             sub_backlog: vec![],
             sub_inflight: vec![],

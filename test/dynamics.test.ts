@@ -284,3 +284,27 @@ describe('a queue’s redrive policy', () => {
     expect(simulateDes(spec({}), sc, { seed: 11 }).summary.deadLetters ?? 0).toBe(0);
   });
 });
+
+describe('a connection limit', () => {
+  // each request holds a connection for 10 s (a streamed answer); 1,000 connections at most
+  const spec = { components: [{ id: 'u', kind: 'client' }, { id: 'gw', kind: 'gateway', limit: 100000, maxConnections: 1000, connectionS: 10 }, { id: 'api', kind: 'server', instances: 4 }], connections: [['u', 'gw'], ['gw', 'api']] };
+  const refused = (rps: number) => {
+    const sc = { duration: 120, rps };
+    return { fluid: simulate(spec as never, sc as never).summary.meanErrorRate, des: simulateDes(spec, sc, { seed: 12 }).summary.meanErrorRate };
+  };
+
+  it('refuses what Erlang B says: a little at the limit, the excess well past it', () => {
+    // offered 1,000 connections against 1,000: Erlang B ≈ 2.5%
+    const at = refused(100);
+    expect(at.fluid).toBeCloseTo(0.025, 2);
+    expect(at.des).toBeGreaterThan(0.01);
+    expect(at.des).toBeLessThan(0.05);
+    // 1,500 offered: about a third refused
+    const over = refused(150);
+    for (const e of [over.fluid, over.des]) {
+      expect(e).toBeGreaterThan(0.28);
+      expect(e).toBeLessThan(0.38);
+    }
+    expect(refused(50).fluid).toBeLessThan(0.001);
+  });
+});

@@ -351,6 +351,18 @@
            "minimum": 0,
            "maximum": 43200
           },
+          "maxConnections": {
+           "description": "lb/gateway: connections it can hold at once; each request holds one for `connectionS` (a websocket session, a streamed answer, a long poll) — past it, new ones are refused (Erlang B)",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 9007199254740991
+          },
+          "connectionS": {
+           "description": "lb/gateway: how long each request holds its connection, s (default 30)",
+           "type": "number",
+           "exclusiveMinimum": 0,
+           "maximum": 86400
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -830,6 +842,18 @@
            "type": "number",
            "minimum": 0,
            "maximum": 43200
+          },
+          "maxConnections": {
+           "description": "lb/gateway: connections it can hold at once; each request holds one for `connectionS` (a websocket session, a streamed answer, a long poll) — past it, new ones are refused (Erlang B)",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 9007199254740991
+          },
+          "connectionS": {
+           "description": "lb/gateway: how long each request holds its connection, s (default 30)",
+           "type": "number",
+           "exclusiveMinimum": 0,
+           "maximum": 86400
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -1729,6 +1753,18 @@
            "minimum": 0,
            "maximum": 43200
           },
+          "maxConnections": {
+           "description": "lb/gateway: connections it can hold at once; each request holds one for `connectionS` (a websocket session, a streamed answer, a long poll) — past it, new ones are refused (Erlang B)",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 9007199254740991
+          },
+          "connectionS": {
+           "description": "lb/gateway: how long each request holds its connection, s (default 30)",
+           "type": "number",
+           "exclusiveMinimum": 0,
+           "maximum": 86400
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -2198,6 +2234,18 @@
               "minimum": 0,
               "maximum": 43200
              },
+             "maxConnections": {
+              "description": "lb/gateway: connections it can hold at once; each request holds one for `connectionS` (a websocket session, a streamed answer, a long poll) — past it, new ones are refused (Erlang B)",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+             },
+             "connectionS": {
+              "description": "lb/gateway: how long each request holds its connection, s (default 30)",
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 86400
+             },
              "capacity": {
               "description": "override: req/s per size-S instance",
               "type": "number",
@@ -2607,6 +2655,18 @@
                 "minimum": 0,
                 "maximum": 43200
                },
+               "maxConnections": {
+                "description": "lb/gateway: connections it can hold at once; each request holds one for `connectionS` (a websocket session, a streamed answer, a long poll) — past it, new ones are refused (Erlang B)",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+               },
+               "connectionS": {
+                "description": "lb/gateway: how long each request holds its connection, s (default 30)",
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 86400
+               },
                "capacity": {
                 "description": "override: req/s per size-S instance",
                 "type": "number",
@@ -2910,6 +2970,18 @@
                 "type": "number",
                 "minimum": 0,
                 "maximum": 43200
+               },
+               "maxConnections": {
+                "description": "lb/gateway: connections it can hold at once; each request holds one for `connectionS` (a websocket session, a streamed answer, a long poll) — past it, new ones are refused (Erlang B)",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+               },
+               "connectionS": {
+                "description": "lb/gateway: how long each request holds its connection, s (default 30)",
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 86400
                },
                "capacity": {
                 "description": "override: req/s per size-S instance",
@@ -3764,6 +3836,18 @@
            "minimum": 0,
            "maximum": 43200
           },
+          "maxConnections": {
+           "description": "lb/gateway: connections it can hold at once; each request holds one for `connectionS` (a websocket session, a streamed answer, a long poll) — past it, new ones are refused (Erlang B)",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 9007199254740991
+          },
+          "connectionS": {
+           "description": "lb/gateway: how long each request holds its connection, s (default 30)",
+           "type": "number",
+           "exclusiveMinimum": 0,
+           "maximum": 86400
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -4259,6 +4343,18 @@
            "type": "number",
            "minimum": 0,
            "maximum": 43200
+          },
+          "maxConnections": {
+           "description": "lb/gateway: connections it can hold at once; each request holds one for `connectionS` (a websocket session, a streamed answer, a long poll) — past it, new ones are refused (Erlang B)",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 9007199254740991
+          },
+          "connectionS": {
+           "description": "lb/gateway: how long each request holds its connection, s (default 30)",
+           "type": "number",
+           "exclusiveMinimum": 0,
+           "maximum": 86400
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -5146,6 +5242,18 @@
            "type": "number",
            "minimum": 0,
            "maximum": 43200
+          },
+          "maxConnections": {
+           "description": "lb/gateway: connections it can hold at once; each request holds one for `connectionS` (a websocket session, a streamed answer, a long poll) — past it, new ones are refused (Erlang B)",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 9007199254740991
+          },
+          "connectionS": {
+           "description": "lb/gateway: how long each request holds its connection, s (default 30)",
+           "type": "number",
+           "exclusiveMinimum": 0,
+           "maximum": 86400
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -6043,6 +6151,18 @@
            "minimum": 0,
            "maximum": 43200
           },
+          "maxConnections": {
+           "description": "lb/gateway: connections it can hold at once; each request holds one for `connectionS` (a websocket session, a streamed answer, a long poll) — past it, new ones are refused (Erlang B)",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 9007199254740991
+          },
+          "connectionS": {
+           "description": "lb/gateway: how long each request holds its connection, s (default 30)",
+           "type": "number",
+           "exclusiveMinimum": 0,
+           "maximum": 86400
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -6607,6 +6727,18 @@
            "minimum": 0,
            "maximum": 43200
           },
+          "maxConnections": {
+           "description": "lb/gateway: connections it can hold at once; each request holds one for `connectionS` (a websocket session, a streamed answer, a long poll) — past it, new ones are refused (Erlang B)",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 9007199254740991
+          },
+          "connectionS": {
+           "description": "lb/gateway: how long each request holds its connection, s (default 30)",
+           "type": "number",
+           "exclusiveMinimum": 0,
+           "maximum": 86400
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -7073,6 +7205,18 @@
              "minimum": 0,
              "maximum": 43200
             },
+            "maxConnections": {
+             "description": "lb/gateway: connections it can hold at once; each request holds one for `connectionS` (a websocket session, a streamed answer, a long poll) — past it, new ones are refused (Erlang B)",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 9007199254740991
+            },
+            "connectionS": {
+             "description": "lb/gateway: how long each request holds its connection, s (default 30)",
+             "type": "number",
+             "exclusiveMinimum": 0,
+             "maximum": 86400
+            },
             "capacity": {
              "description": "override: req/s per size-S instance",
              "type": "number",
@@ -7482,6 +7626,18 @@
                "minimum": 0,
                "maximum": 43200
               },
+              "maxConnections": {
+               "description": "lb/gateway: connections it can hold at once; each request holds one for `connectionS` (a websocket session, a streamed answer, a long poll) — past it, new ones are refused (Erlang B)",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 9007199254740991
+              },
+              "connectionS": {
+               "description": "lb/gateway: how long each request holds its connection, s (default 30)",
+               "type": "number",
+               "exclusiveMinimum": 0,
+               "maximum": 86400
+              },
               "capacity": {
                "description": "override: req/s per size-S instance",
                "type": "number",
@@ -7785,6 +7941,18 @@
                "type": "number",
                "minimum": 0,
                "maximum": 43200
+              },
+              "maxConnections": {
+               "description": "lb/gateway: connections it can hold at once; each request holds one for `connectionS` (a websocket session, a streamed answer, a long poll) — past it, new ones are refused (Erlang B)",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 9007199254740991
+              },
+              "connectionS": {
+               "description": "lb/gateway: how long each request holds its connection, s (default 30)",
+               "type": "number",
+               "exclusiveMinimum": 0,
+               "maximum": 86400
               },
               "capacity": {
                "description": "override: req/s per size-S instance",
@@ -8637,6 +8805,18 @@
            "minimum": 0,
            "maximum": 43200
           },
+          "maxConnections": {
+           "description": "lb/gateway: connections it can hold at once; each request holds one for `connectionS` (a websocket session, a streamed answer, a long poll) — past it, new ones are refused (Erlang B)",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 9007199254740991
+          },
+          "connectionS": {
+           "description": "lb/gateway: how long each request holds its connection, s (default 30)",
+           "type": "number",
+           "exclusiveMinimum": 0,
+           "maximum": 86400
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -9103,6 +9283,18 @@
              "minimum": 0,
              "maximum": 43200
             },
+            "maxConnections": {
+             "description": "lb/gateway: connections it can hold at once; each request holds one for `connectionS` (a websocket session, a streamed answer, a long poll) — past it, new ones are refused (Erlang B)",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 9007199254740991
+            },
+            "connectionS": {
+             "description": "lb/gateway: how long each request holds its connection, s (default 30)",
+             "type": "number",
+             "exclusiveMinimum": 0,
+             "maximum": 86400
+            },
             "capacity": {
              "description": "override: req/s per size-S instance",
              "type": "number",
@@ -9512,6 +9704,18 @@
                "minimum": 0,
                "maximum": 43200
               },
+              "maxConnections": {
+               "description": "lb/gateway: connections it can hold at once; each request holds one for `connectionS` (a websocket session, a streamed answer, a long poll) — past it, new ones are refused (Erlang B)",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 9007199254740991
+              },
+              "connectionS": {
+               "description": "lb/gateway: how long each request holds its connection, s (default 30)",
+               "type": "number",
+               "exclusiveMinimum": 0,
+               "maximum": 86400
+              },
               "capacity": {
                "description": "override: req/s per size-S instance",
                "type": "number",
@@ -9815,6 +10019,18 @@
                "type": "number",
                "minimum": 0,
                "maximum": 43200
+              },
+              "maxConnections": {
+               "description": "lb/gateway: connections it can hold at once; each request holds one for `connectionS` (a websocket session, a streamed answer, a long poll) — past it, new ones are refused (Erlang B)",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 9007199254740991
+              },
+              "connectionS": {
+               "description": "lb/gateway: how long each request holds its connection, s (default 30)",
+               "type": "number",
+               "exclusiveMinimum": 0,
+               "maximum": 86400
               },
               "capacity": {
                "description": "override: req/s per size-S instance",

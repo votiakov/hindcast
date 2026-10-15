@@ -1,4 +1,4 @@
-import { KINDS, QUEUE_MAX_BACKLOG, hotPrefixShare, prefixesOf, baseLatencyOf, capacityOf, threadsCapacity, costOf, hotShardShare, partitionsOf, instancesUp, isUp, shardsOf, skuOf, type SystemNodeData } from '../sim/catalog';
+import { KINDS, QUEUE_MAX_BACKLOG, erlangB, hotPrefixShare, prefixesOf, baseLatencyOf, capacityOf, threadsCapacity, costOf, hotShardShare, partitionsOf, instancesUp, isUp, shardsOf, skuOf, type SystemNodeData } from '../sim/catalog';
 import type { NodeStats } from '../sim/engine';
 
 export type Health = 'idle' | 'ok' | 'warm' | 'hot' | 'down';
@@ -178,6 +178,12 @@ export function explain(d: SystemNodeData, st: NodeStats | undefined, v: NodeVie
   if (d.kind === 'queue' && st.lagS > 5) return { tone: 'warn', text: `Backlog of ${fmt(st.queue)} messages: consumers are ${isFinite(st.lagS) ? `${st.lagS.toFixed(0)}s` : 'indefinitely'} behind. Producers are unaffected — work completes later.` };
   if (d.kind === 'dns' && st.dropRps > 0.5) return { tone: 'bad', text: `${fmt(st.dropRps)}/s of clients still hold an answer pointing at a dead target and time out: they keep going there until the health checks notice (${d.healthCheckS ?? 30} s) and their cached answer expires (TTL ${d.ttlS ?? 60} s).` };
     if (d.kind === 'kv' && d.hotKeyShare && st.dropRps > 1 && st.inRps < capacityOf(d) * 0.98) return { tone: 'bad', text: `Hot partition: ${Math.round(d.hotKeyShare * 100)}% of requests are for one key, and one partition takes 3,000 reads or 1,000 writes a second however much the table allows (reads take it first; writes to that key starve) — ${fmt(st.dropRps)}/s are throttled. Cache that key, or spread it over several (write sharding).` };
+  if ((d.kind === 'lb' || d.kind === 'gateway') && d.maxConnections) {
+    const held = d.connectionS ?? 30;
+    const refused = erlangB(d.maxConnections, st.inRps * held);
+    if (refused > 0.01)
+      return { tone: 'bad', text: `Connections full: ${fmt(st.inRps)} req/s, each holding a connection for ${held} s, need about ${fmt(st.inRps * held)} at once against a limit of ${fmt(d.maxConnections)} — ${Math.round(refused * 100)}% of new ones are refused. Fewer, shorter connections (or a higher limit) fix it; more instances behind it don't.` };
+  }
   if (d.kind === 'storage' && st.dropRps > 1) return { tone: 'bad', text: `Prefix limit: an object store takes 5,500 reads or 3,500 writes a second per key prefix, however big the bucket. ${Math.round(hotPrefixShare(d) * 100)}% of requests land on the busiest of ${prefixesOf(d)} prefixes, and ${fmt(st.dropRps)}/s get 503 SlowDown. Spread keys over more prefixes, or cache the hot objects.` };
   if ((d.kind === 'gateway' || d.kind === 'llmapi' || d.kind === 'external' || d.kind === 'kv') && st.dropRps > 1) return { tone: 'warn', text: `Rate limit reached: ${fmt(st.dropRps)}/s rejected with HTTP 429 to protect what is behind it.` };
   if (d.kind === 'function' && st.coldFrac > 0.05) return { tone: 'warn', text: `${Math.round(st.coldFrac * 100)}% of invocations hit a cold start while new instances spin up.${d.provisioned ? '' : ' Provisioned concurrency keeps some warm, for a price by the hour.'}` };

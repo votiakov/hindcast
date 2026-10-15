@@ -163,6 +163,15 @@ pub fn explain(d: &NodeData, st: Option<&NodeStats>, v: &View) -> Option<String>
             js_num(prefixes_of(d)),
             fmt(st.drop_rps)
         )
+    } else if let Some(cap) = d.max_connections.filter(|_| (d.kind == "lb" || d.kind == "gateway") && connection_admit(d, st.in_rps) < 0.99) {
+        format!(
+            "Connections full: {} req/s, each holding a connection for {} s, need about {} at once against a limit of {} — {}% of new ones are refused. Fewer, shorter connections (or a higher limit) fix it; more instances behind it don't.",
+            fmt(st.in_rps),
+            js_num(d.connection_s.unwrap_or(30.0)),
+            fmt(st.in_rps * d.connection_s.unwrap_or(30.0)),
+            fmt(cap),
+            pct(1.0 - connection_admit(d, st.in_rps))
+        )
     } else if (d.kind == "gateway" || d.kind == "llmapi" || d.kind == "external" || d.kind == "kv") && st.drop_rps > 1.0 {
         format!("Rate limit reached: {}/s rejected with HTTP 429 to protect what is behind it.", fmt(st.drop_rps))
     } else if d.kind == "function" && st.cold_frac > 0.05 {

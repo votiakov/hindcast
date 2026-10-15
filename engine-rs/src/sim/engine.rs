@@ -536,6 +536,7 @@ fn service_tail(d: &NodeData, st: &NodeState) -> f64 {
     (p99 - mean).max(0.0)
 }
 
+#[derive(Clone, Copy)]
 struct Ctx<'a> {
     d: &'a NodeData,
     /// every node's data this tick (a route's target by index)
@@ -601,6 +602,10 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
     match c.d.kind.as_str() {
         "client" => res(c.arrivals, 0.0, c.arrivals, 0.0, c.d.alive),
         "lb" => {
+            // a connection limit refuses first: the rest is what the balancer passes on
+            let admit = connection_admit(c.d, c.arrivals / c.dt);
+            let refused = c.arrivals * (1.0 - admit);
+            let c = &Ctx { arrivals: c.arrivals - refused, ..*c };
             let mut r = process_through(c, st);
             let routes: Vec<Route> = c.routes.iter().filter(|k| k.up).cloned().collect();
             if routes.is_empty() {
@@ -608,6 +613,9 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
                 r.failed_processed = r.processed;
                 r.forward = 0.0;
             }
+            r.failed += refused;
+            r.processed += refused;
+            r.failed_processed += refused;
             r.routes = Some(routes);
             r
         }
@@ -624,6 +632,9 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
             r
         }
         "gateway" => {
+            let admit = connection_admit(c.d, c.arrivals / c.dt);
+            let refused = c.arrivals * (1.0 - admit);
+            let c = &Ctx { arrivals: c.arrivals - refused, ..*c };
             let limit = c.d.limit.unwrap_or(f64::INFINITY);
             // a token bucket: refilled at the limit, holding up to the burst
             let burst = c.d.burst.filter(|b| *b > 0.0).unwrap_or(limit);
@@ -636,6 +647,9 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
             if r.forward == 0.0 {
                 r.failed_processed = processed;
             }
+            r.failed += refused;
+            r.processed += refused;
+            r.failed_processed += refused;
             r.routes = Some(routes);
             r
         }

@@ -50,6 +50,7 @@ zones:                          # optional failure domains
 | `hotRowShare` | db | share of the writes that update one row (a stock counter, a balance): its lock takes them one at a time, each for a write's time — at most 1,000 ÷ latency a second, however big the database |
 | `burst` | gateway | the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000 |
 | `maxReceives`, `visibilityS` | queue | a redrive policy (SQS maxReceiveCount): a message a consumer fails comes back after `visibilityS` (default 30 s) until it has been received `maxReceives` times, then goes to the dead-letter queue; unset, a failed message is gone |
+| `maxConnections`, `connectionS` | lb, gateway | connections it can hold at once; each request holds one for `connectionS` (default 30 s) — a websocket session, a streamed answer, a long poll. Past the limit new ones are refused, as Erlang B has it |
 | `routing` | any caller | `split` (default) · `fanout` (call all, wait for all) · `failover` (in order) |
 | `fanout` | any caller | scatter-gather: each call goes to N partitions of the callee in parallel and waits for the slowest (also makes the callee's instances reachable) |
 | `stallRate`, `stallMs` | any | rare hiccups: share of requests that stall, and for how long (GC pause, compaction, noisy neighbor) |

@@ -55,6 +55,8 @@ export const ComponentSpec = z
     burst: z.number().positive().optional().describe('gateway: the token bucket\'s size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway\'s rate 10,000 and burst 5,000'),
     maxReceives: z.number().int().min(1).max(1000).optional().describe('queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone'),
     visibilityS: z.number().min(0).max(43200).optional().describe('queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)'),
+    maxConnections: z.number().int().min(1).optional().describe('lb/gateway: connections it can hold at once; each request holds one for `connectionS` (a websocket session, a streamed answer, a long poll) — past it, new ones are refused (Erlang B)'),
+    connectionS: z.number().positive().max(86400).optional().describe('lb/gateway: how long each request holds its connection, s (default 30)'),
     capacity: z.number().positive().optional().describe('override: req/s per size-S instance'),
     latencyMs: z.number().nonnegative().optional().describe('override: base service time'),
     costPerHour: z.number().nonnegative().optional().describe('override: $/h per size-S instance'),

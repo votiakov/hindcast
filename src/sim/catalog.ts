@@ -121,6 +121,10 @@ export interface SystemNodeData extends Record<string, unknown> {
   maxReceives?: number;
   /** queue: seconds a received message stays hidden (default 30) */
   visibilityS?: number;
+  /** lb/gateway: connections it can hold at once; each request holds one for connectionS */
+  maxConnections?: number;
+  /** lb/gateway: how long each request holds its connection, s (default 30) */
+  connectionS?: number;
   /** db: horizontal partitions (capacity and cost × shards) */
   shards?: number;
   /** db: share of its traffic on one key — all of it on one shard */
@@ -332,6 +336,16 @@ export function capacityOf(d: SystemNodeData, reachable = instancesUp(d)): numbe
     cap = (d.capacity ?? spec.capacity) * tier * batch * rt * (spec.scalable ? Math.max(1, reachable) : 1) * shardsOf(d) * partitionsOf(d);
   }
   return cap * (d.degraded ?? 1);
+}
+
+/** Erlang B: the share refused by c connections at an offered load a (rate × holding time); mirrors the engine */
+export function erlangB(c: number, a: number): number {
+  if (a <= 0) return 0;
+  if (c <= 0) return 1;
+  if (c > 20000) return Math.max(0, 1 - c / a);
+  let b = 1;
+  for (let k = 1; k <= Math.floor(c); k++) b = (a * b) / (k + a * b);
+  return b;
 }
 
 /** an object store's key prefix: 5,500 GET or 3,500 PUT a second (S3) */
