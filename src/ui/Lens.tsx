@@ -6,6 +6,7 @@ import { useMemo } from 'react';
 import { graphToSpec } from '../spec/convert';
 import { simulate } from '../sim/headless';
 import { explain, nodeView } from '../canvas/nodeModel';
+import { traceRequest, type Hop } from './traceRequest';
 import './lens.css';
 
 const TARGETS = [0.99, 0.995, 0.999, 0.9995, 0.9999];
@@ -81,6 +82,9 @@ export function Lens({ onClose }: { onClose: () => void }) {
       : [];
   const networkMs = users > 0.5 ? edges.reduce((s, e) => s + ((edgeStats[e.id]?.rps ?? 0) / users) * Number(e.data?.latencyMs ?? 0), 0) : 0;
   const timeTotal = timeRows.reduce((s, r) => s + r.ms, 0) + networkMs;
+  // one request, hop by hop (a sample; "another" draws a new one)
+  const [trace, setTrace] = useState<Hop[] | null>(null);
+  const traceIt = () => setTrace(traceRequest(nodes, edges, stats, edgeStats));
   const perMillion = g.rps > 0.5 ? (total / (g.rps * 3600)) * 1e6 : null;
   const budgetMin = (1 - target) * 30 * 24 * 60;
   const burn = g.errorRate / (1 - target);
@@ -167,6 +171,50 @@ export function Lens({ onClose }: { onClose: () => void }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+      {users > 0.5 && (
+        <div className="lens-sec">
+          <div className="lens-h">
+            a request, hop by hop
+            <button className="lens-link" onClick={traceIt}>
+              {trace ? 'another' : 'trace one'}
+            </button>
+          </div>
+          {trace && (
+            <>
+              <table className="lens-table lens-trace">
+                <tbody>
+                  {trace.map((h) => {
+                    const total = trace.reduce((s, x) => s + x.networkMs + x.queuedMs + x.serviceMs, 0) || 1;
+                    return (
+                      <tr key={h.id} className={h.failed ? 'bad' : ''}>
+                        <td className="lens-name">
+                          <i style={{ background: KINDS[h.kind as keyof typeof KINDS].color }} />
+                          {h.name}
+                          {h.hit && <em>hit</em>}
+                          {h.failed && <em>failed here</em>}
+                        </td>
+                        <td className="lens-bar">
+                          <div className="trace-bar">
+                            <i className="net" style={{ width: `${(h.networkMs / total) * 100}%` }} />
+                            <i className="wait" style={{ width: `${(h.queuedMs / total) * 100}%` }} />
+                            <i className="svc" style={{ width: `${(h.serviceMs / total) * 100}%` }} />
+                          </div>
+                        </td>
+                        <td className="lens-num" title={`network ${h.networkMs.toFixed(1)} ms · queued ${h.queuedMs.toFixed(1)} ms · service ${h.serviceMs.toFixed(1)} ms`}>
+                          {(h.networkMs + h.queuedMs + h.serviceMs).toFixed(1)} ms
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <div className="lens-sub">
+                <i className="key net" /> network <i className="key wait" /> queued <i className="key svc" /> service — a sample from what the board runs now; failures and cache hits drawn at their rates.
+              </div>
+            </>
+          )}
         </div>
       )}
       <div className="lens-sec">

@@ -31,3 +31,13 @@
 .lens-bar.bad i { background: var(--red); }
 .lens-fail { max-width: 230px; }
 .lens-why { display: block; padding-left: 13px; white-space: normal; font-size: 10.5px; line-height: 1.3; color: var(--muted); }
+
+.lens-link { margin-left: auto; background: none; border: 0; color: var(--accent, #f59e0b); font: inherit; font-size: 10.5px; cursor: pointer; text-transform: none; letter-spacing: 0; }
+.lens-h { display: flex; align-items: center; gap: 8px; }
+.trace-bar { display: flex; width: 100%; min-width: 90px; }
+.lens-bar .trace-bar i { height: 6px; display: block; flex: none; border-radius: 0; min-width: 0; }
+.lens-bar .trace-bar i.net, .key.net { background: #64748b; }
+.lens-bar .trace-bar i.wait, .key.wait { background: #f59e0b; }
+.lens-bar .trace-bar i.svc, .key.svc { background: #a78bfa; }
+.lens-trace tr.bad .lens-name { color: var(--red); }
+.key { display: inline-block; width: 8px; height: 6px; margin: 0 3px 0 6px; }
