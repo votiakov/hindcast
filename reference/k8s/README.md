@@ -1,7 +1,8 @@
 # Kubernetes reference — would the backtest have told you the truth?
 
 The other reference systems run on Docker Compose with synthetic traffic. This one is the
-production setup most teams have, with real traffic, and asks the question that matters: **before a
+production setup most teams have (on a laptop: kind, two workers), with traffic shaped by a real
+web log, and asks the question that matters: **before a
 change ships, does the backtest's verdict match what really happens when it ships?**
 
 ## The setup
@@ -18,7 +19,7 @@ change ships, does the backtest's verdict match what really happens when it ship
   manifests ([shop/gen.ts](shop/gen.ts) → [shop/shop.yaml](shop/shop.yaml)), with CPU requests
   equal to limits. The frontend runs 3 replicas: the over-provisioned starting point the questions
   try to trim.
-- **Traffic**: real. The NASA Kennedy Space Center web server log for July 1995 (Internet Traffic
+- **Traffic**: the arrival curve of a real log, not real users. The NASA Kennedy Space Center web server log for July 1995 (Internet Traffic
   Archive), replayed with k6 at 83× its rate. Each day is compressed into 40 minutes; arrivals are
   Poisson within each 20-second slice, so the curve and the spikes are the log's own
   ([../load/fromLog.mjs](../load/fromLog.mjs)).
@@ -101,6 +102,10 @@ Backtest verdicts: **0 right**, 3 inconclusive (it said to load-test; 2 of them 
 
 Backtest verdicts: **0 right**, 1 inconclusive (it said to load-test; 1 of them leaned the right way), 1 wrong, of 2. Naive CPU ratio: 1 right.
 
+**Every out-of-sample round together** (9 runs): Backtest verdicts: **3 right**, 5 inconclusive (it said to load-test; 3 of them leaned the right way), 1 wrong, of 9. Naive CPU ratio: 6 right, 3 wrong (a rule like that never abstains).
+
+p99 of the model on each day's real traffic, against the measured p99: within 20% in **3 of 14** runs; the others off by 26–2253%.
+
 **Calibrated on the ordinary day and a 12-minute load test:**
 
 | run | question | measured (k6, every request) | backtest before the day | model on the day’s real traffic | naive CPU ratio |
@@ -142,6 +147,10 @@ Backtest verdicts: **0 right**, 3 inconclusive (it said to load-test; 2 of them 
 | `launch-email300` | email with 300 MiB instead of 150, on launch day? | **pass**: p99 124 ms, errors 0.00%, 0 min out of SLO | pass ✅ (medium confidence), 0 min | p99 134 ms, errors 0.00%, 0 min | pass ✅ at 84% CPU |
 
 Backtest verdicts: **1 right**, 0 inconclusive (it said to load-test), 1 wrong, of 2. Naive CPU ratio: 1 right.
+
+**Every out-of-sample round together** (9 runs): Backtest verdicts: **1 right**, 6 inconclusive (it said to load-test; 4 of them leaned the right way), 2 wrong, of 9. Naive CPU ratio: 6 right, 3 wrong (a rule like that never abstains).
+
+p99 of the model on each day's real traffic, against the measured p99: within 20% in **5 of 14** runs; the others off by 48–799%.
 
 **A node failure, for real:** check_node_loss from the ordinary day and the pod placement at the instant of the kill, the model on the day’s own traffic, and the client’s measurement — each against the as-built ordinary day.
 
@@ -191,15 +200,21 @@ The first 2 minutes of every run are left out of the scoring, measured and predi
   - the throttle cap overrides a capacity read from latency only where the history shows the
     service failing while throttled (the load test's last step, for the frontend);
   - a service seen throttled past the threshold while keeping its latency is left alone.
-- **With it, the ordinary day alone gets all 5 right**, the autoscaler included, which the
-  CPU-ratio rule calls safe. With the load test as well: 3 right and 2 inconclusive (it asked for a
+- **With it, the ordinary day alone got all 5 right when these rules were written**, the
+  autoscaler included, which the CPU-ratio rule calls safe. (Since the leak term was added, it
+  gets 4: it now calls the as-built launch day a fail by a minute; see the leak below.) With the load test as well: 3 right and 2 inconclusive (it asked for a
   load test), none wrong. The load test reads a higher limit (72% of the limit, 169 req/s per pod),
   because 60-second steps hold briefly what hours of traffic can't. Its latency fit for the frontend
   is poor, which is why it hedges.
 - **Caveat: the throttle rules were designed while looking at these five runs.** The 25%
   threshold comes from the alert rather than from these results. The two guards came from what
   went wrong here, so the score above is in-sample until new runs confirm it.
-- **Out of sample, the calm-day model got 3 of 4 right, with none wrong.** Its verdicts on four new
+- **Out of sample, across all three rounds, the calm-day model got 3 of 9 right, 1 wrong, and
+  said inconclusive on 5** (3 of those leaned the right way). The CPU-ratio rule got 6 right and 3
+  wrong. The model is wrong less often because it abstains more often: on hit rate alone it does
+  not beat the rule. Its p99 on each day's own traffic is within 20% of the measured p99 in 3 of
+  14 runs; it underestimates busy days.
+- **Round 1: 3 of 4 right, with none wrong.** Its verdicts on four new
   questions were committed
   ([predictions-oos.json](shop/validation/predictions-oos.json)) before those runs were recorded:
   - 30% more launch traffic: fail. ✓

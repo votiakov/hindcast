@@ -525,6 +525,16 @@ async function main() {
           const why = k === 1 ? 'added after the throttle model was designed on the runs above' : `round ${k}, chosen after round ${k - 1} was scored`;
           return ['', `*Out of sample* — ${why}; the verdicts are the ones committed in \`validation/${file}\` before each run was recorded:`, '', ...head, ...oos.map(row), '', tally(oos)];
         }),
+        ...(rounds.length > 1 ? (() => {
+          const all = mod.rows.filter((r) => r.oos);
+          const naiveWrong = all.filter((r) => !r.agrees.naive).length;
+          return ['', `**Every out-of-sample round together** (${all.length} runs): ${tally(all).replace(/ Naive CPU ratio: .*$/, '')} Naive CPU ratio: ${all.length - naiveWrong} right, ${naiveWrong} wrong (a rule like that never abstains).`];
+        })() : []),
+        (() => {
+          const off = mod.rows.map((r) => Math.abs(r.exPost.p99Ms - r.measured.p99Ms) / Math.max(1, r.measured.p99Ms));
+          const miss = off.filter((x) => x > 0.2).sort((a, b) => a - b);
+          return `\np99 of the model on each day's real traffic, against the measured p99: within 20% in **${off.length - miss.length} of ${off.length}** runs${miss.length ? `; the others off by ${Math.round(miss[0] * 100)}–${Math.round(miss[miss.length - 1] * 100)}%` : ''}.`;
+        })(),
       ].join('\n');
     })
     .join('\n\n');

@@ -23,12 +23,21 @@ OpenTelemetry). From that it covers the questions a platform team answers by han
   failure, and the replicas that survive it.
 - **`review_capacity`:** all of it in one report.
 
-It was validated on a real cluster serving real traffic:
+It was tested on a kind cluster (one laptop) serving the OpenTelemetry Astronomy Shop, with k6
+replaying the arrival curve of NASA's 1995 web log:
 
-- **In-sample:** five decisions answered from an ordinary day, then made for real. The throttle
-  rules were designed on these runs.
-- **Out of sample:** four more, predicted and committed before they ran.
-- **A node failure:** a node stopped at the peak.
+- **In-sample:** five decisions answered from an ordinary day, then made for real: 4 right, 1
+  wrong. The throttle rules were designed on these runs.
+- **Out of sample:** nine more in three rounds, with each verdict committed before the run was
+  recorded: 3 right, 1 wrong, 5 inconclusive (3 of those leaned the right way). A plain CPU-ratio
+  rule got 6 right and 3 wrong; the model is wrong less often because it abstains more, not because
+  it is right more often.
+- **p99:** the model's p99 on each day's own traffic is within 20% of the measured p99 in 3 of 14
+  runs. It underestimates busy days.
+- **A node failure:** a node stopped at the peak. The replay timed Kubernetes' recovery right; the
+  outage lasted 50% longer because a client's gRPC channel stayed broken, which it doesn't model.
+
+Everything needed to regenerate these tables from a clone is committed.
 
 See [reference/k8s](reference/k8s/README.md).
 
