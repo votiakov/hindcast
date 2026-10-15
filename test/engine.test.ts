@@ -151,6 +151,13 @@ describe('latency of the successful answers, in both engines', () => {
       near(e.err, 0.01, 0.3);
     }
   });
+
+  it('an edge: what it answers itself is a mode of its own', () => {
+    // half answered at the edge in ~3 ms, half by the server (~25 ms): the p50 is where they meet
+    const a = both({ components: [{ id: 'users', kind: 'client' }, { id: 'edge', kind: 'edge' }, { id: 'api', kind: 'server' }], connections: [['users', 'edge'], ['edge', 'api']] }, 200);
+    for (const e of [a.f, a.d]) expect(e.p50Ms).toBeLessThan(15);
+    near(a.f.p99Ms, a.d.p99Ms, 0.15);
+  });
 });
 
 describe('retry amplification', () => {

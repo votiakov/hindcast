@@ -1903,7 +1903,7 @@ impl Engine {
                 let (own_share, kid_share) = match d.kind.as_str() {
                     "client" => (0.0, 1.0),
                     "queue" | "stream" => (0.0, 0.0),
-                    "cache" | "cdn" | "db" => (1.0, 1.0 - l.local_share),
+                    "cache" | "cdn" | "edge" | "db" => (1.0, 1.0 - l.local_share),
                     _ => (1.0, 1.0),
                 };
                 let own = match d.kind.as_str() {
@@ -1954,7 +1954,7 @@ impl Engine {
                 let (own_share, kid_share) = match d.kind.as_str() {
                     "client" => (0.0, 1.0),
                     "queue" | "stream" => (1.0, 0.0),
-                    "cache" | "cdn" | "db" => (l.local_share, 1.0 - l.local_share),
+                    "cache" | "cdn" | "edge" | "db" => (l.local_share, 1.0 - l.local_share),
                     _ => (if has_kids { 0.0 } else { 1.0 }, 1.0),
                 };
                 // a function's cold starts are a slow mode of their own, not a little on every answer

@@ -83,6 +83,8 @@ const describe = (spec: ReturnType<typeof generate>) =>
 //    where the 105 environments of the concurrency limit fill and the rest are throttled, 1% errors).
 //    Fixed: environments are counted, busy ones by Little's law, starting ones until their cold start
 //    ends; a cold start is a slow mode of the answers.
+//  - Edge: its locally answered requests were not a mode of their own, so users > edge > server read
+//    p50 25 ms (the server's) where half the answers take 3 ms. DES right; fixed.
 
 const SEEDS = 5;
 const TOLERANCE = 0.25;
