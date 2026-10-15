@@ -178,6 +178,26 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
           )}
         </div>
       )}
+      {data.kind === 'dns' && (
+        <div className="nc-row" title="Clients cache an answer for the TTL; health checks notice a dead target after a few failed checks. Until both pass, users keep going to the dead one.">
+          <span className="nc-l">TTL</span>
+          <select value={data.ttlS ?? 60} onChange={(e) => set({ ttlS: +e.target.value })}>
+            {pick(data.ttlS ?? 60, [5, 30, 60, 300, 3600]).map((n) => (
+              <option key={n} value={n}>
+                {n >= 60 ? `${n / 60} min` : `${n}s`}
+              </option>
+            ))}
+          </select>
+          <span className="nc-l">health check</span>
+          <select value={data.healthCheckS ?? 30} onChange={(e) => set({ healthCheckS: +e.target.value })}>
+            {pick(data.healthCheckS ?? 30, [10, 30, 90]).map((n) => (
+              <option key={n} value={n}>
+                {n}s
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       {(data.kind === 'db' || data.kind === 'replica') && (
         <div className="nc-row">
           <span className="nc-l" title="Horizontal partitions: each shard is a full database holding part of the keys — capacity and cost × shards. A hot key still lands on one shard.">shards</span>

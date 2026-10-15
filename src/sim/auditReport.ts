@@ -1,4 +1,4 @@
-import { availPct, type AuditResult, type Finding } from './audit';
+import { availPct, downtimeText, type AuditResult, type Finding } from './audit';
 
 const pct = (n: number) => `${(n * 100).toFixed(n > 0 && n < 0.01 ? 2 : 1)}%`;
 const ms = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)} s` : `${n} ms`);
@@ -37,8 +37,8 @@ export function auditMarkdown(r: AuditResult): string {
   L.push('| | |');
   L.push('|---|---|');
   L.push(`| Resilience score | **${r.score}/100** — survives ${r.survived} of ${r.total} incidents within SLO |`);
-  const weak = r.availability.weakest.map((w) => `${w.name} (${w.downtimeHoursPerYear} h)`);
-  L.push(`| Availability by design | ${availPct(r.availability.estimate)} — about ${r.availability.downtimeHoursPerYear} h of downtime a year${weak.length ? `; costs the most: ${weak.join(', ')}` : ''} |`);
+  const weak = r.availability.weakest.map((w) => `${w.name} (${downtimeText(w.downtimeHoursPerYear)})`);
+  L.push(`| Availability by design | ${availPct(r.availability.estimate)} — about ${downtimeText(r.availability.downtimeHoursPerYear)} of downtime a year${weak.length ? `; costs the most: ${weak.join(', ')}` : ''} |`);
   L.push(`| Headroom | ${r.headroom.ratio.toFixed(1)}× — ${Math.round(r.headroom.maxRps).toLocaleString('en-US')} req/s, then **${r.headroom.limitedBy ?? '—'}** gives out |`);
   L.push(`| Normal operation | errors ${pct(r.baseline.errorRate)}, p99 ${ms(r.baseline.p99Ms)}, ${money(r.baseline.monthly)}/month${r.baseline.meetsSlo ? '' : ' — **already outside the SLO**'} |`);
   L.push('');

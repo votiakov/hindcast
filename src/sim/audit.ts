@@ -92,6 +92,9 @@ export interface AuditResult {
   wallMs: number;
 }
 
+/** downtime a year, in hours or (under one) minutes */
+export const downtimeText = (hours: number) => (hours >= 1 ? `${hours} h` : `${Math.round(hours * 60)} min`);
+
 /** an availability with as many decimals as its nines need: 99.5%, 99.95%, 99.995% */
 export function availPct(x: number): string {
   const nines = x >= 1 ? 6 : -Math.log10(1 - x);

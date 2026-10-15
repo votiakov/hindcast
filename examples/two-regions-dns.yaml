@@ -1,0 +1,14 @@
+# Two regions behind a health-checked DNS name. hindcast audit examples/two-regions-dns.yaml --rps 600
+version: 1
+name: Two regions behind DNS
+components:
+  - { id: users, kind: client }
+  - { id: dns, kind: dns, routing: failover }
+  - { id: lb-east, kind: lb }
+  - { id: api-east, kind: server, instances: 4 }
+  - { id: lb-west, kind: lb }
+  - { id: api-west, kind: server, instances: 4 }
+connections: [users -> dns, dns -> lb-east, dns -> lb-west, lb-east -> api-east, lb-west -> api-west]
+zones:
+  - { id: east, name: us-east, members: [lb-east, api-east] }
+  - { id: west, name: us-west, members: [lb-west, api-west] }

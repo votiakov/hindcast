@@ -230,6 +230,8 @@ pub struct NodeState {
     /// utilisation and the rest's backlog), and the other shards' utilisation
     pub hot_queue: f64,
     pub cold_util: f64,
+    /// how long this component has been down, s (DNS answers lag it)
+    pub dead_for: f64,
 }
 
 /// how much faster than real time a replica catches up once it can reach its primary again
@@ -275,6 +277,7 @@ fn fresh() -> NodeState {
         repl_lag: 0.0,
         hot_queue: 0.0,
         cold_util: 0.0,
+        dead_for: 0.0,
     }
 }
 
@@ -525,6 +528,8 @@ struct Ctx<'a> {
     edge_lat: &'a [f64],
     /// every node's replication lag last tick, s
     lags: &'a [f64],
+    /// how long each node has been down, s
+    dead: &'a [f64],
 }
 
 fn reachable(c: &Ctx) -> f64 {
@@ -554,6 +559,18 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
                 r.failed += r.processed;
                 r.failed_processed = r.processed;
                 r.forward = 0.0;
+            }
+            r.routes = Some(routes);
+            r
+        }
+        "dns" => {
+            // a target cut off by a partition (alive, unreachable) is noticed at once: only deaths lag
+            let targets: Vec<(bool, f64)> = c.routes.iter().map(|k| (k.up, if k.up { 0.0 } else { c.dead[k.t] })).collect();
+            let stale = dns_stale_share(c.d, &targets);
+            let routes: Vec<Route> = c.routes.iter().filter(|k| k.up).cloned().collect();
+            let mut r = if routes.is_empty() { res(c.arrivals, c.arrivals, 0.0, 0.0, c.d.alive) } else { res(c.arrivals, c.arrivals * stale, c.arrivals * (1.0 - stale), 0.0, c.d.alive) };
+            if routes.is_empty() {
+                r.failed_processed = c.arrivals;
             }
             r.routes = Some(routes);
             r
@@ -753,7 +770,7 @@ fn fold(c: &FoldCtx, st: &NodeState) -> (f64, f64) {
     let kids_lat = if c.has_kids { c.child_lat } else { 0.0 };
     match c.d.kind.as_str() {
         "client" => (if c.has_kids { c.child_succ } else { 0.0 }, c.child_lat),
-        "lb" => (if c.has_kids { c.keep * c.child_succ } else { 0.0 }, service_latency(c.d, st) + c.child_lat),
+        "lb" | "dns" => (if c.has_kids { c.keep * c.child_succ } else { 0.0 }, service_latency(c.d, st) + c.child_lat),
         "gateway" => (if c.has_kids { c.keep * c.child_succ } else { 0.0 }, spec("gateway").base_latency_ms + c.child_lat),
         "cache" | "cdn" => (c.keep * (c.local_share + (1.0 - c.local_share) * kids_succ), service_latency(c.d, st) + (1.0 - c.local_share) * c.child_lat),
         "db" => (c.local_share * c.keep + (1.0 - c.local_share) * kids_succ, c.local_share * service_latency(c.d, st) + (1.0 - c.local_share) * c.child_lat),
@@ -1053,6 +1070,11 @@ impl Engine {
         }
 
         let lags: Vec<f64> = (0..n).map(|i| self.nodes[sidx[i]].repl_lag).collect();
+        for i in 0..n {
+            let st = &mut self.nodes[sidx[i]];
+            st.dead_for = if is_up(&data[i]) { 0.0 } else { st.dead_for + dt };
+        }
+        let dead: Vec<f64> = (0..n).map(|i| self.nodes[sidx[i]].dead_for).collect();
         let mut stale_now = 0.0;
         let mut inflow = vec![0.0; n];
         let mut done = vec![false; n];
@@ -1117,7 +1139,7 @@ impl Engine {
                 st.queue = 0.0;
                 res(0.0, arrivals, 0.0, 0.0, false)
             } else {
-                let ctx = Ctx { d, data: &data, arrivals, dt, cfg, read_ratio, routes, pooled: pooled[i], edge_sync: &edge_sync, edge_lat: &edge_lat, lags: &lags };
+                let ctx = Ctx { d, data: &data, arrivals, dt, cfg, read_ratio, routes, pooled: pooled[i], edge_sync: &edge_sync, edge_lat: &edge_lat, lags: &lags, dead: &dead };
                 process(&ctx, &mut st)
             };
             // gray failure: the node answers a share of what it handles with errors

@@ -92,6 +92,12 @@ pub struct NodeData {
     /// db: share of its traffic that goes to one key (a celebrity, a hot counter) — all of it on one shard
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hot_key_share: Option<f64>,
+    /// dns: how long clients keep a cached answer, s (default 60)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ttl_s: Option<f64>,
+    /// dns: how long the health checks take to notice a dead target, s (default 30)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub health_check_s: Option<f64>,
     /// a network partition's side this component is on (set by the partition action): links between
     /// components on different sides are cut
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -139,6 +145,8 @@ pub fn spec(kind: &str) -> KindSpec {
         "external" => k(1000.0, 200.0, 0.0, false),
         // a managed key-value store (DynamoDB on demand): no box to size — a throughput limit for the
         // table, a per-partition one for any single key, and a price per request (80/20 reads/writes)
+        // DNS with health-checked failover (Route 53): cached everywhere, so effectively free and instant
+        "dns" => k(1e9, 1.0, 0.001, false),
         "kv" => KindSpec { cost_per_request: Some(0.45 / 1_000_000.0), ..k(40000.0, 5.0, 0.0, false) },
         _ => k(250.0, 25.0, 0.1, true),
     }
@@ -305,6 +313,44 @@ pub fn shards_of(d: &NodeData) -> f64 {
         d.shards.unwrap_or(1.0).max(1.0).floor()
     } else {
         1.0
+    }
+}
+
+/// the share of a DNS name's clients still sent to a target that has been dead for `dead_for` seconds:
+/// all of them until the health checks notice, then fewer as cached answers expire over the TTL
+pub fn dns_stale(d: &NodeData, dead_for: f64) -> f64 {
+    if dead_for <= 0.0 {
+        return 0.0;
+    }
+    let (health, ttl) = (d.health_check_s.unwrap_or(30.0).max(0.0), d.ttl_s.unwrap_or(60.0).max(0.0));
+    if dead_for < health {
+        1.0
+    } else if ttl <= 0.0 {
+        0.0
+    } else {
+        (1.0 - (dead_for - health) / ttl).max(0.0)
+    }
+}
+
+/// of what a DNS name answers, the share sent to targets that are dead: failover walks its targets in
+/// order; otherwise each target gets an even share. `dead_for(t)` is 0 for a live target
+pub fn dns_stale_share(d: &NodeData, targets: &[(bool, f64)]) -> f64 {
+    if targets.is_empty() {
+        return 0.0;
+    }
+    if d.routing.as_deref() == Some("failover") {
+        let (mut left, mut dead) = (1.0, 0.0);
+        for &(up, dead_for) in targets {
+            if up {
+                break;
+            }
+            let s = dns_stale(d, dead_for);
+            dead += left * s;
+            left *= 1.0 - s;
+        }
+        dead
+    } else {
+        targets.iter().filter(|t| !t.0).map(|t| dns_stale(d, t.1)).sum::<f64>() / targets.len() as f64
     }
 }
 

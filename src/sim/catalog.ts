@@ -16,7 +16,8 @@ export type Kind =
   | 'queue'
   | 'llm' | 'llmapi'
   | 'external'
-  | 'kv';
+  | 'kv'
+  | 'dns';
 export type Tier = 'S' | 'M' | 'L';
 
 /** how a node spreads its outgoing calls across children */
@@ -97,6 +98,10 @@ export interface SystemNodeData extends Record<string, unknown> {
   workingSetGb?: number;
   /** cache: Zipf exponent of key popularity (default 1) */
   skew?: number;
+  /** dns: how long clients cache an answer, s (default 60) */
+  ttlS?: number;
+  /** dns: how long health checks take to notice a dead target, s (default 30) */
+  healthCheckS?: number;
   /** db: horizontal partitions (capacity and cost × shards) */
   shards?: number;
   /** db: share of its traffic on one key — all of it on one shard */
@@ -218,6 +223,11 @@ export const KINDS: Record<Kind, KindSpec> = {
     capacity: 100, baseLatencyMs: 1500, costPerHour: 0, costPerRequest: 0.002, tiered: false,
     description: 'Hosted model API. Scales for you, but enforces a rate limit (429s) and bills per request (~$0.002).',
   },
+  dns: {
+    kind: 'dns', label: 'DNS', prefix: 'dns', color: '#93c5fd',
+    capacity: 1e9, baseLatencyMs: 1, costPerHour: 0.001, tiered: false,
+    description: 'A name with health-checked answers (Route 53): sends users to their region, or fails over to the next. Clients cache the answer for the TTL, so a dead target keeps getting traffic until the health check notices and the caches expire.',
+  },
   kv: {
     kind: 'kv', label: 'Key-Value Store', prefix: 'kv', color: '#2dd4bf',
     capacity: 40000, baseLatencyMs: 5, costPerHour: 0, costPerRequest: 0.45 / 1_000_000, tiered: false,
@@ -238,7 +248,7 @@ export const TIERS: Record<Tier, { capacity: number; cost: number; label: string
 
 export const CATEGORIES: { id: string; label: string; kinds: Kind[] }[] = [
   { id: 'traffic', label: 'Traffic', kinds: ['client'] },
-  { id: 'edge', label: 'Edge & Network', kinds: ['cdn', 'lb', 'gateway'] },
+  { id: 'edge', label: 'Edge & Network', kinds: ['dns', 'cdn', 'lb', 'gateway'] },
   { id: 'compute', label: 'Compute', kinds: ['server', 'worker', 'function'] },
   { id: 'data', label: 'Data', kinds: ['cache', 'db', 'replica', 'kv', 'storage'] },
   { id: 'async', label: 'Messaging', kinds: ['queue'] },

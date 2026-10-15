@@ -30,7 +30,7 @@ zones:                          # optional failure domains
 | field | applies to | meaning |
 |---|---|---|
 | `id` | all | unique id |
-| `kind` | all | `client cdn lb gateway server worker function cache db replica storage queue llm llmapi external kv` |
+| `kind` | all | `client cdn lb gateway server worker function cache db replica storage queue llm llmapi external kv dns` |
 | `name` | all | display name |
 | `tier` | sizable kinds | `S` (×1 capacity, ×1 cost), `M` (×2, ×2.2), `L` (×4, ×4.8) |
 | `instances` | server, worker, llm | horizontal instances (1–500); reachable only behind lb/gateway/queue |
@@ -52,6 +52,7 @@ zones:                          # optional failure domains
 | `writePolicy` | cache, cdn | `through` (default): writes go on to the origin. `behind`: acknowledged at the cache and flushed ~5 s later — writes are fast and the origin sees them smoothed, but the buffered ones are lost if the cache dies (`lostWrites`) |
 | `workingSetGb`, `skew` | cache | the data the cache fronts (GB) and how concentrated reads are on popular keys (Zipf exponent, default 1): with them the hit rate follows from the cache's memory (S 6.4, M 13, L 26 GB) instead of `hitRate` |
 | `shards` | db, replica | horizontal partitions (1–256), each a full database holding part of the keys: capacity and cost × shards. Writes split with the data, which replicas and caches cannot do. Give a sharded database's replica the same count (a replica per shard) |
+| `ttlS`, `healthCheckS` | dns | how long clients cache an answer (default 60 s) and how long health checks take to notice a dead target (default 30 s): after a target dies, everyone sent there fails until the checks notice, then fewer as caches expire |
 | `hotKeyShare` | db, kv | share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which takes `hotKeyShare + (1 − hotKeyShare) / shards` of the load and saturates first |
 | `capacity` | any | override: req/s per size-S instance |
 | `latencyMs` | any | override: base service time |

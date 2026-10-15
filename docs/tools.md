@@ -117,8 +117,10 @@ incidents survived, weighted by severity.
 
 **Availability by design** is what the structure promises before any load: each unit's availability
 follows the public SLA of the managed service its kind stands for (one VM or single-AZ database
-99.5 %, a load balancer 99.99 %, API Gateway and Lambda 99.95 %, CDN, cache, object storage, queues
-and third-party APIs 99.9 %). Components in sequence multiply; redundant ones — instances behind a
+99.5 %, a load balancer 99.99 %, a key-value store 99.99 %, API Gateway and Lambda 99.95 %, CDN,
+cache, object storage, queues and third-party APIs 99.9 %, DNS 100 %). A DNS name routes around a
+dead target, but each outage of one costs its health-check time plus half its TTL (of an assumed
+30-minute outage) for the share that target had. Components in sequence multiply; redundant ones — instances behind a
 balancer, a replica that is promoted, a failover route — multiply their unavailability; a cache answers
 its hits without its origin; a queue answers its producers without its consumers. Reported as an
 estimate, downtime a year, and the components that cost the most of it (`availability.weakest`). It is

@@ -24,6 +24,8 @@ interface Harness {
   readRatio?: number;
   /** past capacity: the excess is shed (errors), or queued (backlog, no errors) */
   over: 'shed' | 'queue';
+  /** what overloads first and should say so (default: `x` itself) */
+  focus?: string;
 }
 
 const U: C = { id: 'users', kind: 'client' };
@@ -44,6 +46,8 @@ const HARNESS: Record<Exclude<Kind, 'client'>, Harness> = {
   llmapi: alone('llmapi'),
   external: alone('external'),
   kv: alone('kv'),
+  // a name that only answers: what is behind it overloads, and the board says so there
+  dns: { comps: [U, { id: 'x', kind: 'dns' }, { id: 'app', kind: 'server' }], conns: [['users', 'x'], ['x', 'app']], cap: KINDS.server.capacity, over: 'shed', focus: 'app' },
   lb: { comps: [U, { id: 'x', kind: 'lb' }, sink('app')], conns: [['users', 'x'], ['x', 'app']], cap: KINDS.lb.capacity, over: 'shed' },
   gateway: { comps: [U, { id: 'x', kind: 'gateway' }, sink('app')], conns: [['users', 'x'], ['x', 'app']], cap: 1500, over: 'shed' },
   cache: { comps: [U, { id: 'x', kind: 'cache' }, sink('origin', 'db')], conns: [['users', 'x'], ['x', 'origin']], cap: KINDS.cache.capacity, readRatio: 1, over: 'shed' },
@@ -99,9 +103,10 @@ for (const [kind, h] of Object.entries(HARNESS) as [Exclude<Kind, 'client'>, Har
 
     it('the board says what is happening to it when it is overloaded', () => {
       const f = fluid(h, h.cap * 2);
-      const node = specToGraph(spec(h)).nodes.find((n) => n.id === 'x')!;
-      const st = f.nodeStats.x;
-      const v = nodeView(node.data as never, st, true, h.conns.some(([a]) => a === 'x'));
+      const id = h.focus ?? 'x';
+      const node = specToGraph(spec(h)).nodes.find((n) => n.id === id)!;
+      const st = f.nodeStats[id];
+      const v = nodeView(node.data as never, st, true, h.conns.some(([a]) => a === id));
       expect(v.health === 'hot' || h.over === 'queue').toBe(true);
       const note = explain(node.data as never, st, v);
       expect(note, `${kind}: no explanation when overloaded`).not.toBeNull();
@@ -134,5 +139,40 @@ describe('a key-value store: the table scales, a partition does not', () => {
   it('raising the table’s limit does not help the hot key; without one, the same load is served', () => {
     expect(fluid(h(100000, 0.3), 20000).global.errorRate).toBeGreaterThan(0.12);
     expect(fluid(h(40000), 20000).global.errorRate).toBeLessThan(0.001);
+  });
+});
+
+describe('DNS: failover waits for the health check, then for the caches', () => {
+  // two regions behind a name; us-east dies at 5 s
+  const regions = (ttlS: number) => ({
+    components: [U, { id: 'x', kind: 'dns' as Kind, routing: 'failover', ttlS, healthCheckS: 10 }, { id: 'east', kind: 'server' as Kind, capacity: 1e5 }, { id: 'west', kind: 'server' as Kind, capacity: 1e5 }],
+    connections: [['users', 'x'], ['x', 'east'], ['x', 'west']] as [string, string][],
+  });
+  const sc = { duration: 60, rps: 200, events: [{ at: 5, action: { type: 'kill-id' as const, id: 'east' } }] };
+  const fluidMean = (ttl: number) => {
+    const b = specToGraph(regions(ttl));
+    const e = new Engine();
+    let failed = 0;
+    for (let i = 0; i < 1200; i++) {
+      if (i === 100) b.nodes.find((n) => n.id === 'east')!.data = { ...(b.nodes.find((n) => n.id === 'east')!.data as object), alive: false } as never;
+      e.step(b.nodes as never, b.edges as never, 200, 0.8, 0.05, DEFAULT_ENGINE_CONFIG);
+      failed += e.snapshot(b.nodes as never, b.edges as never).global.errorRate;
+    }
+    return failed / 1200;
+  };
+
+  it('every client fails until the check notices, then fewer as cached answers expire over the TTL', () => {
+    // 10 s of everyone, then a TTL of falling off: (10 + TTL / 2) s of the 60 out
+    for (const ttl of [20, 5]) {
+      const want = (10 + ttl / 2) / 60;
+      expect(Math.abs(fluidMean(ttl) - want), `fluid, TTL ${ttl}`).toBeLessThan(0.02);
+      expect(Math.abs(simulateDes(regions(ttl), sc, { seed: 3 }).summary.meanErrorRate - want), `DES, TTL ${ttl}`).toBeLessThan(0.03);
+    }
+  });
+
+  it('round-robin answers lose only the dead region’s share while they last', () => {
+    const rr = { ...regions(20), components: regions(20).components.map((c) => (c.id === 'x' ? { id: 'x', kind: 'dns' as Kind, ttlS: 20, healthCheckS: 10 } : c)) };
+    const d = simulateDes(rr, sc, { seed: 3 }).summary.meanErrorRate;
+    expect(Math.abs(d - (10 + 10) / 60 / 2)).toBeLessThan(0.03);
   });
 });

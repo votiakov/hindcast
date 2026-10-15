@@ -140,6 +140,7 @@ export const CASES: string[][] = [
   ['audit', `${ex}/terraform/shop.yaml`, '--json'],
   ['audit', `${ex}/kubernetes/shop.yaml`],
   ['audit', `${ex}/sharded.yaml`, '--rps', '9000'],
+  ['audit', `${ex}/two-regions-dns.yaml`, '--rps', '600'],
 ];
 
 /** wall-clock numbers differ run to run */

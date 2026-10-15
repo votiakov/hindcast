@@ -49,6 +49,7 @@ fn label_of(kind: &str) -> &'static str {
         "llmapi" => "LLM Provider API",
         "external" => "External API",
         "kv" => "Key-Value Store",
+        "dns" => "DNS",
         _ => "Component",
     }
 }
@@ -435,6 +436,13 @@ fn candidate_fixes(inc: &Incident, a: &Architecture, nm: &dyn Fn(&str) -> String
         }
     }
     if inc.kind == "zone" {
+        // a DNS name in front: users keep failing until its checks notice and its caches expire
+        for d in a.components.iter().filter(|c| get_str(c, "kind") == Some("dns")) {
+            if get_num(d, "ttlS").unwrap_or(60.0) > 5.0 || get_num(d, "healthCheckS").unwrap_or(30.0) > 10.0 {
+                let id = get_str(d, "id").unwrap_or("").to_string();
+                out.push(Cand { title: format!("Shorter TTL (5 s) and faster health checks (10 s) on {}", nm(&id)), why: "Failover through DNS waits for the health checks, then for every cached answer to expire.".into(), changes: vec![set(&id, json!({ "ttlS": 5, "healthCheckS": 10 }))] });
+            }
+        }
         if let Some(z) = a.zones.iter().find(|z| z.0 == inc.target) {
             for m in &z.2 {
                 if let Some(mc) = by_id(m) {

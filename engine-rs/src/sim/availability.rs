@@ -12,6 +12,8 @@ use serde_json::{Map as JMap, Value};
 use std::collections::{HashMap, HashSet};
 
 const HOURS_PER_YEAR: f64 = 8766.0;
+/// how long a typical outage lasts before it is fixed, s: what DNS failover's lag is a share of
+const OUTAGE_S: f64 = 1800.0;
 
 /// one unit's availability: one instance, one database, one managed service
 pub fn unit_availability(kind: &str) -> f64 {
@@ -20,6 +22,8 @@ pub fn unit_availability(kind: &str) -> f64 {
         "lb" => 0.9999,                                    // ELB SLA
         "gateway" | "function" => 0.9995,                  // API Gateway, Lambda SLAs
         "cdn" | "cache" | "storage" | "queue" => 0.999,     // CloudFront, ElastiCache, S3, SQS
+        "dns" => 1.0,                                      // Route 53: a 100% SLA (anycast, cached everywhere)
+        "kv" => 0.9999,                                    // DynamoDB
         "llmapi" | "external" => 0.999,                    // someone else's service: what they promise
         _ => 0.995,                                        // one VM, one single-AZ database (EC2, RDS)
     }
@@ -143,11 +147,21 @@ impl<'a> Graph<'a> {
                 return 0.0;
             }
             let each: Vec<f64> = ks.iter().map(|k| self.avail(k, perfect, path)).collect();
+            if kind == "dns" {
+                // health-checked answers route around a dead target, but only after the checks notice
+                // and cached answers expire: that lag, of each outage, is downtime for the share that
+                // target had (failover: all of it for the first; otherwise an even share each)
+                let lag = (n(c, "healthCheckS").unwrap_or(30.0) + n(c, "ttlS").unwrap_or(60.0) / 2.0) / OUTAGE_S;
+                let failover = s(c, "routing") == Some("failover");
+                let all_down: f64 = each.iter().map(|x| 1.0 - x).product();
+                let lagged: f64 = each.iter().enumerate().map(|(i, x)| (1.0 - x) * if failover { if i == 0 { 1.0 } else { 0.0 } } else { 1.0 / each.len() as f64 }).sum::<f64>() * lag.min(1.0);
+                return (1.0 - all_down - lagged).max(0.0);
+            }
             match s(c, "routing") {
                 Some("fanout") => each.iter().product(),
                 // a balancer routes around a dead child; a failover route tries the next
                 Some("failover") => 1.0 - each.iter().map(|x| 1.0 - x).product::<f64>(),
-                _ if kind == "lb" || kind == "gateway" => 1.0 - each.iter().map(|x| 1.0 - x).product::<f64>(),
+                _ if kind == "lb" || kind == "gateway" || kind == "dns" => 1.0 - each.iter().map(|x| 1.0 - x).product::<f64>(),
                 // split without health checks: each request goes to one child
                 _ => each.iter().sum::<f64>() / each.len() as f64,
             }
@@ -194,7 +208,8 @@ pub fn availability(a: &Architecture, read_ratio: f64) -> Availability {
     Availability {
         estimate: r6(estimate),
         nines: if estimate >= 1.0 { 9.0 } else { ((-(1.0 - estimate).log10()) * 100.0).round() / 100.0 },
-        downtime_hours_per_year: (down(estimate) * 10.0).round() / 10.0,
+        // tenths of an hour, or to the minute under an hour
+        downtime_hours_per_year: if down(estimate) >= 1.0 { (down(estimate) * 10.0).round() / 10.0 } else { (down(estimate) * 60.0).round() / 60.0 },
         downtime_minutes_per_month: (down(estimate) / 12.0 * 60.0).round(),
         weakest,
     }

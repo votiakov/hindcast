@@ -335,6 +335,8 @@ struct DNode {
     /// a key-value store: the hot key's partition, in partition-seconds of work available
     kv_bucket: f64,
     kv_t: f64,
+    /// when it went down (DNS answers lag it)
+    dead_since: Option<f64>,
     queue: VecDeque<Job>,
     queue_max: f64,
     last_busy_t: f64,
@@ -540,6 +542,7 @@ impl<'a> Des<'a> {
             n.cold_at = Some(now);
         }
         n.flush_seen = n.raw.flushes.unwrap_or(0.0);
+        n.dead_since = if up(n) { None } else { n.dead_since.or(Some(now)) };
         let d = &n.data;
         let reach = if n.pooled || d.kind == "llm" { instances_up(d) } else { instances_up(d).min(1.0) };
         let cap = capacity_of(d, Some(reach)).max(1e-6);
@@ -690,6 +693,16 @@ impl<'a> Des<'a> {
             self.at(ack, Ev::Deliver { done, ok: true }); // the producer gets the ack
             self.pump(i);
             return;
+        }
+        if kind == "dns" {
+            // clients that still hold an answer pointing at a dead target: they wait for the connection
+            // to time out, and fail
+            let d = &self.nodes[i].data;
+            let targets: Vec<(bool, f64)> = self.nodes[i].children.iter().map(|&c| if self.reach(i, c) { (true, 0.0) } else { (false, self.nodes[c].dead_since.map(|t| now - t).unwrap_or(0.0)) }).collect();
+            let stale = super::catalog::dns_stale_share(d, &targets);
+            if stale > 0.0 && self.rng.next() < stale {
+                return self.fail(Some(i), done, 1000.0);
+            }
         }
         if kind == "kv" {
             // the hot key's partition: a bucket of partition-seconds, a read costing 1/3,000, a write 1/1,000
@@ -1023,7 +1036,7 @@ impl<'a> Des<'a> {
         let kind = self.nodes[n].kind;
         let mode = self.nodes[n].mode;
         let degree = self.nodes[n].data.fanout.unwrap_or(1.0).max(1.0);
-        let filter = kind == "lb" || kind == "gateway" || kind == "queue";
+        let filter = kind == "lb" || kind == "gateway" || kind == "queue" || kind == "dns";
         let restricted = !self.link_carries.is_empty() && self.nodes[n].children.iter().any(|&c| self.link_carries.contains_key(&(n, c)));
         // the common case: one child picked at random, no list built
         if mode == "split" && degree <= 1.0 && !filter && !restricted {
@@ -1388,6 +1401,7 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
             hot_last_t: 0.0,
             kv_bucket: 1.0,
             kv_t: 0.0,
+            dead_since: None,
             queue: VecDeque::new(),
             queue_max: 0.0,
             last_busy_t: 0.0,
@@ -1611,6 +1625,7 @@ fn static_kind(k: &str) -> &'static str {
         "llmapi" => "llmapi",
         "external" => "external",
         "kv" => "kv",
+        "dns" => "dns",
         _ => "server",
     }
 }

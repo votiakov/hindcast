@@ -706,4 +706,44 @@ BASIC_SCENARIOS.push({
   },
 });
 
+/** two regions behind a health-checked DNS name: how long a region outage lasts for users */
+const dnsBoard = (ttlS: number, healthCheckS: number) =>
+  graph(
+    [
+      ['users', 'client', X[0], 330],
+      ['dns', 'dns', X[1], 330, { routing: 'failover', ttlS, healthCheckS, name: 'api.example.com' }],
+      ['lb-east', 'lb', X[2], 150],
+      ['api-east', 'server', X[3], 150, { instances: 4 }],
+      ['lb-west', 'lb', X[2], 520],
+      ['api-west', 'server', X[3], 520, { instances: 4 }],
+    ],
+    [['users', 'dns'], ['dns', 'lb-east'], ['dns', 'lb-west'], ['lb-east', 'api-east'], ['lb-west', 'api-west']],
+    [
+      ['east', 'us-east', X[2] - 40, 90, 700, 210],
+      ['west', 'us-west', X[2] - 40, 460, 700, 210],
+    ],
+  );
+
+BASIC_SCENARIOS.push({
+  id: 'dns-ttl-failover',
+  title: 'DNS Failover: Why It Takes Minutes',
+  tagline: 'A region dies. The standby is ready. How long do users keep failing?',
+  watch: 'Errors after the outage: everyone fails until the health check notices, then fewer as cached answers expire.',
+  readRatio: 0.8,
+  a: { title: 'Defaults: TTL 60 s, checks 30 s', graph: dnsBoard(60, 30) },
+  b: { title: 'Tuned: TTL 5 s, checks 10 s', graph: dnsBoard(5, 10) },
+  timeline: [
+    { at: 0, rps: 600, caption: '600 req/s to us-east; us-west is the failover target, idle and ready.' },
+    { at: 10, rps: 600, caption: 'us-east loses power.' },
+    { at: 30, rps: 600, caption: 'The health checks have noticed. Clients still holding the old answer keep trying us-east.' },
+    { at: 110, rps: 600 },
+  ],
+  events: [{ at: 10, message: '⚡ us-east is down', a: { type: 'fail-zone', id: 'east' }, b: { type: 'fail-zone', id: 'east' } }],
+  takeaway: {
+    a: 'A minute and a half of errors with a healthy standby the whole time: 30 s for the checks to agree, then a 60 s TTL for every cache to let go.',
+    b: 'About fifteen seconds: checks every few seconds and a short TTL — paid for with more DNS queries, and resolvers that ignore short TTLs will still lag.',
+    lesson: 'DNS failover is as fast as its slowest cache. Keep TTLs short on names you fail over, or fail over below DNS: a global load balancer or anycast moves traffic in seconds.',
+  },
+});
+
 export const SCENARIOS: Scenario[] = [...BASIC_SCENARIOS, ...ADVANCED];

@@ -155,6 +155,17 @@
       "scalesHorizontally": false
     },
     {
+      "kind": "dns",
+      "label": "DNS",
+      "description": "A name with health-checked answers (Route 53): sends users to their region, or fails over to the next. Clients cache the answer for the TTL, so a dead target keeps getting traffic until the health check notices and the caches expire.",
+      "capacityPerInstanceRps": 1000000000,
+      "baseLatencyMs": 1,
+      "costPerHour": 0.001,
+      "costPerRequest": null,
+      "sizable": false,
+      "scalesHorizontally": false
+    },
+    {
       "kind": "kv",
       "label": "Key-Value Store",
       "description": "Managed NoSQL (DynamoDB on demand): no box to size and billed per request — but one partition takes 3,000 reads or 1,000 writes a second, so a hot key throttles whatever the table allows.",
