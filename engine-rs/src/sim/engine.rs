@@ -31,6 +31,10 @@ impl Default for EngineConfig {
 const HISTORY_LEN: usize = 90;
 const HISTORY_EVERY_S: f64 = 0.25;
 const TRIP_FAIL: f64 = 0.5;
+/// the discrete-event engine judges a breaker on 1 s windows, closed on ten calls or more, half open on three
+const BR_WINDOW_S: f64 = 1.0;
+const BR_MIN_CALLS: f64 = 10.0;
+const BR_HALF_MIN_CALLS: f64 = 3.0;
 const TRIP_AFTER_S: f64 = 1.0;
 const OPEN_S: f64 = 5.0;
 const PROBE_OPEN: f64 = 0.02;
@@ -206,6 +210,13 @@ pub struct NodeState {
     pub overloaded: bool,
     pub reachable: f64,
     pub drain_rps: f64,
+    /// what reached it last tick from callers other than queues, req/s: a queue's consumers pull
+    /// only with what that leaves free
+    pub pushed_rps: f64,
+    /// a consumer that also takes calls: the share of its work pulled from queues last tick. Pulled
+    /// messages only fill workers the calls leave idle, and a call takes the next free one, so
+    /// the calls wait as if those messages were not there
+    pub pulled_share: f64,
     pub warm: f64,
     pub cold_frac: f64,
     pub down_for: f64,
@@ -215,6 +226,8 @@ pub struct NodeState {
     pub retry_amp: f64,
     pub breaker: Breaker,
     pub breaker_t: f64,
+    /// half open: how far the probes' windows have gone towards reopening it
+    pub breaker_h: f64,
     pub breaker_pass: f64,
     pub late_frac: f64,
     pub cold_at: Option<f64>,
@@ -273,6 +286,8 @@ fn fresh() -> NodeState {
         overloaded: false,
         reachable: 1.0,
         drain_rps: 0.0,
+        pushed_rps: 0.0,
+        pulled_share: 0.0,
         warm: 0.0,
         cold_frac: 0.0,
         down_for: 0.0,
@@ -282,6 +297,7 @@ fn fresh() -> NodeState {
         retry_amp: 1.0,
         breaker: Breaker::Closed,
         breaker_t: 0.0,
+        breaker_h: 0.0,
         breaker_pass: 1.0,
         late_frac: 0.0,
         cold_at: None,
@@ -352,6 +368,16 @@ pub fn fanout_tail(n: f64) -> f64 {
     } else {
         1.0 + 0.6 * (2.0 * n.js_ln()).sqrt()
     }
+}
+
+/// chance that a window of `n` calls, each failing with chance `p`, measures a failure rate past `t`
+/// (the binomial by its normal approximation, with the continuity correction)
+fn window_above(p: f64, n: f64, t: f64) -> f64 {
+    let sd = (n * p * (1.0 - p)).sqrt();
+    if sd < 1e-9 {
+        return if p > t { 1.0 } else { 0.0 };
+    }
+    crate::math::normal_tail(((t * n).floor() + 0.5 - p * n) / sd)
 }
 
 /// share of answers slower than a deadline, for answers with this mean and p99 − mean: right-skewed,
@@ -442,7 +468,7 @@ fn shard_parts(d: &NodeData, st: &NodeState) -> Vec<(f64, f64, f64)> {
     let total = capacity_of(d, Some(st.reachable)).max(1e-6);
     // a replica's shards share its reads evenly: one pool
     if n <= 1.0 || d.kind != "db" {
-        let (m, t) = pool_latency(d, total, st.util, st.queue);
+        let (m, t) = pool_latency(d, total, st.util * (1.0 - st.pulled_share), st.queue);
         return vec![(1.0, m, t)];
     }
     let s = hot_shard_share(d);
@@ -556,6 +582,8 @@ struct Ctx<'a> {
     dead: &'a [f64],
     /// the simulation clock, s
     now: f64,
+    /// every node's arrivals last tick from callers other than queues, req/s
+    pushed: &'a [f64],
 }
 
 fn reachable(c: &Ctx) -> f64 {
@@ -783,12 +811,18 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
                 st.queue = QUEUE_MAX_BACKLOG;
             }
             let routes: Vec<Route> = c.routes.iter().filter(|k| k.up).cloned().collect();
-            let drain = routes.iter().fold(0.0, |s, k| s + capacity_of(&c.data[k.t], None));
+            // consumers pull: each takes messages only with the capacity what is pushed at it leaves
+            // free (a worker that also serves calls does not drop them to make room for the queue)
+            let free: Vec<f64> = routes.iter().map(|k| (capacity_of(&c.data[k.t], None) - c.pushed[k.t]).max(0.0)).collect();
+            let drain: f64 = free.iter().sum();
             st.drain_rps = drain;
             let processed = st.queue.min(drain * c.dt);
             st.queue -= processed;
             st.forwarded = processed;
             let mut r = res(processed, failed, processed, st.queue / QUEUE_MAX_BACKLOG, true);
+            if drain > 0.0 && routes.iter().any(|k| c.pushed[k.t] > 0.0) {
+                r.shares = Some(routes.iter().zip(&free).map(|(k, f)| (k.e, f / drain)).collect());
+            }
             r.routes = Some(routes);
             r
         }
@@ -842,12 +876,10 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
         "llmapi" | "external" | "archive" => {
             let cap = capacity_of(c.d, None) * c.dt;
             let processed = c.arrivals.min(cap);
-            let mut r = res(processed, c.arrivals - processed, processed, c.arrivals / cap, true);
-            // an archive is storage: it answers, it does not call on (its answer never waited for them)
-            if c.d.kind == "archive" {
-                r.forward = 0.0;
-                r.routes = Some(vec![]);
-            }
+            // a third-party API answers itself: it does not call your components (a link out of it is
+            // flagged by validate and carries nothing), and an archive is storage, which answers too
+            let mut r = res(processed, c.arrivals - processed, 0.0, c.arrivals / cap, true);
+            r.routes = Some(vec![]);
             r
         }
         // a managed key-value store: the table's limit, then the hot key's partition; it answers itself
@@ -942,7 +974,8 @@ fn fold(c: &FoldCtx, st: &NodeState) -> (f64, f64) {
             let cold = if c.cfg.cold_start_ms > 0.0 && c.d.runtime.as_deref().map(|r| !r.is_empty()).unwrap_or(false) { runtime(c.d.runtime.as_deref().unwrap()).2 } else { c.cfg.cold_start_ms };
             (c.keep * kids_succ, base_latency_of(c.d) + st.cold_frac * cold + kids_lat)
         }
-        "llmapi" | "external" | "kv" => (c.keep * kids_succ, c.d.latency_ms.unwrap_or(spec(&c.d.kind).base_latency_ms) + kids_lat),
+        // leaves: they answer themselves (their routes are empty, so they have no kids)
+        "llmapi" | "external" | "kv" => (c.keep, c.d.latency_ms.unwrap_or(spec(&c.d.kind).base_latency_ms)),
         "archive" => (c.keep, base_latency_of(c.d)),
         _ => (c.keep * kids_succ, service_latency(c.d, st) + kids_lat),
     }
@@ -1120,30 +1153,44 @@ impl Engine {
             return 1.0;
         }
         let prev = st.breaker;
-        st.breaker_t += dt;
+        // a breaker judges what it measures over a window of calls, and that wanders around the
+        // expected failure rate: past the threshold it trips after a second, as always; just under it,
+        // a window now and then measures past it, and the first one trips it (the discrete-event engine,
+        // and a real breaker, trip that way). So below the threshold the clock runs at the chance that a
+        // window measures past it: a callee failing half the calls (one of two dependencies late) trips
+        // it within a few seconds, one failing a tenth of them never does
+        let calls = st.in_rps * st.retry_amp * BR_WINDOW_S;
+        let hazard = |p: f64, n: f64, min: f64| if p > TRIP_FAIL { 1.0 } else if n < min { 0.0 } else { window_above(p, n, TRIP_FAIL) };
         match st.breaker {
             Breaker::Closed => {
-                if st.attempt_fail > TRIP_FAIL {
+                let h = hazard(st.attempt_fail, calls, BR_MIN_CALLS);
+                if h < 1e-3 {
+                    st.breaker_t = 0.0;
+                } else {
+                    st.breaker_t += dt * h;
                     if st.breaker_t >= TRIP_AFTER_S {
                         st.breaker = Breaker::Open;
                         st.breaker_t = 0.0;
                     }
-                } else {
-                    st.breaker_t = 0.0;
                 }
             }
             Breaker::Open => {
+                st.breaker_t += dt;
                 if st.breaker_t >= OPEN_S {
                     st.breaker = Breaker::Half;
                     st.breaker_t = 0.0;
+                    st.breaker_h = 0.0;
                 }
             }
             Breaker::Half => {
+                st.breaker_t += dt;
+                // the probes' windows (three calls make one) measure past the threshold now and then too
+                st.breaker_h += dt * hazard(st.attempt_fail, calls * PROBE_HALF, BR_HALF_MIN_CALLS);
                 if st.breaker_t >= 1.0 {
                     if st.attempt_fail < CLOSE_FAIL {
                         st.breaker = Breaker::Closed;
                         st.breaker_t = 0.0;
-                    } else if st.attempt_fail > TRIP_FAIL {
+                    } else if st.breaker_h >= 1.0 {
                         st.breaker = Breaker::Open;
                         st.breaker_t = 0.0;
                     }
@@ -1251,6 +1298,9 @@ impl Engine {
             st.dead_for = if is_up(&data[i]) { 0.0 } else { st.dead_for + dt };
         }
         let dead: Vec<f64> = (0..n).map(|i| self.nodes[sidx[i]].dead_for).collect();
+        let pushed: Vec<f64> = (0..n).map(|i| self.nodes[sidx[i]].pushed_rps).collect();
+        // what each node receives from queues this tick (the rest was pushed at it)
+        let mut from_queues = vec![0.0; n];
         let mut stale_now = 0.0;
         let mut inflow = vec![0.0; n];
         let mut done = vec![false; n];
@@ -1323,7 +1373,7 @@ impl Engine {
                 st.queue = 0.0;
                 res(0.0, arrivals, 0.0, 0.0, false)
             } else {
-                let ctx = Ctx { d, data: &data, arrivals, dt, cfg, read_ratio, routes, pooled: pooled[i], edge_sync: &edge_sync, edge_lat: &edge_lat, lags: &lags, dead: &dead, now };
+                let ctx = Ctx { d, data: &data, arrivals, dt, cfg, read_ratio, routes, pooled: pooled[i], edge_sync: &edge_sync, edge_lat: &edge_lat, lags: &lags, dead: &dead, now, pushed: &pushed };
                 process(&ctx, &mut st)
             };
             // a search index: a write is searchable after the indexing backlog ahead of it and the next
@@ -1437,6 +1487,9 @@ impl Engine {
                     } else {
                         inflow[t] += v;
                         inflow_r[t] += v_r;
+                        if d.kind == "queue" {
+                            from_queues[t] += v;
+                        }
                     }
                     edge_flow[e] += v;
                 }
@@ -1499,6 +1552,9 @@ impl Engine {
                     } else {
                         inflow[t] += v;
                         inflow_r[t] += v * fwd_r;
+                        if d.kind == "queue" {
+                            from_queues[t] += v;
+                        }
                     }
                     edge_flow[e] += v;
                 }
@@ -1509,6 +1565,8 @@ impl Engine {
                 r.failed += unroutable;
             }
             st.in_rps = ema(st.in_rps, arrivals / dt, dt, 0.6);
+            st.pushed_rps = (arrivals - from_queues[i]).max(0.0) / dt;
+            st.pulled_share = if from_queues[i] > 0.0 && st.pushed_rps > 0.0 { (from_queues[i] / arrivals).min(1.0) } else { 0.0 };
             st.drop_rps = ema(st.drop_rps, r.failed / dt, dt, 0.6);
             st.hit_rps = ema(st.hit_rps, r.hits.unwrap_or(0.0) / dt, dt, 0.6);
             st.util = ema(st.util, r.util, dt, 0.4);
@@ -1620,7 +1678,7 @@ impl Engine {
                     succ_w = 1.0 - miss_w;
                     tail = (p99 - lat).max(0.0);
                 } else {
-                    let (mut w, mut s, mut p99, mut lt) = (0.0, 0.0, 0.0, 0.0);
+                    let (mut w, mut s, mut p99, mut lt, mut wa) = (0.0, 0.0, 0.0, 0.0, 0.0);
                     let (mut sr, mut sw, mut wr, mut ww) = (0.0, 0.0, 0.0, 0.0);
                     for k in &l.routes {
                         let (ks, kl, f, t) = kid(k);
@@ -1637,11 +1695,17 @@ impl Engine {
                         ww += cw;
                         lat += kl * wk;
                         p99 += (kl + t) * wk;
+                        // the answers are the ones that succeeded: a branch that mostly fails is mostly not
+                        // among them, so its lateness counts by its successes, not by the calls it took
+                        // (weighting by calls makes a slow, failing branch's lateness strike the fast,
+                        // healthy branches' answers too: success × (1 − late) counts it twice)
+                        let wa_k = wk * ks.max(1e-6);
+                        wa += wa_k;
                         let kd = kid_dist(k);
                         if let Some(dl) = tmo {
-                            lt += mix_late(&kd, dl) * wk;
+                            lt += mix_late(&kd, dl) * wa_k;
                         }
-                        kids_mix.extend(mix_then(&kd, 0.0, 0.0, wk));
+                        kids_mix.extend(mix_then(&kd, 0.0, 0.0, wa_k));
                     }
                     succ = s / w;
                     succ_r = if wr > 0.0 { sr / wr } else { 0.0 };
@@ -1649,7 +1713,7 @@ impl Engine {
                     lat /= w;
                     tail = (p99 / w - lat).max(0.0);
                     if tmo.is_some() {
-                        late = Some(lt / w);
+                        late = Some(lt / wa);
                     }
                 }
             }

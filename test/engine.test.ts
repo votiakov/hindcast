@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { simulate, breakingPoint, compare } from '../src/sim/headless';
-import { retryAmp } from '../src/sim/engine';
+import { DEFAULT_ENGINE_CONFIG, Engine, retryAmp } from '../src/sim/engine';
+import { specToGraph } from '../src/spec/convert';
 import { shop, shopWithReplica, steady } from './fixtures';
 import { PRICING, type PricingId } from '../src/sim/pricing';
 import type { Kind } from '../src/sim/catalog';
@@ -59,6 +60,64 @@ describe('fluid engine', () => {
     const { ranked } = compare(shop, [{ name: 'bigger', changes: [{ op: 'set', id: 'api', fields: { instances: 8 } }] }], steady(1500));
     expect(ranked[0].name).toBe('bigger');
     expect(ranked[0].meetsSlo).toBe(true);
+  });
+});
+
+import { simulateDes } from '../src/sim/des/des';
+
+describe('a deadline over a fast branch and a slow, failing one', () => {
+  // api splits its calls between `fast` and `slow`, with a 200 ms deadline. slow takes 500/s against
+  // 100/s: it sheds 400/s and the 100/s it serves wait ~1 s in its queue, past the deadline. So every
+  // call to slow fails and every call to fast succeeds: 50% fail. (Lateness weighted by calls instead
+  // of by successful answers made fast's answers look half late too: success 0.6 × on time 0.5, so
+  // the fluid engine had 68% failing.)
+  const spec = {
+    components: [{ id: 'users', kind: 'client' }, { id: 'api', kind: 'server', capacity: 1e5, timeoutMs: 200 }, { id: 'fast', kind: 'server', capacity: 1e5, latencyMs: 5 }, { id: 'slow', kind: 'worker', capacity: 100 }],
+    connections: [['users', 'api'], ['api', 'fast'], ['api', 'slow']],
+  };
+  it('half the requests fail, in both engines', () => {
+    const f = simulate(spec, { duration: 40, rps: 1000 }).summary.meanErrorRate;
+    const d = simulateDes(spec, { duration: 40, rps: 1000 }, { seed: 1 }).summary.meanErrorRate;
+    expect(Math.abs(d - 0.5)).toBeLessThan(0.03);
+    expect(Math.abs(f - 0.5)).toBeLessThan(0.03);
+  });
+});
+
+describe('a breaker whose calls fail exactly half the time', () => {
+  // one of api's two dependencies answers in 1 s against a 200 ms deadline: half the calls fail, the
+  // breaker's threshold. The rate a breaker measures over a window wanders around that, so one window
+  // soon measures past it and trips it; with the fallback, few requests fail
+  const spec = {
+    components: [{ id: 'users', kind: 'client' }, { id: 'api', kind: 'server', capacity: 1e5, timeoutMs: 200, breaker: true, fallback: true }, { id: 'fast', kind: 'server', capacity: 1e5, latencyMs: 5 }, { id: 'slow', kind: 'external', latencyMs: 1000 }],
+    connections: [['users', 'api'], ['api', 'fast'], ['api', 'slow']],
+  };
+  it('trips in both engines', () => {
+    const f = simulate(spec, { duration: 60, rps: 300 });
+    const d = simulateDes(spec, { duration: 60, rps: 300 }, { seed: 1 });
+    expect(f.events.some((e) => e.what.startsWith('breaker-open'))).toBe(true);
+    expect(d.events.some((e) => e.what.startsWith('breaker-open'))).toBe(true);
+    expect(f.summary.meanErrorRate).toBeLessThan(0.15);
+    expect(d.summary.meanErrorRate).toBeLessThan(0.15);
+  });
+});
+
+describe('a worker that takes calls and also consumes a queue', () => {
+  // 60 calls/s and a queue of 60 messages/s, one worker of 100/s. Consumers pull: the queue gets the
+  // 40/s the calls leave free and backs up, and the calls are neither dropped nor kept waiting behind
+  // the messages (the queue used to push its consumer's whole capacity at it: 160/s against 100/s)
+  const spec = {
+    components: [{ id: 'users', kind: 'client' }, { id: 'jobs', kind: 'queue' }, { id: 'api', kind: 'function', timeoutMs: 500 }, { id: 'w', kind: 'worker' }],
+    connections: [['users', 'jobs'], ['users', 'api'], ['jobs', 'w'], ['api', 'w']],
+  };
+  it('the calls do not fail in either engine; the queue drains what is left', () => {
+    const b = specToGraph(spec);
+    const e = new Engine();
+    for (let i = 0; i < 40 / 0.05; i++) e.step(b.nodes as never, b.edges as never, 120, 0.8, 0.05, DEFAULT_ENGINE_CONFIG);
+    const s = e.snapshot(b.nodes as never, b.edges as never);
+    expect(s.global.errorRate).toBeLessThan(0.01);
+    expect(s.nodeStats.w.dropRps).toBeLessThan(1);
+    expect(s.edgeStats['e-jobs-w'].rps).toBeCloseTo(40, 0);
+    expect(simulateDes(spec, { duration: 40, rps: 120 }, { seed: 1 }).summary.meanErrorRate).toBeLessThan(0.01);
   });
 });
 

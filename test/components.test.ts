@@ -134,6 +134,25 @@ for (const [kind, h] of Object.entries(HARNESS) as [Exclude<Kind, 'client'>, Har
   });
 }
 
+describe('a third-party API answers itself: it never calls your components', () => {
+  // a link drawn out of the provider (by mistake, or a webhook drawn as a call) carries nothing
+  for (const kind of ['external', 'llmapi'] as Kind[]) {
+    const h: Harness = { comps: [U, { id: 'x', kind }, { id: 'app', kind: 'server', capacity: 10 }], conns: [['users', 'x'], ['x', 'app']], cap: 0, over: 'shed' };
+    it(`${kind}: no load reaches what it links to, in either engine, and validate flags the link`, () => {
+      // 50 req/s (half the provider's default limit) would overload `app` fivefold if the provider passed it on
+      const f = fluid(h, 50);
+      expect(f.nodeStats.x.inRps).toBeGreaterThan(45);
+      expect(f.nodeStats.app.inRps).toBe(0);
+      expect(f.global.errorRate).toBeLessThan(0.005);
+      expect(f.global.p99).toBeLessThan(KINDS[kind].baseLatencyMs * 4);
+      expect(des(h, 50).meanErrorRate).toBeLessThan(0.01);
+      const v = validateSpec(spec(h));
+      expect(v.ok).toBe(true);
+      expect(v.issues.map((i) => i.message)).toContainEqual(expect.stringContaining(`${kind} "x" is a third-party API`));
+    });
+  }
+});
+
 describe('a key-value store: the table scales, a partition does not', () => {
   const kvSpec = (limit: number, hotKeyShare?: number) => ({ components: [U, { id: 'x', kind: 'kv' as Kind, limit, ...(hotKeyShare ? { hotKeyShare } : {}) }], connections: [['users', 'x'] as [string, string]] });
   const h = (limit: number, hot?: number): Harness => ({ ...spec({ comps: [], conns: [], cap: 0, over: 'shed' }), comps: kvSpec(limit, hot).components, conns: kvSpec(limit, hot).connections, cap: limit, over: 'shed' });

@@ -8,6 +8,9 @@ export interface Issue {
   path?: (string | number)[];
 }
 
+/** kinds that answer themselves and call nothing (in both engines) */
+const LEAVES = new Set<string>(['llmapi', 'external', 'kv', 'storage', 'archive', 'search', 'vector']);
+
 /** Schema errors plus architectural lint (things that will silently misbehave in the simulation). */
 export function validateSpec(input: unknown): { ok: boolean; issues: Issue[]; spec?: ArchitectureSpec } {
   const parsed = ArchitectureSpec.safeParse(input);
@@ -41,6 +44,11 @@ export function validateSpec(input: unknown): { ok: boolean; issues: Issue[]; sp
     const parents = (into.get(c.id) ?? []).map((p) => ids.get(p)?.kind);
     if ((c.kind === 'lb' || c.kind === 'gateway' || c.kind === 'queue' || c.kind === 'stream' || c.kind === 'dns') && !kids.length) issues.push({ level: 'error', message: `${c.kind} "${c.id}" has nothing behind it — every request fails`, path: at(c) });
     if (c.kind === 'edge' && (c.edgeShare ?? 0.5) < 1 && !kids.length) issues.push({ level: 'warning', message: `edge "${c.id}" has no origin — what it passes on fails`, path: at(c) });
+    // leaves: both engines answer at these and send nothing on, so a link out of one is dead
+    if (kids.length && LEAVES.has(c.kind)) {
+      const what = c.kind === 'llmapi' || c.kind === 'external' ? 'a third-party API: it answers itself and does not call your components' : 'a data store: it answers itself and calls nothing';
+      issues.push({ level: 'warning', message: `${c.kind} "${c.id}" is ${what} — its link${kids.length > 1 ? 's' : ''} to ${kids.map((k) => `"${k}"`).join(', ')} carr${kids.length > 1 ? 'y' : 'ies'} no traffic`, path: at(c) });
+    }
     if ((c.kind === 'cache' || c.kind === 'cdn') && !kids.length) issues.push({ level: 'warning', message: `${c.kind} "${c.id}" has no origin — every miss fails`, path: at(c) });
     const fannedInto = (into.get(c.id) ?? []).some((p) => (ids.get(p)?.fanout ?? 1) > 1);
     if ((c.instances ?? 1) > 1 && c.kind !== 'llm' && c.kind !== 'search' && c.kind !== 'vector' && !fannedInto && !parents.some((k) => k === 'lb' || k === 'gateway' || k === 'queue' || k === 'stream')) issues.push({ level: 'warning', message: `"${c.id}" has ${c.instances} instances but no lb/gateway/queue in front — only one receives traffic`, path: at(c) });
