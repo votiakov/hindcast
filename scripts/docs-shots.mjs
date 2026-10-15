@@ -24,7 +24,7 @@ const backtest = async (p, ref) => {
   await p.waitForSelector('.bt-pane svg', { timeout: 30000 });
   if (ref) {
     await p.selectOption('select[aria-label="Reference system"]', ref);
-    await p.waitForFunction((n) => document.querySelector('.bt-sym')?.textContent?.includes(n), ref === 'shop' ? 'Shop' : ref === 'petclinic' ? 'PetClinic' : 'HotROD', { timeout: 60000 });
+    await p.waitForFunction((n) => document.querySelector('.bt-system')?.textContent?.includes(n), ref === 'shop' ? 'Shop' : ref === 'petclinic' ? 'PetClinic' : 'HotROD', { timeout: 60000 });
   }
   await p.waitForSelector('.bt-verdict', { timeout: 60000 });
   await wait(p, 1200);
@@ -65,12 +65,11 @@ const SHOTS = {
     setup: (p) => backtest(p),
     pins: {
       views: ['.bt-modes', 'r', 0, 12],
-      ranges: ['.bt-bar .bt-chip', 'b', 0, 0, 8],
+      ranges: ['.bt-seg', 'b', 0, 0, 8],
       p99: ['.bt-pane', 'tl', 0, 16, 60],
       incident: ['.bt-breach', 'c', -1],
       errors: ['.bt-pane', 'tl', 1, 16, 48],
       cost: ['.bt-pane', 'r', 2, -110, 10],
-      savings: ['.bt-pane', 'tl', 3, 330, 8],
       watch: ['.bt-watch', 'tr', 0, -18, 20],
       worst: ['.bt-worstbox', 'tr', 0, -16, 16],
       accuracy: ['.bt-watch :text("Model accuracy")', 'r', 0, 16],

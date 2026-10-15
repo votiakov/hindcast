@@ -186,10 +186,9 @@ the trust report lowers the confidence to match.
 
 ## 5. Surfaces
 
-- **App** — the Backtest tab: measured p99 as candles, the as-built replay and every
-  strategy over it with bands, errors, cost and the savings curve on one time axis; LOAD replays it
-  at ×0.5–×3; ranked strategy
-  list; Overview / Incidents / Endpoints / Changes (edit the YAML live) / Model tabs. Click any
+- **App** — the Backtest tab: the p99 users saw, the as-built replay and every
+  change over it with bands, errors and cost on one time axis, out-of-SLO stretches shaded;
+  "replayed at" runs it at ×0.5–×3; the changes tested, verdict first; Overview / Incidents / Endpoints / Changes (edit the YAML live) / Model tabs. Click any
   moment to open it on the board as a replay. *Card ↗* makes a Studio card of the focused strategy.
 - **CLI** — `import`, `calibrate`, `backtest`, `headroom` (model breaking point), `accuracy`,
   `outage`, `diff-strategy`, `export-prometheus`; Markdown / HTML reports; `--comment` writes the PR

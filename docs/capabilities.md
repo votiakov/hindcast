@@ -44,7 +44,7 @@ and where it is documented.
 | Replay: endpoint traffic → visits → queueing with backlog → critical-path latency → deadline failures → cost; autoscalers on their own clock | A C M | [backtest.md §4](backtest.md#4-the-backtest) |
 | Results with 10–90% bands from 30 paired draws: $/month, minutes out of SLO, failed requests, error budget, worst moment and why, incidents, per-endpoint results, ranking | A C M | [backtest.md §4](backtest.md#4-the-backtest) |
 | Data transfer priced across zones, regions and to the internet | A C M | [calibration.md §4](calibration.md#4-cost-from-the-bill) |
-| Chart-first screen: candles, as-built replay, strategies with bands, errors, cost, savings curve; zoom; ranked watchlist; tester tabs | A | [guide.md](guide.md#backtest) |
+| Chart-first screen: measured p99, as-built replay, changes with bands, errors, cost, out-of-SLO shading; zoom; changes tested, verdict first; tester tabs | A | [guide.md](guide.md#backtest) |
 | Any moment opens on the board as a replay | A | [guide.md](guide.md#backtest) |
 | Headroom: req/s sustained within SLO and what saturates next | C | [use-cases.md §5](use-cases.md#5-find-the-breaking-point-and-the-headroom) |
 | Reports: terminal, Markdown, self-contained HTML, PR comment | C M | [backtest.md §5](backtest.md#5-surfaces) |

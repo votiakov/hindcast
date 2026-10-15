@@ -21,21 +21,22 @@ from them. Full guide: [backtest.md](backtest.md). How the model is fitted:
 - **Open files…** or drop files on the screen: a `hindcast.import.yaml` with its metric, trace and
   bill files, or a `dataset.json` + `model.json` from the CLI, plus any strategy `.yaml` files.
 
-**The chart** — one time axis, panes stacked like a trading terminal:
-- **p99**: measured latency as candles (open, high, low, close of each group of buckets), the model's
+**The chart** — one time axis, panes stacked:
+- **p99**: the latency users saw (measured, a line over a light area), the model's
   replay of the system *as built* (dashed), and every strategy as its own line with a 10–90% band.
-  The SLO is the dashed red line; shaded columns are incidents.
+  The SLO is the dashed red line; shaded columns are stretches out of SLO, labelled with their minutes.
 - **Errors**: measured and replayed error rates.
 - **Cost**: $/hour from the bill, as built and per strategy.
-- **Savings**: cumulative $ saved or spent against as built — the equity curve.
-- Range buttons (ALL, 24H, 6H, 1H, 15M) and ⌘/ctrl + wheel to zoom around the cursor.
+- **Show**: the whole run, 24 h, 6 h, 1 h or 15 min, and ⌘/ctrl + wheel to zoom around the cursor.
+- **Replayed at**: the recorded traffic, or 0.5–3× it.
 - **Click any moment** to open it on the board: the system as a live canvas, replaying that
   bucket's traffic through the model. Edit it there and press *Backtest these edits* to bring the
   change back as a new strategy, or *Back to the chart*.
 
-**Strategies · ranked** (right side): as built and each strategy, with $/month and minutes out of
-SLO, ranked — strategies that keep the SLO first, then cheapest. Click one to focus it, the eye to
-hide it, **+ strategy** to write a new one.
+**Changes tested** (right side): as built and each change (a strategy file), verdict first — what it
+does to the time out of SLO — then its cost a month in words, never as a red/green number. Changes
+that keep the SLO come first, then the cheapest. Click one to focus it, the swatch to hide it,
+**+ test a change** to write a new one.
 
 **Worst moment**: for the focused strategy, when and why — the component that limited the system, its
 load against its capacity, its queue — with *open on board*.

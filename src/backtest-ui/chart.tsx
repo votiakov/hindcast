@@ -100,6 +100,31 @@ export function path(s: Scale, y: (v: number) => number, vals: (Num | number)[])
   return d;
 }
 
+/** the area under a series down to the pane's floor, one closed shape per unbroken run */
+export function areaPath(s: Scale, y: (v: number) => number, vals: (Num | number)[], floor: number): string {
+  let d = '';
+  let run: string[] = [];
+  let first = 0;
+  let last = 0;
+  const close = () => {
+    if (run.length) d += `M${first.toFixed(1)},${floor}L${run.join('L')}L${last.toFixed(1)},${floor}Z`;
+    run = [];
+  };
+  for (let i = s.i0; i < s.i1; i++) {
+    const v = vals[i];
+    if (v === null || v === undefined || !isFinite(v)) {
+      close();
+      continue;
+    }
+    const x = s.x(i);
+    if (!run.length) first = x;
+    last = x;
+    run.push(`${x.toFixed(1)},${y(v).toFixed(1)}`);
+  }
+  close();
+  return d;
+}
+
 export function bandPath(s: Scale, y: (v: number) => number, b: Band): string {
   let up = '';
   let down = '';
@@ -185,29 +210,4 @@ export function TimeAxis({ s, t, hover }: { s: Scale; t: number[]; hover: number
       )}
     </svg>
   );
-}
-
-export interface Candle {
-  i: number;
-  o: number;
-  c: number;
-  h: number;
-  l: number;
-}
-
-/** group measured buckets into candles: open/close/high/low of the bucket values in each group */
-export function candles(vals: Num[], i0: number, i1: number, maxCandles: number): { size: number; list: Candle[] } {
-  // a candle needs a few buckets to have an open, a close and a range
-  const size = Math.max(i1 - i0 >= 60 ? 3 : 1, Math.ceil((i1 - i0) / maxCandles));
-  const list: Candle[] = [];
-  for (let g = i0; g < i1; g += size) {
-    const seg: number[] = [];
-    for (let i = g; i < Math.min(i1, g + size); i++) {
-      const v = vals[i];
-      if (v !== null && v !== undefined && isFinite(v)) seg.push(v);
-    }
-    if (!seg.length) continue;
-    list.push({ i: g + (Math.min(i1, g + size) - g - 1) / 2, o: seg[0], c: seg[seg.length - 1], h: Math.max(...seg), l: Math.min(...seg) });
-  }
-  return { size, list };
 }

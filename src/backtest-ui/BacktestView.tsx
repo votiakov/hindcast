@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useBacktest, strategyName, type Tab } from './store';
-import { AXIS_W, Pane, TimeAxis, bandPath, candles, makeScale, path, useSize, yScale } from './chart';
+import { AXIS_W, Pane, TimeAxis, areaPath, bandPath, makeScale, path, useSize, yScale } from './chart';
 import { headline } from '../backtest/report';
 import type { StrategyResult } from '../backtest/backtest';
 import { closeOutage, loadReference, loadReferenceIndex, nodesOf, openNodeLoss, openOutage, REFERENCES, openWorkspaceFiles } from './workspace';
@@ -21,6 +21,10 @@ const msU = (v: number) => (v >= 1000 ? `${ms(v).replace('s', '')} s` : `${Math.
 const pct = (v: number) => `${(v * 100).toFixed(v < 0.01 ? 2 : v < 0.1 ? 1 : 0)}%`;
 const usd = (v: number) => `$${Math.abs(v) >= 100 ? Math.round(v).toLocaleString('en-US') : v.toFixed(Math.abs(v) < 1 ? 3 : 2)}`;
 const signedUsd = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}$${Math.abs(v) >= 100 ? Math.round(Math.abs(v)).toLocaleString('en-US') : Math.abs(v).toFixed(2)}`;
+/** a cost difference as words: money is not a score here, so no colour and no sign games */
+const costWords = (d: number) => (Math.abs(d) < 0.5 ? 'same cost' : `${usd(Math.abs(d))} a month ${d > 0 ? 'more' : 'less'}`);
+/** what a change does to the time out of SLO */
+const sloWords = (d: number, total: number) => (d < -0.5 ? (total < 0.5 ? 'within SLO' : `${Math.round(-d)} min less out of SLO`) : d > 0.5 ? `${Math.round(d)} min more out of SLO` : 'no SLO change');
 const when = (t: number) => new Date(t * 1000).toISOString().slice(5, 16).replace('T', ' ');
 
 function Bar() {
@@ -34,11 +38,11 @@ function Bar() {
   const n = r?.t.length ?? 0;
   const stepS = r?.window.stepS ?? 60;
   const ranges = [
-    ['ALL', n],
-    ['24H', Math.round(86400 / stepS)],
-    ['6H', Math.round(21600 / stepS)],
-    ['1H', Math.round(3600 / stepS)],
-    ['15M', Math.round(900 / stepS)],
+    ['whole run', n],
+    ['24 h', Math.round(86400 / stepS)],
+    ['6 h', Math.round(21600 / stepS)],
+    ['1 h', Math.round(3600 / stepS)],
+    ['15 min', Math.round(900 / stepS)],
   ].filter(([, k], idx) => idx === 0 || (k as number) < n) as [string, number][];
   const cur = view ? view[1] - view[0] : n;
   return (
@@ -51,13 +55,18 @@ function Bar() {
           </button>
         ))}
       </nav>
-      <span className="bt-sym">{w?.model.name ?? '—'}</span>
-      {ranges.map(([label, k]) => (
-        <button key={label} className={`bt-chip ${cur === k ? 'on' : ''}`} onClick={() => setView(label === 'ALL' ? null : [Math.max(0, (view?.[1] ?? n) - k), view?.[1] ?? n])}>
-          {label}
-        </button>
-      ))}
-      {r && <span className="bt-chip dim">{r.window.stepS >= 60 ? `${r.window.stepS / 60}m` : `${r.window.stepS}s`} buckets</span>}
+      <span className="bt-system">
+        <span className="bt-dim">system</span> {w?.model.name ?? '—'}
+      </span>
+      <span className="bt-dim">show</span>
+      <span className="bt-seg">
+        {ranges.map(([label, k]) => (
+          <button key={label} className={cur === k ? 'on' : ''} onClick={() => setView(label === 'whole run' ? null : [Math.max(0, (view?.[1] ?? n) - k), view?.[1] ?? n])}>
+            {label}
+          </button>
+        ))}
+      </span>
+      {r && <span className="bt-dim small">every {r.window.stepS >= 60 ? `${r.window.stepS / 60} min` : `${r.window.stepS} s`}</span>}
       {r && !w?.outage && <Load />}
       {computing && <span className="bt-chip dim">computing…</span>}
       <span className="bt-spacer" />
@@ -126,15 +135,16 @@ function Load() {
   const setLoad = useBacktest((s) => s.setLoad);
   const steps = [0.5, 1, 1.5, 2, 3];
   return (
-    <span className="bt-load" title="Replay the history at a multiple of its traffic — same daily shape, spikes and endpoint mix; the as-built system and every strategy see the same load">
-      <span className="bt-dim">LOAD</span>
-      {steps.map((x) => (
-        <button key={x} className={`bt-chip ${load === x ? 'on' : ''}`} onClick={() => setLoad(x)}>
-          ×{x}
-        </button>
-      ))}
-      {!steps.includes(load) && <span className="bt-chip on">×{load}</span>}
-    </span>
+    <label className="bt-load" title="Replay the history at a multiple of its traffic — same daily shape, spikes and endpoint mix; the as-built system and every change see the same load">
+      <span className="bt-dim">replayed at</span>
+      <select className="bt-select" value={load} onChange={(e) => setLoad(+e.target.value)}>
+        {[...steps, ...(steps.includes(load) ? [] : [load])].map((x) => (
+          <option key={x} value={x}>
+            {x === 1 ? 'the recorded traffic' : `${x}× the recorded traffic`}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -210,7 +220,7 @@ function Panes() {
   const [ref, width, boxH] = useSize<HTMLDivElement>();
   // the p99 pane takes what the three smaller panes, the time axis and the hint leave, so the
   // whole stack fits without scrolling on a laptop screen
-  const p99H = Math.max(170, Math.min(300, boxH - (110 + 110 + 120) - 52));
+  const p99H = Math.max(190, Math.min(360, boxH - (110 + 110) - 52));
   const n = r.t.length;
   const [i0, i1] = view ?? [0, n];
   const s = makeScale(i0, i1, width);
@@ -242,13 +252,11 @@ function Panes() {
   const lo = Math.max(1, Math.min(...p99Vals.filter((v) => v > 0)) * 0.7);
   const hi = Math.max(r.slo.p99Ms * 1.4, ...p99Vals) * 1.3;
   const yp = yScale(lo, hi, p99H, { log: true, fmt: ms });
-  const cs = candles(r.actual.p99Ms, i0, i1, Math.max(40, Math.floor(s.plotW / 7)));
-  const cw = Math.max(1.2, Math.min(9, ((s.plotW - 8) / Math.max(1, i1 - i0)) * cs.size * 0.62));
   const gridLines = Array.from({ length: 6 }, (_, k) => Math.round(i0 + ((i1 - 1 - i0) * k) / 5));
   // a replayed outage never happened to this system: there is nothing measured to show
   const real = !w.outage && !r.load;
   const legendP99 = [
-    ...(real ? [{ label: `measured p99 · ${cs.size > 1 ? `${cs.size}-bucket` : 'bucket'} candles`, color: MEASURED, value: r.actual.p99Ms[at] !== null ? ms(r.actual.p99Ms[at]!) : '—' }] : []),
+    ...(real ? [{ label: 'p99 users saw (measured)', color: MEASURED, value: r.actual.p99Ms[at] !== null ? ms(r.actual.p99Ms[at]!) : '—' }] : []),
     { label: 'as built (model)', color: ASBUILT, value: ms(r.baseline.series.p99Ms.p50[at]) },
     ...visible.map(({ st, color }) => ({ label: st.name, color, value: ms(st.series.p99Ms.p50[at]) })),
   ];
@@ -256,7 +264,6 @@ function Panes() {
   // ---- errors ----
   const errMax = Math.max(r.slo.errorRate * 2, ...Array.from({ length: i1 - i0 }, (_, k) => Math.max(r.actual.errorRate[i0 + k] ?? 0, r.baseline.series.errorRate.p50[i0 + k], ...visible.map(({ st }) => st.series.errorRate.hi[i0 + k])))) * 1.1;
   const ye = yScale(0, Math.min(1, errMax), 110, { fmt: pct });
-  const bw = Math.max(1, ((s.plotW - 8) / Math.max(1, i1 - i0)) * 0.7);
 
   // ---- cost ----
   const costVals: number[] = [];
@@ -266,17 +273,6 @@ function Panes() {
     for (const { st } of visible) costVals.push(st.series.costPerHour.hi[i]);
   }
   const yc = yScale(0, Math.max(...costVals) * 1.15, 110, { fmt: usd });
-
-  // ---- equity: $ saved vs as built ----
-  const saved = visible.map(({ st, color, k }) => {
-    const b = r.baseline.series.cumulativeCost;
-    const mk = (a: number[], base: number[]) => a.map((v, i) => base[i] - v - (base[i0] - a[i0]));
-    return { st, color, k, p50: mk(st.series.cumulativeCost.p50, b.p50), lo: mk(st.series.cumulativeCost.hi, b.p50), hi: mk(st.series.cumulativeCost.lo, b.p50) };
-  });
-  const eqVals = saved.flatMap((x) => [...x.lo.slice(i0, i1), ...x.hi.slice(i0, i1)]);
-  const eqLo = Math.min(0, ...eqVals);
-  const eqHi = Math.max(1e-6, ...eqVals);
-  const yq = yScale(eqLo - (eqHi - eqLo) * 0.08, eqHi + (eqHi - eqLo) * 0.15, 120, { fmt: signedUsd });
 
   // focused strategy: shade its out-of-SLO buckets on the p99 pane
   const breach = focused?.incidents ?? [];
@@ -289,7 +285,16 @@ function Panes() {
           const a = Math.max(i0, idxOf(b.start));
           const z = Math.min(i1 - 1, idxOf(b.end));
           if (z < i0 || a > i1) return null;
-          return <rect key={b.start} x={s.x(a) - 1} y={0} width={Math.max(2, s.x(z) - s.x(a) + 2)} height={300} className="bt-breach" />;
+          return (
+            <g key={b.start}>
+              <rect x={s.x(a) - 1} y={0} width={Math.max(2, s.x(z) - s.x(a) + 2)} height={p99H} className="bt-breach" />
+              {s.x(z) - s.x(a) > 60 && (
+                <text x={s.x(a) + 4} y={p99H - 8} className="bt-breach-label">
+                  out of SLO {Math.round(b.minutes)} min
+                </text>
+              )}
+            </g>
+          );
         })}
         <line x1={0} x2={s.plotW} y1={yp.y(r.slo.p99Ms)} y2={yp.y(r.slo.p99Ms)} className="bt-slo" />
         {w.outage &&
@@ -307,17 +312,8 @@ function Panes() {
           })}
         <path d={bandPath(s, yp.y, r.baseline.series.p99Ms)} fill={ASBUILT} opacity={0.1} />
         <path d={path(s, yp.y, r.baseline.series.p99Ms.p50)} fill="none" stroke={ASBUILT} strokeDasharray="3 3" strokeWidth={1} />
-        {real && cs.list.map((c) => {
-          const up = c.c > c.o;
-          const col = up ? 'var(--bt-red)' : 'var(--bt-green)';
-          const x = s.x(c.i);
-          return (
-            <g key={c.i}>
-              <line x1={x} x2={x} y1={yp.y(c.h)} y2={yp.y(c.l)} stroke={col} strokeWidth={1} />
-              <rect x={x - cw / 2} y={Math.min(yp.y(c.o), yp.y(c.c))} width={cw} height={Math.max(1, Math.abs(yp.y(c.o) - yp.y(c.c)))} fill={col} />
-            </g>
-          );
-        })}
+        {real && <path d={areaPath(s, yp.y, r.actual.p99Ms, p99H)} className="bt-measured-area" />}
+        {real && <path d={path(s, yp.y, r.actual.p99Ms)} fill="none" stroke={MEASURED} strokeWidth={1.3} />}
         {visible.map(({ st, color, k }) => (
           <g key={st.name} opacity={k === focus ? 1 : 0.55}>
             {k === focus && <path d={bandPath(s, yp.y, st.series.p99Ms)} fill={color} opacity={0.15} />}
@@ -342,30 +338,18 @@ function Panes() {
       </Pane>
       <Pane s={s} h={110} ys={ye} legend={[...(real ? [{ label: 'errors', color: MEASURED, value: r.actual.errorRate[at] !== null ? pct(r.actual.errorRate[at]!) : '—' }] : []), { label: 'as built', color: ASBUILT, value: pct(r.baseline.series.errorRate.p50[at]) }, ...visible.map(({ st, color }) => ({ label: st.name, color, value: pct(st.series.errorRate.p50[at]) }))]} hover={hover} onHover={setHover} onPick={pick} gridLines={gridLines}>
         <line x1={0} x2={s.plotW} y1={ye.y(r.slo.errorRate)} y2={ye.y(r.slo.errorRate)} className="bt-slo" />
-        {Array.from({ length: i1 - i0 }, (_, k) => i0 + k).map((i) => {
-          const v = r.actual.errorRate[i];
-          if (!real || v === null || v <= 0) return null;
-          return <rect key={i} x={s.x(i) - bw / 2} y={ye.y(Math.min(v, ye.ticks.at(-1)! * 1.2))} width={bw} height={ye.y(0) - ye.y(Math.min(v, ye.ticks.at(-1)! * 1.2))} fill={v > r.slo.errorRate ? 'var(--bt-red)' : 'var(--bt-mute)'} />;
-        })}
+        {real && <path d={areaPath(s, ye.y, r.actual.errorRate.map((v) => (v === null ? null : Math.min(v, ye.ticks.at(-1)! * 1.2))), 110)} className="bt-measured-area" />}
+        {real && <path d={path(s, ye.y, r.actual.errorRate.map((v) => (v === null ? null : Math.min(v, ye.ticks.at(-1)! * 1.2))))} fill="none" stroke={MEASURED} strokeWidth={1.2} />}
         <path d={path(s, ye.y, r.baseline.series.errorRate.p50)} fill="none" stroke={ASBUILT} strokeDasharray="3 3" />
         {visible.map(({ st, color, k }) => (
           <path key={st.name} d={path(s, ye.y, st.series.errorRate.p50)} fill="none" stroke={color} strokeWidth={k === focus ? 1.5 : 1} opacity={k === focus ? 1 : 0.55} />
         ))}
       </Pane>
-      <Pane s={s} h={110} ys={yc} legend={[...(real ? [{ label: 'cost $/h (bill)', color: MEASURED, value: r.actual.costPerHour[at] !== null ? usd(r.actual.costPerHour[at]!) : '—' }] : []), { label: 'as built', color: ASBUILT, value: usd(r.baseline.series.costPerHour.p50[at]) }, ...visible.map(({ st, color }) => ({ label: st.name, color, value: usd(st.series.costPerHour.p50[at]) }))]} hover={hover} onHover={setHover} onPick={pick} gridLines={gridLines}>
+      <Pane s={s} h={110} ys={yc} legend={[...(real ? [{ label: 'spend $/h (the bill)', color: MEASURED, value: r.actual.costPerHour[at] !== null ? usd(r.actual.costPerHour[at]!) : '—' }] : []), { label: 'as built', color: ASBUILT, value: usd(r.baseline.series.costPerHour.p50[at]) }, ...visible.map(({ st, color }) => ({ label: st.name, color, value: usd(st.series.costPerHour.p50[at]) }))]} hover={hover} onHover={setHover} onPick={pick} gridLines={gridLines}>
         {real && <path d={path(s, yc.y, r.actual.costPerHour)} fill="none" stroke={MEASURED} strokeWidth={1} opacity={0.8} />}
         <path d={path(s, yc.y, r.baseline.series.costPerHour.p50)} fill="none" stroke={ASBUILT} strokeDasharray="3 3" />
         {visible.map(({ st, color, k }) => (
           <path key={st.name} d={path(s, yc.y, st.series.costPerHour.p50)} fill="none" stroke={color} strokeWidth={k === focus ? 1.5 : 1} opacity={k === focus ? 1 : 0.55} />
-        ))}
-      </Pane>
-      <Pane s={s} h={120} ys={yq} legend={[{ label: 'saved vs as built, $', color: 'var(--bt-dim)' }, ...saved.map((x) => ({ label: x.st.name, color: x.color, value: signedUsd(x.p50[at]) }))]} hover={hover} onHover={setHover} onPick={pick} gridLines={gridLines}>
-        <line x1={0} x2={s.plotW} y1={yq.y(0)} y2={yq.y(0)} className="bt-zero" />
-        {saved.map((x) => (
-          <g key={x.st.name} opacity={x.k === focus ? 1 : 0.55}>
-            {x.k === focus && <path d={bandPath(s, yq.y, { p50: x.p50, lo: x.lo, hi: x.hi })} fill={x.color} opacity={0.16} />}
-            <path d={path(s, yq.y, x.p50)} fill="none" stroke={x.color} strokeWidth={x.k === focus ? 1.6 : 1} />
-          </g>
         ))}
       </Pane>
       <TimeAxis s={s} t={r.t} hover={hover} />
@@ -388,18 +372,14 @@ function Watch() {
   const checks = r.accuracy.flatMap((a) => a.checks).filter((c) => c.metric !== 'errors');
   return (
     <aside className="bt-watch">
-      <h4>Strategies · ranked</h4>
-      <div className="bt-row head">
-        <span />
-        <span>strategy</span>
-        <span>$/mo</span>
-        <span>SLO min</span>
-      </div>
+      <h4>Changes tested</h4>
       <div className="bt-row base">
         <span />
-        <span>As built</span>
-        <span>{usd(r.baseline.summary.monthly.p50)}</span>
-        <span>{Math.round(r.baseline.summary.minutesOutOfSlo.p50)}</span>
+        <span>
+          As built
+          <small>{usd(r.baseline.summary.monthly.p50)} a month</small>
+        </span>
+        <span className={r.baseline.summary.minutesOutOfSlo.p50 >= 1 ? 'neg' : 'pos'}>{r.baseline.summary.minutesOutOfSlo.p50 >= 1 ? `${Math.round(r.baseline.summary.minutesOutOfSlo.p50)} min out of SLO` : 'within SLO'}</span>
       </div>
       {r.ranking.map((k) => {
         const idx = r.strategies.findIndex((x) => x.name === k.name);
@@ -408,9 +388,11 @@ function Watch() {
         return (
           <div key={k.name} className={`bt-row ${idx === focus ? 'focus' : ''}`} onClick={() => setFocus(idx)}>
             <button className="bt-eye" aria-label={`${ok[idx]?.visible === false ? 'Show' : 'Hide'} ${k.name}`} style={{ borderColor: color, background: ok[idx]?.visible === false ? 'transparent' : color }} onClick={(e) => (e.stopPropagation(), toggle(w.strategies.indexOf(ok[idx])))} />
-            <span title={st.description ? `${k.name}: ${st.description}` : k.name}>{k.name}</span>
-            <span className={k.monthlyDelta < -0.5 ? 'pos' : k.monthlyDelta > 0.5 ? 'neg' : ''}>{signedUsd(k.monthlyDelta)}</span>
-            <span className={k.minutesOutOfSloDelta > 0.5 ? 'neg' : k.minutesOutOfSloDelta < -0.5 ? 'pos' : ''}>{Math.round(k.minutesOutOfSloDelta) === 0 ? '±0' : `${k.minutesOutOfSloDelta > 0 ? '+' : '−'}${Math.abs(Math.round(k.minutesOutOfSloDelta))}`}</span>
+            <span title={st.description ? `${k.name}: ${st.description}` : k.name}>
+              {k.name}
+              <small>{costWords(k.monthlyDelta)}</small>
+            </span>
+            <span className={k.minutesOutOfSloDelta > 0.5 ? 'neg' : k.minutesOutOfSloDelta < -0.5 ? 'pos' : ''}>{sloWords(k.minutesOutOfSloDelta, st.summary.minutesOutOfSlo.p50)}</span>
           </div>
         );
       })}
@@ -418,13 +400,11 @@ function Watch() {
         <div key={i} className="bt-row err" title={x.error}>
           <span />
           <span>{strategyName(x.yaml)}</span>
-          <span className="neg" style={{ gridColumn: 'span 2' }}>
-            invalid
-          </span>
+          <span className="neg">invalid</span>
         </div>
       ))}
       <button className="bt-chip add" onClick={() => addStrategy(`name: New strategy\ndescription: what would have happened if…\nchanges:\n  - service: ${Object.keys(w.model.services).find((k) => !w.model.services[k].hostedBy) ?? 'api'}\n    replicas: 2\n`)}>
-        + strategy
+        + test a change
       </button>
       {focused && (
         <>
@@ -505,7 +485,7 @@ function Overview({ st }: { st: StrategyResult | undefined }) {
         <Stat k="Failed requests" v={Math.round(b.failedRequests.p50).toLocaleString('en-US')} />
         <Stat k="Error budget used" v={pct(b.errorBudgetUsed.p50)} />
         <Stat k="Peak p99" v={ms(b.peakP99Ms.p50)} />
-        <Stat k="Add a strategy" v="+" s="from the watchlist" />
+        <Stat k="Test a change" v="+" s="from the list on the right" />
       </div>
     );
   }
@@ -518,7 +498,7 @@ function Overview({ st }: { st: StrategyResult | undefined }) {
         <b>{st.name}</b> {headline(st, r.baseline)}.
       </div>
       <div className="bt-stats">
-        <Stat k="Net $/month" v={signedUsd(d.monthly.p50)} s={`${signedUsd(d.monthly.lo)} … ${signedUsd(d.monthly.hi)}`} tone={d.monthly.p50 < 0 ? 'pos' : d.monthly.p50 > 0 ? 'neg' : undefined} />
+        <Stat k="Cost a month" v={Math.abs(d.monthly.p50) < 0.5 ? 'same' : `${usd(Math.abs(d.monthly.p50))} ${d.monthly.p50 > 0 ? 'more' : 'less'}`} s={`10th–90th: ${signedUsd(d.monthly.lo)} … ${signedUsd(d.monthly.hi)}`} />
         <Stat k="Min out of SLO" v={`${d.minutesOutOfSlo.p50 > 0 ? '+' : ''}${d.minutesOutOfSlo.p50.toFixed(1)}`} s={`${st.summary.minutesOutOfSlo.p50.toFixed(1)} total · ${d.minutesOutOfSlo.lo.toFixed(1)} … ${d.minutesOutOfSlo.hi.toFixed(1)}`} tone={d.minutesOutOfSlo.p50 > 0.5 ? 'neg' : d.minutesOutOfSlo.p50 < -0.5 ? 'pos' : undefined} />
         <Stat k="Failed requests" v={`${d.failedRequests.p50 > 0 ? '+' : ''}${Math.round(d.failedRequests.p50).toLocaleString('en-US')}`} s={`${Math.round(st.summary.failedRequests.p50).toLocaleString('en-US')} total`} tone={d.failedRequests.p50 > 1 ? 'neg' : d.failedRequests.p50 < -1 ? 'pos' : undefined} />
         <Stat k="Error budget used" v={pct(st.summary.errorBudgetUsed.p50)} s={`as built ${pct(r.baseline.summary.errorBudgetUsed.p50)}`} />
@@ -576,17 +556,17 @@ function Changes() {
   const file = ok[focus] ?? w.strategies[focus];
   const idx = file ? w.strategies.indexOf(file) : -1;
   const st = r.strategies[focus];
-  if (!file) return <div className="bt-empty">No strategy yet. Add one from the watchlist, or write a YAML file and open it.</div>;
+  if (!file) return <div className="bt-empty">No change to test yet. Add one from the list on the right, or write a YAML file and open it.</div>;
   return (
     <div className="bt-changes">
       <div>
         <label htmlFor="bt-yaml" className="bt-dim small">
-          strategy file (YAML) — edits re-run the backtest
+          the change, as a strategy file (YAML) — edits re-run the backtest
         </label>
         <textarea id="bt-yaml" spellCheck={false} value={file.yaml} onChange={(e) => edit(idx, e.target.value)} />
         {file.error && <div className="neg small">{file.error}</div>}
         <button className="bt-chip" onClick={() => remove(idx)}>
-          remove strategy
+          remove this change
         </button>
       </div>
       <div>

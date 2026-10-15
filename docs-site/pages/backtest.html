@@ -2,16 +2,15 @@
 <section class="screen" data-shot="backtest">
 <div>
 <h2>The chart and the strategies</h2>
-<p>Everything shares one time axis, stacked like a trading terminal. The screenshot shows HotROD, one of the three built-in reference systems: 40 minutes of real traffic with a push past capacity, and four strategies replayed over it.</p>
+<p>Everything shares one time axis: what users saw, what the model replays for the system as built, and what each change would have done. The screenshot shows HotROD, one of the three built-in reference systems: 40 minutes of real traffic with a push past capacity, and four strategies replayed over it.</p>
 <ol class="pins">
 <li data-pin="views"><h3>Views</h3><p>Every part of Hindcast is one click away: the backtest, the Live board, Lessons, Sandbox, Compare and Studio.</p></li>
-<li data-pin="ranges"><h3>Range and bucket size</h3><p>ALL, 24H, 6H, 1H, 15M. ⌘/ctrl + wheel zooms around the cursor. The bucket size is the data's own resolution: here 30 s.</p></li>
-<li data-pin="p99"><h3>p99 latency</h3><p>Measured p99 as candles: open, high, low and close of each group of buckets. The dashed grey line is the model replaying the system <em>as built</em>. Each strategy has its own coloured line with a shaded 10–90% band. The dashed red line is the SLO.</p></li>
+<li data-pin="ranges"><h3>Range and resolution</h3><p>The whole run, or the last 24 h, 6 h, 1 h or 15 min. ⌘/ctrl + wheel zooms around the cursor. The resolution is the data's own: here every 30 s.</p></li>
+<li data-pin="p99"><h3>p99 latency</h3><p>The p99 users saw, measured, as a line over a light area. The dashed grey line is the model replaying the system <em>as built</em>. Each strategy has its own coloured line with a shaded 10–90% band. The dashed red line is the SLO.</p></li>
 <li data-pin="incident"><h3>Incidents</h3><p>Shaded columns are stretches out of SLO. Here, the push to twice the normal load: the as-built system timed out for minutes. Click any moment to open it on the board as a replay.</p></li>
 <li data-pin="errors"><h3>Errors</h3><p>Measured error rate and each strategy's replay. "Clients retry twice, no budget" turns the overload into 100% errors: the retries pile on top of a saturated database lock.</p></li>
 <li data-pin="cost"><h3>Cost per hour</h3><p>From the bill (measured), as built, and per strategy: replica-hours at the billed price, usage-billed requests, data transfer across zones and regions.</p></li>
-<li data-pin="savings"><h3>Savings</h3><p>Cumulative dollars saved or spent against as built: the equity curve. A line above zero saves money.</p></li>
-<li data-pin="watch"><h3>Strategies, ranked</h3><p>As built and each strategy with $/month and minutes out of SLO. Strategies that keep the SLO rank first, then the cheapest. Click to focus one, use the eye to hide it, <b>+ strategy</b> to write a new one.</p></li>
+<li data-pin="watch"><h3>Changes tested</h3><p>As built and each change (a strategy file): first what it does to the time out of SLO, then what it costs a month, in words. Changes that keep the SLO come first, then the cheapest. Click to focus one, use the swatch to hide it, <b>+ test a change</b> to write a new one.</p></li>
 <li data-pin="worst"><h3>Worst moment, and why</h3><p>For the focused strategy: when it was worst and which component limited it, with its load against capacity and its queue. "mysql at 56% of capacity (11.2 req/s on 2 × 9.9 req/s), 85 ms wait". <b>open on board</b> replays that moment.</p></li>
 <li data-pin="accuracy"><h3>Model accuracy</h3><p>How well this model predicted recorded runs it never saw, check by check, against the targets: p99 within 20%, breaking point within 15%, cost within 10%. Shown with every result, so you know how far to trust it.</p></li>
 <li data-pin="verdict"><h3>The verdict</h3><p>One sentence for the focused strategy: what it saves or costs per month and what it would have done to users. It is the same sentence the pull-request check posts.</p></li>

@@ -128,7 +128,7 @@ export function BacktestCard({ c, aspect, t }: { c: CardData; aspect: string; t:
         <div className="cd-stats" style={{ opacity: statsOn ? 1 : 0.0001 }}>
           <div>
             <div className="k">per month</div>
-            <div className={`v ${s.monthlyDelta < 0 ? 'pos' : s.monthlyDelta > 0 ? 'neg' : ''}`}>{money(s.monthlyDelta * k)}</div>
+            <div className="v">{money(s.monthlyDelta * k)}</div>
           </div>
           <div>
             <div className="k">minutes out of SLO</div>
