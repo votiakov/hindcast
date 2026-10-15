@@ -138,6 +138,9 @@ export const CASES: string[][] = [
   // no request metrics left at all: nothing to replay, and the review says so
   ['quickstart', '--prometheus', `${TEL}/kps`, '--exclude', 'web', '--last', '6h', '--workspace', ws('qx')],
   agent('connect_telemetry', { workspace: ws('qn'), prometheus: { url: `${TEL}/kps` }, topologyFile: 'nowhere.yaml' }),
+  // api has no latency metric: resized within the history's peak (medium at most), and past it (low)
+  agent('verify_change', { workspace: ws('qk'), changes: [{ strategy: { name: 'api 1 core', changes: [{ service: 'api', cpu: 1 }] } }], draws: 3 }),
+  agent('verify_change', { workspace: ws('qk'), changes: [{ strategy: { name: 'api 0.35 cores', changes: [{ service: 'api', cpu: 0.35 }] } }], draws: 3 }),
   ['outage', 'reference/shop/model.json', 'list'],
   ['outage', 'reference/shop/model.json', 'aws-use1-2025-10-20'],
   ['outage', 'reference/shop/model.json', 'slack-2021-01-04', 'reference/shop/strategies/1-autoscale-frontend.yaml', '--md', `${out}/OUT/o.md`],

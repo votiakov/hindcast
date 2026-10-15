@@ -488,7 +488,12 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
             let relevant = t || pp > 0.6 || pp > hp.max(0.2) * 1.25;
             let basis = if pp <= hp.max(0.3) * 1.1 { "within what the history showed" } else if hp >= LIMIT_SEEN || truthy(g(&sv, &["capacity", "overloadedRps"])) { "near a limit the history reached" } else { "beyond anything the history showed" };
             if relevant {
-                services.push((json!({ "service": id, "touched": t, "fit": s(&sv, &["fit", "status"]), "historyPeakUtil": num(r2(hp)), "predictedPeakUtil": num(r2(pp)), "basis": basis }), relevant));
+                let mut x = json!({ "service": id, "touched": t, "fit": s(&sv, &["fit", "status"]), "historyPeakUtil": num(r2(hp)), "predictedPeakUtil": num(r2(pp)), "basis": basis });
+                // no latency metric: a known, labelled basis, not a fit that failed
+                if g(&sv, &["capacity", "cpuAlone"]).as_bool().unwrap_or(false) {
+                    x["cpuOnly"] = json!(true);
+                }
+                services.push((x, relevant));
             }
         }
     }
@@ -501,6 +506,8 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
             *level = to;
         }
     };
+    // why a service with no latency metric holds confidence where it does, said in the reasons too
+    let mut cpu_said: Vec<(&'static str, String)> = vec![];
     for x in &services {
         let (pu, hpu) = (n(x, &["predictedPeakUtil"]), n(x, &["historyPeakUtil"]));
         let fit = s(x, &["fit"]);
@@ -509,7 +516,17 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
         let harder = pu > hpu.max(0.3) * 1.1;
         let poor = fit == "poor" || fit == "unexplained";
         let basis = s(x, &["basis"]);
-        if poor && (touched_x || harder) {
+        if g(x, &["cpuOnly"]).as_bool().unwrap_or(false) {
+            // capacity from CPU alone: medium at most, low once the change runs it past the history's
+            // peak, where CPU per request is extrapolated (10% over the peak allowed as noise)
+            let (to, why) = if pu > hpu * 1.1 {
+                ("low", format!("{} has no latency metric, so its capacity is read from CPU alone, and this change runs it at {} of that capacity, past the history's peak of {}: CPU per request there is extrapolated", svc, pct(pu), pct(hpu)))
+            } else {
+                ("medium", format!("{} has no latency metric, so its capacity is read from CPU alone: its CPU limit is known, but not how its latency grows near it (the change keeps it at {} of capacity, within the history's {})", svc, pct(pu), pct(hpu)))
+            };
+            lower(to, why.clone(), &mut warnings, &mut level);
+            cpu_said.push((to, why));
+        } else if poor && (touched_x || harder) {
             lower("low", format!("{}: the model fits it {}, and this change {}", svc, if fit == "poor" { "poorly" } else { "not at all" }, if touched_x { "changes it" } else { "pushes it harder than the history did" }), &mut warnings, &mut level);
         } else if poor && pu > 0.6 {
             lower("medium", format!("{} fits {} and runs near its limit; the change leaves it as it was, so the comparison holds better than the absolute numbers", svc, if fit == "poor" { "poorly" } else { "not at all" }), &mut warnings, &mut level);
@@ -550,6 +567,11 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
     }
     if verdict == "inconclusive" && level == "low" && hi <= gate {
         reasons.push(format!("the backtest passes, but confidence is low ({}) — load-test before trusting it", warnings.first().cloned().unwrap_or_else(|| "undefined".into())));
+    }
+    for (to, why) in &cpu_said {
+        if !reasons.iter().any(|r| r.contains(why.as_str())) {
+            reasons.push(format!("confidence {}: {}", if *to == "low" { "low" } else { "medium at most" }, why));
+        }
     }
     let fb = n(base, &["summary", "failedRequests", "p50"]);
     let fd = n(st, &["delta", "failedRequests", "p50"]);
@@ -910,4 +932,45 @@ pub fn verify_design(a: &Value) -> Result<Value, String> {
         "link": format!("{}/#spec={}", app, crate::cli::design::encode_payload(v.spec.as_ref().unwrap_or(&Value::Null))),
         "next": if critical > 0 { "apply the fixes (each lists its spec changes) and call verify_design again" } else { "done, or open the link for a human to inspect" },
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// judge a change to api, a service with no latency metric, run at `after` of its capacity where
+    /// the history peaked at 50%
+    fn judged(cpu_alone: bool, after: f64) -> Value {
+        let mv = json!({
+            "services": { "api": { "capacity": { "limit": "cpu", "servers": 32, "perReplicaRps": 100, "cpuAlone": cpu_alone }, "fit": { "status": "unexplained", "notes": [] }, "cost": { "source": "nodes" } } },
+            "accuracy": [{ "method": "holdout", "checks": [] }],
+            "traffic": { "peak": 50 },
+        });
+        let m: crate::model::Model = serde_json::from_str(include_str!("../../../../reference/shop/model.json")).unwrap();
+        let r = json!({ "window": { "start": 0, "end": 7 * 86400 }, "baseline": { "peakUtil": { "api": 0.5 }, "summary": {} } });
+        let st = json!({ "peakUtil": { "api": after }, "delta": { "minutesOutOfSlo": { "p50": 0, "lo": 0, "hi": 0 }, "monthly": { "p50": -12 } } });
+        let spec = json!({ "name": "api cpu", "changes": [{ "service": "api", "cpu": 0.5 }] });
+        judge(&mv, &m, &r, &st, &spec, None, 1.0, (100.0, None), (100.0, None), None).unwrap()
+    }
+
+    fn reasons(v: &Value) -> String {
+        arr(v, &["reasons"]).iter().map(|x| s(x, &[])).collect::<Vec<_>>().join("\n")
+    }
+
+    #[test]
+    fn cpu_alone_is_medium_at_most_and_low_past_the_peak() {
+        // within the history's peak: medium, and the reasons say why
+        let v = judged(true, 0.52);
+        assert_eq!(s(&v, &["confidence", "level"]), "medium");
+        assert_eq!(s(&v, &["verdict"]), "pass");
+        assert!(reasons(&v).contains("confidence medium at most: api has no latency metric"), "{}", reasons(&v));
+        assert_eq!(g(arr(&v, &["confidence", "services"])[0], &["cpuOnly"]), &json!(true));
+        // past it: low, and the verdict can't pass
+        let v = judged(true, 0.8);
+        assert_eq!(s(&v, &["confidence", "level"]), "low");
+        assert_eq!(s(&v, &["verdict"]), "inconclusive");
+        assert!(reasons(&v).contains("past the history's peak of 50%"), "{}", reasons(&v));
+        // an unexplained fit that is not CPU-only stays low however gently it is changed
+        assert_eq!(s(&judged(false, 0.52), &["confidence", "level"]), "low");
+    }
 }

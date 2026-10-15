@@ -475,12 +475,12 @@ pub fn apply_strategy(model: &Model, base: &Plan, spec: &StrategySpec) -> Result
                     let k = (c1 * knee - c.base).max(0.0) / c.per_req;
                     s.per_replica_rps = k;
                     notes.push(format!(
-                        "{}: {} → {} cores per replica; capacity read from CPU alone (no latency metric), so it scales to {} req/s per replica at {} of the new limit, with no queueing latency modelled",
+                        "{}: {} → {} cores per replica; capacity read from CPU alone (no latency metric): {} req/s per replica, {}. The queue keeps its calibrated width: no service time is read from the core count",
                         id,
                         js_num(c0),
                         js_num(c1),
                         js_to_fixed(k, 1),
-                        if m.capacity.throttle.is_some() { "the throttling knee" } else { "all" }
+                        if m.capacity.throttle.is_some() { "the new limit up to its throttling knee" } else { "the whole new limit" }
                     ));
                 } else if m.capacity.limit == "cpu" {
                     let base = m.cpu.as_ref().map(|c| c.base).unwrap_or(0.0);
@@ -728,7 +728,7 @@ mod tests {
             assert!((s.per_replica_rps - (cores * 0.8 - c.base).max(0.0) / c.per_req).abs() < 1e-9, "{} cores: {}", cores, s.per_replica_rps);
             // the queue as wide as calibration made it: no service time invented from the core count
             assert_eq!(s.servers, 32.0);
-            assert!(a.notes.iter().any(|n| n.contains("CPU alone") && n.contains("no queueing latency")), "{:?}", a.notes);
+            assert!(a.notes.iter().any(|n| n.contains("CPU alone") && n.contains("calibrated width")), "{:?}", a.notes);
             if s.per_replica_rps > 0.0 {
                 assert!((wait(k0, 32.0) - wait(s.per_replica_rps, s.servers)).abs() < 1e-6);
             }
