@@ -95,10 +95,10 @@ app), [use cases](docs/use-cases.md), the [capability list](docs/capabilities.md
 - **Backtest** – real history as a chart, strategies drawn over it, ranked; open any
   moment on the board; Studio card of the result.
 - **Live** – a running system that fails on arrival, with the next move pinned to the component under stress.
-- **Lessons** – a study path of 16 lessons, 48 levels, in four tracks: scaling a web service (Scale
+- **Lessons** – a study path of 17 lessons, 51 levels, in four tracks: scaling a web service (Scale
   101/201, Pastebin, Mint, sizing a cache), asynchrony and failure (queues, event streams, retry storms, thread pools and
   bulkheads, elasticity, zones), data at scale (CAP with sync/async replication and partitions, sharding and hot keys, a web
-  crawler), and AI serving and runtimes. Every level has a reference solution ("show me"), a debrief
+  crawler), and AI serving (a vector index sized by memory and recall) and runtimes. Every level has a reference solution ("show me"), a debrief
   and saved progress; each is proven solvable in the tests.
 - **Sandbox** – build anything. Autoscaling, retries, timeouts, breakers, failover, fan-out, gray
   failures, cross-region links. Every run is recorded; drag the timeline to rewind the whole board.

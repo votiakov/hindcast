@@ -79,6 +79,7 @@ Built-in lessons:
 | Zones | failure domains, zone failure, replica failover, standby cost | API pool + replica in the second zone; smaller autoscaling pools in both zones |
 | Shipping an AI Feature | provider rate limits, failover, GPU vs API cost | a higher rate limit; 8 batched GPUs with the provider as failover |
 | Runtime Economics | runtime throughput vs cost, DB as the real wall | Go on 5 instances; cache + 14 instances at 3× traffic |
+| Size the Vector Index | a vector index sized by memory, then recall (0.99 is 5× the work of 0.95) | a fifth node so the 35 GB graph fits; recall 0.95 at 1,200 queries/s |
 
 ## Comparison scenarios (`src/scenarios/scenarios.ts`)
 
