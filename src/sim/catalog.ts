@@ -21,7 +21,8 @@ export type Kind =
   | 'stream'
   | 'search'
   | 'vector'
-  | 'archive';
+  | 'archive'
+  | 'edge';
 export type Tier = 'S' | 'M' | 'L';
 
 /** how a node spreads its outgoing calls across children */
@@ -112,6 +113,12 @@ export interface SystemNodeData extends Record<string, unknown> {
   vectorsM?: number;
   /** archive: instant (ms, Glacier Instant Retrieval), or a restore — expedited (1–5 min) or standard (3–5 h) */
   retrieval?: 'instant' | 'expedited' | 'standard';
+  /** edge: the share of requests the edge function answers itself (default 0.5) */
+  edgeShare?: number;
+  /** edge: CPU time per request, ms (default 1; exponentially spread) */
+  cpuMs?: number;
+  /** edge: the platform's CPU limit per request, ms (default 10, Workers Free; ~1 for CloudFront Functions) */
+  cpuLimitMs?: number;
   /** dns: how long clients cache an answer, s (default 60) */
   ttlS?: number;
   /** dns: how long health checks take to notice a dead target, s (default 30) */
@@ -294,6 +301,11 @@ export const KINDS: Record<Kind, KindSpec> = {
     capacity: 300, baseLatencyMs: 10, costPerHour: 0.2, tiered: true, scalable: true,
     description: 'Nearest-neighbour search over embeddings (OpenSearch k-NN, pgvector): an HNSW graph spread over its nodes. Higher recall walks more of the graph — 0.99 costs five times 0.95 — and a graph that does not fit in memory is read from disk.',
   },
+  edge: {
+    kind: 'edge', label: 'Edge Function', prefix: 'edge', color: '#93c5fd',
+    capacity: 100000, baseLatencyMs: 2, costPerHour: 0, costPerRequest: (0.3 + 0.02) / 1_000_000, tiered: false,
+    description: 'Code at the edge (CloudFront Functions, Cloudflare Workers): runs before the origin on every request, answers some itself (redirects, auth checks, A/B, personalisation) in milliseconds and passes the rest on. Each request gets a CPU time limit — heavy work past it is killed.',
+  },
   archive: {
     kind: 'archive', label: 'Archive Storage', prefix: 'glacier', color: '#7dd3fc',
     capacity: 5500, baseLatencyMs: 40, costPerHour: 0, costPerRequest: 0.01 / 1000 + 0.03 / 1024, tiered: false,
@@ -314,7 +326,7 @@ export const TIERS: Record<Tier, { capacity: number; cost: number; label: string
 
 export const CATEGORIES: { id: string; label: string; kinds: Kind[] }[] = [
   { id: 'traffic', label: 'Traffic', kinds: ['client'] },
-  { id: 'edge', label: 'Edge & Network', kinds: ['dns', 'cdn', 'lb', 'gateway'] },
+  { id: 'edge', label: 'Edge & Network', kinds: ['dns', 'cdn', 'edge', 'lb', 'gateway'] },
   { id: 'compute', label: 'Compute', kinds: ['server', 'worker', 'function'] },
   { id: 'data', label: 'Data', kinds: ['cache', 'db', 'replica', 'kv', 'storage', 'archive', 'search', 'vector'] },
   { id: 'async', label: 'Messaging', kinds: ['queue', 'stream'] },
@@ -414,6 +426,17 @@ export function vectorWork(d: SystemNodeData): number {
 /** a search index's refresh interval, s */
 export const refreshSOf = (d: SystemNodeData): number => Math.max(0, d.refreshS ?? 1);
 
+/** an edge function's CPU time per request, ms */
+export const cpuMsOf = (d: SystemNodeData): number => Math.max(0, d.cpuMs ?? 1);
+/** the share of an edge function's requests past its CPU limit (CPU time exponentially spread; mirrors the engine) */
+export function edgeCpuFail(d: SystemNodeData): number {
+  if (d.kind !== 'edge') return 0;
+  const cpu = cpuMsOf(d);
+  return cpu <= 0 ? 0 : Math.exp(-Math.max(0, d.cpuLimitMs ?? 10) / cpu);
+}
+/** the share of requests an edge function answers itself */
+export const edgeShareOf = (d: SystemNodeData): number => Math.min(1, Math.max(0, d.edgeShare ?? 0.5));
+
 /** an archive's retrieval option */
 export const retrievalOf = (d: SystemNodeData): 'instant' | 'expedited' | 'standard' => d.retrieval ?? 'instant';
 /** an archive's time to the first byte, ms (mirrors the engine) */
@@ -447,6 +470,7 @@ export function threadsCapacity(d: SystemNodeData, reachable: number, holdMs: nu
 export function baseLatencyOf(d: SystemNodeData): number {
   const rt = d.runtime ? RUNTIMES[d.runtime].latency : 1;
   if (d.kind === 'archive') return d.latencyMs ?? archiveLatencyMs(d);
+  if (d.kind === 'edge') return (d.latencyMs ?? KINDS.edge.baseLatencyMs) + cpuMsOf(d);
   return (d.latencyMs ?? KINDS[d.kind].baseLatencyMs) * rt * vectorWork(d) + (d.kind === 'llm' && d.batching ? BATCHING.latencyMs : 0);
 }
 

@@ -260,6 +260,23 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
           <input className="nc-num" type="number" min={0.1} max={100000} step={0.5} value={data.vectorsM ?? 1} onChange={(e) => set({ vectorsM: Math.max(0.1, Math.min(100000, +e.target.value || 1)) })} />
         </div>
       )}
+      {data.kind === 'edge' && (
+        <div className="nc-row" title="Answered at the edge: the share of requests the function handles itself (redirects, auth checks, A/B, personalisation); the rest go on to the origin. CPU: time per request, and the platform's limit — CloudFront Functions about 1 ms, Workers Free 10 ms, Workers paid 30 s">
+          <span className="nc-l">at edge</span>
+          <input type="range" min={0} max={1} step={0.05} value={data.edgeShare ?? 0.5} onChange={(e) => set({ edgeShare: +e.target.value })} />
+          <b className="nc-v">{Math.round((data.edgeShare ?? 0.5) * 100)}%</b>
+          <span className="nc-l">CPU ms</span>
+          <input className="nc-num" type="number" min={0} max={300000} step={0.5} value={data.cpuMs ?? 1} onChange={(e) => set({ cpuMs: Math.max(0, +e.target.value || 0) })} />
+          <span className="nc-l">limit</span>
+          <select value={data.cpuLimitMs ?? 10} onChange={(e) => set({ cpuLimitMs: +e.target.value })}>
+            {pick(data.cpuLimitMs ?? 10, [1, 5, 10, 50, 30000]).map((n) => (
+              <option key={n} value={n}>
+                {n >= 1000 ? `${n / 1000} s` : `${n} ms`}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       {data.kind === 'archive' && (
         <div className="nc-row" title="Retrieval: Instant Retrieval reads in milliseconds ($0.01 per 1,000 + $0.03/GB); a Flexible Retrieval restore takes 1–5 min (expedited, $10 per 1,000) or 3–5 h (standard). Data: what it holds, at $0.004 (instant) or $0.0036 per GB-month">
           <span className="nc-l">retrieval</span>

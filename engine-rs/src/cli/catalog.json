@@ -210,6 +210,17 @@
       "scalesHorizontally": true
     },
     {
+      "kind": "edge",
+      "label": "Edge Function",
+      "description": "Code at the edge (CloudFront Functions, Cloudflare Workers): runs before the origin on every request, answers some itself (redirects, auth checks, A/B, personalisation) in milliseconds and passes the rest on. Each request gets a CPU time limit — heavy work past it is killed.",
+      "capacityPerInstanceRps": 100000,
+      "baseLatencyMs": 2,
+      "costPerHour": 0,
+      "costPerRequest": 3.2e-7,
+      "sizable": false,
+      "scalesHorizontally": false
+    },
+    {
       "kind": "archive",
       "label": "Archive Storage",
       "description": "Cold storage (S3 Glacier): a tenth of the price of hot storage to keep, priced per retrieval to read. Instant Retrieval answers in milliseconds; Flexible Retrieval restores take minutes (expedited) or hours (standard) — no user can wait for that.",
@@ -493,6 +504,14 @@
             },
             "source": "https://instances.vantage.sh/aws/opensearch/r7g.large.search",
             "note": "OpenSearch Service data node, per node; storage (EBS) and dedicated masters not included"
+          },
+          "edge": {
+            "perRequest": {
+              "price": 1.0000000000000001e-7,
+              "basis": "CloudFront Functions: $0.10 per million invocations"
+            },
+            "source": "https://aws.amazon.com/cloudfront/pricing/",
+            "note": "CPU time is capped (about 1 ms, as \"compute utilization\"), not billed"
           },
           "vector": {
             "tiers": {

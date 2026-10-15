@@ -36,6 +36,7 @@ export function validateSpec(input: unknown): { ok: boolean; issues: Issue[]; sp
     const kids = out.get(c.id) ?? [];
     const parents = (into.get(c.id) ?? []).map((p) => ids.get(p)?.kind);
     if ((c.kind === 'lb' || c.kind === 'gateway' || c.kind === 'queue' || c.kind === 'stream' || c.kind === 'dns') && !kids.length) issues.push({ level: 'error', message: `${c.kind} "${c.id}" has nothing behind it — every request fails` });
+    if (c.kind === 'edge' && (c.edgeShare ?? 0.5) < 1 && !kids.length) issues.push({ level: 'warning', message: `edge "${c.id}" has no origin — what it passes on fails` });
     if ((c.kind === 'cache' || c.kind === 'cdn') && !kids.length) issues.push({ level: 'warning', message: `${c.kind} "${c.id}" has no origin — every miss fails` });
     const fannedInto = (into.get(c.id) ?? []).some((p) => (ids.get(p)?.fanout ?? 1) > 1);
     if ((c.instances ?? 1) > 1 && c.kind !== 'llm' && c.kind !== 'search' && c.kind !== 'vector' && !fannedInto && !parents.some((k) => k === 'lb' || k === 'gateway' || k === 'queue' || k === 'stream')) issues.push({ level: 'warning', message: `"${c.id}" has ${c.instances} instances but no lb/gateway/queue in front — only one receives traffic` });

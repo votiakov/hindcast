@@ -406,3 +406,24 @@ describe('archive storage: cheap to keep, slow and priced to read back', () => {
     });
   }
 });
+
+describe('an edge function: answers its share before the origin, within a CPU limit', () => {
+  const edge = (extra: Record<string, unknown>) => ({
+    components: [{ id: 'users', kind: 'client' }, { id: 'e', kind: 'edge', ...extra }, { id: 'origin', kind: 'server' }],
+    connections: [['users', 'e'], ['e', 'origin']],
+  });
+  const sc = { duration: 40, rps: 1000, readRatio: 0.8 } as never;
+
+  for (const [name, run] of [['fluid', simulate], ['des', (s: never, c: never) => simulateDes(s, c, { seed: 3 })]] as const) {
+    it(`${name}: what it answers itself never reaches the origin — reads and writes alike`, () => {
+      // one 250/s server behind 1,000 req/s: answering 80% at the edge leaves it 200/s
+      expect(run(edge({ edgeShare: 0.8 }) as never, sc).summary.meanErrorRate).toBeLessThan(0.01);
+      expect(run(edge({ edgeShare: 0 }) as never, sc).summary.meanErrorRate).toBeGreaterThan(0.6);
+    });
+
+    it(`${name}: CPU time past the platform's limit is killed (5 ms on average against 10 ms: e^-2 ≈ 13.5%)`, () => {
+      const r = run(edge({ edgeShare: 1, cpuMs: 5, cpuLimitMs: 10 }) as never, { duration: 40, rps: 200, readRatio: 0.8 } as never).summary;
+      expect(Math.abs(r.meanErrorRate - Math.exp(-2))).toBeLessThan(0.02);
+    });
+  }
+});

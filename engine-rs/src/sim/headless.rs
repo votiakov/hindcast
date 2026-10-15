@@ -107,7 +107,7 @@ pub fn node_view(d0: &NodeData, st: Option<&NodeStats>, running: bool, has_outgo
         failed_over: d.kind == "db" && failover == "promoted",
         electing: failover == "electing",
         unreachable: spec(&d.kind).scalable && d.kind != "llm" && !clustered(&d.kind) && iu > 1.0 && st.map(|s| s.reachable).unwrap_or(1.0) < iu && running,
-        no_origin: (d.kind == "cache" || d.kind == "cdn") && !has_outgoing,
+        no_origin: (d.kind == "cache" || d.kind == "cdn" || (d.kind == "edge" && edge_share_of(&d) < 1.0)) && !has_outgoing,
     }
 }
 
@@ -194,6 +194,13 @@ pub fn explain(d: &NodeData, st: Option<&NodeStats>, v: &View) -> Option<String>
             fmt(cap),
             pct(1.0 - connection_admit(d, st.in_rps))
         )
+    } else if d.kind == "edge" && edge_cpu_fail(d) > 0.005 && st.in_rps > 0.01 {
+        format!(
+            "{}% of requests run past the {} ms CPU limit and are killed: CPU time here averages {} ms. Edge functions are for small, fast work (redirects, headers, auth checks); move the heavy part to the origin, or to a platform with a higher limit.",
+            pct(edge_cpu_fail(d)),
+            js_num(d.cpu_limit_ms.unwrap_or(10.0)),
+            js_num(cpu_ms_of(d))
+        )
     } else if d.kind == "archive" && st.drop_rps > 1.0 {
         format!(
             "Archive request limit: {}/s refused (503 SlowDown) above {}/s — {}. Archives are for data nobody reads in a hurry; put what users read in hot storage or a cache.",
@@ -228,7 +235,7 @@ pub fn explain(d: &NodeData, st: Option<&NodeStats>, v: &View) -> Option<String>
     } else if v.unreachable {
         "Extra instances receive no traffic: without a load balancer, clients only know one address.".into()
     } else if v.no_origin {
-        "No origin behind this cache: every miss has nowhere to go and fails.".into()
+        if d.kind == "edge" { "No origin behind this edge function: what it passes on has nowhere to go and fails.".into() } else { "No origin behind this cache: every miss has nowhere to go and fails.".into() }
     } else {
         return None;
     })

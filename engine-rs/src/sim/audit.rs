@@ -54,6 +54,7 @@ fn label_of(kind: &str) -> &'static str {
         "search" => "Search Index",
         "vector" => "Vector Database",
         "archive" => "Archive Storage",
+        "edge" => "Edge Function",
         _ => "Component",
     }
 }

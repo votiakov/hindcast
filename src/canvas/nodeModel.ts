@@ -1,4 +1,4 @@
-import { KINDS, QUEUE_MAX_BACKLOG, erlangB, hotPrefixShare, prefixesOf, baseLatencyOf, capacityOf, clustered, refreshSOf, vectorFit, vectorMemoryGb, archiveLimit, archiveRequestPrice, retrievalOf, VECTOR_GB_PER_M, VECTOR_DISK_FACTOR, threadsCapacity, costOf, hotShardShare, partitionsOf, instancesUp, isUp, shardsOf, skuOf, type SystemNodeData } from '../sim/catalog';
+import { KINDS, QUEUE_MAX_BACKLOG, erlangB, hotPrefixShare, prefixesOf, baseLatencyOf, capacityOf, clustered, refreshSOf, vectorFit, vectorMemoryGb, archiveLimit, archiveRequestPrice, retrievalOf, edgeCpuFail, edgeShareOf, cpuMsOf, VECTOR_GB_PER_M, VECTOR_DISK_FACTOR, threadsCapacity, costOf, hotShardShare, partitionsOf, instancesUp, isUp, shardsOf, skuOf, type SystemNodeData } from '../sim/catalog';
 import type { NodeStats } from '../sim/engine';
 
 export type Health = 'idle' | 'ok' | 'warm' | 'hot' | 'down';
@@ -102,6 +102,7 @@ export function nodeView(d0: SystemNodeData, st: NodeStats | undefined, running:
       break;
     case 'cache':
     case 'cdn':
+    case 'edge':
       stats = [
         { label: 'in', value: `${fmt(inRps)}/s` },
         { label: 'hits', value: `${fmt(st?.hitRps ?? 0)}/s` },
@@ -146,7 +147,7 @@ export function nodeView(d0: SystemNodeData, st: NodeStats | undefined, running:
     instancesUp: instancesUp(d),
     booting: st?.scaling?.pending ?? 0,
     unreachable: !!spec.scalable && d.kind !== 'llm' && !clustered(d.kind) && instancesUp(d) > 1 && (st?.reachable ?? 1) < instancesUp(d) && running,
-    noOrigin: (d.kind === 'cache' || d.kind === 'cdn') && !hasOutgoing,
+    noOrigin: (d.kind === 'cache' || d.kind === 'cdn' || (d.kind === 'edge' && edgeShareOf(d) < 1)) && !hasOutgoing,
     noTargets: (d.kind === 'lb' || d.kind === 'gateway' || d.kind === 'dns' || d.kind === 'stream') && !hasOutgoing,
     cost: st?.costPerHour ?? costOf(d),
     sku: skuOf(d),
@@ -187,6 +188,8 @@ export function explain(d: SystemNodeData, st: NodeStats | undefined, v: NodeVie
       return { tone: 'bad', text: `Connections full: ${fmt(st.inRps)} req/s, each holding a connection for ${held} s, need about ${fmt(st.inRps * held)} at once against a limit of ${fmt(d.maxConnections)} — ${Math.round(refused * 100)}% of new ones are refused. Fewer, shorter connections (or a higher limit) fix it; more instances behind it don't.` };
   }
   if (d.kind === 'storage' && st.dropRps > 1) return { tone: 'bad', text: `Prefix limit: an object store takes 5,500 reads or 3,500 writes a second per key prefix, however big the bucket. ${Math.round(hotPrefixShare(d) * 100)}% of requests land on the busiest of ${prefixesOf(d)} prefixes, and ${fmt(st.dropRps)}/s get 503 SlowDown. Spread keys over more prefixes, or cache the hot objects.` };
+  if (d.kind === 'edge' && edgeCpuFail(d) > 0.005 && st.inRps > 0.01)
+    return { tone: 'bad', text: `${Math.round(edgeCpuFail(d) * 100)}% of requests run past the ${d.cpuLimitMs ?? 10} ms CPU limit and are killed: CPU time here averages ${cpuMsOf(d)} ms. Edge functions are for small, fast work (redirects, headers, auth checks); move the heavy part to the origin, or to a platform with a higher limit.` };
   if (d.kind === 'archive' && st.dropRps > 1)
     return { tone: 'bad', text: `Archive request limit: ${fmt(st.dropRps)}/s refused (503 SlowDown) above ${fmt(archiveLimit(d))}/s — ${retrievalOf(d) === 'instant' ? "Instant Retrieval shares S3's 5,500 GETs a second per prefix" : 'restore requests are capped at 1,000 a second per account'}. Archives are for data nobody reads in a hurry; put what users read in hot storage or a cache.` };
   if (d.kind === 'archive' && retrievalOf(d) !== 'instant' && st.inRps > 0.01)
@@ -202,6 +205,7 @@ export function explain(d: SystemNodeData, st: NodeStats | undefined, v: NodeVie
   if (d.kind === 'search' && (st.replLagS ?? 0) > 1) return { tone: 'warn', text: `New documents show up in search ${fmtMs((st.replLagS ?? 0) * 1000)} after they are written: the index refreshes every ${refreshSOf(d)} s${(st.replLagS ?? 0) > refreshSOf(d) + 0.5 ? ', and indexing is queued behind the queries the nodes are busy with' : ''}. Searches in that window miss them — fine for a catalogue, wrong for "I just posted it, where is it?".` };
   if (d.kind === 'replica' && (st.replLagS ?? 0) > 1) return { tone: 'warn', text: `${(st.replLagS ?? 0) >= 60 ? `${Math.round((st.replLagS ?? 0) / 60)} min` : `${Math.round(st.replLagS ?? 0)} s`} behind its primary: reads here miss the latest writes, and a failover now would lose them.` };
   if (v.noTargets && st.inRps > 0.01) return { tone: 'bad', text: `Nothing behind this ${d.kind === 'lb' ? 'load balancer' : d.kind === 'dns' ? 'name' : d.kind === 'stream' ? 'stream (no subscribers)' : 'gateway'}: the ${fmt(st.inRps)} req/s it receives have nowhere to go and fail. Connect it to what it fronts.` };
+  if (v.noOrigin && st.dropRps > 0.01 && d.kind === 'edge') return { tone: 'bad', text: `No origin behind this edge function: the ${fmt(st.dropRps)} requests a second it passes on have nowhere to go and fail. Connect it to what it fronts.` };
   if (v.noOrigin && st.dropRps > 0.01) return { tone: 'bad', text: `No origin behind this cache: its ${fmt(st.dropRps)} misses a second have nowhere to go and fail. Connect it to the store it caches, or make it a database if it is the store.` };
   if (d.kind === 'db' && d.hotRowShare && st.dropRps > 1)
     return { tone: 'bad', text: `Hot row: ${Math.round(d.hotRowShare * 100)}% of the writes update one key, and its row lock takes them one at a time (${fmtMs(baseLatencyOf(d))} each) — at most ${fmt(1000 / Math.max(0.1, baseLatencyOf(d)))}/s however big the database. The rest wait, then time out. Batch the updates, split the counter over several rows, or keep it in a cache.` };
@@ -220,6 +224,6 @@ export function explain(d: SystemNodeData, st: NodeStats | undefined, v: NodeVie
   if (v.health === 'hot') return { tone: 'bad', text: `Saturated at ${Math.round(st.util * 100)}% — requests are queuing and latency is climbing steeply.` };
   if (v.health === 'warm') return { tone: 'warn', text: `${Math.round(st.util * 100)}% utilised. Queueing delay grows non-linearly beyond ~70%; little headroom left for spikes.` };
   if (v.unreachable) return { tone: 'warn', text: 'Extra instances receive no traffic: without a load balancer, clients only know one address.' };
-  if (v.noOrigin) return { tone: 'bad', text: 'No origin behind this cache: every miss has nowhere to go and fails.' };
+  if (v.noOrigin) return { tone: 'bad', text: d.kind === 'edge' ? 'No origin behind this edge function: what it passes on has nowhere to go and fails.' : 'No origin behind this cache: every miss has nowhere to go and fails.' };
   return null;
 }

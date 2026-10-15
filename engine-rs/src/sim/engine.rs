@@ -877,6 +877,28 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
             r.routes = Some(vec![]);
             r
         }
+        // code at the edge: it runs on every request (past its CPU limit it is killed), answers its
+        // share itself and passes the rest to the origin
+        "edge" => {
+            let mut r = process_through(c, st);
+            let bad = r.processed * edge_cpu_fail(c.d);
+            let ok = r.processed - bad;
+            let share = edge_share_of(c.d);
+            let mut forward = ok * (1.0 - share);
+            let mut failed_fwd = 0.0;
+            if c.routes.iter().all(|k| !k.up) {
+                failed_fwd = forward;
+                forward = 0.0;
+            }
+            r.failed += bad + failed_fwd;
+            r.failed_processed = bad + failed_fwd;
+            r.forward = forward;
+            r.hits = Some(ok * share);
+            r.local_r = Some(share);
+            r.local_w = Some(share);
+            r.local_share = Some(if ok > 0.0 { ok * share / (ok * share + forward + failed_fwd).max(1e-12) } else { share });
+            r
+        }
         // a read replica is a data store: it answers, it does not call on (as a primary only reaches its replicas);
         // so is a search index — its nodes share the queries between them
         "replica" | "search" | "vector" => {
@@ -907,7 +929,7 @@ fn fold(c: &FoldCtx, st: &NodeState) -> (f64, f64) {
         "client" => (if c.has_kids { c.child_succ } else { 0.0 }, c.child_lat),
         "lb" | "dns" => (if c.has_kids { c.keep * c.child_succ } else { 0.0 }, service_latency(c.d, st) + c.child_lat),
         "gateway" => (if c.has_kids { c.keep * c.child_succ } else { 0.0 }, spec("gateway").base_latency_ms + c.child_lat),
-        "cache" | "cdn" => (c.keep * (c.local_share + (1.0 - c.local_share) * kids_succ), service_latency(c.d, st) + (1.0 - c.local_share) * c.child_lat),
+        "cache" | "cdn" | "edge" => (c.keep * (c.local_share + (1.0 - c.local_share) * kids_succ), service_latency(c.d, st) + (1.0 - c.local_share) * c.child_lat),
         "db" => (c.local_share * c.keep + (1.0 - c.local_share) * kids_succ, c.local_share * service_latency(c.d, st) + (1.0 - c.local_share) * c.child_lat),
         "queue" | "stream" => (c.keep, spec(&c.d.kind).base_latency_ms),
         "function" => {

@@ -121,6 +121,11 @@ export const PRICING: Record<PricingId, PricingProfile> = {
         source: VANTAGE('opensearch/r7g.large.search'),
         note: 'OpenSearch Service data node, per node; storage (EBS) and dedicated masters not included',
       },
+      edge: {
+        perRequest: { price: 0.1 / 1_000_000, basis: 'CloudFront Functions: $0.10 per million invocations' },
+        source: 'https://aws.amazon.com/cloudfront/pricing/',
+        note: 'CPU time is capped (about 1 ms, as "compute utilization"), not billed',
+      },
       vector: {
         tiers: { S: { sku: 'r7g.large.search', hourly: 0.178 }, M: { sku: 'r7g.xlarge.search', hourly: 0.356 }, L: { sku: 'r7g.2xlarge.search', hourly: 0.712 } },
         source: VANTAGE('opensearch/r7g.large.search'),

@@ -247,6 +247,7 @@ const R_BULKHEAD: u8 = 11;
 const R_THREADS: u8 = 12;
 const R_LOCK: u8 = 13;
 const R_CONN: u8 = 14;
+const R_CPU: u8 = 15;
 
 fn why(n: usize, r: u8) -> Why {
     ((n as u32 + 1) << 8) | r as u32
@@ -269,6 +270,7 @@ fn reason_text(r: u8) -> &'static str {
         R_THREADS => "out of threads (all waiting on calls)",
         R_LOCK => "waited too long for a row lock",
         R_CONN => "connection refused (all connections in use)",
+        R_CPU => "killed at its CPU time limit",
         _ => "failed",
     }
 }
@@ -1203,6 +1205,21 @@ impl<'a> Des<'a> {
                 return self.fail(Some(n), why(n, R_NO_ROUTE), done, 0.0);
             }
         }
+        if kind == "edge" {
+            // CPU time past the platform's limit kills the request; its share is answered at the edge
+            let d = &self.nodes[n].data;
+            let (fail, share) = (super::catalog::edge_cpu_fail(d), super::catalog::edge_share_of(d));
+            if self.rng.next() < fail {
+                return self.fail(Some(n), why(n, R_CPU), done, 0.0);
+            }
+            if self.rng.next() < share {
+                self.nodes[n].win.hits += 1.0;
+                return self.deliver(done, OK);
+            }
+            if self.nodes[n].children.is_empty() {
+                return self.fail(Some(n), why(n, R_NO_ROUTE), done, 0.0);
+            }
+        }
         if kind == "db" && !job.read {
             // every synchronous replica acknowledges before the write is answered
             let wait = self.nodes[n].children.iter().filter(|&&c| self.link_sync.contains(&(n, c))).map(|&c| self.link_ms.get(&(n, c)).copied().unwrap_or(0.0) + self.cfg.hop_ms + self.nodes[c].svc_mean_ms).fold(0.0, f64::max);
@@ -2012,6 +2029,7 @@ fn static_kind(k: &str) -> &'static str {
         "search" => "search",
         "vector" => "vector",
         "archive" => "archive",
+        "edge" => "edge",
         _ => "server",
     }
 }

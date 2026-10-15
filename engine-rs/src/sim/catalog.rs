@@ -165,6 +165,17 @@ pub struct NodeData {
     /// "expedited" (1–5 min) or "standard" (3–5 h) restores (Glacier Flexible Retrieval)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retrieval: Option<String>,
+    /// edge: the share of requests the edge function answers itself (default 0.5); the rest go on to
+    /// the origin
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub edge_share: Option<f64>,
+    /// edge: CPU time per request, ms (default 1; exponentially spread)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpu_ms: Option<f64>,
+    /// edge: the platform's CPU limit per request, ms (default 10, as Workers Free; ~1 for CloudFront
+    /// Functions) — a request past it is killed with an error
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpu_limit_ms: Option<f64>,
     /// a network partition's side this component is on (set by the partition action): links between
     /// components on different sides are cut
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -228,6 +239,8 @@ pub fn spec(kind: &str) -> KindSpec {
         // S node at recall 0.95 with the graph in memory
         "vector" => KindSpec { scalable: true, ..k(300.0, 10.0, 0.2, true) },
         // cold storage (S3 Glacier): pennies to keep, slow and priced per retrieval to read back
+        // code at the edge (CloudFront Functions, Workers): runs before the origin on every request
+        "edge" => KindSpec { cost_per_request: Some((0.3 + 0.02) / 1_000_000.0), ..k(100000.0, 2.0, 0.0, false) },
         "archive" => KindSpec { cost_per_request: Some(ARCHIVE_INSTANT_PER_REQ), ..k(5500.0, 40.0, 0.0, false) },
         "kv" => KindSpec { cost_per_request: Some(0.45 / 1_000_000.0), ..k(40000.0, 5.0, 0.0, false) },
         _ => k(250.0, 25.0, 0.1, true),
@@ -343,6 +356,8 @@ pub fn kind_pricing(profile: &str, kind: &str) -> Option<KindPricing> {
             "dns" => Some(KindPricing { fixed: Some(DNS_ZONE_HOURLY), ..Default::default() }),
             // OpenSearch Service r7g.large/xlarge/2xlarge.search data nodes
             "search" | "vector" => tiers(0.178, 0.356, 0.712),
+            // CloudFront Functions: $0.10 per million invocations
+            "edge" => per(0.1 / 1_000_000.0),
             _ => None,
         },
         "gcp-us-central1" => match kind {
@@ -527,6 +542,26 @@ pub fn refresh_s_of(d: &NodeData) -> f64 {
 pub fn index_lag_s(d: &NodeData, backlog: f64, cap: f64) -> f64 {
     let lag = refresh_s_of(d) + if cap > 0.0 { backlog / cap } else if backlog > 0.0 { f64::INFINITY } else { 0.0 };
     if lag.is_finite() { crate::math::js_round(lag * 10.0) / 10.0 } else { lag }
+}
+
+/// an edge function's CPU time per request, ms
+pub fn cpu_ms_of(d: &NodeData) -> f64 {
+    d.cpu_ms.unwrap_or(1.0).max(0.0)
+}
+
+/// the share of an edge function's requests that run past its CPU limit (CPU time exponentially
+/// spread around `cpu_ms`)
+pub fn edge_cpu_fail(d: &NodeData) -> f64 {
+    if d.kind != "edge" {
+        return 0.0;
+    }
+    let (cpu, limit) = (cpu_ms_of(d), d.cpu_limit_ms.unwrap_or(10.0).max(0.0));
+    if cpu <= 0.0 { 0.0 } else { (-limit / cpu).js_exp() }
+}
+
+/// the share of requests an edge function answers itself
+pub fn edge_share_of(d: &NodeData) -> f64 {
+    d.edge_share.unwrap_or(0.5).clamp(0.0, 1.0)
 }
 
 /// an archived object read back, MB (retrieval is priced per GB)
@@ -764,6 +799,9 @@ pub fn base_latency_of(d: &NodeData) -> f64 {
     if d.kind == "archive" {
         return d.latency_ms.unwrap_or_else(|| archive_latency_ms(d));
     }
+    if d.kind == "edge" {
+        return d.latency_ms.unwrap_or(spec("edge").base_latency_ms) + cpu_ms_of(d);
+    }
     d.latency_ms.unwrap_or(spec(&d.kind).base_latency_ms) * rt * vector_work(d) + (if d.kind == "llm" && d.batching == Some(true) { BATCHING_LATENCY_MS } else { 0.0 })
 }
 
@@ -812,6 +850,10 @@ pub fn request_price(d: &NodeData, profile: &str) -> f64 {
     }
     if d.kind == "archive" {
         return archive_request_price(d);
+    }
+    // no profile price: Workers Standard, $0.30 per million requests + $0.02 per million CPU-ms
+    if d.kind == "edge" && kind_pricing(profile, "edge").is_none() {
+        return 0.3 / 1_000_000.0 + 0.02 / 1_000_000.0 * cpu_ms_of(d);
     }
     if let Some(p) = kind_pricing(profile, &d.kind).and_then(|p| p.per_request) {
         return p;
