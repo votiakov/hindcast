@@ -122,6 +122,10 @@ pub struct NodeData {
     /// one at a time
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hot_row_share: Option<f64>,
+    /// db: seconds from the primary dying to a replica taking writes (default: the engine's, 60 s —
+    /// RDS Multi-AZ fails over in 60–120 s)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failover_s: Option<f64>,
     /// gateway: the token bucket's size, requests (default: one second of the limit) — a burst
     /// above the rate passes until the bucket is empty (API Gateway: rate 10,000, burst 5,000)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -773,6 +777,12 @@ pub fn connection_admit(d: &NodeData, rps: f64) -> f64 {
         Some(c) => 1.0 - erlang_b(c, rps * d.connection_s.unwrap_or(30.0).max(0.0)),
         None => 1.0,
     }
+}
+
+/// db: seconds until a replica takes a dead primary's writes — its own `failoverS`, else the engine's
+/// default; None when automatic failover is off
+pub fn failover_after(d: &NodeData, engine_default: Option<f64>) -> Option<f64> {
+    engine_default.map(|f| d.failover_s.unwrap_or(f))
 }
 
 /// a hot row: writes to one key take its lock one at a time, each for a write's time, so at most

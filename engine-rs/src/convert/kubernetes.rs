@@ -31,7 +31,7 @@ fn classify(image: &str) -> Option<(&'static str, String)> {
     let i = lower.split('@').next().unwrap_or("");
     let name = i.split('/').next_back().unwrap_or("").split(':').next().unwrap_or("");
     let why = format!("{} image", name);
-    if re(&DB, "^(postgres|postgresql|mysql|mariadb|mongo|mongodb|cockroach|cassandra|scylla|timescaledb|clickhouse)").is_match(name) || re(&DB2, r"bitnami/(postgresql|mysql|mongodb)").is_match(i) {
+    if re(&DB, "^(postgres|postgresql|spilo|mysql|mariadb|mongo|mongodb|cockroach|cassandra|scylla|timescaledb|clickhouse)").is_match(name) || re(&DB2, r"bitnami/(postgresql|mysql|mongodb)").is_match(i) {
         return Some(("db", why));
     }
     if re(&CACHE, "^(redis|valkey|memcached|keydb|dragonfly)").is_match(name) {
@@ -48,6 +48,35 @@ fn classify(image: &str) -> Option<(&'static str, String)> {
     }
     if re(&LLM, "^(vllm|tgi|text-generation-inference|triton|ollama)").is_match(name) || re(&LLM2, "vllm|text-generation-inference|tritonserver").is_match(i) {
         return Some(("llm", why));
+    }
+    None
+}
+
+/// someone paged to promote a replica by hand, s: a guess, not a measurement
+const MANUAL_FAILOVER_S: f64 = 1800.0;
+
+/// a single-primary database: its replicas take writes only once something promotes one
+fn single_primary(image: &str) -> bool {
+    let lower = image.to_lowercase();
+    let name = lower.split('@').next().unwrap_or("").split('/').next_back().unwrap_or("").split(':').next().unwrap_or("").to_string();
+    ["postgres", "postgresql", "spilo", "mysql", "mariadb", "timescaledb"].iter().any(|p| name.starts_with(p))
+}
+
+/// an operator or agent that elects a new primary: CloudNativePG, Patroni (and Zalando's Spilo), Crunchy
+fn ha_operator(image: &str, containers: &[Value], labels: &Obj) -> Option<&'static str> {
+    let images: Vec<String> = std::iter::once(image.to_lowercase()).chain(containers.iter().map(|c| c.get("image").and_then(|i| i.as_str()).unwrap_or("").to_lowercase())).collect();
+    let env = containers.iter().flat_map(|c| c.get("env").and_then(|e| e.as_array()).cloned().unwrap_or_default()).filter_map(|e| e.get("name").and_then(|n| n.as_str()).map(|n| n.to_string())).collect::<Vec<_>>();
+    if images.iter().any(|i| i.contains("cloudnative-pg") || i.contains("cnpg")) || labels.keys().any(|k| k.starts_with("cnpg.io/")) {
+        return Some("CloudNativePG");
+    }
+    if images.iter().any(|i| i.contains("spilo")) || labels.get("application").and_then(|v| v.as_str()) == Some("spilo") {
+        return Some("Zalando's postgres-operator (Spilo, Patroni)");
+    }
+    if images.iter().any(|i| i.contains("patroni")) || env.iter().any(|n| n.starts_with("PATRONI_")) {
+        return Some("Patroni");
+    }
+    if images.iter().any(|i| i.contains("crunchy")) || labels.keys().any(|k| k.starts_with("postgres-operator.crunchydata.com/")) {
+        return Some("Crunchy's postgres-operator");
     }
     None
 }
@@ -212,6 +241,16 @@ pub fn import_kubernetes(docs_in: &[Value], name: Option<&str>) -> Result<Import
                 }
                 let extra = if replicas > 1.0 { format!("; {} replica pod{} modelled as read replicas", js_num(replicas - 1.0), if replicas > 2.0 { "s" } else { "" }) } else { String::new() };
                 assumptions.push(format!("{}: database ({}){}", ref_of(d), why, extra));
+                // Postgres or MySQL pods elect no new primary on their own: that takes an operator
+                if replicas > 1.0 && single_primary(&image) {
+                    match ha_operator(&image, containers, o(o(spec.get("template")).get("metadata"))) {
+                        Some(op) => assumptions.push(format!("{}: {} detected — automatic failover assumed (failoverS default, 60 s)", ref_of(d), op)),
+                        None => {
+                            comp.insert("failoverS".into(), json!(MANUAL_FAILOVER_S));
+                            assumptions.push(format!("{}: a plain StatefulSet has no automatic failover (no CloudNativePG, Patroni or Zalando operator found) — writes fail until someone promotes a replica by hand, modelled as failoverS {} s (30 min, a guess)", ref_of(d), js_num(MANUAL_FAILOVER_S)));
+                        }
+                    }
+                }
             }
             Some(("cache", why)) => {
                 comp.insert("kind".into(), json!("cache"));

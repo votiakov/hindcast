@@ -199,7 +199,9 @@ fn get_num(c: &JMap<String, Value>, k: &str) -> Option<f64> {
     c.get(k).and_then(|x| x.as_f64())
 }
 
-fn measure(r: &SimResult, slo: (f64, f64), base: &SimResult) -> Impact {
+/// `fade`: how long this model takes to show a cleared fault as cleared (see `fade_of`), taken off
+/// the recovery and self-healing times
+fn measure(r: &SimResult, slo: (f64, f64), base: &SimResult, fade: f64) -> Impact {
     let ok = |x: &super::headless::Point| x.error_rate <= slo.0 && x.p99_ms <= slo.1;
     // incidents are judged relative to normal: a design already out of SLO only counts what got worse
     let bt = &base.timeline;
@@ -236,9 +238,25 @@ fn measure(r: &SimResult, slo: (f64, f64), base: &SimResult) -> Impact {
         peak_p99_ms: js_round(js_max(0.0, window.iter().map(|x| x.p99_ms))),
         failed_requests: js_round(window.iter().fold(0.0, |s, x| s + x.rps * (x.error_rate - base_err).max(0.0))),
         breach_s: window.iter().filter(|x| !ok(x)).count() as f64,
-        self_heal_s: self_heal,
-        recovery_s: recovery,
+        self_heal_s: self_heal.map(|h| if h > 0.0 { (h - fade).max(1.0) } else { h }),
+        recovery_s: recovery.map(|x| (x - fade).max(0.0)),
     }
+}
+
+/// hops from the users to each component, the users being 1
+fn depths(a: &Architecture) -> std::collections::HashMap<String, f64> {
+    let mut d: std::collections::HashMap<String, f64> = a.components.iter().filter(|c| get_str(c, "kind") == Some("client")).map(|c| (get_str(c, "id").unwrap_or("").to_string(), 1.0)).collect();
+    let mut frontier: Vec<String> = d.keys().cloned().collect();
+    while let Some(id) = frontier.pop() {
+        let next = d[&id] + 1.0;
+        for (_, t, _) in a.connections.iter().filter(|(f, _, _)| *f == id) {
+            if d.get(t).map(|x| *x < next).unwrap_or(true) && next <= a.components.len() as f64 {
+                d.insert(t.clone(), next);
+                frontier.push(t.clone());
+            }
+        }
+    }
+    d
 }
 
 fn grade(i: &Impact, kind: &str) -> &'static str {
@@ -268,7 +286,7 @@ fn blast(r: &SimResult, target: &str) -> Vec<String> {
     v.into_iter().map(|(id, _)| id.clone()).collect()
 }
 
-fn explain_incident(inc: &Incident, i: &Impact, r: &SimResult, sev: &str, nm: &dyn Fn(&str) -> String) -> String {
+fn explain_incident(inc: &Incident, i: &Impact, r: &SimResult, sev: &str, nm: &dyn Fn(&str) -> String, extra: Option<String>) -> String {
     let pct = |x: f64| format!("{}%", js_to_fixed(x * 100.0, if x < 0.01 { 2 } else { 1 }));
     let mut parts: Vec<String> = vec![];
     if sev == "ok" {
@@ -293,6 +311,9 @@ fn explain_incident(inc: &Incident, i: &Impact, r: &SimResult, sev: &str, nm: &d
             _ => {}
         }
     }
+    if let Some(x) = extra {
+        parts.push(x);
+    }
     let top = r.bottlenecks.iter().find(|b| b.id != inc.target && b.note.as_ref().map(|n| !n.starts_with("Scaling out")).unwrap_or(false));
     if sev != "ok" {
         if let Some(t) = top {
@@ -300,6 +321,50 @@ fn explain_incident(inc: &Incident, i: &Impact, r: &SimResult, sev: &str, nm: &d
         }
     }
     parts.join(" ")
+}
+
+/// why an incident hurts as much as it does, where the model's mechanism is not obvious
+fn mechanism(inc: &Incident, a: &Architecture, base: &SimResult, nm: &dyn Fn(&str) -> String) -> Option<String> {
+    let c = a.components.iter().find(|c| get_str(c, "id") == Some(inc.target.as_str()))?;
+    let kind = get_str(c, "kind").unwrap_or("server");
+    if inc.kind == "component" && kind == "dns" {
+        let ttl = get_num(c, "ttlS").unwrap_or(60.0);
+        return Some(format!(
+            "Managed DNS rarely fails (Route 53's SLA is 100%), but a provider-wide outage happens — Dyn's in October 2016 lasted hours. Clients holding a cached answer would keep going for up to the TTL ({} s); the replay fails them at once. The remedy is a second DNS provider serving the same zone, which is not modelled or priced here.",
+            js_num(ttl)
+        ));
+    }
+    if inc.kind != "slow" || matches!(kind, "gateway" | "llmapi" | "external" | "kv" | "archive" | "client" | "queue" | "stream") {
+        return None;
+    }
+    let ms = inc.events.first().and_then(|e| e["action"]["ms"].as_f64())?;
+    let d = super::spec::component_data(c);
+    let own = super::catalog::base_latency_of(&d).max(0.05);
+    let cap = super::catalog::capacity_of(&d, None);
+    let offered = base.components.get(&inc.target).map(|x| x.mean_util * cap).unwrap_or(0.0);
+    let slowed = cap * own / (own + ms);
+    let mut out = vec![];
+    if offered > slowed * 1.02 {
+        let int = |x: f64| crate::strategy::locale_int(js_round(x));
+        out.push(format!(
+            "{} spends {} ms more on each request than its {} ms of work, so each worker is busy {}× as long: it serves about {} req/s instead of {}, under the {} req/s it is offered, and sheds the rest. The incident is a gray failure of the component itself; slowness in the network in front of it would be `latencyMs` on the connection.",
+            nm(&inc.target),
+            js_num(ms),
+            js_num(js_round(own)),
+            js_to_fixed((own + ms) / own, 0),
+            int(slowed),
+            int(cap),
+            int(offered)
+        ));
+    }
+    for (p, _, _) in a.connections.iter().filter(|(_, t, _)| *t == inc.target) {
+        if let Some(t) = a.components.iter().find(|x| get_str(x, "id") == Some(p.as_str())).and_then(|x| get_num(x, "timeoutMs")) {
+            if t < own + ms {
+                out.push(format!("{}'s timeout ({} ms) is shorter than the slowed answer ({} ms): its calls time out.", nm(p), js_num(t), js_num(js_round(own + ms))));
+            }
+        }
+    }
+    (!out.is_empty()).then(|| out.join(" "))
 }
 
 fn unique_id(a: &Architecture, base: &str) -> String {
@@ -410,7 +475,7 @@ fn candidate_fixes(inc: &Incident, a: &Architecture, nm: &dyn Fn(&str) -> String
                 if let Some(sh) = c.get("shards") {
                     comp["shards"] = sh.clone();
                 }
-                out.push(Cand { title: format!("Add a read replica to {}", nm(&id)), why: "A replica serves reads and is promoted to primary in seconds when the primary dies.".into(), changes: vec![json!({ "op": "add", "component": comp }), json!({ "op": "connect", "from": id, "to": rep })] });
+                out.push(Cand { title: format!("Add a read replica to {}", nm(&id)), why: "A replica serves reads, keeps serving them while the primary is down, and is promoted to primary in about a minute (RDS Multi-AZ: 60–120 s); writes fail until then.".into(), changes: vec![json!({ "op": "add", "component": comp }), json!({ "op": "connect", "from": id, "to": rep })] });
             }
         } else if (kind == "cache" || kind == "cdn") && !ks.is_empty() && ps.iter().all(|p| only_calls(p, &std::iter::once(&id).chain(ks.iter()).collect::<Vec<_>>())) {
             // callers bypass a dead cache and go straight to its origin
@@ -425,7 +490,7 @@ fn candidate_fixes(inc: &Incident, a: &Architecture, nm: &dyn Fn(&str) -> String
                 }
             }
             out.push(Cand { title: format!("Bypass {} when it is down", nm(&id)), why: "Callers fail over to the origin instead of failing — the cache is an optimisation, not a dependency.".into(), changes });
-        } else if kind != "client" && ps.iter().all(|p| only_calls(p, &[&id])) {
+        } else if kind != "client" && kind != "dns" && ps.iter().all(|p| only_calls(p, &[&id])) {
             let twin = unique_id(a, &format!("{}-b", id));
             // { ...rest, id: twin, name }: id moves to the end, a name keeps its place
             let mut comp = c.clone();
@@ -589,7 +654,8 @@ pub fn audit(input: &Architecture, o: &AuditOptions, progress: &mut dyn FnMut(f6
         if kind_spec(kind).scalable && n > 1.0 {
             incidents.push(Incident { id: format!("instance:{}", id), kind: "instance", target: id.clone(), title: format!("one {} instance dies", nm(&id)), events: fault(json!({ "type": "kill-id", "id": id }), json!({ "type": "revive-id", "id": id })), traffic: None });
         } else {
-            incidents.push(Incident { id: format!("component:{}", id), kind: "component", target: id.clone(), title: format!("{} goes down", nm(&id)), events: fault(json!({ "type": "kill-id", "id": id }), json!({ "type": "revive-id", "id": id })), traffic: None });
+            let title = if kind == "dns" { format!("{}: the DNS provider has an outage", nm(&id)) } else { format!("{} goes down", nm(&id)) };
+            incidents.push(Incident { id: format!("component:{}", id), kind: "component", target: id.clone(), title, events: fault(json!({ "type": "kill-id", "id": id }), json!({ "type": "revive-id", "id": id })), traffic: None });
         }
         if kind == "cache" || kind == "cdn" {
             incidents.push(Incident { id: format!("cold:{}", id), kind: "cold-cache", target: id.clone(), title: format!("{} restarts cold", nm(&id)), events: vec![json!({ "at": FAULT_AT, "action": { "type": "flush-cache", "id": id } })], traffic: None });
@@ -622,13 +688,47 @@ pub fn audit(input: &Architecture, o: &AuditOptions, progress: &mut dyn FnMut(f6
         traffic: Some(vec![(0.0, rps), (FAULT_AT, rps), (FAULT_AT + 2.0, rps * 3.0), (FAULT_AT + 22.0, rps * 3.0), (FAULT_AT + 24.0, rps), (END, rps)]),
     });
 
+    // the fluid model smooths each component's state over 0.3 s and the users see the chain of them, so
+    // a fault that clears at once still fades out over a few seconds. A control run per depth — a bare
+    // chain of that many hops whose last one fails every request and then none — measures that fade;
+    // recovery and self-healing are reported net of it
+    let depth = depths(&spec);
+    let mut fade_at: Vec<(f64, f64)> = vec![];
+    let mut fades: Vec<f64> = vec![];
+    for inc in &incidents {
+        let members: Vec<String> = match inc.kind {
+            "surge" => vec![],
+            "zone" => spec.zones.iter().find(|z| z.0 == inc.target).map(|z| z.2.clone()).unwrap_or_default(),
+            _ => vec![inc.target.clone()],
+        };
+        let d = members.iter().filter_map(|m| depth.get(m).copied()).fold(0.0, f64::max);
+        let fade = match fade_at.iter().find(|x| x.0 == d) {
+            _ if d < 2.0 => 0.0,
+            Some(x) => x.1,
+            None => {
+                let hops: Vec<String> = (1..d as usize).map(|i| format!("h{}", i)).collect();
+                let mut comps = vec![json!({ "id": "users", "kind": "client" })];
+                comps.extend(hops.iter().map(|h| json!({ "id": h, "kind": "server", "capacity": 100000, "latencyMs": 1 })));
+                let names: Vec<&str> = std::iter::once("users").chain(hops.iter().map(|h| h.as_str())).collect();
+                let chain = super::spec::parse_architecture(&json!({ "components": comps, "connections": names.windows(2).map(|w| json!([w[0], w[1]])).collect::<Vec<_>>() }))?;
+                let last = hops.last().unwrap();
+                let mut sc = json!({ "name": "fade", "duration": END, "rps": rps, "readRatio": read_ratio, "slo": slo_v });
+                sc["events"] = json!(fault(json!({ "type": "inject-errors", "id": last, "rate": 1 }), json!({ "type": "restore", "id": last })));
+                let f = measure(&sim(&chain, sc)?, slo, &base, 0.0).recovery_s.unwrap_or(0.0);
+                fade_at.push((d, f));
+                f
+            }
+        };
+        fades.push(fade);
+    }
+
     let total = (incidents.len() + 1) as f64;
     let mut done = 0.0;
     let mut findings: Vec<Finding> = vec![];
     let fixes_on = o.fixes != Some(false);
-    for inc in &incidents {
+    for (inc, &fade) in incidents.iter().zip(fades.iter()) {
         let r = sim(&spec, scenario_for(inc))?;
-        let impact = measure(&r, slo, &base);
+        let impact = measure(&r, slo, &base, fade);
         let severity = grade(&impact, inc.kind);
         let mut f = Finding {
             id: inc.id.clone(),
@@ -637,7 +737,7 @@ pub fn audit(input: &Architecture, o: &AuditOptions, progress: &mut dyn FnMut(f6
             title: inc.title.clone(),
             severity: severity.into(),
             blast_radius: blast(&r, &inc.target),
-            explanation: explain_incident(inc, &impact, &r, severity, nm),
+            explanation: explain_incident(inc, &impact, &r, severity, nm, mechanism(inc, &spec, &base, nm).filter(|_| inc.kind != "slow" || impact.error_rate >= 0.01)),
             // failed requests expressed as minutes of full outage, priced
             cost_at_risk: o.incident_cost_per_minute.filter(|x| *x != 0.0).map(|c| js_round((impact.failed_requests / (rps * 60.0)) * c)),
             fixes: vec![],
@@ -650,7 +750,7 @@ pub fn audit(input: &Architecture, o: &AuditOptions, progress: &mut dyn FnMut(f6
                     Ok(v) => v,
                     Err(_) => continue,
                 };
-                let after = measure(&sim(&variant, scenario_for(inc))?, slo, &base);
+                let after = measure(&sim(&variant, scenario_for(inc))?, slo, &base, fade);
                 let sev_after = grade(&after, inc.kind);
                 let better = sev_rank(sev_after) < sev_rank(severity) || after.failed_requests < f.impact.failed_requests * 0.5;
                 if !better {

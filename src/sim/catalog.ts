@@ -133,6 +133,8 @@ export interface SystemNodeData extends Record<string, unknown> {
   prefixes?: number;
   /** db: share of the writes that update one row — they take its lock one at a time */
   hotRowShare?: number;
+  /** db: seconds from the primary dying to a replica taking writes (default 60, as RDS Multi-AZ) */
+  failoverS?: number;
   /** gateway: token bucket size, requests (default one second of the limit) */
   burst?: number;
   /** queue: redrive — a failed message comes back after visibilityS until received this many times, then dead-letters */

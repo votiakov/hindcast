@@ -48,7 +48,8 @@ failure only writes see (an election, a cache with no origin) is not retried awa
 A write-behind cache (`writePolicy: behind`) answers writes itself and flushes them ~5 s later; a
 cache that dies takes the unflushed ones with it (`lostWrites` in the results).
 
-**Failover.** A dead primary with live replicas *elects* for `failoverS` (default 3 s): writes fail,
+**Failover.** A dead primary with live replicas *elects* for its `failoverS` (default 60 s, as RDS
+Multi-AZ's 60–120 s; see catalog.md): writes fail,
 reads keep working on replicas. Then the first replica is *promoted*: it takes writes plus its share
 of reads, and the dead primary only forwards (shown as "failed over").
 
@@ -152,7 +153,7 @@ icon in `canvas/icons.tsx`, colours in `theme/themes.ts`, and (if it has new kno
 | `seed` | 1 | PRNG seed |
 | `serviceCv` | 0.6 | service-time variability (0 = deterministic) |
 | `queueS` | 1 | default bounded queue length, seconds of work |
-| `failoverS` | 3 | election time; `null` disables failover |
+| `failoverS` | 60 | election time for databases without their own `failoverS`; `null` disables failover |
 | `coldStartMs` | 400 | generic cold start (runtimes override: Rust 40 … Java 1800) |
 | `hopMs` | 0.3 | one-way network latency per call |
 | `maxEvents` | 60 M | safety valve |

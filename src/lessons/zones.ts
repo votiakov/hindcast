@@ -17,7 +17,7 @@ export const zones: Lesson = {
       ['users', 'client', X[0], 260],
       ['lb', 'lb', X[1], 260],
       ['api', 'server', X[2] + 10, 130, { instances: 6 }],
-      ['db', 'db', X[3] + 20, 150],
+      ['db', 'db', X[3] + 20, 150, { failoverS: 3 }],
     ],
     [['users', 'lb'], ['lb', 'api'], ['api', 'db']],
     [
@@ -50,7 +50,7 @@ export const zones: Lesson = {
       hintAfter: 6,
       hint:
         'Put capacity in us-east-1b: drag an API Server into the lower frame, connect lb → it and it → db, and give it enough instances to carry all the traffic alone. ' +
-        'Then the data: connect a Read Replica from db and drag it into us-east-1b — when the primary dies, the replica is promoted after a few seconds.',
+        'Then the data: connect a Read Replica from db and drag it into us-east-1b — when the primary dies, the replica is promoted (after 3 s here, to keep the lesson short; managed databases take 30–120 s).',
       solution: {
         note: 'An API pool and a database replica in us-east-1b',
         changes: [
@@ -61,7 +61,7 @@ export const zones: Lesson = {
           { op: 'connect', from: 'db', to: 'replica-b' },
         ],
       },
-      takeaway: 'Redundancy counts in failure domains, not instances: a second zone with enough capacity to carry everything alone, and data that can take over (a replica promoted in seconds). The seconds of failover are the outage you design for.',
+      takeaway: 'Redundancy counts in failure domains, not instances: a second zone with enough capacity to carry everything alone, and data that can take over (a promoted replica). The failover is the outage you design for: 3 s in this lesson, 30–120 s on a managed database, writes failing all the while.',
     },
     {
       id: 'half',

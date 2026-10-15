@@ -35,7 +35,7 @@ pub struct DesConfig {
 
 impl Default for DesConfig {
     fn default() -> Self {
-        DesConfig { seed: 1.0, service_cv: 0.6, queue_s: 1.0, failover_s: Some(3.0), cold_start_ms: 400.0, hop_ms: 0.3, max_events: 60_000_000.0 }
+        DesConfig { seed: 1.0, service_cv: 0.6, queue_s: 1.0, failover_s: Some(60.0), cold_start_ms: 400.0, hop_ms: 0.3, max_events: 60_000_000.0 }
     }
 }
 
@@ -1008,7 +1008,7 @@ impl<'a> Des<'a> {
         if replicas.is_empty() {
             return self.fail(Some(i), why(i, R_DOWN), done, 0.5);
         }
-        let promoted = match self.cfg.failover_s {
+        let promoted = match failover_after(&self.nodes[i].data, self.cfg.failover_s) {
             Some(f) => self.now - self.nodes[i].down_since.unwrap() >= f,
             None => false,
         };
@@ -1510,9 +1510,9 @@ impl<'a> Des<'a> {
         let win_s = 1.0;
         let now = self.now;
         // replication: lag per replica, and the writes a promotion loses
-        let fo = self.cfg.failover_s;
         for i in 0..self.nodes.len() {
             if self.nodes[i].data.kind == "db" {
+                let fo = failover_after(&self.nodes[i].data, self.cfg.failover_s);
                 let promoted = matches!((fo, self.nodes[i].down_since), (Some(f), Some(t)) if now - t >= f);
                 if promoted && !self.nodes[i].promoted_counted {
                     self.nodes[i].promoted_counted = true;
@@ -1536,7 +1536,7 @@ impl<'a> Des<'a> {
                 let primary_up = up(&self.nodes[p]);
                 let reachable = primary_up && !self.link_cut(p, i);
                 let base = self.link_ms.get(&(p, i)).copied().unwrap_or(0.0) / 1000.0;
-                let primary_promoted = !primary_up && matches!((fo, self.nodes[p].down_since), (Some(f), Some(t)) if now - t >= f);
+                let primary_promoted = !primary_up && matches!((failover_after(&self.nodes[p].data, self.cfg.failover_s), self.nodes[p].down_since), (Some(f), Some(t)) if now - t >= f);
                 let sync = self.link_sync.contains(&(p, i));
                 let x = &mut self.nodes[i];
                 if primary_promoted {
@@ -1557,8 +1557,8 @@ impl<'a> Des<'a> {
         for i in 0..self.nodes.len() {
             self.set_busy(i, 0.0);
             self.shard_busy(i, 0, 0.0);
-            let fo = self.cfg.failover_s;
             let n = &self.nodes[i];
+            let fo = failover_after(&n.data, self.cfg.failover_s);
             let w = &n.win;
             let workers = if n.workers.is_finite() { n.workers } else { 1.0 };
             let util = if n.sh_workers > 0.0 { w.hot_area / (n.sh_workers * win_s) } else if n.data.kind == "queue" { n.backlog.len() as f64 / QUEUE_BACKLOG_MAX as f64 } else if n.data.kind == "stream" { n.sub_backlog.iter().map(|q| q.len()).max().unwrap_or(0) as f64 / QUEUE_BACKLOG_MAX as f64 } else if n.rate.is_finite() { w.arrivals / (n.rate * win_s).max(1e-9) } else { w.busy_area / (workers * win_s) };

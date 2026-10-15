@@ -24,7 +24,7 @@ pub struct EngineConfig {
 
 impl Default for EngineConfig {
     fn default() -> Self {
-        EngineConfig { timeout_s: 1.0, failover_s: Some(3.0), cold_start_ms: 400.0 }
+        EngineConfig { timeout_s: 1.0, failover_s: Some(60.0), cold_start_ms: 400.0 }
     }
 }
 
@@ -695,7 +695,7 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
             let mut shares = None;
             if !d.alive {
                 st.down_for += c.dt;
-                if let (false, Some(fs)) = (replicas.is_empty(), c.cfg.failover_s) {
+                if let (false, Some(fs)) = (replicas.is_empty(), failover_after(d, c.cfg.failover_s)) {
                     if st.down_for >= fs {
                         // first replica is the new primary: all writes plus its share of reads
                         st.failover = Failover::Promoted;
@@ -1858,7 +1858,7 @@ impl Engine {
             }
             st.overloaded = over;
             if d.kind == "db" && st.failover == Failover::Promoted {
-                if let Some(fs) = cfg.failover_s {
+                if let Some(fs) = failover_after(d, cfg.failover_s) {
                     if st.down_for - dt < fs {
                         events.push(SimEvent { kind: "failover".into(), node_id: id.into(), name: d.name.clone(), detail: None });
                     }

@@ -66,6 +66,15 @@ describe('kubernetes import', () => {
   it('produces a valid spec', () => {
     expect(validateSpec(r.spec).ok).toBe(true);
   });
+
+  it('gives a plain Postgres StatefulSet no automatic failover, and an operator one the default', () => {
+    expect(byId.get('postgres')?.failoverS).toBe(1800);
+    expect(r.assumptions.some((a) => a.includes('no automatic failover'))).toBe(true);
+    const patroni = docs.map((d) => (d.kind === 'StatefulSet' && d.metadata.name === 'postgres' ? { ...d, spec: { ...d.spec, template: { ...d.spec.template, spec: { containers: [{ name: 'postgres', image: 'ghcr.io/zalando/spilo-16:3.2-p2' }] } } } } : d));
+    const p = importKubernetes(patroni, 'shop');
+    expect(p.spec.components.find((c) => c.id === 'postgres')?.failoverS).toBeUndefined();
+    expect(p.assumptions.some((a) => a.includes('automatic failover assumed'))).toBe(true);
+  });
 });
 
 import { parseTrafficCsv } from '../src/spec/trafficCsv';

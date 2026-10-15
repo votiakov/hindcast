@@ -10,7 +10,7 @@ const SECTIONS: { title: string; items: { key: BoolKey; label: string; hint: str
     title: 'Simulation',
     items: [
       { key: 'cost', label: 'Cost model', hint: 'Show $/h everywhere and enforce budget goals' },
-      { key: 'autoFailover', label: 'Automatic DB failover', hint: 'Replicas get promoted when a primary dies' },
+      { key: 'autoFailover', label: 'Automatic DB failover', hint: 'A replica is promoted when its primary dies, after the database\'s failover time (60 s unless set on it)' },
       { key: 'coldStarts', label: 'Serverless cold starts', hint: 'Extra latency while functions scale up' },
       { key: 'jitter', label: 'Traffic jitter', hint: 'Small random noise on top of the traffic curve' },
     ],
@@ -113,11 +113,6 @@ export function SettingsButton() {
               <span>Request timeout</span>
               <input type="range" min={0.2} max={5} step={0.1} value={settings.timeoutS} onChange={(e) => setSetting('timeoutS', +e.target.value)} />
               <span className="mono">{settings.timeoutS.toFixed(1)}s</span>
-            </label>
-            <label className={`slider-row ${settings.autoFailover ? '' : 'disabled'}`}>
-              <span>Failover time</span>
-              <input type="range" min={1} max={30} step={1} disabled={!settings.autoFailover} value={settings.failoverS} onChange={(e) => setSetting('failoverS', +e.target.value)} />
-              <span className="mono">{settings.failoverS}s</span>
             </label>
           </div>
         </div>

@@ -34,12 +34,18 @@ describe('fluid engine', () => {
     expect(bp.maxRps).toBeLessThanOrEqual(1000);
   });
 
-  it('fails over to a replica when the primary dies', () => {
-    const sc = { ...steady(400, 40), events: [{ at: 10, action: { type: 'kill-id', id: 'db' } }] };
+  it('fails over to a replica when the primary dies, a minute later by default', () => {
+    const sc = { ...steady(400, 80), events: [{ at: 10, action: { type: 'kill-id', id: 'db' } }] };
     const noReplica = simulate(shop, sc);
     const withReplica = simulate(shopWithReplica, sc);
     expect(noReplica.timeline.at(-1)!.errorRate).toBeGreaterThan(0.9);
+    // electing: reads go on to the replica, writes fail
+    const electing = withReplica.timeline.find((p) => p.t > 40)!.errorRate;
+    expect(electing).toBeGreaterThan(0.05);
+    expect(electing).toBeLessThan(0.9);
     expect(withReplica.timeline.at(-1)!.errorRate).toBeLessThan(0.01);
+    const fast = { ...shopWithReplica, components: shopWithReplica.components.map((c) => (c.kind === 'db' ? { ...c, failoverS: 5 } : c)) };
+    expect(simulate(fast, sc).timeline.find((p) => p.t > 40)!.errorRate).toBeLessThan(0.01);
   });
 
   it('cost grows with instances', () => {

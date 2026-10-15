@@ -224,7 +224,7 @@ fn print_audit(r: &Value, out: &mut Out) {
     out.log(&format!("\n{} {} failure audit at {} req/s {}", bold(&s(r, &["architecture"])), dim("·"), js_num(n(r, &["load", "rps"])), dim(&format!("· {} scenarios · {} ms", findings.len(), js_num(n(r, &["wallMs"]))))));
     out.log(&format!("  resilience {}/100 {}", sc, dim(&format!("— survives {} of {} incidents within SLO", js_num(n(r, &["survived"])), js_num(n(r, &["total"]))))));
     let weakest = arr(r, &["availability", "weakest"]).first().map(|w| format!(", {} the weakest link", s(w, &["name"]))).unwrap_or_default();
-    out.log(&format!("  available  {} {}", avail_pct(n(r, &["availability", "estimate"])), dim(&format!("— by design, about {} of downtime a year{}", downtime(n(r, &["availability", "downtimeHoursPerYear"])), weakest))));
+    out.log(&format!("  available  {} {}", avail_pct(n(r, &["availability", "estimate"])), dim(&format!("— SLA (published), not measured: about {} of downtime a year{}", downtime(n(r, &["availability", "downtimeHoursPerYear"])), weakest))));
     out.log(&format!("  headroom   {}× {}   cost ${}/month\n", js_to_fixed(n(r, &["headroom", "ratio"]), 1), dim(&format!("({} req/s, then {})", js_num(js_round(n(r, &["headroom", "maxRps"]))), or_dash(r, &["headroom", "limitedBy"]))), loc(n(r, &["baseline", "monthly"]))));
     for f in &findings {
         out.log(&format!("  {} {} {}", sev(&s(f, &["severity"])), bold(&pad(&s(f, &["title"]), 36)), dim(&s(f, &["explanation"]))));
@@ -303,7 +303,7 @@ pub fn audit_markdown(r: &Value) -> String {
     l.push(format!("| Resilience score | **{}/100** — survives {} of {} incidents within SLO |", js_num(n(r, &["score"])), js_num(n(r, &["survived"])), js_num(n(r, &["total"]))));
     let weak: Vec<String> = arr(r, &["availability", "weakest"]).iter().map(|w| format!("{} ({})", s(w, &["name"]), downtime(n(w, &["downtimeHoursPerYear"])))).collect();
     l.push(format!(
-        "| Availability by design | {} — about {} of downtime a year{} |",
+        "| Availability, SLA (published), not measured | {} — about {} of downtime a year{} |",
         avail_pct(n(r, &["availability", "estimate"])),
         downtime(n(r, &["availability", "downtimeHoursPerYear"])),
         if weak.is_empty() { String::new() } else { format!("; costs the most: {}", weak.join(", ")) }
@@ -322,6 +322,7 @@ pub fn audit_markdown(r: &Value) -> String {
             let rec = match (g(f, &["impact", "recoveryS"]), g(f, &["impact", "selfHealS"])) {
                 (Value::Null, _) => "**never** (metastable)".to_string(),
                 (_, Value::Number(h)) if h.as_f64().unwrap_or(0.0) > 0.0 => format!("by itself in {} s", js_num(h.as_f64().unwrap())),
+                (rv, _) if rv.as_f64() == Some(0.0) => "when the fault clears".to_string(),
                 (rv, _) => format!("{} s after fix", template(rv)),
             };
             let blast: Vec<String> = arr(f, &["blastRadius"]).iter().map(|b| template(b)).collect();
@@ -449,6 +450,8 @@ fn html_finding(f: &Value) -> String {
         format!("heals by itself in {} s", js_num(heal.unwrap()))
     } else if sev == "ok" {
         "absorbed".into()
+    } else if n(f, &["impact", "recoveryS"]) == 0.0 {
+        "recovers when the fault clears".into()
     } else {
         format!("recovers {} s after the fault clears", template(g(f, &["impact", "recoveryS"])))
     };
@@ -521,7 +524,7 @@ pub fn audit_html(r: &Value, date: &str) -> String {
 <p class=\"sub\">At {rps} req/s ({reads}% reads). SLO: errors ≤ {err}, p99 ≤ {p99}.</p>
 <div class=\"kpis\">
   <div class=\"kpi\"><b class=\"{cls}\">{score}<small style=\"font-size:14px;letter-spacing:0\">/100</small></b><span>resilience — survives {surv} of {total} incidents</span></div>
-  <div class=\"kpi\"><b>{avail}</b><span>availability by design — {downh} of downtime a year</span></div>
+  <div class=\"kpi\"><b>{avail}</b><span>availability from SLAs (published), not measured — {downh} of downtime a year</span></div>
   <div class=\"kpi\"><b>{ratio}×</b><span>headroom — {maxrps} req/s, then {lim}</span></div>
   <div class=\"kpi\"><b>${monthly}</b><span>per month at this load{outside}</span></div>
 </div>
