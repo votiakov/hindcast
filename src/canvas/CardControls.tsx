@@ -178,6 +178,31 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
           )}
         </div>
       )}
+      {data.kind === 'queue' && (
+        <div className="nc-row" title="Redrive (SQS maxReceiveCount): a message a consumer fails comes back after the visibility timeout, until it has been received this many times — then it goes to the dead-letter queue. Off: a failed message is gone">
+          <span className="nc-l">redrive</span>
+          <select value={data.maxReceives ?? 0} onChange={(e) => set({ maxReceives: +e.target.value || undefined })}>
+            <option value={0}>off</option>
+            {[2, 3, 5, 10].map((n) => (
+              <option key={n} value={n}>
+                {n} receives
+              </option>
+            ))}
+          </select>
+          {data.maxReceives ? (
+            <>
+              <span className="nc-l">visible after</span>
+              <select value={data.visibilityS ?? 30} onChange={(e) => set({ visibilityS: +e.target.value })}>
+                {[5, 30, 120, 900].map((n) => (
+                  <option key={n} value={n}>
+                    {n >= 60 ? `${n / 60} min` : `${n}s`}
+                  </option>
+                ))}
+              </select>
+            </>
+          ) : null}
+        </div>
+      )}
       {data.kind === 'storage' && (
         <div className="nc-row" title="Key prefixes: S3 takes 5,500 reads or 3,500 writes a second per prefix, however big the bucket — spread hot keys over more prefixes">
           <span className="nc-l">prefixes</span>

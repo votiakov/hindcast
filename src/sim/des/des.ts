@@ -58,6 +58,7 @@ export interface DesResult {
     requests: number;
     failedRequests: number;
     lostWrites?: number;
+    deadLetters?: number;
     staleReads?: number;
     maxReplicaLagS?: number;
     worstMomentS: number;

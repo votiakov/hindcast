@@ -143,6 +143,8 @@ pub fn explain(d: &NodeData, st: Option<&NodeStats>, v: &View) -> Option<String>
         format!("{}% of responses arrive after the {} timeout — the work was done, but the caller had already given up.", pct(st.late_frac), fmt_ms(d.timeout_ms.unwrap_or(0.0)))
     } else if d.kind == "stream" && st.lag_s > 5.0 {
         format!("The slowest subscriber is {} behind: every subscriber reads every message, each at its own pace, and no subscriber can use more consumers than the stream has partitions. Past retention, the oldest expire unread.", if st.lag_s.is_finite() { format!("{}s", js_to_fixed(st.lag_s, 0)) } else { "indefinitely".into() })
+    } else if d.kind == "queue" && st.dead_letter_rps > 0.05 {
+        format!("{}/s go to the dead-letter queue: messages its consumers failed {} times. The rest of the failures came back and were retried — which is extra load on the consumers.", fmt(st.dead_letter_rps), js_num(d.max_receives.unwrap_or(0.0)))
     } else if d.kind == "queue" && st.lag_s > 5.0 {
         format!("Backlog of {} messages: consumers are {} behind. Producers are unaffected — work completes later.", fmt(st.queue), if st.lag_s.is_finite() { format!("{}s", js_to_fixed(st.lag_s, 0)) } else { "indefinitely".into() })
     } else if d.kind == "dns" && st.drop_rps > 0.5 {

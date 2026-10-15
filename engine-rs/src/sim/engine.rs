@@ -233,6 +233,11 @@ pub struct NodeState {
     pub lock_queue: f64,
     /// a gateway's token bucket (NaN: not started — full)
     pub tokens: f64,
+    /// a queue: what it handed its consumers this tick, the failed messages due back (when, how
+    /// many), and the dead letters a second
+    pub forwarded: f64,
+    pub redrive: Vec<(f64, f64)>,
+    pub dead_letter_rps: f64,
     pub cold_util: f64,
     /// how long this component has been down, s (DNS answers lag it)
     pub dead_for: f64,
@@ -288,6 +293,9 @@ fn fresh() -> NodeState {
         hot_queue: 0.0,
         lock_queue: 0.0,
         tokens: f64::NAN,
+        forwarded: 0.0,
+        redrive: vec![],
+        dead_letter_rps: 0.0,
         cold_util: 0.0,
         dead_for: 0.0,
         sub_backlog: vec![],
@@ -545,6 +553,8 @@ struct Ctx<'a> {
     lags: &'a [f64],
     /// how long each node has been down, s
     dead: &'a [f64],
+    /// the simulation clock, s
+    now: f64,
 }
 
 fn reachable(c: &Ctx) -> f64 {
@@ -749,6 +759,10 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
         }
         "queue" => {
             st.queue += c.arrivals;
+            // failed messages visible again (a redrive policy)
+            let due: f64 = st.redrive.iter().filter(|x| x.0 <= c.now).map(|x| x.1).sum();
+            st.redrive.retain(|x| x.0 > c.now);
+            st.queue += due;
             let mut failed = 0.0;
             if st.queue > QUEUE_MAX_BACKLOG {
                 failed = st.queue - QUEUE_MAX_BACKLOG;
@@ -759,6 +773,7 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
             st.drain_rps = drain;
             let processed = st.queue.min(drain * c.dt);
             st.queue -= processed;
+            st.forwarded = processed;
             let mut r = res(processed, failed, processed, st.queue / QUEUE_MAX_BACKLOG, true);
             r.routes = Some(routes);
             r
@@ -961,6 +976,9 @@ pub struct NodeStats {
     pub hold_ms: f64,
     /// its own time per request, ms (work and queue, not what it waits on)
     pub own_ms: f64,
+    /// a queue with a redrive policy: messages a second sent to the dead-letter queue
+    #[serde(skip_serializing_if = "is_zero_f")]
+    pub dead_letter_rps: f64,
 }
 
 fn is_zero_f(x: &f64) -> bool {
@@ -1253,7 +1271,7 @@ impl Engine {
                 st.queue = 0.0;
                 res(0.0, arrivals, 0.0, 0.0, false)
             } else {
-                let ctx = Ctx { d, data: &data, arrivals, dt, cfg, read_ratio, routes, pooled: pooled[i], edge_sync: &edge_sync, edge_lat: &edge_lat, lags: &lags, dead: &dead };
+                let ctx = Ctx { d, data: &data, arrivals, dt, cfg, read_ratio, routes, pooled: pooled[i], edge_sync: &edge_sync, edge_lat: &edge_lat, lags: &lags, dead: &dead, now };
                 process(&ctx, &mut st)
             };
             // gray failure: the node answers a share of what it handles with errors
@@ -1618,6 +1636,25 @@ impl Engine {
                 child_lat = p * child_lat + (1.0 - p) * 2.0;
             }
             st.hold_ms = ema(st.hold_ms, if has_kids { child_lat } else { 0.0 }, dt, 0.3);
+            // a queue with a redrive policy: of what its consumers failed, the messages with receives
+            // left come back after the visibility timeout; the rest go to the dead-letter queue
+            // (with a failure share f and N receives, f^(N−1)(1−f)/(1−f^N) of the failures are last tries)
+            if d.kind == "queue" {
+                let mut dl = 0.0;
+                if let Some(max) = d.max_receives.filter(|m| *m >= 1.0 && has_kids) {
+                    let f = (1.0 - child_succ).clamp(0.0, 1.0);
+                    let fails = st.forwarded * f;
+                    if fails > 0.0 {
+                        let last = if f > 0.9999 { 1.0 / max } else { f.js_pow(max - 1.0) * (1.0 - f) / (1.0 - f.js_pow(max)) };
+                        dl = fails * last;
+                        let back = fails - dl;
+                        if back > 0.0 {
+                            st.redrive.push((now + d.visibility_s.unwrap_or(30.0).max(0.0), back));
+                        }
+                    }
+                }
+                st.dead_letter_rps = ema(st.dead_letter_rps, dl / dt, dt, 0.6);
+            }
             let keep = 1.0 - st.drop_ratio;
             let (_, mut latency) = if l.up { fold(&FoldCtx { d, keep, local_share: l.local_share, child_succ, child_lat, has_kids, cfg }, st) } else { (0.0, 0.0) };
             // success per class: a cache answers its read hits, a database its writes; the rest waits on what is behind
@@ -1891,6 +1928,7 @@ impl Engine {
                     warmth: st.warmth,
                     hold_ms: if n.data.threads.is_some() { st.hold_ms } else { 0.0 },
                     own_ms: st.own_ms,
+                    dead_letter_rps: st.dead_letter_rps,
                 },
             );
         }

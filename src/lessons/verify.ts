@@ -22,10 +22,18 @@ export interface LevelResult {
 /** the longest backlog any queue holds, in seconds of draining */
 /** the share of the jobs queue consumers take that fail, downstream included */
 export function jobErrorRate(sys: SystemNode[], edges: { source: string; target: string }[], stats: Record<string, NodeStats>): number {
-  const queues = new Set(sys.filter((n) => n.data.kind === 'queue' || n.data.kind === 'stream').map((n) => n.id));
+  // a queue with a redrive policy retries what its consumers fail: only its dead letters are lost
+  const redriven = new Set(sys.filter((n) => n.data.kind === 'queue' && (n.data.maxReceives ?? 0) >= 1).map((n) => n.id));
+  const queues = new Set(sys.filter((n) => (n.data.kind === 'queue' || n.data.kind === 'stream') && !redriven.has(n.id)).map((n) => n.id));
   const consumers = new Set(edges.filter((e) => queues.has(e.source)).map((e) => e.target));
   let jobs = 0;
   let failed = 0;
+  for (const id of redriven) {
+    const st = stats[id];
+    if (!st) continue;
+    jobs += st.inRps;
+    failed += st.deadLetterRps ?? 0;
+  }
   for (const id of consumers) {
     const st = stats[id];
     if (!st) continue;

@@ -117,6 +117,10 @@ export interface SystemNodeData extends Record<string, unknown> {
   hotRowShare?: number;
   /** gateway: token bucket size, requests (default one second of the limit) */
   burst?: number;
+  /** queue: redrive — a failed message comes back after visibilityS until received this many times, then dead-letters */
+  maxReceives?: number;
+  /** queue: seconds a received message stays hidden (default 30) */
+  visibilityS?: number;
   /** db: horizontal partitions (capacity and cost × shards) */
   shards?: number;
   /** db: share of its traffic on one key — all of it on one shard */

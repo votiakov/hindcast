@@ -69,6 +69,8 @@ export interface NodeStats {
   holdMs?: number;
   /** its own time per request, ms: work and queue, not what it waits on */
   ownMs?: number;
+  /** a queue with a redrive policy: messages a second sent to the dead-letter queue */
+  deadLetterRps?: number;
 }
 
 export interface EdgeStats {

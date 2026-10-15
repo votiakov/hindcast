@@ -248,3 +248,39 @@ describe('a gateway’s burst', () => {
     for (const r of [small.fluid, small.des]) expect(r.meanErrorRate).toBeGreaterThan(0.12);
   });
 });
+
+describe('a queue’s redrive policy', () => {
+  // a consumer that fails 30% of the messages it takes (a flaky downstream)
+  const spec = (q: Record<string, unknown>) => ({
+    components: [
+      { id: 'u', kind: 'client' },
+      { id: 'q', kind: 'queue', ...q },
+      { id: 'w', kind: 'worker', instances: 6 },
+    ],
+    connections: [['u', 'q'], ['q', 'w']],
+  });
+  const sc = { duration: 120, rps: 200, events: [{ at: 0, action: { type: 'inject-errors', id: 'w', rate: 0.3 } }] };
+
+  it('retries what the consumer fails, and dead-letters only what fails every time', async () => {
+    const { jobErrorRate } = await import('../src/lessons/verify');
+    const { Engine, DEFAULT_ENGINE_CONFIG } = await import('../src/sim/engine');
+    const { specToGraph } = await import('../src/spec/convert');
+    // fluid: step the board, then read the job loss the lessons use
+    const loss = (q: Record<string, unknown>) => {
+      const g = specToGraph(spec(q));
+      const sys = g.nodes.filter((n) => n.type === 'system').map((n) => (n.id === 'w' ? { ...n, data: { ...n.data, faultRate: 0.3 } } : n)) as never[];
+      const e = new Engine();
+      for (let t = 0; t < 120; t += 0.05) e.step(sys, g.edges, 200, 0.8, 0.05, DEFAULT_ENGINE_CONFIG);
+      return jobErrorRate(sys, g.edges, e.snapshot(sys, g.edges).nodeStats);
+    };
+    expect(loss({})).toBeCloseTo(0.3, 1);
+    expect(loss({ maxReceives: 3, visibilityS: 5 })).toBeCloseTo(0.027, 2);
+    // the DES counts each dead letter
+    const des = simulateDes(spec({ maxReceives: 3, visibilityS: 5 }), sc, { seed: 11 });
+    expect(des.summary.deadLetters! / des.summary.requests).toBeCloseTo(0.027, 2);
+    // the retries are load: ~1.39 receives per message
+    const w = des.components.w;
+    expect(w.meanUtil).toBeGreaterThan(simulateDes(spec({}), sc, { seed: 11 }).components.w.meanUtil * 1.25);
+    expect(simulateDes(spec({}), sc, { seed: 11 }).summary.deadLetters ?? 0).toBe(0);
+  });
+});

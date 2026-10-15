@@ -126,6 +126,14 @@ pub struct NodeData {
     /// above the rate passes until the bucket is empty (API Gateway: rate 10,000, burst 5,000)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub burst: Option<f64>,
+    /// queue: a redrive policy — a message a consumer fails comes back after the visibility timeout,
+    /// until it has been received this many times; then it goes to the dead-letter queue (unset: a
+    /// failed message is gone)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_receives: Option<f64>,
+    /// queue: how long a received message stays hidden before it can be received again, s (default 30)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub visibility_s: Option<f64>,
     /// a network partition's side this component is on (set by the partition action): links between
     /// components on different sides are cut
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -281,8 +281,8 @@ enum Cont {
     Part { group: usize },
     /// the failover target at position i answered
     Failover { n: usize, read: bool, order: usize, i: usize, done: ContId },
-    /// a queue's consumer finished one message
-    Consumer { queue: usize },
+    /// a queue's consumer finished one message (received `tries` times before)
+    Consumer { queue: usize, read: bool, tries: u8 },
     /// a stream's subscriber (its k-th child) finished one message
     SubConsumer { stream: usize, k: usize },
     /// a write-behind cache's flush to the origin settled
@@ -302,6 +302,8 @@ enum Ev {
     Finish { n: usize, job: Job },
     /// a write to the hot row has held its lock for a write's time
     LockDone { n: usize, job: Job },
+    /// a failed message is visible in its queue again
+    Redrive { n: usize, read: bool, tries: u8 },
     /// fault: the node's fault rate when the request arrived
     LlmDone { n: usize, done: ContId, fault: f64 },
     Attempt { call: usize, k: f64 },
@@ -320,6 +322,8 @@ struct Job {
     done: Option<ContId>,
     /// a sharded database: the shard that holds the key (0 is the hot key's)
     shard: u16,
+    /// a queue's message: how many times a consumer has received it (and failed)
+    tries: u8,
 }
 
 const NO_SHARD: u16 = u16::MAX;
@@ -459,6 +463,9 @@ pub struct DesSummary {
     /// writes a write-behind cache acknowledged and then lost
     #[serde(skip_serializing_if = "is_zero")]
     pub lost_writes: f64,
+    /// queue messages that failed maxReceives times and went to the dead-letter queue
+    #[serde(skip_serializing_if = "is_zero")]
+    pub dead_letters: f64,
     /// reads answered by a replica more than a second behind its primary
     #[serde(skip_serializing_if = "is_zero")]
     pub stale_reads: f64,
@@ -562,6 +569,7 @@ struct Des<'a> {
     total_reqs: f64,
     total_fail: f64,
     lost_writes: f64,
+    dead_letters: f64,
     traffic: Vec<(f64, f64)>,
     ev_log: Vec<super::headless::Event>,
     timeline: Vec<DesPoint>,
@@ -739,9 +747,21 @@ impl<'a> Des<'a> {
                     self.try_failover(n, read, order, i + 1, done);
                 }
             }
-            Cont::Consumer { queue } => {
+            Cont::Consumer { queue, read, tries } => {
                 self.release(id);
                 self.nodes[queue].inflight -= 1.0;
+                // a redrive policy: a failed message comes back after the visibility timeout, until
+                // it has been received maxReceives times; then it goes to the dead-letter queue
+                if !ok {
+                    if let Some(max) = self.nodes[queue].data.max_receives.filter(|m| *m >= 1.0) {
+                        if (tries as f64 + 1.0) < max {
+                            let vis = self.nodes[queue].data.visibility_s.unwrap_or(30.0).max(0.0) * 1000.0;
+                            self.at(vis, Ev::Redrive { n: queue, read, tries: tries + 1 });
+                        } else {
+                            self.dead_letters += 1.0;
+                        }
+                    }
+                }
                 self.pump(queue);
             }
             Cont::SubConsumer { stream, k } => {
@@ -817,7 +837,7 @@ impl<'a> Des<'a> {
                 if q.len() >= QUEUE_BACKLOG_MAX {
                     q.pop_front();
                 }
-                q.push_back(Job { read, t_in: now, done: None, shard: NO_SHARD });
+                q.push_back(Job { read, t_in: now, done: None, shard: NO_SHARD, tries: 0 });
             }
             let ack = base_latency_of(&self.nodes[i].data);
             self.at(ack, Ev::Deliver { done, why: OK }); // the producer gets the ack
@@ -828,7 +848,7 @@ impl<'a> Des<'a> {
             if self.nodes[i].backlog.len() >= QUEUE_BACKLOG_MAX {
                 return self.fail(Some(i), why(i, R_SHED), done, 0.5);
             }
-            self.nodes[i].backlog.push_back(Job { read, t_in: now, done: None, shard: NO_SHARD });
+            self.nodes[i].backlog.push_back(Job { read, t_in: now, done: None, shard: NO_SHARD, tries: 0 });
             let ack = base_latency_of(&self.nodes[i].data);
             self.at(ack, Ev::Deliver { done, why: OK }); // the producer gets the ack
             self.pump(i);
@@ -887,7 +907,7 @@ impl<'a> Des<'a> {
             self.at(svc, Ev::LlmDone { n: i, done, fault });
             return;
         }
-        self.enqueue(i, Job { read, t_in: now, done: Some(done), shard: NO_SHARD });
+        self.enqueue(i, Job { read, t_in: now, done: Some(done), shard: NO_SHARD, tries: 0 });
     }
 
     fn arrive_db(&mut self, i: usize, read: bool, done: ContId) {
@@ -917,7 +937,7 @@ impl<'a> Des<'a> {
                 if self.nodes[i].lock_q.len() as f64 >= qmax {
                     return self.fail(Some(i), why(i, R_LOCK), done, 0.5);
                 }
-                self.nodes[i].lock_q.push_back(Job { read, t_in: now, done: Some(done), shard: NO_SHARD });
+                self.nodes[i].lock_q.push_back(Job { read, t_in: now, done: Some(done), shard: NO_SHARD, tries: 0 });
                 return self.next_lock(i);
             }
             // a sharded database: the hot key's shard, or one picked by the key's hash
@@ -930,7 +950,7 @@ impl<'a> Des<'a> {
                     NO_SHARD
                 }
             };
-            return self.enqueue(i, Job { read, t_in: now, done: Some(done), shard });
+            return self.enqueue(i, Job { read, t_in: now, done: Some(done), shard, tries: 0 });
         }
         if self.nodes[i].down_since.is_none() {
             self.nodes[i].down_since = Some(self.now);
@@ -1163,7 +1183,7 @@ impl<'a> Des<'a> {
             };
             let job = self.nodes[n].backlog.pop_front().unwrap();
             self.nodes[n].inflight += 1.0;
-            let c = self.cont(Cont::Consumer { queue: n });
+            let c = self.cont(Cont::Consumer { queue: n, read: job.read, tries: job.tries });
             self.arrive(free, job.read, c);
         }
     }
@@ -1512,6 +1532,7 @@ impl<'a> Des<'a> {
                 // what a thread was held for beyond the work itself
                 hold_ms: if w.held_n > 0.0 { (w.held_s / w.held_n * 1000.0 - n.svc_mean_ms).max(0.0) } else { 0.0 },
                 own_ms: n.svc_mean_ms,
+                dead_letter_rps: 0.0,
             };
             let arrivals = w.arrivals;
             if (n.data.kind == "cache" || n.data.kind == "cdn") && !up(n) {
@@ -1597,6 +1618,13 @@ impl<'a> Des<'a> {
             Ev::Arrive { i, read, done } => self.arrive(i, read, done),
             Ev::Deliver { done, why } => self.deliver(done, why),
             Ev::Finish { n, job } => self.finish(n, job),
+            Ev::Redrive { n, read, tries } => {
+                let now = self.now;
+                if self.nodes[n].backlog.len() < QUEUE_BACKLOG_MAX {
+                    self.nodes[n].backlog.push_back(Job { read, t_in: now, done: None, shard: NO_SHARD, tries });
+                }
+                self.pump(n);
+            }
             Ev::LockDone { n, job } => {
                 self.nodes[n].lock_busy = false;
                 self.next_lock(n);
@@ -1773,6 +1801,7 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
         total_reqs: 0.0,
         total_fail: 0.0,
         lost_writes: 0.0,
+        dead_letters: 0.0,
         traffic: tl,
         ev_log: vec![],
         timeline: vec![],
@@ -1875,6 +1904,7 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
             requests: des.total_reqs,
             failed_requests: des.total_fail,
             lost_writes: js_round(des.lost_writes),
+            dead_letters: des.dead_letters,
             stale_reads: des.stale_reads,
             max_replica_lag_s: r3(des.max_replica_lag),
             worst_moment_s: r3(des.worst_t),

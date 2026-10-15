@@ -330,6 +330,18 @@
            "type": "number",
            "exclusiveMinimum": 0
           },
+          "maxReceives": {
+           "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 1000
+          },
+          "visibilityS": {
+           "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 43200
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -788,6 +800,18 @@
            "description": "gateway: the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000",
            "type": "number",
            "exclusiveMinimum": 0
+          },
+          "maxReceives": {
+           "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 1000
+          },
+          "visibilityS": {
+           "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 43200
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -1666,6 +1690,18 @@
            "type": "number",
            "exclusiveMinimum": 0
           },
+          "maxReceives": {
+           "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 1000
+          },
+          "visibilityS": {
+           "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 43200
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -2114,6 +2150,18 @@
               "type": "number",
               "exclusiveMinimum": 0
              },
+             "maxReceives": {
+              "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+             },
+             "visibilityS": {
+              "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 43200
+             },
              "capacity": {
               "description": "override: req/s per size-S instance",
               "type": "number",
@@ -2511,6 +2559,18 @@
                 "type": "number",
                 "exclusiveMinimum": 0
                },
+               "maxReceives": {
+                "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+               },
+               "visibilityS": {
+                "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 43200
+               },
                "capacity": {
                 "description": "override: req/s per size-S instance",
                 "type": "number",
@@ -2802,6 +2862,18 @@
                 "description": "gateway: the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000",
                 "type": "number",
                 "exclusiveMinimum": 0
+               },
+               "maxReceives": {
+                "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+               },
+               "visibilityS": {
+                "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 43200
                },
                "capacity": {
                 "description": "override: req/s per size-S instance",
@@ -3635,6 +3707,18 @@
            "type": "number",
            "exclusiveMinimum": 0
           },
+          "maxReceives": {
+           "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 1000
+          },
+          "visibilityS": {
+           "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 43200
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -4109,6 +4193,18 @@
            "description": "gateway: the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000",
            "type": "number",
            "exclusiveMinimum": 0
+          },
+          "maxReceives": {
+           "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 1000
+          },
+          "visibilityS": {
+           "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 43200
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -4975,6 +5071,18 @@
            "description": "gateway: the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000",
            "type": "number",
            "exclusiveMinimum": 0
+          },
+          "maxReceives": {
+           "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 1000
+          },
+          "visibilityS": {
+           "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 43200
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -5851,6 +5959,18 @@
            "type": "number",
            "exclusiveMinimum": 0
           },
+          "maxReceives": {
+           "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 1000
+          },
+          "visibilityS": {
+           "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 43200
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -6394,6 +6514,18 @@
            "type": "number",
            "exclusiveMinimum": 0
           },
+          "maxReceives": {
+           "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 1000
+          },
+          "visibilityS": {
+           "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 43200
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -6839,6 +6971,18 @@
              "type": "number",
              "exclusiveMinimum": 0
             },
+            "maxReceives": {
+             "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 1000
+            },
+            "visibilityS": {
+             "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
+             "type": "number",
+             "minimum": 0,
+             "maximum": 43200
+            },
             "capacity": {
              "description": "override: req/s per size-S instance",
              "type": "number",
@@ -7236,6 +7380,18 @@
                "type": "number",
                "exclusiveMinimum": 0
               },
+              "maxReceives": {
+               "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 1000
+              },
+              "visibilityS": {
+               "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
+               "type": "number",
+               "minimum": 0,
+               "maximum": 43200
+              },
               "capacity": {
                "description": "override: req/s per size-S instance",
                "type": "number",
@@ -7527,6 +7683,18 @@
                "description": "gateway: the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000",
                "type": "number",
                "exclusiveMinimum": 0
+              },
+              "maxReceives": {
+               "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 1000
+              },
+              "visibilityS": {
+               "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
+               "type": "number",
+               "minimum": 0,
+               "maximum": 43200
               },
               "capacity": {
                "description": "override: req/s per size-S instance",
@@ -8358,6 +8526,18 @@
            "type": "number",
            "exclusiveMinimum": 0
           },
+          "maxReceives": {
+           "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 1000
+          },
+          "visibilityS": {
+           "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 43200
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -8803,6 +8983,18 @@
              "type": "number",
              "exclusiveMinimum": 0
             },
+            "maxReceives": {
+             "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 1000
+            },
+            "visibilityS": {
+             "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
+             "type": "number",
+             "minimum": 0,
+             "maximum": 43200
+            },
             "capacity": {
              "description": "override: req/s per size-S instance",
              "type": "number",
@@ -9200,6 +9392,18 @@
                "type": "number",
                "exclusiveMinimum": 0
               },
+              "maxReceives": {
+               "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 1000
+              },
+              "visibilityS": {
+               "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
+               "type": "number",
+               "minimum": 0,
+               "maximum": 43200
+              },
               "capacity": {
                "description": "override: req/s per size-S instance",
                "type": "number",
@@ -9491,6 +9695,18 @@
                "description": "gateway: the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000",
                "type": "number",
                "exclusiveMinimum": 0
+              },
+              "maxReceives": {
+               "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 1000
+              },
+              "visibilityS": {
+               "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
+               "type": "number",
+               "minimum": 0,
+               "maximum": 43200
               },
               "capacity": {
                "description": "override: req/s per size-S instance",
