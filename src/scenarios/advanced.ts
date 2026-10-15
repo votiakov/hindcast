@@ -538,4 +538,49 @@ const bulkhead: Scenario = {
   },
 };
 
-export const ADVANCED: Scenario[] = [recovery, retryLayers, cells, shed, tail, llmFailover, elasticity, regions, readScale, warmup, bulkhead];
+// 12 ─ a flash sale on one stock counter: a hot row serialises its writes, however big the database
+const hotRow: Scenario = {
+  id: 'hot-row-counter',
+  title: 'One Stock Counter vs a Split Counter',
+  tagline: 'A flash sale: every order decrements the same row. The database is barely busy.',
+  watch: 'A’s orders all update one row, and its lock takes them one at a time. B spreads the stock over ten rows (sum them to read it): the same writes, ten locks.',
+  readRatio: 0.5,
+  a: {
+    title: 'Every order updates one row',
+    graph: graph(
+      [
+        ['shoppers', 'client', X[0], 200],
+        ['lb', 'lb', X[1], 200],
+        ['orders', 'server', X[2], 200, { instances: 4, name: 'orders api' }],
+        ['db', 'db', X[3], 200, { tier: 'L', name: 'orders db', hotRowShare: 0.9 }],
+      ],
+      [['shoppers', 'lb'], ['lb', 'orders'], ['orders', 'db']],
+    ),
+  },
+  b: {
+    title: 'The counter split over ten rows',
+    graph: graph(
+      [
+        ['shoppers', 'client', X[0], 200],
+        ['lb', 'lb', X[1], 200],
+        ['orders', 'server', X[2], 200, { instances: 4, name: 'orders api' }],
+        ['db', 'db', X[3], 200, { tier: 'L', name: 'orders db', hotRowShare: 0.09 }],
+      ],
+      [['shoppers', 'lb'], ['lb', 'orders'], ['orders', 'db']],
+    ),
+  },
+  timeline: [
+    { at: 0, rps: 100, caption: 'Normal traffic: 100 req/s, half of them orders.' },
+    { at: 8, rps: 100 },
+    { at: 10, rps: 600, caption: '⚡ The flash sale starts: 600 req/s, 300 orders a second.' },
+    { at: 40, rps: 600 },
+  ],
+  events: [],
+  takeaway: {
+    a: 'The database had capacity to spare, but every order waited for the same row lock, one write at a time. Past the lock’s pace the queue grew and orders timed out.',
+    b: 'Ten rows meant ten locks: each took a tenth of the orders, well within its pace. Reading the stock is a sum of ten rows instead of one.',
+    lesson: 'Contention on one row caps writes at one per lock hold, whatever the instance size. Split hot counters (or batch the updates, or keep them in memory) before buying a bigger database.',
+  },
+};
+
+export const ADVANCED: Scenario[] = [recovery, retryLayers, cells, shed, tail, llmFailover, elasticity, regions, readScale, warmup, bulkhead, hotRow];

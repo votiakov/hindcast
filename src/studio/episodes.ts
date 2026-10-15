@@ -145,6 +145,7 @@ const COMPARE_HOOKS: Record<string, { hook: string; series?: string; metrics?: E
   'replicas-vs-bigger-db': { hook: 'Scale up or scale out?\nThen the primary dies.', series: 'Cloud cost, made visible', metrics: ['errors', 'p99', 'cost'] },
   'pod-vs-vm-warmup': { hook: 'Same autoscaler.\nOne boots in 10 seconds, one in 2 minutes.', series: 'Failure modes at scale', metrics: ['errors', 'p99'] },
   'slow-dependency-bulkhead': { hook: 'Payments got slow.\nWhy is browsing down?', series: 'Failure modes at scale', metrics: ['errors', 'p99'] },
+  'hot-row-counter': { hook: 'The database was 20% busy.\nOrders still timed out.', series: 'Failure modes at scale', metrics: ['errors', 'p99'] },
   'node-vs-go': { hook: 'We rewrote it in Go.\nHow much did we save?', series: 'Cloud cost, made visible', metrics: ['errors', 'p99', 'cost'] },
 };
 

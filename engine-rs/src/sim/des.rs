@@ -245,6 +245,7 @@ const R_NO_ROUTE: u8 = 9;
 const R_SYNC: u8 = 10;
 const R_BULKHEAD: u8 = 11;
 const R_THREADS: u8 = 12;
+const R_LOCK: u8 = 13;
 
 fn why(n: usize, r: u8) -> Why {
     ((n as u32 + 1) << 8) | r as u32
@@ -265,6 +266,7 @@ fn reason_text(r: u8) -> &'static str {
         R_SYNC => "synchronous replica unreachable",
         R_BULKHEAD => "bulkhead full (call refused at once)",
         R_THREADS => "out of threads (all waiting on calls)",
+        R_LOCK => "waited too long for a row lock",
         _ => "failed",
     }
 }
@@ -913,7 +915,7 @@ impl<'a> Des<'a> {
             if !read && h > 0.0 && self.rng.next() < h {
                 let qmax = (super::catalog::row_lock_rps(&self.nodes[i].data) * self.nodes[i].data.queue_s.or(spec("db").queue_s).unwrap_or(self.cfg.queue_s)).floor().max(1.0);
                 if self.nodes[i].lock_q.len() as f64 >= qmax {
-                    return self.fail(Some(i), why(i, R_SHED), done, 0.5);
+                    return self.fail(Some(i), why(i, R_LOCK), done, 0.5);
                 }
                 self.nodes[i].lock_q.push_back(Job { read, t_in: now, done: Some(done), shard: NO_SHARD });
                 return self.next_lock(i);
@@ -1023,7 +1025,7 @@ impl<'a> Des<'a> {
         };
         while let Some(job) = self.nodes[n].lock_q.pop_front() {
             if (self.now - job.t_in) * 1000.0 > bound {
-                self.fail(Some(n), why(n, R_SHED), job.done.unwrap(), 0.5);
+                self.fail(Some(n), why(n, R_LOCK), job.done.unwrap(), 0.5);
                 continue;
             }
             self.nodes[n].lock_busy = true;
