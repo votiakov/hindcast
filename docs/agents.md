@@ -327,13 +327,17 @@ history:
 - the headroom over the busiest moment, and what saturates first;
 - whether 1.5× and 2× today's traffic hold;
 - what losing a node at the peak costs, the single points of failure and the backtested fix;
-- the services held back by CPU quota throttling or close to their memory limit;
+- the services held back by CPU quota throttling or close to their memory limit, and any that leak
+  (with the requests until they are OOM-killed);
 - how full the node pool runs;
+- how much to commit to: the floor the history always ran (nodes, or replicas of list-priced
+  services) and what a 1- or 3-year commitment saves on it — skipped when costs come from a bill;
 - the fixes and savings that pass.
 
 It writes `reports/capacity-review-<date>.md` into the workspace. On the Kubernetes reference it
 takes about 6 seconds. It found the `email` service at 95% of its memory limit, which nobody had
-noticed.
+noticed — and, since calibration reads leaks, that it leaks ~10 KB a request and is OOM-killed on
+every launch day.
 
 ### `check_node_loss`
 

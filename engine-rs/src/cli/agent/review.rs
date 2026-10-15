@@ -105,6 +105,7 @@ pub fn review_capacity(ws: &Workspace, o: &Value) -> Result<Value, String> {
     out.insert("fixes".into(), json!(arr(&sug, &["fixes"]).iter().take(5).map(|f| json!({ "name": g(f, &["name"]), "minutesOutOfSloDelta": g(f, &["minutesOutOfSloDelta"]), "monthlyDelta": g(f, &["monthlyDelta"]) })).collect::<Vec<_>>()));
     out.insert("savings".into(), json!(arr(&sug, &["savings"]).iter().take(8).map(|x| json!({ "name": g(x, &["name"]), "monthlyDelta": g(x, &["monthlyDelta"]), "verdict": g(x, &["verdict"]) })).collect::<Vec<_>>()));
     out.insert("nodePool".into(), pool);
+    out.insert("commitment".into(), commitment(&mv, &dv));
     let cs = g(&sug, &["combinedSavings"]);
     out.insert("combinedSavings".into(), if cs.is_null() { Value::Null } else { json!({ "name": g(cs, &["name"]), "monthlyDelta": g(cs, &["monthlyDelta"]), "verdict": g(cs, &["verdict"]) }) });
     super::progress("writing the report", 4.0, 5.0);
@@ -204,6 +205,21 @@ pub fn review_markdown(r: &Value) -> String {
         }
         l.push(String::new());
     }
+    let cm = g(r, &["commitment"]);
+    if !cm.is_null() {
+        l.push("## Commitment".into());
+        l.push(String::new());
+        l.push(format!(
+            "The history never ran fewer than **{} {}** ({}/month on demand): capacity that is always on, which a commitment discounts. {}.",
+            js_num(n(cm, &["floor"])),
+            s(cm, &["unit"]),
+            usd_plain(n(cm, &["onDemandMonthly"])),
+            arr(cm, &["options"]).iter().map(|o| format!("{} saves about **{}/month**", s(o, &["term"]), usd_plain(n(o, &["savesMonthly"])))).collect::<Vec<_>>().join("; ")
+        ));
+        l.push(String::new());
+        l.push(format!("{} Commit to the floor, not the peak: what runs above it stays on demand.", s(cm, &["basis"])));
+        l.push(String::new());
+    }
     let sav = arr(r, &["savings"]);
     if !sav.is_empty() {
         l.push("## Savings that pass".into());
@@ -219,4 +235,48 @@ pub fn review_markdown(r: &Value) -> String {
     }
     l.push("Every number is a replay of the recorded history through the calibrated model; `verify_change` the one you ship for its full evidence.".into());
     l.join("\n") + "\n"
+}
+
+fn usd_plain(x: f64) -> String {
+    format!("${}", js_locale(js_round(x)))
+}
+
+/// how much to commit to: the floor the history always ran (nodes on a cluster, else replicas of
+/// list-priced services), priced at the published 1- and 3-year rates; nothing when costs come from
+/// a bill, which may already carry discounts
+fn commitment(mv: &Value, dv: &Value) -> Value {
+    let floor_of = |series: &Value| arr(series, &[]).iter().filter_map(|x| x.as_f64()).fold(f64::INFINITY, f64::min);
+    let c = g(mv, &["cluster"]);
+    if !c.is_null() && s(c, &["node", "source"]) != "hint" {
+        let floor = floor_of(g(dv, &["cluster", "clusterNodes"]));
+        let ph = n(c, &["node", "perHour"]);
+        if floor.is_finite() && floor >= 1.0 && ph > 0.0 {
+            let od = floor * ph * 730.0;
+            // EC2 m6i reserved, no upfront: $0.064 / $0.044 against $0.096 (instances.vantage.sh)
+            return json!({ "floor": num(floor), "unit": if floor == 1.0 { "node" } else { "nodes" }, "onDemandMonthly": num(js_round(od)), "options": [
+                { "term": "1-year reserved (no upfront)", "savesMonthly": num(js_round(od * (1.0 - 0.064 / 0.096))) },
+                { "term": "3-year reserved (no upfront)", "savesMonthly": num(js_round(od * (1.0 - 0.044 / 0.096))) },
+            ], "basis": "Nodes priced as EC2 m6i on demand; reserved m6i is 33% / 54% off (no upfront)." });
+        }
+        return Value::Null;
+    }
+    // services priced at Fargate list prices: a Compute Savings Plan, 1 year no upfront, is ~20% off
+    let mut od = 0.0;
+    let mut floor = 0.0;
+    for (id, sv) in g(mv, &["services"]).as_object().cloned().unwrap_or_default() {
+        if s(&sv, &["cost", "source"]) != "pricing" {
+            continue;
+        }
+        let f = floor_of(g(dv, &["services", &id, "replicas"]));
+        if f.is_finite() && f > 0.0 {
+            od += f * n(&sv, &["cost", "perReplicaHour"]) * 730.0;
+            floor += f;
+        }
+    }
+    if od < 1.0 {
+        return Value::Null;
+    }
+    json!({ "floor": num(floor), "unit": "replicas", "onDemandMonthly": num(js_round(od)), "options": [
+        { "term": "a 1-year Compute Savings Plan (no upfront)", "savesMonthly": num(js_round(od * 0.2)) },
+    ], "basis": "Services priced at AWS Fargate list prices; a 1-year Compute Savings Plan, no upfront, is about 20% off on Fargate." })
 }
