@@ -218,6 +218,16 @@ The **trust report** sorts every service:
 Per service: `historyPeakUtil` (the highest share of capacity the history ran it at) and
 `basis` (`limit seen in history`, `extrapolated`, `no limit seen`).
 
+**Mixed windows.** A history often holds more than one configuration of a service: a CPU or memory
+limit or request changed, or the replica count (where no autoscaler sets it) moved and held for
+half an hour. A setting has to hold 5 minutes to count; a rollout's blip doesn't. Each service is
+fitted on one configuration only — the latest, when it carries at least 2 hours (and 30 buckets)
+of traffic; otherwise the one that carries the most, since the latest is too short to fit. The
+model records it per service (`fit.regime`: the settings, the hours of traffic, the changes and
+when), and the trust report lists it (`trust.regimes`), saying which configuration and why.
+Fitting across two configurations reads two different services as one: a capacity from a 1-core
+limit applied to the half-core one running now.
+
 ### 4. `verify_change`: the verdict
 
 ```json
@@ -364,8 +374,16 @@ cost, the one change to make, how far to trust it — and then the evidence:
 - how much to commit to: the floor the history always ran (nodes, or replicas of list-priced
   services) and what a 1- or 3-year commitment saves on it — skipped when costs come from a bill;
 - the fixes and savings that pass;
-- `trust`: how many services the model explains, and which it doesn't. A headroom set by a service
-  it doesn't explain is flagged (`headroom.limitTrusted: false`) and read as a guess.
+- `trust`: how many services the model explains, and which it doesn't, and which configuration each
+  is fitted on where the history holds several (`trust.configurations`). A headroom set by a
+  service it doesn't explain is flagged (`headroom.limitTrusted: false`) and read as a guess;
+- `stability`: the headroom recomputed on each third of the history's traffic, calibrated alone.
+  When the lowest and highest (the whole history's included) differ by more than half again, the
+  summary says the headroom is uncertain, with the range and how many configurations the window
+  mixes;
+- a model that misses the SLO already at the bottom of the ramp has no headroom to read:
+  `headroom.atAnyLoad` names the endpoints that miss it with almost no traffic, instead of a number
+  and a service that never saturated.
 
 Losing a node fails when it adds more than half a minute out of SLO **or** fails more requests than
 the error budget allows over the outage. The second matters on a day that was already out of SLO
