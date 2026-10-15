@@ -72,7 +72,7 @@ npm run sim -- agent setup cursor --write  # or claude, vscode, desktop, windsur
 <h2>Tested end to end</h2>
 <p>Live, against the reference HotROD (four Go services and a mutex-guarded simulated MySQL) under a 30-minute "production day". Its telemetry went through an OpenTelemetry Collector into Prometheus and Jaeger. Headless Claude Code got only this, and only the Hindcast tools:</p>
 <p class="verdict">Our Prometheus is at http://localhost:9090 and Jaeger at http://localhost:16686. SLO: p99 under 1 s, under 3% errors; clients time out after 5 s. Use the last hour. Can we move all our services to Graviton without hurting reliability, and would letting clients retry failed requests twice (no retry budget) make things better or worse?</p>
-<p>17 turns, 2.5 minutes:</p>
+<p>One run, 17 turns, 2.5 minutes (the session transcript is not in the repository; <code>scripts/agent-e2e.mjs</code> below repeats the flow and can be rerun):</p>
 <ol>
 <li>It connected and collected. The coverage report flagged services in no trace (a second system sharing the Prometheus) and traced services with no container. The agent checked, then connected again with <code>exclude</code> for the other system and <code>hostedBy</code> for the in-process mysql and redis.</li>
 <li>Calibrated: the mysql lock at 9.1 req/s (band 7.6–10.6). A stress test of the same build measured 9.9.</li>
