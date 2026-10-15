@@ -1,0 +1,9 @@
+**
+!package.json
+!README.md
+!dist/extension.cjs
+!dist/worker.cjs
+!dist/hindcast_engine_bg.wasm
+!dist/webview/index.html
+!schemas/hindcast.schema.json
+!media/icon.svg

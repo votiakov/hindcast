@@ -90,5 +90,6 @@ and where it is documented.
 | AWS Fargate list prices from CPU and memory limits when there is no bill | [agents.md](agents.md#how-confidence-is-decided) |
 | Every agent tool from a shell (`hindcast agent <tool> '<json>'`), MCP prompts, a Claude Code skill, the MCP server in the same binary (`hindcast mcp`) | [agents.md](agents.md#set-up), [examples/agents](../examples/agents/README.md) |
 | Live canvas inline in MCP Apps hosts | [tools.md](tools.md#live-canvas-mcp-apps) |
+| VS Code extension: the live board beside a YAML spec (edits follow as you type, a click on the board jumps to the line), validation as squiggles on the value at fault, p99, errors and $/month in the status bar, the failure audit as a Markdown preview, schema completion; WebAssembly engine bundled, or the CLI | [vscode.md](vscode.md) |
 | GitHub Actions: architecture audit and backtest PR checks | [tools.md](tools.md#in-ci), [examples/backtest-ci](../examples/backtest-ci/README.md) |
 | One native binary for the CLI, agent tools and MCP server (`engine-rs/target/release/hindcast`) | [tools.md](tools.md#backtesting-on-real-data) |

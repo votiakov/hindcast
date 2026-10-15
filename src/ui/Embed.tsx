@@ -10,8 +10,9 @@ const fmtMs = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Ma
 /**
  * Embed mode (`?embed=1#spec=…`, optional `&rps=800`): just the running board, its numbers and a
  * traffic slider — for blog posts, docs and slides. A link opens the full app on the same design.
+ * Hosts with their own way out (the VS Code extension) pass `action` in place of that link.
  */
-export function Embed() {
+export function Embed({ action }: { action?: { label: string; title: string; run: () => void } } = {}) {
   const g = useSim((s) => s.boards.main.global);
   const running = useSim((s) => s.running);
   const traffic = useSim((s) => s.traffic);
@@ -42,9 +43,15 @@ export function Embed() {
         </button>
         <input type="range" min={0} max={5000} step={10} value={traffic} onChange={(e) => setTraffic(+e.target.value)} aria-label="Traffic" />
         <span className="em-rps">{traffic.toLocaleString('en-US')} req/s</span>
-        <button className="em-open" onClick={open} title="Open this design in Hindcast">
-          Hindcast <ExternalLink size={11} />
-        </button>
+        {action ? (
+          <button className="em-open" onClick={action.run} title={action.title}>
+            {action.label}
+          </button>
+        ) : (
+          <button className="em-open" onClick={open} title="Open this design in Hindcast">
+            Hindcast <ExternalLink size={11} />
+          </button>
+        )}
       </div>
     </div>
   );

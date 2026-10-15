@@ -160,6 +160,10 @@ on critical findings.
 | Replay real traffic | drop a CSV (time, req/s — Prometheus / CloudWatch / Datadog exports) on the board; long series are time-compressed to ~5 min (the factor is shown). CLI: `simulate <arch> --traffic metrics.csv` (real time up to an hour) |
 | Timeline export | *copy timeline* on the recorder: the run as a postmortem-style Markdown timeline |
 
+## VS Code
+
+The extension in `vscode/` runs the same engine from the editor: the live board beside a spec, the checks of `validate` as squiggles, a quick `simulate` in the status bar, `audit` as a Markdown preview. See [vscode.md](vscode.md).
+
 ## App links
 
 `?embed=1` (+ `&rps=800`, `&theme=reference`) with `#spec=…` shows only the running board, its numbers
