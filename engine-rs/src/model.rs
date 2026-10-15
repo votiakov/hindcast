@@ -38,6 +38,45 @@ pub struct FitQuality {
     pub samples: f64,
     #[serde(default)]
     pub notes: Vec<String>,
+    /// the configuration it was fitted on, where the history holds more than one
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub regime: Option<FitRegime>,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct FitRegime {
+    /// how many configurations the history holds
+    pub configurations: f64,
+    /// "latest", or "longest" when the latest carried too little traffic to fit on
+    pub basis: String,
+    pub settings: Map<f64>,
+    /// first and last moment it ran (epoch seconds), and the hours of traffic it carried
+    pub from: f64,
+    pub to: f64,
+    pub busy_hours: f64,
+    /// the latest configuration, where it is not the one fitted: what differs, since when, its traffic
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub latest: Option<LatestRegime>,
+    #[serde(default)]
+    pub changes: Vec<RegimeChange>,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct LatestRegime {
+    pub differs: Vec<String>,
+    pub since: f64,
+    pub busy_hours: f64,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RegimeChange {
+    pub at: f64,
+    pub setting: String,
+    pub from: f64,
+    pub to: f64,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]

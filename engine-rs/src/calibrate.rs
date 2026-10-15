@@ -604,14 +604,20 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
         ids.extend(b.components.keys().cloned());
     }
 
-    let replicas_of = |id: &str| -> Vec<Num> {
+    // the history may hold several configurations of a service: each is fitted on one of them
+    let regimes = crate::regimes::detect_all(d, &hosted_by);
+    let fit_series: Map<ServiceSeries> = d.services.iter().map(|(id, s)| (id.clone(), regimes.get(id).map(|r| crate::regimes::masked(s, r)).unwrap_or_else(|| s.clone()))).collect();
+    let replicas_in = |all: &Map<ServiceSeries>, id: &str| -> Vec<Num> {
         if let Some(h) = host_of(id) {
-            if let Some(r) = d.services.get(&h).and_then(|s| s.replicas.clone()) {
+            if let Some(r) = all.get(&h).and_then(|s| s.replicas.clone()) {
                 return r;
             }
         }
-        d.services.get(id).and_then(|s| s.replicas.clone()).unwrap_or_else(|| vec![Some(1.0); n])
+        all.get(id).and_then(|s| s.replicas.clone()).unwrap_or_else(|| vec![Some(1.0); n])
     };
+    let replicas_of = |id: &str| replicas_in(&fit_series, id);
+    // what really ran, for what it cost
+    let replicas_run = |id: &str| replicas_in(&d.services, id);
 
     // buckets where users were timing out
     let mut entry_ids: IndexSet<&String> = IndexSet::new();
@@ -633,14 +639,14 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
     let empty = ServiceSeries::default();
 
     for id in &ids {
-        let s = d.services.get(id).unwrap_or(&empty);
+        let s = fit_series.get(id).unwrap_or(&empty);
         let shape = topo.and_then(|t| t.services.get(id));
         let mut notes: Vec<String> = vec![];
         let reps = replicas_of(id);
         let rep_vals: Vec<f64> = reps.iter().flatten().copied().filter(|x| *x > 0.0).collect();
         let replicas = if rep_vals.is_empty() { 1.0 } else { js_round(median(&rep_vals)) };
         let host_id = host_of(id).unwrap_or_else(|| id.clone());
-        let host = d.services.get(&host_id);
+        let host = fit_series.get(&host_id);
         let limit_vals: Vec<f64> = host.and_then(|h| h.cpu_limit_cores.as_ref()).map(|v| v.iter().flatten().copied().filter(|x| *x > 0.0).collect()).unwrap_or_default();
         let cpu_limit = if limit_vals.is_empty() { None } else { Some(median(&limit_vals)) };
         let mem_limits: Vec<f64> = host.and_then(|h| h.memory_limit_bytes.as_ref()).map(|v| v.iter().flatten().copied().filter(|x| *x > 0.0).collect()).unwrap_or_default();
@@ -1291,6 +1297,10 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
                 Some(m) => fit_notes.push(format!("replaying the history reproduces its self time within {}% (mean abs. error)", js_to_fixed(m * 100.0, 0))),
             }
         }
+        let regime = regimes.get(id).and_then(|r| crate::regimes::fit_regime(r, d.start, d.step_s));
+        if let Some(r) = &regime {
+            fit_notes.push(crate::regimes::note(r));
+        }
         services.insert(
             id.clone(),
             ServiceModel {
@@ -1313,7 +1323,7 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
                 load_exponent: None,
                 cost: CostModel { per_replica_hour: 0.0, per_request: 0.0, cpu_share: 0.8, arch: ov.and_then(|o| o.arch.clone()).unwrap_or_else(|| "x86".into()), source: "none".into() },
                 placement: d.placement.as_ref().and_then(|p| p.get(&host_id).cloned()),
-                fit: FitQuality { status: st, latency_mape, p99_mape, cpu_mape, cpu_r2: cpu.as_ref().map(|c| c.r2), samples: with_data.len() as f64, notes: fit_notes },
+                fit: FitQuality { status: st, latency_mape, p99_mape, cpu_mape, cpu_r2: cpu.as_ref().map(|c| c.r2), samples: with_data.len() as f64, notes: fit_notes, regime },
             },
         );
     }
@@ -1328,7 +1338,7 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
                 Some(s) => s,
                 None => continue,
             };
-            let reps = replicas_of(cid);
+            let reps = replicas_run(cid);
             let mut rep_hours = 0.0;
             for i in 0..n {
                 let t = d.start + i as f64 * d.step_s;
@@ -1348,7 +1358,7 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
     }
 
     // ---- Kubernetes nodes: on a cluster, compute is what the nodes cost ----
-    let cluster = cluster_of(d, &services, &replicas_of);
+    let cluster = cluster_of(d, &services, &replicas_run);
     if let Some(cl) = &cluster {
         for sm in services.values_mut() {
             if sm.cost.source != "none" || sm.hosted_by.is_some() {

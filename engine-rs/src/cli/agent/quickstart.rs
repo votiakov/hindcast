@@ -137,6 +137,10 @@ pub fn quickstart(f: &Flags, out: &mut Out) -> Result<i32, String> {
         strs(&trust["untrusted"]).len(),
         if strs(&trust["costOnly"]).is_empty() { String::new() } else { format!(", {} cost only", strs(&trust["costOnly"]).len()) }
     ));
+    // a history that holds several configurations: which one each service is fitted on
+    for r in strs(&trust["regimes"]) {
+        say(&format!("      {}", r));
+    }
 
     let rev = phase(4, "reviewing capacity", || super::run_tool("review_capacity", &with_ws(JMap::new())))?;
     say(&format!("Done in {:.0} s.", t0.elapsed().as_secs_f64()));
