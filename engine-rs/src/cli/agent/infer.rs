@@ -284,6 +284,9 @@ pub fn read_calls(p: &Prom, presets: &[String], sources: &[String], parts: &[(f6
         let mut clients: IndexSet<String> = c.edges.iter().filter(|e| !servers.contains(&e.from)).map(|e| e.from.clone()).collect();
         clients.sort();
         c.clients = clients.into_iter().collect();
+    } else {
+        // a file without entries: the services nothing in it calls
+        servers.extend(c.edges.iter().flat_map(|e| [e.from.clone(), e.to.clone()]));
     }
     if c.entry.is_empty() {
         let mut entry: IndexSet<String> = c.ingress.iter().cloned().collect();
@@ -812,6 +815,19 @@ mod tests {
         assert_eq!(rpc_key("POST /send_order_confirmation"), None);
         assert_eq!(rpc_key("HTTP POST"), None);
         assert_eq!(rpc_key("HGET"), None);
+    }
+
+    #[test]
+    fn a_file_without_entries_starts_where_nothing_calls() {
+        let f = std::env::temp_dir().join(format!("hindcast-topology-{}.yaml", std::process::id()));
+        std::fs::write(&f, "calls:\n  web: [api]\n  api: { db: 2 }\ngrpc: [api]\n").unwrap();
+        let p = Prom::new(&json!({ "url": "http://127.0.0.1:9" }), &JMap::new()).unwrap();
+        let c = read_calls(&p, &[], &[], &[(0.0, 3600.0)], f.to_str(), &[]).unwrap();
+        let _ = std::fs::remove_file(&f);
+        assert_eq!(c.from, "file");
+        assert_eq!(c.entry, vec!["web".to_string()]);
+        assert_eq!(c.edges.iter().map(|e| (e.from.as_str(), e.to.as_str(), e.per_request)).collect::<Vec<_>>(), vec![("api", "db", Some(2.0)), ("web", "api", None)]);
+        assert!(c.grpc.contains("api"));
     }
 
     #[test]
