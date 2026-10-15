@@ -791,7 +791,8 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
                         let t = Throttle { knee: knee.max(0.3), at_zero: fit.intercept.js_exp(), growth: fit.slope, r2: fit.r2, seen_to: max_u };
                         notes.push(format!(
                             "CPU quota throttling: {}% of periods throttled at {}% of the limit, rising ×{} per 10 points (R² {}); it reaches {}% at {}% of the limit, so that is the CPU it can use{}",
-                            js_to_fixed((fit.intercept + fit.slope * max_u.min(1.0)).js_exp() * 100.0, 0),
+                            // the fit's value at the busiest bucket (a share of periods: at most all of them)
+                            js_to_fixed((fit.intercept + fit.slope * max_u.min(1.0)).js_exp().min(1.0) * 100.0, 0),
                             js_num(js_round(max_u.min(1.0) * 100.0)),
                             js_to_fixed((fit.slope * 0.1).js_exp(), 2),
                             js_to_fixed(fit.r2, 2),
