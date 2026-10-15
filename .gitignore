@@ -27,4 +27,10 @@ reference/k8s/*/runs/*/workspace/telemetry/traces/
 reference/k8s/*/validation/*
 !reference/k8s/*/validation/validation.json
 !reference/k8s/*/validation/predictions-oos*.json
+!reference/k8s/*/validation/collected/
+reference/k8s/*/validation/collected/*/*
+!reference/k8s/*/validation/collected/*/dataset.json
+!reference/k8s/*/validation/runs/
+reference/k8s/*/validation/runs/*/*
+!reference/k8s/*/validation/runs/*/dataset.json
 reference/k8s/*/runs/*/raw/

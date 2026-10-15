@@ -172,7 +172,10 @@ async function telemetryOf(runs: string[], out: string, settle = false): Promise
       collected.set(key, d);
       return d;
     }
-    if (runs.length > 1) throw e;
+    // the committed collections are what the published tables were computed from: re-importing the
+    // recorded files gives different tables, so only on request
+    if (runs.length > 1 || !process.argv.includes('--from-recordings'))
+      throw new Error(`${out}/dataset.json is missing and the cluster is unreachable (${why}). The published tables come from the committed collections; --from-recordings imports the recorded files instead, which gives different numbers`);
     console.warn(`(${runs[0]}: live telemetry unavailable — ${why}; using the recorded files)`);
     // hindcast.import.yaml from a collection today; the recorded runs predate the rename
     const tel = join(runDir(runs[0]), 'workspace', 'telemetry');
