@@ -4,7 +4,6 @@ import { CATEGORIES, KINDS, isSystem, isUp } from '../sim/catalog';
 import { TEMPLATES } from '../scenarios/templates';
 import { LESSONS } from '../lessons';
 import { SCENARIOS } from '../scenarios/scenarios';
-import { THEMES } from '../theme/themes';
 import { listDesigns } from '../sim/designs';
 import { saveCurrent } from './DesignMenu';
 import { runAudit } from './AuditPanel';
@@ -85,7 +84,7 @@ function buildCommands(q: string): Cmd[] {
   for (const t of TEMPLATES) cmds.push({ id: `tpl-${t.id}`, group: 'Template', label: t.title, hint: t.group, run: () => (sandbox(), useSim.getState().loadGraph('main', t.graph, t.title), useSim.getState().setDesign(null, t.title)) });
   for (const l of LESSONS) cmds.push({ id: `lesson-${l.id}`, group: 'Lesson', label: l.title, run: () => (useSim.getState().setMode('lesson'), useSim.getState().pickLesson(l.id)) });
   for (const sc of SCENARIOS) cmds.push({ id: `cmp-${sc.id}`, group: 'Compare', label: sc.title, run: () => (useSim.setState({ compare: { ...useSim.getState().compare, scenarioId: sc.id } }), useSim.getState().setMode('compare')) });
-  for (const t of THEMES) cmds.push({ id: `theme-${t.id}`, group: 'Theme', label: `${t.label} theme`, hint: t.description, run: () => s.setSetting('theme', t.id) });
+  cmds.push({ id: 'replicas', group: 'View', label: s.settings.replicaView === 'each' ? 'Show replicas grouped' : 'Show each replica', run: () => s.setSetting('replicaView', s.settings.replicaView === 'each' ? 'grouped' : 'each') });
   if (s.mode === 'sandbox')
     for (const nd of s.boards.main.nodes.filter(isSystem)) {
       if (nd.data.kind === 'client') continue;

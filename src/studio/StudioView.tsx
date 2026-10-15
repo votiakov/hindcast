@@ -4,7 +4,6 @@ import { useSim, type Aspect } from '../sim/store';
 import { episodeById, episodeDuration, isCustomEpisode, listEpisodes, OUTRO_SECONDS } from './episodes';
 import { BRANDS } from './brands';
 import { ASPECTS, Stage } from './Stage';
-import { THEMES } from '../theme/themes';
 import { canEncodeMp4, renderClip, type Clip } from './exportClip';
 
 type Job = { state: 'idle' } | { state: 'rendering'; done: number; label: string; abort: AbortController } | { state: 'done'; clip: Clip; name: string; seconds: number } | { state: 'error'; message: string };
@@ -79,8 +78,6 @@ function useFitScale(w: number, h: number) {
 export function StudioView() {
   const studio = useSim((s) => s.studio);
   const running = useSim((s) => s.running);
-  const theme = useSim((s) => s.settings.theme);
-  const setSetting = useSim((s) => s.setSetting);
   const { loadEpisode, setStudio, setRunning, reset, toast } = useSim.getState();
   const { w, h } = ASPECTS[studio.aspect];
   const { ref, scale } = useFitScale(w, h);
@@ -88,7 +85,7 @@ export function StudioView() {
   const custom = isCustomEpisode(studio.episodeId);
   const [job, setJob] = useState<Job>({ state: 'idle' });
   const stageRef = useRef<HTMLDivElement>(null);
-  useEffect(() => setJob((j) => (j.state === 'rendering' ? j : { state: 'idle' })), [studio.episodeId, studio.aspect, studio.brandId, theme]);
+  useEffect(() => setJob((j) => (j.state === 'rendering' ? j : { state: 'idle' })), [studio.episodeId, studio.aspect, studio.brandId]);
   const render = async () => {
     const abort = new AbortController();
     const started = performance.now();
@@ -109,7 +106,7 @@ export function StudioView() {
     }
   };
   const busy = job.state === 'rendering';
-  const cmd = `npm run record -- ${custom ? `--ep-file ${studio.episodeId}.json` : studio.episodeId} --aspect ${studio.aspect} --brand ${studio.brandId} --theme ${theme}`;
+  const cmd = `npm run record -- ${custom ? `--ep-file ${studio.episodeId}.json` : studio.episodeId} --aspect ${studio.aspect} --brand ${studio.brandId}`;
 
   return (
     <div className="studio">
@@ -132,15 +129,6 @@ export function StudioView() {
           {(Object.keys(ASPECTS) as Aspect[]).map((a) => (
             <button key={a} className={studio.aspect === a ? 'on' : ''} onClick={() => setStudio({ aspect: a })} title={ASPECTS[a].label}>
               {a}
-            </button>
-          ))}
-        </div>
-
-        <div className="panel-title">Theme</div>
-        <div className="seg">
-          {THEMES.map((t) => (
-            <button key={t.id} className={theme === t.id ? 'on' : ''} onClick={() => setSetting('theme', t.id)}>
-              {t.label}
             </button>
           ))}
         </div>

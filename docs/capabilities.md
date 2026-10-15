@@ -70,7 +70,7 @@ and where it is documented.
 | Two engines: fluid (fast, live) and discrete-event (every request; real tails, retry storms) | A C M | [engines.md](engines.md) |
 | Pricing: illustrative, AWS us-east-1, GCP us-central1 | A C | [catalog.md](catalog.md) |
 | Present mode, embeds (`?embed=1`), share links (`#spec=`, `#compare=`) | A | [tools.md](tools.md#app-links) |
-| Themes: Terminal (default), Neon, Reference, Transit | A | [content.md](content.md#themes-srctheme) |
+| One look (Terminal) with live motion; replicas grouped or each | A | [content.md](content.md#themes-srctheme) |
 
 ## Content
 

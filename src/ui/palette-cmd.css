@@ -1,12 +1,12 @@
 /* Command palette (⌘K) */
 .cp-backdrop { position: fixed; inset: 0; z-index: 100; background: rgba(2, 6, 18, 0.45); display: flex; justify-content: center; align-items: flex-start; padding-top: 14vh; }
-:is([data-theme='reference'], [data-theme='terminal']) .cp-backdrop { background: var(--r-backdrop); }
+[data-theme='terminal'] .cp-backdrop { background: var(--r-backdrop); }
 .cp { width: min(620px, calc(100vw - 32px)); background: var(--panel-solid); border: 1px solid var(--border-strong); border-radius: 12px; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55); overflow: hidden; }
 .cp-input { width: 100%; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); font: inherit; font-size: 15px; padding: 15px 16px; outline: none; }
 .cp-list { max-height: 50vh; overflow: auto; padding: 4px 0; }
 .cp-item { display: grid; grid-template-columns: 112px 1fr auto; align-items: baseline; gap: 10px; width: 100%; text-align: left; border: 0; background: none; padding: 7px 16px; font-size: 13px; color: var(--text); }
 .cp-item.on { background: rgba(34, 211, 238, 0.1); box-shadow: inset 2px 0 0 var(--cyan); }
-:is([data-theme='reference'], [data-theme='terminal']) .cp-item.on { background: var(--r-accent-tint); }
+[data-theme='terminal'] .cp-item.on { background: var(--r-accent-tint); }
 .cp-group { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--muted); font-weight: 600; }
 .cp-hint { font-family: var(--mono); font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
 .cp-empty { padding: 14px 16px; color: var(--muted); font-size: 13px; }

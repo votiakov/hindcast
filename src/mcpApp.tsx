@@ -21,10 +21,6 @@ bridge.ontoolresult = (result) => {
   if (!p) return;
   if (openPayload(p)) useSim.getState().setRunning(true);
 };
-bridge.onhostcontextchanged = (ctx) => {
-  const theme = (ctx as { theme?: string }).theme;
-  if (theme === 'light') useSim.getState().setSetting('theme', 'reference');
-};
 bridge.connect();
 
 const root = createRoot(document.getElementById('root')!);

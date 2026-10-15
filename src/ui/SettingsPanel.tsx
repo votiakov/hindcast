@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Settings as Gear } from 'lucide-react';
 import { useSim, type Settings } from '../sim/store';
-import { THEMES } from '../theme/themes';
 import { PRICING, type PricingId } from '../sim/pricing';
 
 type BoolKey = { [K in keyof Settings]: Settings[K] extends boolean ? K : never }[keyof Settings];
@@ -46,16 +45,6 @@ export function SettingsButton() {
       </button>
       {open && (
         <div className="settings-pop panel">
-          <div className="settings-sec">
-            <div className="panel-title">Theme</div>
-            <div className="seg">
-              {THEMES.map((t) => (
-                <button key={t.id} className={settings.theme === t.id ? 'on' : ''} onClick={() => setSetting('theme', t.id)} title={t.description}>
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          </div>
           <div className="settings-sec">
             <div className="panel-title">Pricing</div>
             <div className="seg">

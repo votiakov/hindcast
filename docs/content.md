@@ -148,7 +148,7 @@ is uploaded. It takes about three times the clip's length (`src/studio/exportCli
 
 ```
 npm run dev
-npm run record -- <episode-id> [--aspect 4:5|1:1|9:16|16:9] [--brand personal|reducecost] [--theme terminal|neon|reference|transit] [--fps 30] [--gif] [--no-stills]
+npm run record -- <episode-id> [--aspect 4:5|1:1|9:16|16:9] [--brand personal|reducecost] [--fps 30] [--gif] [--no-stills]
 ```
 
 Output in `exports/<episode>_<aspect>_<brand>_<theme>/`: MP4 (H.264), a PNG still ~2 s after every
@@ -160,15 +160,12 @@ to the frame clock) and takes about real time.
 
 Name, one-line tagline, link text, initials and accent colour per brand. Edit freely.
 
-## Themes (`src/theme/`)
+## Look (`src/theme/`)
 
-| theme | look | renderers |
-|---|---|---|
-| Terminal (default) | the backtest screen's look: dark panes, hairlines, IBM Plex Sans Condensed + Mono, amber accent | Reference renderers and rules (scoped to both themes) + `terminal.css` palette and chrome |
-| Neon | dark control room, glowing particles | `canvas/SystemNode.tsx`, `canvas/FlowEdge.tsx`, `styles.css` + `neon-chrome.css` |
-| Reference | engineering-reference figures, IBM Plex, "what is happening" callouts | `theme/reference/*`, `reference.css` |
-| Transit | metro map (stations, lines, trains) | `theme/transit/*`, `transit.css` |
-
-A theme = an entry in `THEMES`, CSS scoped to `[data-theme='id']`, and optionally its own node/edge
-renderers (branch in `SystemNode`/`FlowEdge`). All renderers consume the shared `nodeView()` and
-`explain()` from `canvas/nodeModel.ts`.
+One look for every view: Terminal — dark panes, hairlines, IBM Plex Sans Condensed + Mono, amber as
+the one accent (`terminal.css` for the palette and chrome, `reference.css` for the shared figure
+rules, renderers in `theme/reference/*`). The board moves like the old Neon board did, in Terminal
+ink: dots on every link (pace and density follow req/s, red for the lost share), and only a component
+in trouble pulses. Scalable components show their instances grouped (a pip each) or each on its own
+row with the traffic fanned out (the board's "replicas" toggle, or `settings.replicaView`). Renderers
+consume the shared `nodeView()` and `explain()` from `canvas/nodeModel.ts`.

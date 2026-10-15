@@ -2,7 +2,7 @@
 /**
  * Frame-perfect episode renderer.
  *
- *   npm run record -- <episode-id | --ep-file episode.json | --card card.json> [--aspect 4:5] [--brand personal] [--theme terminal|neon|reference|transit] [--fps 30] [--gif] [--no-stills]
+ *   npm run record -- <episode-id | --ep-file episode.json | --card card.json> [--aspect 4:5] [--brand personal] [--fps 30] [--gif] [--no-stills]
  *                                  [--url http://localhost:5173] [--out exports]
  *
  * Opens the app in render mode inside headless Chromium with a fake clock, steps time one frame
@@ -53,7 +53,7 @@ function ffmpeg(args) {
 async function main() {
   const o = parseArgs(process.argv.slice(2));
   const [w, h] = SIZES[o.aspect];
-  const name = o.cardData ? `${o.ep}_${o.aspect.replace(':', 'x')}` : `${o.ep}_${o.aspect.replace(':', 'x')}_${o.brand}_${o.theme}`;
+  const name = o.cardData ? `${o.ep}_${o.aspect.replace(':', 'x')}` : `${o.ep}_${o.aspect.replace(':', 'x')}_${o.brand}`;
   const dir = resolve(o.out, name);
   mkdirSync(dir, { recursive: true });
   const mp4 = join(dir, `${name}.mp4`);
@@ -63,7 +63,7 @@ async function main() {
   await page.clock.install({ time: new Date('2026-01-01T00:00:00Z') });
   // card data can be larger than a URL: hand it over through local storage
   if (o.cardData) await page.addInitScript((json) => localStorage.setItem('bottleneck.card', json), o.cardData);
-  const q = new URLSearchParams(o.cardData ? { render: '1', card: 'local', aspect: o.aspect } : { render: '1', ep: o.ep, aspect: o.aspect, brand: o.brand, theme: o.theme, ...(o.epData ? { epData: o.epData } : {}) });
+  const q = new URLSearchParams(o.cardData ? { render: '1', card: 'local', aspect: o.aspect } : { render: '1', ep: o.ep, aspect: o.aspect, brand: o.brand, ...(o.epData ? { epData: o.epData } : {}) });
   await page.goto(`${o.url}/?${q}`);
   await page.waitForFunction(() => window.studio);
   await page.evaluate(() => document.fonts.ready);

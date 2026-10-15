@@ -16,7 +16,7 @@
 .lens-name em { font-style: normal; font-family: var(--mono); font-size: 10.5px; color: var(--muted); margin-left: 4px; }
 .lens-bar { width: 40%; padding: 0 8px !important; }
 .lens-bar i { display: block; height: 5px; border-radius: 2px; background: var(--violet, #a78bfa); min-width: 1px; }
-:is([data-theme='reference'], [data-theme='terminal']) .lens-bar i { background: var(--r-accent); }
+[data-theme='terminal'] .lens-bar i { background: var(--r-accent); }
 .lens-num { text-align: right; font-family: var(--mono); font-size: 11.5px; color: var(--text); }
 .lens-alert { font-size: 11px; color: var(--red); border-left: 2px solid var(--red); padding-left: 7px; }
 .metrics { position: relative; cursor: pointer; }

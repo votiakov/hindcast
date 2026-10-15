@@ -20,7 +20,7 @@ const Dots = memo(function Dots({ path, count, dur, fail }: { path: string; coun
       {Array.from({ length: count }, (_, i) => {
         const begin = `${(-(i * dur) / count).toFixed(2)}s`;
         return (
-          <circle key={i} r={fail ? 2.6 : 2.2} className={fail ? 'ref-dot fail' : 'ref-dot'}>
+          <circle key={i} r={fail ? 2.8 : 2.4} className={fail ? 'ref-dot fail' : 'ref-dot'}>
             {fail ? (
               <>
                 <animateMotion dur={`${dur}s`} repeatCount="indefinite" path={path} begin={begin} keyPoints="0;0.75" keyTimes="0;1" calcMode="linear" />
@@ -45,7 +45,9 @@ function RefEdgeImpl({ id, sourceX, sourceY, targetX, targetY, sourcePosition, t
   const total = !live ? 0 : Math.min(Math.min(12, data.cap ?? 12), Math.max(2, Math.round(Math.log2(rps + 1) * 1.2)));
   const failN = err > 0.02 ? Math.max(1, Math.round(total * err)) : 0;
   const okN = Math.max(0, total - failN);
-  const dur = Math.round((1.6 + Math.min(2.4, util * 1.8)) * 4) / 4;
+  // more traffic, faster dots; a congested link slows them down (bucketed: React keeps the animations)
+  const pace = Math.min(2.4, Math.max(0.9, 2.4 - 0.32 * Math.log10(rps + 1)));
+  const dur = Math.round(pace * (1 + Math.min(0.8, util * 0.6)) * 4) / 4;
 
   return (
     <>

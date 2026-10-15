@@ -1,5 +1,5 @@
 .sc-backdrop { position: fixed; inset: 0; z-index: 100; background: rgba(2, 6, 18, 0.45); display: grid; place-items: center; }
-:is([data-theme='reference'], [data-theme='terminal']) .sc-backdrop { background: var(--r-backdrop); }
+[data-theme='terminal'] .sc-backdrop { background: var(--r-backdrop); }
 .sc { width: min(560px, calc(100vw - 32px)); padding: 18px 20px; background: var(--panel-solid); border: 1px solid var(--border-strong); border-radius: 12px; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5); }
 .sc-h { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.9px; font-weight: 700; color: var(--muted); margin-bottom: 10px; }
 .sc-keys { border-collapse: collapse; width: 100%; font-size: 12.5px; color: var(--text); }

@@ -11,7 +11,6 @@ import { nodesInZone } from './zones';
 import { SCENARIOS, findScenario, scenarioDuration, scenarioTraffic, type Scenario, type ScenarioAction } from '../scenarios/scenarios';
 import type { Graph } from '../scenarios/build';
 import { homeGraph } from '../ui/homeGraphs';
-import type { ThemeId } from '../theme/themes';
 import { setPricing, type PricingId } from './pricing';
 import type { AuditResult } from './audit';
 import type { SimAction } from './actions';
@@ -25,7 +24,8 @@ export type Pattern = 'steady' | 'diurnal' | 'spiky' | 'ramp';
 export type BoardId = 'main' | 'A' | 'B';
 
 export interface Settings {
-  theme: ThemeId;
+  /** scalable components: one block with a pip per instance, or a card per instance */
+  replicaView: 'grouped' | 'each';
   /** cost model: teaching defaults or a cited real-cloud profile */
   pricing: PricingId;
   /** plain-English callouts on components under stress */
@@ -48,7 +48,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  theme: 'terminal',
+  replicaView: 'grouped',
   pricing: 'illustrative',
   explain: true,
   cost: true,

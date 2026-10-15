@@ -1,8 +1,8 @@
-// Click through every view in every theme and report console errors, page errors and failed
+// Click through every view and report console errors, page errors and failed
 // requests, with a screenshot of each state.
 //
 //   npm run dev
-//   node scripts/ui-audit.mjs [--out dir] [--themes terminal,neon,reference,transit] [--only phone]
+//   node scripts/ui-audit.mjs [--out dir] [--only phone]
 //
 // Exits 1 when anything was logged as an error.
 import { chromium } from 'playwright';
@@ -16,7 +16,7 @@ const arg = (k, d) => {
 const BASE = process.env.HINDCAST_APP_URL ?? process.env.BOTTLENECK_APP_URL ?? 'http://localhost:5173';
 const OUT = arg('out', 'ui-audit');
 const ONLY = arg('only', '');
-const THEMES = ONLY === 'phone' ? [] : arg('themes', 'terminal,neon,reference,transit').split(',');
+const THEMES = ONLY === 'phone' ? [] : ['terminal'];
 mkdirSync(OUT, { recursive: true });
 
 const problems = [];

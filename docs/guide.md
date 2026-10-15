@@ -206,8 +206,8 @@ or `hindcast backtest … --card card.json`). Details: [content.md](content.md).
 
 ## Settings (gear icon)
 
-- **Theme**: Neon (dark control room), Reference (engineering-figure style, with explanations),
-  Transit (systems as a subway map).
+- **Replicas** (the board's toggle, top right): grouped — a pip per instance; each — a row per instance
+  with the traffic fanned out, a dead one routed around, a booting one waiting.
 - **Pricing**: illustrative catalogue prices, AWS us-east-1 or GCP us-central1.
 - **Toggles**: cost model, automatic DB failover (and failover time), serverless cold starts, traffic
   jitter, request particles, explanations, alert toasts.

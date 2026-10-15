@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { Background, BackgroundVariant, MiniMap, ReactFlow, useReactFlow, type NodeTypes, type EdgeTypes, type XYPosition } from '@xyflow/react';
+import { Background, BackgroundVariant, MiniMap, Panel, ReactFlow, useReactFlow, type NodeTypes, type EdgeTypes, type XYPosition } from '@xyflow/react';
 import { useSim, type BoardId } from '../sim/store';
-import { KINDS, isSystem, isUp, type AppNode, type Kind } from '../sim/catalog';
-import { SystemNode, HEALTH_COLOR, healthOf } from './SystemNode';
+import { KINDS, isSystem, isUp, type AppNode, type Kind, type SystemNodeData } from '../sim/catalog';
+import { SystemNode, healthOf } from './SystemNode';
 import { ZoneNode } from './ZoneNode';
 import { FlowEdge } from './FlowEdge';
 import { BoardContext } from './BoardContext';
@@ -11,8 +11,6 @@ import { RefMarkers } from '../theme/reference/RefEdge';
 export const DND_TYPE = 'application/x-bottleneck-kind';
 export const ZONE_KIND = 'zone';
 
-/** muted status colours for the light themes' minimap */
-const MAP_HEALTH = { idle: '#b5b5ad', ok: '#44443f', warm: '#d99a1e', hot: '#c4232b', down: '#d6d6cf' } as const;
 const TERMINAL_MAP_HEALTH = { idle: '#33475a', ok: '#6e8191', warm: '#e3c55a', hot: '#ef5b5b', down: '#22303c' } as const;
 
 const nodeTypes: NodeTypes = { system: SystemNode, zone: ZoneNode };
@@ -43,7 +41,6 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
   const zoneDrag = useRef<{ start: XYPosition; members: Record<string, XYPosition> } | null>(null);
 
   const camera = useSim((s) => (s.mode === 'studio' ? s.studio.camera[id] : null));
-  const theme = useSim((s) => s.settings.theme);
 
   useEffect(() => {
     const t = setTimeout(() => fitView({ padding, duration: fitDuration, maxZoom: 1.1 }), 60);
@@ -132,7 +129,7 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
 
   return (
     <BoardContext.Provider value={id}>
- {(theme === 'reference' || theme === 'terminal') && <RefMarkers />}
+      <RefMarkers />
       <div ref={wrapper} className="board-canvas" onDragOver={(e) => e.preventDefault()} onDrop={onDrop} onPointerDown={() => setFocus(id)}>
         <ReactFlow<AppNode>
           nodes={nodes}
@@ -163,6 +160,7 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
         >
           <Background variant={BackgroundVariant.Dots} gap={24} size={1.4} color="#1e293b" />
           {children}
+          {minimap && <ReplicaToggle id={id} />}
           {minimap && (
             <MiniMap
               pannable
@@ -174,12 +172,33 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
                 const st = useSim.getState().boards[id].nodeStats[n.id];
                 const d = (n as AppNode & { type: 'system' }).data;
                 const h = healthOf(st?.util ?? 0, st?.dropRps ?? 0, st?.inRps ?? 1, isUp(d));
-                return theme === 'neon' ? HEALTH_COLOR[h] : theme === 'terminal' ? TERMINAL_MAP_HEALTH[h] : MAP_HEALTH[h];
+                return TERMINAL_MAP_HEALTH[h];
               }}
             />
           )}
         </ReactFlow>
       </div>
     </BoardContext.Provider>
+  );
+}
+
+/** grouped: a pip per instance; each: a row per instance with the traffic fanned out */
+function ReplicaToggle({ id }: { id: BoardId }) {
+  const view = useSim((s) => s.settings.replicaView);
+  const setSetting = useSim((s) => s.setSetting);
+  const fleet = useSim((s) => s.boards[id].nodes.some((n) => n.type === 'system' && KINDS[(n.data as SystemNodeData).kind].scalable && ((n.data as SystemNodeData).instances ?? 1) > 1));
+  if (!fleet) return null;
+  return (
+    <Panel position="top-right" className="replica-toggle">
+      <span>replicas</span>
+      <div className="seg">
+        <button className={view === 'grouped' ? 'on' : ''} onClick={() => setSetting('replicaView', 'grouped')} title="One block per component, a pip per instance">
+          grouped
+        </button>
+        <button className={view === 'each' ? 'on' : ''} onClick={() => setSetting('replicaView', 'each')} title="A row per instance, the traffic fanned out (up to 12)">
+          each
+        </button>
+      </div>
+    </Panel>
   );
 }

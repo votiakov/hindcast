@@ -33,10 +33,7 @@ import { saveCurrent } from './ui/DesignMenu';
 import { openFile } from './spec/openFile';
 import { useState } from 'react';
 import type { Aspect, Mode } from './sim/store';
-import type { ThemeId } from './theme/themes';
-import './theme/transit.css';
 import './theme/reference.css';
-import './theme/neon-chrome.css';
 import './theme/terminal.css';
 import './ui/phone.css';
 import { manualClock } from './sim/clock';
@@ -53,7 +50,6 @@ const CARD = RENDER && params.has('card');
 if (RENDER && !CARD) {
   const s = useSim.getState();
   s.setStudio({ aspect: (params.get('aspect') as Aspect) ?? '4:5', brandId: params.get('brand') ?? 'personal' });
-  if (params.get('theme')) s.setSetting('theme', params.get('theme') as ThemeId);
   s.setMode('studio');
   // episodes made in the app travel in the URL (the recorder's browser has no local storage)
   if (params.get('epData')) registerEpisode(decodePayload<Episode>(params.get('epData')!), false);
@@ -143,7 +139,6 @@ if (!RENDER && location.hash) openHash(location.hash);
 if (EMBED) {
   const s = useSim.getState();
   if (s.mode !== 'sandbox') s.setMode('sandbox');
-  if (params.get('theme')) s.setSetting('theme', params.get('theme') as ThemeId);
   s.setSetting('alerts', false);
   s.setTraffic(Number(params.get('rps') ?? 300));
   s.setRunning(true);
@@ -168,7 +163,6 @@ window.addEventListener('hashchange', () => openHash(location.hash));
 
 export default function App() {
   const mode = useSim((s) => s.mode);
-  const theme = useSim((s) => s.settings.theme);
   const analysisOpen = useSim((s) => s.analysisOpen);
   const auditOpen = useSim((s) => s.auditOpen);
   const specOpen = useSim((s) => s.specOpen);
@@ -177,9 +171,6 @@ export default function App() {
   useSimLoop();
   const [dropping, setDropping] = useState(false);
   const hasFiles = (e: React.DragEvent) => e.dataTransfer.types.includes('Files');
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-  }, [theme]);
 
   if (CARD) return <CardStage />;
   if (RENDER) return <Stage />;
