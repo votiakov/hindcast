@@ -66,6 +66,13 @@ fn run(args: &[String], out: &mut Out) -> Result<i32, String> {
     }
     if cmd == "mcp" {
         out.flush();
+        // over HTTP: hindcast mcp --http [--port 8787] [--host 127.0.0.1] [--all-tools]
+        if rest.iter().any(|a| a == "--http") {
+            let val = |k: &str| rest.iter().position(|a| a == k).and_then(|i| rest.get(i + 1)).cloned();
+            let port = val("--port").and_then(|p| p.parse().ok()).unwrap_or(8787);
+            let host = val("--host").unwrap_or_else(|| "127.0.0.1".into());
+            return Ok(mcp::serve_http(&host, port, rest.iter().any(|a| a == "--all-tools")));
+        }
         return Ok(mcp::serve());
     }
     let f = flags(rest);

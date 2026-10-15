@@ -43,6 +43,21 @@ npm run cli:build                   # → engine-rs/target/release/hindcast (one
 claude mcp add hindcast -- /path/to/hindcast/engine-rs/target/release/hindcast mcp
 ```
 
+### Over HTTP (a shared or remote server)
+
+```bash
+HINDCAST_MCP_TOKEN=… hindcast mcp --http --port 8787            # http://127.0.0.1:8787/mcp
+hindcast mcp --http --host 0.0.0.0 --port 8787                  # reachable from other machines
+```
+
+Streamable HTTP with JSON responses: POST a JSON-RPC message (or a batch) to `/mcp`; `GET /health`
+answers `ok`. It listens on loopback unless `--host` says otherwise, and asks for
+`Authorization: Bearer <token>` when `HINDCAST_MCP_TOKEN` is set. Over HTTP it offers only the tools
+that compute on what they are given — designing, simulating, auditing, importing Terraform or
+Kubernetes, `verify_design`. The workspace tools (they read and write local files and query your
+Prometheus or cluster), `backtest_strategy` / `replay_outage` (they read paths) and `open_in_app`
+are left out unless you add `--all-tools`, on a machine and network you trust.
+
 ### Any MCP host (Claude Desktop, Cursor, Windsurf, VS Code, …)
 
 ```json

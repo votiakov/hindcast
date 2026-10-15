@@ -68,55 +68,154 @@ pub fn serve() -> i32 {
                 continue;
             }
         };
-        let id = msg.get("id").cloned();
-        let method = msg.get("method").and_then(|x| x.as_str()).unwrap_or("").to_string();
-        let Some(id) = id else { continue }; // a notification
-        let params = msg.get("params").cloned().unwrap_or(json!({}));
-        let reply = match method.as_str() {
-            "initialize" => {
-                let asked = params.get("protocolVersion").and_then(|x| x.as_str()).unwrap_or("");
-                let mut r = JMap::new();
-                r.insert("protocolVersion".into(), json!(if SUPPORTED.contains(&asked) { asked } else { LATEST }));
-                for (k, v) in m["initialize"].as_object().cloned().unwrap_or_default() {
-                    r.insert(k, v);
-                }
-                result(&id, Value::Object(r))
-            }
-            "ping" => result(&id, json!({})),
-            "tools/list" => result(&id, json!({ "tools": m["tools"] })),
-            "prompts/list" => result(&id, json!({ "prompts": m["prompts"] })),
-            "resources/list" => result(&id, json!({ "resources": m["resources"] })),
-            "resources/templates/list" => result(&id, json!({ "resourceTemplates": m["resourceTemplates"] })),
-            "resources/read" => {
-                let uri = s(&params, &["uri"]);
-                if uri == CANVAS_URI {
-                    result(&id, json!({ "contents": [{ "uri": CANVAS_URI, "mimeType": "text/html;profile=mcp-app", "text": canvas_html(), "_meta": { "ui": { "csp": { "resourceDomains": ["https://fonts.googleapis.com", "https://fonts.gstatic.com"] } } } }] }))
-                } else {
-                    error(&id, -32602, &format!("MCP error -32602: Resource {} not found", uri))
-                }
-            }
-            "prompts/get" => prompt(&id, &params),
-            "tools/call" => {
-                let name = s(&params, &["name"]);
-                let token = params.get("_meta").and_then(|x| x.get("progressToken")).cloned();
-                let r = {
-                    let mut sink: Vec<Value> = vec![];
-                    let r = call_tool(&m, &name, params.get("arguments"), token.as_ref(), &mut sink);
-                    for n in sink {
-                        send(&mut out, &n);
-                    }
-                    r
-                };
-                result(&id, r)
-            }
-            _ => error(&id, -32601, "Method not found"),
-        };
-        send(&mut out, &reply);
+        let mut sink: Vec<Value> = vec![];
+        let reply = handle(&m, &msg, &|_| true, &mut sink);
+        for n in sink {
+            send(&mut out, &n);
+        }
+        if let Some(r) = reply {
+            send(&mut out, &r);
+        }
     }
     0
 }
 
-/// the live canvas: dist-mcp/mcp-app.html next to the binary's checkout or install
+/// tools that only compute on what they are given: no workspace on disk, no cluster, no browser —
+/// the ones a server reachable over the network offers by default
+pub fn network_safe(tool: &str) -> bool {
+    // backtest_strategy and replay_outage read a model, a dataset and strategies from paths
+    !matches!(tool, "open_in_app" | "backtest_strategy" | "replay_outage" | "connect_telemetry" | "collect_telemetry" | "calibrate_model" | "model_status" | "verify_change" | "suggest_changes" | "find_headroom" | "review_capacity" | "check_node_loss" | "read_cluster")
+}
+
+/// one JSON-RPC message: its reply (none for a notification); progress notifications go to `sink`
+pub fn handle(m: &Value, msg: &Value, allow: &dyn Fn(&str) -> bool, sink: &mut Vec<Value>) -> Option<Value> {
+    let id = msg.get("id").cloned()?; // a notification
+    let method = msg.get("method").and_then(|x| x.as_str()).unwrap_or("").to_string();
+    let params = msg.get("params").cloned().unwrap_or(json!({}));
+    Some(match method.as_str() {
+        "initialize" => {
+            let asked = params.get("protocolVersion").and_then(|x| x.as_str()).unwrap_or("");
+            let mut r = JMap::new();
+            r.insert("protocolVersion".into(), json!(if SUPPORTED.contains(&asked) { asked } else { LATEST }));
+            for (k, v) in m["initialize"].as_object().cloned().unwrap_or_default() {
+                r.insert(k, v);
+            }
+            result(&id, Value::Object(r))
+        }
+        "ping" => result(&id, json!({})),
+        "tools/list" => result(&id, json!({ "tools": arr(m, &["tools"]).into_iter().filter(|t| allow(t["name"].as_str().unwrap_or(""))).collect::<Vec<_>>() })),
+        "prompts/list" => result(&id, json!({ "prompts": m["prompts"] })),
+        "resources/list" => result(&id, json!({ "resources": m["resources"] })),
+        "resources/templates/list" => result(&id, json!({ "resourceTemplates": m["resourceTemplates"] })),
+        "resources/read" => {
+            let uri = s(&params, &["uri"]);
+            if uri == CANVAS_URI {
+                result(&id, json!({ "contents": [{ "uri": CANVAS_URI, "mimeType": "text/html;profile=mcp-app", "text": canvas_html(), "_meta": { "ui": { "csp": { "resourceDomains": ["https://fonts.googleapis.com", "https://fonts.gstatic.com"] } } } }] }))
+            } else {
+                error(&id, -32602, &format!("MCP error -32602: Resource {} not found", uri))
+            }
+        }
+        "prompts/get" => prompt(&id, &params),
+        "tools/call" => {
+            let name = s(&params, &["name"]);
+            if !allow(&name) {
+                return Some(error(&id, -32602, &format!("MCP error -32602: Tool {} is not offered by this server (it works on local files or a cluster; run the server with --all-tools on a machine you trust)", name)));
+            }
+            let token = params.get("_meta").and_then(|x| x.get("progressToken")).cloned();
+            result(&id, call_tool(m, &name, params.get("arguments"), token.as_ref(), sink))
+        }
+        _ => error(&id, -32601, "Method not found"),
+    })
+}
+
+/// the MCP server over HTTP (Streamable HTTP, JSON responses): POST /mcp takes a JSON-RPC message or a
+/// batch; GET /health answers ok. Loopback unless a host is given; a bearer token if
+/// HINDCAST_MCP_TOKEN is set; only network-safe tools unless `all_tools`
+pub fn serve_http(host: &str, port: u16, all_tools: bool) -> i32 {
+    let listener = match std::net::TcpListener::bind((host, port)) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("cannot listen on {}:{}: {}", host, port, e);
+            return 1;
+        }
+    };
+    let token = std::env::var("HINDCAST_MCP_TOKEN").ok().filter(|t| !t.is_empty());
+    eprintln!("hindcast MCP on http://{}:{}/mcp{}{}", host, port, if token.is_some() { " (bearer token required)" } else { "" }, if all_tools { " — all tools, local files included" } else { "" });
+    let m = std::sync::Arc::new(manifest());
+    let token = std::sync::Arc::new(token);
+    for stream in listener.incoming().flatten() {
+        let (m, token) = (m.clone(), token.clone());
+        std::thread::spawn(move || {
+            let _ = http_one(stream, &m, token.as_deref(), all_tools);
+        });
+    }
+    0
+}
+
+fn http_one(stream: std::net::TcpStream, m: &Value, token: Option<&str>, all_tools: bool) -> std::io::Result<()> {
+    use std::io::Read;
+    let mut reader = std::io::BufReader::new(stream.try_clone()?);
+    let mut line = String::new();
+    reader.read_line(&mut line)?;
+    let mut parts = line.split_whitespace();
+    let (method, path) = (parts.next().unwrap_or("").to_string(), parts.next().unwrap_or("").to_string());
+    let (mut length, mut auth) = (0usize, String::new());
+    loop {
+        let mut h = String::new();
+        if reader.read_line(&mut h)? == 0 || h.trim().is_empty() {
+            break;
+        }
+        if let Some((k, v)) = h.split_once(':') {
+            match k.trim().to_ascii_lowercase().as_str() {
+                "content-length" => length = v.trim().parse().unwrap_or(0),
+                "authorization" => auth = v.trim().to_string(),
+                _ => {}
+            }
+        }
+    }
+    let mut out = stream;
+    let reply = |out: &mut std::net::TcpStream, status: &str, ctype: &str, body: &str| -> std::io::Result<()> {
+        write!(out, "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", status, ctype, body.len(), body)
+    };
+    let path = path.split('?').next().unwrap_or("");
+    if method == "GET" && path == "/health" {
+        return reply(&mut out, "200 OK", "text/plain", "ok");
+    }
+    if path != "/mcp" {
+        return reply(&mut out, "404 Not Found", "text/plain", "not found");
+    }
+    if method != "POST" {
+        return reply(&mut out, "405 Method Not Allowed", "text/plain", "POST JSON-RPC to /mcp");
+    }
+    if let Some(t) = token {
+        if auth != format!("Bearer {}", t) {
+            return reply(&mut out, "401 Unauthorized", "text/plain", "a bearer token is required");
+        }
+    }
+    if length > 16 << 20 {
+        return reply(&mut out, "413 Payload Too Large", "text/plain", "too large");
+    }
+    let mut body = vec![0u8; length];
+    reader.read_exact(&mut body)?;
+    let msg: Value = match serde_json::from_slice(&body) {
+        Ok(v) => v,
+        Err(e) => return reply(&mut out, "400 Bad Request", "application/json", &json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32700, "message": format!("Parse error: {}", e) } }).to_string()),
+    };
+    let allow = |t: &str| all_tools || network_safe(t);
+    let mut sink = vec![];
+    let answer = match &msg {
+        Value::Array(batch) => {
+            let rs: Vec<Value> = batch.iter().filter_map(|x| handle(m, x, &allow, &mut sink)).collect();
+            if rs.is_empty() { None } else { Some(Value::Array(rs)) }
+        }
+        one => handle(m, one, &allow, &mut sink),
+    };
+    match answer {
+        Some(a) => reply(&mut out, "200 OK", "application/json", &a.to_string()),
+        None => reply(&mut out, "202 Accepted", "text/plain", ""),
+    }
+}
+
 fn canvas_html() -> String {
     let mut candidates: Vec<std::path::PathBuf> = vec![];
     if let Ok(p) = std::env::var("HINDCAST_MCP_APP") {
