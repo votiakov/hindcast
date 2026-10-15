@@ -67,6 +67,8 @@ export interface NodeStats {
   warmth: number;
   /** thread-per-request: how long a request waits on this component's calls, ms (a thread is held for it) */
   holdMs?: number;
+  /** its own time per request, ms: work and queue, not what it waits on */
+  ownMs?: number;
 }
 
 export interface EdgeStats {

@@ -236,6 +236,8 @@ pub struct NodeState {
     pub sub_backlog: Vec<(usize, f64)>,
     /// how long a request waits on this component's calls, ms (what a thread is held for beyond the work)
     pub hold_ms: f64,
+    /// this component's own time per request, ms: its work and its queue, not what it waits on
+    pub own_ms: f64,
 }
 
 /// how much faster than real time a replica catches up once it can reach its primary again
@@ -284,6 +286,7 @@ fn fresh() -> NodeState {
         dead_for: 0.0,
         sub_backlog: vec![],
         hold_ms: 0.0,
+        own_ms: 0.0,
     }
 }
 
@@ -936,6 +939,8 @@ pub struct NodeStats {
     /// thread-per-request: how long a request waits on this component's calls, ms (a thread is held for it)
     #[serde(skip_serializing_if = "is_zero_f")]
     pub hold_ms: f64,
+    /// its own time per request, ms (work and queue, not what it waits on)
+    pub own_ms: f64,
 }
 
 fn is_zero_f(x: &f64) -> bool {
@@ -1720,6 +1725,8 @@ impl Engine {
             st.success_r = ema(st.success_r, success_r, dt, 0.3);
             st.success_w = ema(st.success_w, success_w, dt, 0.3);
             st.latency_ms = ema(st.latency_ms, latency, dt, 0.3);
+            let own_now = if l.up && d.kind != "client" { fold(&FoldCtx { d, keep, local_share: 1.0, child_succ: 1.0, child_lat: 0.0, has_kids: false, cfg }, st).1 + d.fault_latency_ms.filter(|x| !x.is_nan()).unwrap_or(0.0) } else { 0.0 };
+            st.own_ms = ema(st.own_ms, own_now, dt, 0.3);
             st.tail_ms = ema(st.tail_ms, tail_total, dt, 0.3);
             let usage = usage_cost(d, st, profile);
             let fixed = match billed {
@@ -1863,6 +1870,7 @@ impl Engine {
                     scaling,
                     warmth: st.warmth,
                     hold_ms: if n.data.threads.is_some() { st.hold_ms } else { 0.0 },
+                    own_ms: st.own_ms,
                 },
             );
         }

@@ -64,6 +64,21 @@ export function Lens({ onClose }: { onClose: () => void }) {
     .sort((a, b) => b.rps - a.rps)
     .slice(0, 5);
   const failingTotal = failing.reduce((s, f) => s + f.rps, 0);
+  // where the time goes: each component's own time, weighted by the share of requests that reach it,
+  // and the network's round trips over the links they take
+  const edgeStats = useSim((s) => s.boards[s.mode === 'compare' ? s.focus : 'main'].edgeStats);
+  const users = g.rps;
+  const timeRows =
+    users > 0.5
+      ? nodes
+          .filter(isSystem)
+          .filter((n) => n.data.kind !== 'client')
+          .map((n) => ({ id: n.id, name: n.data.name, kind: n.data.kind, ms: (Math.max(0, (stats[n.id]?.inRps ?? 0) - (stats[n.id]?.dropRps ?? 0)) / users) * (stats[n.id]?.ownMs ?? 0) }))
+          .filter((r) => r.ms >= 0.05)
+          .sort((a, b) => b.ms - a.ms)
+      : [];
+  const networkMs = users > 0.5 ? edges.reduce((s, e) => s + ((edgeStats[e.id]?.rps ?? 0) / users) * Number(e.data?.latencyMs ?? 0), 0) : 0;
+  const timeTotal = timeRows.reduce((s, r) => s + r.ms, 0) + networkMs;
   const perMillion = g.rps > 0.5 ? (total / (g.rps * 3600)) * 1e6 : null;
   const budgetMin = (1 - target) * 30 * 24 * 60;
   const burn = g.errorRate / (1 - target);
@@ -124,6 +139,28 @@ export function Lens({ onClose }: { onClose: () => void }) {
                     <i style={{ width: `${(f.rps / failingTotal) * 100}%` }} />
                   </td>
                   <td className="lens-num">{f.rps >= 100 ? f.rps.toFixed(0) : f.rps.toFixed(1)}/s</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {timeTotal > 0 && (
+        <div className="lens-sec">
+          <div className="lens-h">where the time goes</div>
+          <div className="lens-sub">≈ {timeTotal.toFixed(timeTotal < 10 ? 1 : 0)} ms of work and waiting per request, on average: each component’s own time × the share of requests that reach it.</div>
+          <table className="lens-table">
+            <tbody>
+              {[...timeRows.slice(0, 5), ...(networkMs >= 0.05 ? [{ id: '~net', name: 'network', kind: null, ms: networkMs }] : [])].map((r) => (
+                <tr key={r.id}>
+                  <td className="lens-name">
+                    <i style={{ background: r.kind ? KINDS[r.kind].color : 'var(--muted)' }} />
+                    {r.name}
+                  </td>
+                  <td className="lens-bar">
+                    <i style={{ width: `${(r.ms / timeTotal) * 100}%` }} />
+                  </td>
+                  <td className="lens-num">{r.ms >= 100 ? r.ms.toFixed(0) : r.ms.toFixed(1)} ms</td>
                 </tr>
               ))}
             </tbody>

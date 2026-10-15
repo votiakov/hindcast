@@ -1471,6 +1471,7 @@ impl<'a> Des<'a> {
                 warmth: cache_warmth(n.cold_at, now, n.data.warmup_s),
                 // what a thread was held for beyond the work itself
                 hold_ms: if w.held_n > 0.0 { (w.held_s / w.held_n * 1000.0 - n.svc_mean_ms).max(0.0) } else { 0.0 },
+                own_ms: n.svc_mean_ms,
             };
             let arrivals = w.arrivals;
             if (n.data.kind == "cache" || n.data.kind == "cdn") && !up(n) {
