@@ -97,13 +97,16 @@ impl Rng {
     }
 }
 
-// ---------- latency histogram (src/sim/des/histogram.ts) ----------
+// ---------- latency histogram: log buckets 2.5% wide ----------
 
 const MIN_MS: f64 = 0.05;
 const GROWTH: f64 = 1.025;
+/// the top bucket's lower edge, ms: 10 days, past the longest wait a run can see (a standard archive
+/// restore of hours, a queue drained for the 6 h after the run); about 960 buckets
+const MAX_MS: f64 = 864_000_000.0;
 
 fn buckets() -> usize {
-    ((1_000_000.0f64 / MIN_MS).js_ln() / GROWTH.js_ln()).ceil() as usize + 1
+    ((MAX_MS / MIN_MS).js_ln() / GROWTH.js_ln()).ceil() as usize + 1
 }
 
 #[derive(Clone)]
@@ -129,17 +132,19 @@ impl Histogram {
             self.max = ms;
         }
     }
-    /// q in [0, 1] → latency (the bucket's upper edge)
+    /// q in [0, 1] → latency (the bucket's upper edge; the top bucket is open-ended, so the slowest
+    /// answer seen bounds it and nothing above the range is clipped)
     pub fn quantile(&self, q: f64) -> f64 {
         if self.total == 0 {
             return 0.0;
         }
         let target = (q * self.total as f64).ceil();
+        let top = self.counts.len() - 1;
         let mut acc = 0.0;
         for (i, c) in self.counts.iter().enumerate() {
             acc += *c as f64;
             if acc >= target {
-                return self.max.min(MIN_MS * GROWTH.js_pow((i + 1) as f64));
+                return if i == top { self.max } else { self.max.min(MIN_MS * GROWTH.js_pow((i + 1) as f64)) };
             }
         }
         self.max
@@ -2077,4 +2082,40 @@ pub fn simulate_des(spec: &serde_json::Value, scenario: &serde_json::Value, cfg:
 
 fn is_zero(x: &f64) -> bool {
     *x == 0.0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_histogram_reports_a_40_minute_p99() {
+        // 98 answers in 10 ms, 2 in 40 min: the p99 is 40 min (to the bucket's 2.5%), not clipped
+        let mut h = Histogram::new();
+        for _ in 0..98 {
+            h.record(10.0);
+        }
+        for _ in 0..2 {
+            h.record(2_400_000.0);
+        }
+        let p99 = h.quantile(0.99);
+        assert!((p99 - 2_400_000.0).abs() <= 2_400_000.0 * 0.025, "p99 {}", p99);
+        assert!((h.quantile(0.5) - 10.0).abs() <= 10.0 * 0.025);
+        // past the top bucket the slowest answer seen is reported, not the bucket's edge
+        let mut far = Histogram::new();
+        far.record(5.0 * MAX_MS);
+        assert_eq!(far.quantile(0.99), 5.0 * MAX_MS);
+    }
+
+    #[test]
+    fn a_40_minute_wait_is_reported_end_to_end() {
+        // every call waits 40 min on a provider (no spread): the run follows them to their answers
+        let spec = serde_json::json!({ "components": [{ "id": "users", "kind": "client" }, { "id": "x", "kind": "external", "latencyMs": 2_400_000 }], "connections": ["users -> x"] });
+        let cfg = DesConfig { service_cv: 0.0, ..Default::default() };
+        let r = simulate_des(&spec, &serde_json::json!({ "duration": 10, "rps": 20 }), &cfg).unwrap();
+        assert!(r.summary.mean_error_rate < 0.01, "errors {}", r.summary.mean_error_rate);
+        let want = 2_400_000.0;
+        assert!((r.summary.p99_ms - want).abs() <= want * 0.025, "p99 {} ms", r.summary.p99_ms);
+        assert!((r.summary.p50_ms - want).abs() <= want * 0.025, "p50 {} ms", r.summary.p50_ms);
+    }
 }
