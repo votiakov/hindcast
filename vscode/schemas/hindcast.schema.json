@@ -1,0 +1,489 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "version": {
+      "default": 1,
+      "type": "number",
+      "const": 1
+    },
+    "name": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "pricing": {
+      "description": "cost model: illustrative teaching defaults, or cited AWS us-east-1 / Google Cloud us-central1 / Azure East US on-demand prices",
+      "type": "string",
+      "enum": [
+        "illustrative",
+        "aws-us-east-1",
+        "gcp-us-central1",
+        "azure-eastus"
+      ]
+    },
+    "commitment": {
+      "description": "with a real pricing profile: a 1- or 3-year commitment (savings plan, reserved instances, committed use) at published rates, no upfront; usage prices are not discounted",
+      "type": "string",
+      "enum": [
+        "none",
+        "1y",
+        "3y"
+      ]
+    },
+    "components": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Unique id, also used as the display name unless `name` is set"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "client",
+              "cdn",
+              "lb",
+              "gateway",
+              "server",
+              "worker",
+              "function",
+              "cache",
+              "db",
+              "replica",
+              "storage",
+              "queue",
+              "llm",
+              "llmapi",
+              "external",
+              "kv",
+              "dns",
+              "stream"
+            ],
+            "description": "Component type — see list_components for capacities, latency and price"
+          },
+          "name": {
+            "type": "string"
+          },
+          "tier": {
+            "description": "Vertical size: S ×1, M ×2, L ×4 capacity",
+            "type": "string",
+            "enum": [
+              "S",
+              "M",
+              "L"
+            ]
+          },
+          "instances": {
+            "description": "server/worker/llm: horizontal instances (reachable only behind lb/gateway/queue)",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500
+          },
+          "runtime": {
+            "description": "server/worker/function language runtime",
+            "type": "string",
+            "enum": [
+              "node",
+              "python",
+              "java",
+              "go",
+              "rust"
+            ]
+          },
+          "hitRate": {
+            "description": "cache/cdn hit ratio",
+            "type": "number",
+            "minimum": 0,
+            "maximum": 0.999
+          },
+          "limit": {
+            "description": "gateway/llmapi/external/kv rate limit or function max concurrency, req/s",
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "batching": {
+            "description": "llm: continuous batching (×4 throughput, +400ms)",
+            "type": "boolean"
+          },
+          "retries": {
+            "description": "retries per failed downstream call",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10
+          },
+          "retryPolicy": {
+            "type": "string",
+            "enum": [
+              "immediate",
+              "backoff",
+              "budget"
+            ]
+          },
+          "timeoutMs": {
+            "description": "client deadline; slower responses count as failures",
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "breaker": {
+            "description": "circuit breaker on downstream calls",
+            "type": "boolean"
+          },
+          "fallback": {
+            "description": "serve a degraded response while the breaker is open",
+            "type": "boolean"
+          },
+          "routing": {
+            "description": "split evenly (default), call all children in parallel, or fail over in order",
+            "type": "string",
+            "enum": [
+              "split",
+              "fanout",
+              "failover"
+            ]
+          },
+          "stallRate": {
+            "description": "share of requests that hit a rare stall (GC pause, compaction, noisy neighbour)",
+            "type": "number",
+            "minimum": 0,
+            "maximum": 0.5
+          },
+          "stallMs": {
+            "description": "stall duration in ms",
+            "type": "number",
+            "minimum": 0
+          },
+          "fanout": {
+            "description": "each call goes to N partitions of the callee in parallel; the caller waits for the slowest (scatter-gather)",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000
+          },
+          "queueS": {
+            "description": "bounded queue length in seconds of work",
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "autoscale": {
+            "description": "server/worker/llm: target-tracking autoscaling; `instances` is the starting size",
+            "type": "object",
+            "properties": {
+              "min": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 500
+              },
+              "max": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 500
+              },
+              "targetUtil": {
+                "description": "utilisation to aim for (default 0.6)",
+                "type": "number",
+                "minimum": 0.1,
+                "maximum": 0.95
+              },
+              "warmupS": {
+                "description": "launch → serving, seconds (default 30; EC2 ASG 90–180, k8s pod 5–20)",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 900
+              },
+              "cooldownS": {
+                "description": "wait after scaling before scaling in (default 60)",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 3600
+              }
+            },
+            "required": [
+              "min",
+              "max"
+            ]
+          },
+          "warmupS": {
+            "description": "cache/cdn: re-warm time constant after a restart or flush (default 20 s)",
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "writePolicy": {
+            "description": "cache/cdn: writes go on to the origin (through, default), or are acknowledged at the cache and flushed ~5 s later — fast, but lost if the cache dies first (behind)",
+            "type": "string",
+            "enum": [
+              "through",
+              "behind"
+            ]
+          },
+          "workingSetGb": {
+            "description": "cache: the data it fronts, GB — with it the hit rate follows from the cache size (S 6.4, M 13, L 26 GB) and `skew`",
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "skew": {
+            "description": "cache: how concentrated reads are on popular keys (Zipf exponent, default 1)",
+            "type": "number",
+            "minimum": 0.1,
+            "maximum": 3
+          },
+          "shards": {
+            "description": "db/replica: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash (give a sharded database's replica the same count)",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 256
+          },
+          "hotKeyShare": {
+            "description": "db/kv: share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which saturates first",
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "partitions": {
+            "description": "stream: partitions (default 4) — 1,000 messages/s in each, and a subscriber can use at most one consumer instance per partition",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1024
+          },
+          "ttlS": {
+            "description": "dns: how long clients cache an answer, s (default 60) — a dead target keeps getting traffic until it expires",
+            "type": "number",
+            "minimum": 0,
+            "maximum": 86400
+          },
+          "healthCheckS": {
+            "description": "dns: how long health checks take to notice a dead target, s (default 30; 3 checks × 10 s)",
+            "type": "number",
+            "minimum": 0,
+            "maximum": 3600
+          },
+          "threads": {
+            "description": "server/worker: threads per instance — every request in flight holds one, waiting on its calls included (thread-per-request, e.g. Tomcat 200). Unset: asynchronous, waiting holds nothing",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000
+          },
+          "bulkhead": {
+            "description": "calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000
+          },
+          "provisioned": {
+            "description": "function: provisioned concurrency — executions kept warm, so no cold start up to it; billed by the hour whether used or not ($0.0000041667 per GB-s)",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "prefixes": {
+            "description": "storage: key prefixes the objects are spread over (default 10) — S3 takes 5,500 reads or 3,500 writes a second per prefix; `hotKeyShare` puts that share on one prefix",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100000
+          },
+          "hotRowShare": {
+            "description": "db: share of the writes that update one row (a stock counter, a balance): its lock takes them one at a time, each for a write's time — at most 1,000 ÷ latency a second, however big the database",
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "burst": {
+            "description": "gateway: the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000",
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "maxReceives": {
+            "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "visibilityS": {
+            "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
+            "type": "number",
+            "minimum": 0,
+            "maximum": 43200
+          },
+          "maxConnections": {
+            "description": "lb/gateway: connections it can hold at once; each request holds one for `connectionS` (a websocket session, a streamed answer, a long poll) — past it, new ones are refused (Erlang B)",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "connectionS": {
+            "description": "lb/gateway: how long each request holds its connection, s (default 30)",
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 86400
+          },
+          "everyS": {
+            "description": "client: a scheduled job instead of users (a cron, a nightly export) — every everyS seconds it sends `batch` requests over `batchS` (default 10 s), the first run 10 s in; it takes no share of the user traffic, and its requests do not count as the users'",
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "batch": {
+            "description": "client with everyS: requests per run",
+            "type": "number",
+            "minimum": 0
+          },
+          "batchS": {
+            "description": "client with everyS: how long a run takes to send them, s (default 10)",
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "capacity": {
+            "description": "override: req/s per size-S instance",
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "latencyMs": {
+            "description": "override: base service time",
+            "type": "number",
+            "minimum": 0
+          },
+          "costPerHour": {
+            "description": "override: $/h per size-S instance",
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "id",
+          "kind"
+        ],
+        "description": "One component of the architecture"
+      }
+    },
+    "connections": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "array",
+            "items": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "additionalItems": false,
+            "minItems": 2,
+            "maxItems": 2
+          },
+          {
+            "type": "string",
+            "pattern": "^\\s*[^\\s>]+\\s*->\\s*[^\\s>]+\\s*$"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              },
+              "latencyMs": {
+                "description": "network round trip added to every call over this link (cross-AZ ≈ 1, cross-region ≈ 60–150)",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1000
+              },
+              "calls": {
+                "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+              },
+              "carries": {
+                "description": "the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both",
+                "type": "string",
+                "enum": [
+                  "reads",
+                  "writes"
+                ]
+              },
+              "replication": {
+                "description": "database → replica: sync — every write waits for this replica (no data lost on failover, writes stop while it is unreachable); async (default) — the replica lags, a failover loses what it had not received",
+                "type": "string",
+                "enum": [
+                  "sync",
+                  "async"
+                ]
+              }
+            },
+            "required": [
+              "from",
+              "to"
+            ]
+          }
+        ]
+      },
+      "description": "caller → callee pairs, e.g. \"lb -> api\", [\"lb\",\"api\"] or { from, to, latencyMs }; order matters for failover routing"
+    },
+    "zones": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "component ids located in this failure domain"
+          }
+        },
+        "required": [
+          "id",
+          "members"
+        ]
+      }
+    },
+    "notes": {
+      "description": "notes on the board: free text at a position, for explaining the design; the engines ignore them",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          },
+          "width": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "text",
+          "x",
+          "y"
+        ]
+      }
+    }
+  },
+  "required": [
+    "components",
+    "connections"
+  ],
+  "title": "Hindcast architecture spec"
+}

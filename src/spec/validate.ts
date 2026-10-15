@@ -1,49 +1,53 @@
-import { ArchitectureSpec } from './schema';
+import { ArchitectureSpec, type ComponentSpec } from './schema';
 import { pairs } from './convert';
 
 export interface Issue {
   level: 'error' | 'warning';
   message: string;
+  /** where in the document: ['components', 2, 'kind'], ['connections', 0] … (for editors) */
+  path?: (string | number)[];
 }
 
 /** Schema errors plus architectural lint (things that will silently misbehave in the simulation). */
 export function validateSpec(input: unknown): { ok: boolean; issues: Issue[]; spec?: ArchitectureSpec } {
   const parsed = ArchitectureSpec.safeParse(input);
   if (!parsed.success) {
-    return { ok: false, issues: parsed.error.issues.map((i) => ({ level: 'error', message: describeIssue(i, input) })) };
+    return { ok: false, issues: parsed.error.issues.map((i) => ({ level: 'error', message: describeIssue(i, input), path: i.path.map((k) => (typeof k === 'number' ? k : String(k))) })) };
   }
   const spec = parsed.data;
   const issues: Issue[] = [];
   const ids = new Map(spec.components.map((c) => [c.id, c]));
   const seen = new Set<string>();
-  for (const c of spec.components) {
-    if (seen.has(c.id)) issues.push({ level: 'error', message: `duplicate component id "${c.id}"` });
+  const at = (c: ComponentSpec) => ['components', spec.components.indexOf(c)];
+  for (const [n, c] of spec.components.entries()) {
+    if (seen.has(c.id)) issues.push({ level: 'error', message: `duplicate component id "${c.id}"`, path: ['components', n, 'id'] });
     seen.add(c.id);
   }
   const edges = pairs(spec);
   const out = new Map<string, string[]>();
   const into = new Map<string, string[]>();
-  for (const [a, b] of edges) {
-    if (!ids.has(a)) issues.push({ level: 'error', message: `connection from unknown component "${a}"` });
-    if (!ids.has(b)) issues.push({ level: 'error', message: `connection to unknown component "${b}"` });
-    if (a === b) issues.push({ level: 'error', message: `"${a}" is connected to itself` });
+  for (const [n, [a, b]] of edges.entries()) {
+    const path = ['connections', n];
+    if (!ids.has(a)) issues.push({ level: 'error', message: `connection from unknown component "${a}"`, path });
+    if (!ids.has(b)) issues.push({ level: 'error', message: `connection to unknown component "${b}"`, path });
+    if (a === b) issues.push({ level: 'error', message: `"${a}" is connected to itself`, path });
     out.set(a, [...(out.get(a) ?? []), b]);
     into.set(b, [...(into.get(b) ?? []), a]);
   }
-  if (!spec.components.some((c) => c.kind === 'client')) issues.push({ level: 'error', message: 'no traffic source: add a component with kind "client"' });
+  if (!spec.components.some((c) => c.kind === 'client')) issues.push({ level: 'error', message: 'no traffic source: add a component with kind "client"', path: ['components'] });
 
   for (const c of spec.components) {
     const kids = out.get(c.id) ?? [];
     const parents = (into.get(c.id) ?? []).map((p) => ids.get(p)?.kind);
-    if ((c.kind === 'lb' || c.kind === 'gateway' || c.kind === 'queue' || c.kind === 'stream' || c.kind === 'dns') && !kids.length) issues.push({ level: 'error', message: `${c.kind} "${c.id}" has nothing behind it — every request fails` });
-    if ((c.kind === 'cache' || c.kind === 'cdn') && !kids.length) issues.push({ level: 'warning', message: `${c.kind} "${c.id}" has no origin — every miss fails` });
+    if ((c.kind === 'lb' || c.kind === 'gateway' || c.kind === 'queue' || c.kind === 'stream' || c.kind === 'dns') && !kids.length) issues.push({ level: 'error', message: `${c.kind} "${c.id}" has nothing behind it — every request fails`, path: at(c) });
+    if ((c.kind === 'cache' || c.kind === 'cdn') && !kids.length) issues.push({ level: 'warning', message: `${c.kind} "${c.id}" has no origin — every miss fails`, path: at(c) });
     const fannedInto = (into.get(c.id) ?? []).some((p) => (ids.get(p)?.fanout ?? 1) > 1);
-    if ((c.instances ?? 1) > 1 && c.kind !== 'llm' && !fannedInto && !parents.some((k) => k === 'lb' || k === 'gateway' || k === 'queue' || k === 'stream')) issues.push({ level: 'warning', message: `"${c.id}" has ${c.instances} instances but no lb/gateway/queue in front — only one receives traffic` });
-    if (c.kind === 'replica' && !parents.includes('db')) issues.push({ level: 'warning', message: `replica "${c.id}" is not connected from a db — it will be treated as a plain server` });
-    if (c.kind !== 'client' && !(into.get(c.id) ?? []).length) issues.push({ level: 'warning', message: `"${c.id}" receives no traffic (nothing connects to it)` });
-    if (c.fallback && !c.breaker) issues.push({ level: 'warning', message: `"${c.id}" has fallback without breaker — fallback only applies while a breaker is open` });
+    if ((c.instances ?? 1) > 1 && c.kind !== 'llm' && !fannedInto && !parents.some((k) => k === 'lb' || k === 'gateway' || k === 'queue' || k === 'stream')) issues.push({ level: 'warning', message: `"${c.id}" has ${c.instances} instances but no lb/gateway/queue in front — only one receives traffic`, path: at(c) });
+    if (c.kind === 'replica' && !parents.includes('db')) issues.push({ level: 'warning', message: `replica "${c.id}" is not connected from a db — it will be treated as a plain server`, path: at(c) });
+    if (c.kind !== 'client' && !(into.get(c.id) ?? []).length) issues.push({ level: 'warning', message: `"${c.id}" receives no traffic (nothing connects to it)`, path: at(c) });
+    if (c.fallback && !c.breaker) issues.push({ level: 'warning', message: `"${c.id}" has fallback without breaker — fallback only applies while a breaker is open`, path: at(c) });
   }
-  for (const z of spec.zones ?? []) for (const m of z.members) if (!ids.has(m)) issues.push({ level: 'error', message: `zone "${z.id}" lists unknown member "${m}"` });
+  for (const [zi, z] of (spec.zones ?? []).entries()) for (const [mi, m] of z.members.entries()) if (!ids.has(m)) issues.push({ level: 'error', message: `zone "${z.id}" lists unknown member "${m}"`, path: ['zones', zi, 'members', mi] });
 
   return { ok: !issues.some((i) => i.level === 'error'), issues, spec };
 }
