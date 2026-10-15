@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Everything it does · Hindcast docs</title>
-<meta name="description" content="Every capability in one place, with where to find it: A the app, C the CLI, M the MCP server.">
+<meta name="description" content="Every capability in one place, with where to find it: A the app, C the CLI, M the MCP server, V the VS Code extension.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="docs.css">
@@ -23,7 +23,7 @@
 <header class="head">
   <div class="kicker">Reference</div>
   <h1>Everything it does</h1>
-  <p class="lede">Every capability in one place, with where to find it: A the app, C the CLI, M the MCP server.</p>
+  <p class="lede">Every capability in one place, with where to find it: A the app, C the CLI, M the MCP server, V the VS Code extension.</p>
 </header>
 <section class="prose">
 <h2>Real data in</h2>
@@ -68,6 +68,7 @@
 <tr><td>Data transfer priced across zones, regions and to the internet</td><td>A C M</td></tr>
 <tr><td>The chart-first screen; any moment on the board</td><td>A</td></tr>
 <tr><td>Headroom: req/s sustained within SLO and what saturates next</td><td>C</td></tr>
+<tr><td><code>hindcast quickstart</code>: connect, collect, calibrate and a capacity review in one command; the review opens with risk, headroom, cost, the one change and trust</td><td>C M</td></tr>
 <tr><td>Reports: terminal, Markdown, self-contained HTML, PR comment; the PR check with a gate</td><td>C M</td></tr>
 <tr><td>Public-outage replays: Cloudflare 2019, GitHub 2018, Slack 2021, AWS us-east-1 2025</td><td>A C M</td></tr>
 <tr><td>Cards and clips of results</td><td>A C</td></tr>
@@ -79,16 +80,16 @@
 <tr><th>capability</th><th>where</th></tr>
 <tr><td>Live: a failing system with the next move</td><td>A</td></tr>
 <tr><td>Sixteen lessons, forty-eight levels with engine-checked objectives; every level proven winnable by a test; show me, debriefs, saved progress</td><td>A</td></tr>
-<tr><td>Sandbox: 14 component kinds, zones, link latency, templates, runtimes, autoscaling, retries, timeouts, breakers, bounded queues, routing, fan-out, batching, calibration from production numbers</td><td>A</td></tr>
+<tr><td>Sandbox: 22 component kinds (from load balancers and caches to streams, a search index, a vector database, cold archive and edge functions), zones, link latency, templates, runtimes, autoscaling, retries, timeouts, breakers, bounded queues, routing, fan-out, batching, calibration from production numbers</td><td>A</td></tr>
 <tr><td>Chaos: kill, faults, cache flush, zone failure; traffic patterns, spikes, real traffic from a CSV</td><td>A C</td></tr>
 <tr><td>Flight recorder: rewind the board; incident timeline as Markdown</td><td>A</td></tr>
 <tr><td>Architecture as code: YAML synced with the board; validation and lint</td><td>A C M</td></tr>
 <tr><td>Import from Terraform and Kubernetes, with assumptions</td><td>A C M</td></tr>
 <tr><td>Failure audit: risk register, blast radius, recovery, $ at risk, verified priced fixes, one-click apply, CI gate</td><td>A C M</td></tr>
-<tr><td>Compare: two designs, one scenario, a computed takeaway; 17 built in</td><td>A C M</td></tr>
+<tr><td>Compare: two designs, one scenario, a computed takeaway; dozens built in, each with a next one to try</td><td>A C M</td></tr>
 <tr><td>Monte Carlo with confidence intervals, breaking point, cost optimizer</td><td>A C M</td></tr>
 <tr><td>Two engines: fluid (fast, live) and discrete-event (every request)</td><td>A C M</td></tr>
-<tr><td>Pricing: illustrative, AWS us-east-1, GCP us-central1</td><td>A C</td></tr>
+<tr><td>Pricing: illustrative, AWS us-east-1, GCP us-central1, Azure East US; on-demand or 1- and 3-year commitments</td><td>A C</td></tr>
 <tr><td>Present mode, embeds, share links; one look (Terminal) with live motion; replicas grouped or each</td><td>A</td></tr>
 </table></div>
 <h2>Content and integrations</h2>
@@ -96,12 +97,13 @@
 <tr><th>capability</th><th>where</th></tr>
 <tr><td>Studio episodes, also generated from comparisons and audit incidents</td><td>A</td></tr>
 <tr><td>Rendering to MP4, PNG stills, PDF carousel, GIF in four formats, with brands and themes</td><td>C</td></tr>
-<tr><td>MCP server with 23 tools; a live canvas in MCP Apps hosts</td><td>M</td></tr>
+<tr><td>MCP server with 25 tools, over stdio or HTTP (a token, an allowlist of read-only tools, Host and Origin checks); a live canvas in MCP Apps hosts</td><td>M</td></tr>
 <tr><td><a href="agents.html">Agent tools</a>: connect to Prometheus and Jaeger/Tempo (probing presets, services, traffic history, entry services), collect a window, calibrate with a trust report, verify changes with a verdict and a confidence, suggest fixes and savings already backtested</td><td>M C</td></tr>
 <tr><td>Changes from Terraform plans (ECS, app autoscaling, ASG/EC2, RDS, Cloud Run, kubernetes_*), Kubernetes diffs, and edited manifests against a <code>kubectl get</code> snapshot</td><td>M C</td></tr>
 <tr><td>List prices (AWS Fargate) from CPU and memory limits when there is no bill</td><td>M C</td></tr>
 <tr><td>Every agent tool from a shell: <code>hindcast agent &lt;tool&gt; '&lt;json&gt;'</code>; MCP prompts; a Claude Code skill</td><td>C M</td></tr>
 <tr><td>GitHub Actions: architecture audit and backtest pull-request checks</td><td>C</td></tr>
+<tr><td>VS Code: the live board beside the spec you are editing, errors underlined on the bad value, p99, errors and $/month in the status bar, the audit as a preview, completion from a JSON Schema</td><td>V</td></tr>
 <tr><td>A standalone CLI and MCP server, one file each</td><td>C M</td></tr>
 </table></div>
 </section>

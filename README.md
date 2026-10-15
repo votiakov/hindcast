@@ -32,6 +32,14 @@ It was validated on a real cluster serving real traffic:
 
 See [reference/k8s](reference/k8s/README.md).
 
+One command takes a cluster from nothing to a capacity review. It connects, collects the history,
+calibrates and writes the report, which opens with a five-line summary: risk, headroom, cost, the
+one change worth making, and how far to trust it.
+
+```
+hindcast quickstart --prometheus http://localhost:9090 --jaeger http://localhost:16686 --last 24h
+```
+
 Draw a system (or import it from Terraform or Kubernetes manifests, or paste a YAML spec), push traffic and failures through
 it, and watch where it gives out. Then run the failure audit: every component dying, every dependency
 turning slow, caches restarting cold, zones going dark, a traffic surge. Each incident is graded by what
@@ -45,8 +53,12 @@ answer is a verdict (pass / fail / inconclusive) with a confidence that says whi
 change pushes past anything the history showed, the money with its basis, and the SLO minutes.
 Read-only towards your systems.
 
-It runs in four places over the same engine: a visual app, a CLI, an MCP server, and agent tools
-on both.
+It runs in five places over the same engine: a visual app, a CLI, an MCP server (stdio or HTTP),
+agent tools on both, and a VS Code extension that draws the spec you are editing beside it, live
+([docs/vscode.md](docs/vscode.md)).
+
+How it differs from the system-design simulators you may have seen, and what it can't do:
+[Why Hindcast](docs-site/pages/why.html) (`/docs/why.html` in the app).
 
 ```
 npm install
@@ -162,7 +174,7 @@ changes an architecture spec. Every command takes `--json`.
 ## MCP server
 
 Agents working on a live system: `connect_telemetry` → `collect_telemetry` → `calibrate_model` →
-`verify_change` (plus `suggest_changes`, `find_headroom`, `verify_design`, `read_cluster`, `model_status`); see
+`review_capacity` → `verify_change` (plus `suggest_changes`, `find_headroom`, `verify_design`, `read_cluster`, `model_status`); see
 [docs/agents.md](docs/agents.md). The server is the `hindcast` binary itself (`npm run cli:build` →
 `engine-rs/target/release/hindcast`): `claude mcp add hindcast -- …/hindcast mcp`, or
 `hindcast agent setup` for any host.
