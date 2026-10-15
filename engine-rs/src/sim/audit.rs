@@ -585,7 +585,7 @@ pub fn audit(input: &Architecture, o: &AuditOptions, progress: &mut dyn FnMut(f6
         if kind == "cache" || kind == "cdn" {
             incidents.push(Incident { id: format!("cold:{}", id), kind: "cold-cache", target: id.clone(), title: format!("{} restarts cold", nm(&id)), events: vec![json!({ "at": FAULT_AT, "action": { "type": "flush-cache", "id": id } })], traffic: None });
         }
-        if kind == "kv" || (kind == "db" && get_num(c, "shards").unwrap_or(1.0) > 1.0) {
+        if kind == "kv" || kind == "storage" || (kind == "db" && get_num(c, "shards").unwrap_or(1.0) > 1.0) {
             incidents.push(Incident { id: format!("hot:{}", id), kind: "hot-key", target: id.clone(), title: format!("{}: 30% of traffic on one key", nm(&id)), events: fault(json!({ "type": "hot-key", "id": id, "share": 0.3 }), json!({ "type": "hot-key", "id": id, "share": 0 })), traffic: None });
         }
         if kind != "lb" && kind != "queue" && kind != "stream" && kind != "dns" {

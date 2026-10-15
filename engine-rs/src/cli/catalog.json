@@ -113,8 +113,8 @@
     {
       "kind": "storage",
       "label": "Object Storage",
-      "description": "S3-style blob storage. Practically infinite throughput, but slow per request.",
-      "capacityPerInstanceRps": 50000,
+      "description": "S3-style object storage: slow per request, and 5,500 reads or 3,500 writes a second per key prefix (10 prefixes by default) — a hot prefix gets 503 SlowDown however big the bucket.",
+      "capacityPerInstanceRps": 55000,
       "baseLatencyMs": 40,
       "costPerHour": 0.03,
       "costPerRequest": null,

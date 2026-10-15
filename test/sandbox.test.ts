@@ -52,7 +52,7 @@ const data = (b: Board, id: string) => b.nodes.find((n) => n.id === id)!.data as
 const edgeRps = (s: Snapshot, from: string, to: string) => s.edgeStats[`e-${from}-${to}`]?.rps ?? NaN;
 
 describe('one component at a time, against queueing arithmetic', () => {
-  for (const kind of ['server', 'worker', 'replica', 'storage', 'llm'] as Kind[]) {
+  for (const kind of ['server', 'worker', 'replica', 'llm'] as Kind[]) {
     it(`${kind}: below capacity nothing fails; above it, the excess is shed`, () => {
       const b = board([{ id: 'users', kind: 'client' }, { id: 'x', kind }], [['users', 'x']]);
       const cap = capacityOf(data(b, 'x'));

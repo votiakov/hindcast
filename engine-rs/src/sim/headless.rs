@@ -147,6 +147,13 @@ pub fn explain(d: &NodeData, st: Option<&NodeStats>, v: &View) -> Option<String>
         format!("Backlog of {} messages: consumers are {} behind. Producers are unaffected — work completes later.", fmt(st.queue), if st.lag_s.is_finite() { format!("{}s", js_to_fixed(st.lag_s, 0)) } else { "indefinitely".into() })
     } else if d.kind == "dns" && st.drop_rps > 0.5 {
         format!("{}/s of clients still hold an answer pointing at a dead target and time out: they keep going there until the health checks notice ({} s) and their cached answer expires (TTL {} s).", fmt(st.drop_rps), js_num(d.health_check_s.unwrap_or(30.0)), js_num(d.ttl_s.unwrap_or(60.0)))
+    } else if d.kind == "storage" && st.drop_rps > 1.0 {
+        format!(
+            "Prefix limit: an object store takes 5,500 reads or 3,500 writes a second per key prefix, however big the bucket. {}% of requests land on the busiest of {} prefixes, and {}/s get 503 SlowDown. Spread keys over more prefixes, or cache the hot objects.",
+            pct(hot_prefix_share(d)),
+            js_num(prefixes_of(d)),
+            fmt(st.drop_rps)
+        )
     } else if (d.kind == "gateway" || d.kind == "llmapi" || d.kind == "external" || d.kind == "kv") && st.drop_rps > 1.0 {
         format!("Rate limit reached: {}/s rejected with HTTP 429 to protect what is behind it.", fmt(st.drop_rps))
     } else if d.kind == "function" && st.cold_frac > 0.05 {

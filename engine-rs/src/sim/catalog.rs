@@ -114,6 +114,10 @@ pub struct NodeData {
     /// by the hour whether used or not
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provisioned: Option<f64>,
+    /// storage: key prefixes the objects are spread over (default 10) — each takes 5,500 reads or
+    /// 3,500 writes a second (S3)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prefixes: Option<f64>,
     /// a network partition's side this component is on (set by the partition action): links between
     /// components on different sides are cut
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -156,7 +160,7 @@ pub fn spec(kind: &str) -> KindSpec {
         "cache" => k(20000.0, 1.0, 0.15, true),
         "db" => k(1000.0, 10.0, 0.4, true),
         "replica" => k(1000.0, 10.0, 0.35, true),
-        "storage" => k(50000.0, 40.0, 0.03, false),
+        "storage" => k(55000.0, 40.0, 0.03, false),
         "queue" => k(50000.0, 3.0, 0.06, false),
         "llm" => KindSpec { queue_s: Some(3.0), scalable: true, ..k(6.0, 800.0, 4.0, false) },
         "llmapi" => KindSpec { cost_per_request: Some(0.002), ..k(100.0, 1500.0, 0.0, false) },
@@ -368,7 +372,9 @@ pub fn is_up(d: &NodeData) -> bool {
 pub fn capacity_of(d: &NodeData, reachable: Option<f64>) -> f64 {
     let sp = spec(&d.kind);
     let reachable = reachable.unwrap_or_else(|| instances_up(d));
-    let cap = if d.kind == "function" || d.kind == "llmapi" || d.kind == "external" || d.kind == "kv" || d.kind == "gateway" {
+    let cap = if d.kind == "storage" {
+        d.capacity.unwrap_or(PREFIX_READS * prefixes_of(d))
+    } else if d.kind == "function" || d.kind == "llmapi" || d.kind == "external" || d.kind == "kv" || d.kind == "gateway" {
         d.limit.unwrap_or(sp.capacity)
     } else {
         let t = if sp.tiered { tier(&d.tier).0 } else { 1.0 };
@@ -449,6 +455,26 @@ pub fn dns_stale_share(d: &NodeData, targets: &[(bool, f64)]) -> f64 {
 /// may do — so one hot key throttles however much the table is provisioned for
 pub const KV_PARTITION_READS: f64 = 3000.0;
 pub const KV_PARTITION_WRITES: f64 = 1000.0;
+
+/// an object store's key prefix: 5,500 GET or 3,500 PUT a second (S3); past it, 503 SlowDown
+pub const PREFIX_READS: f64 = 5500.0;
+pub const PREFIX_WRITES: f64 = 3500.0;
+
+/// an object store's prefixes (1 for everything else)
+pub fn prefixes_of(d: &NodeData) -> f64 {
+    if d.kind == "storage" {
+        d.prefixes.unwrap_or(10.0).max(1.0).floor()
+    } else {
+        1.0
+    }
+}
+
+/// the share of an object store's requests on its busiest prefix: the hot one, plus an even share of the rest
+pub fn hot_prefix_share(d: &NodeData) -> f64 {
+    let p = prefixes_of(d);
+    let h = d.hot_key_share.unwrap_or(0.0).clamp(0.0, 1.0);
+    h + (1.0 - h) / p
+}
 
 
 /// the share of a database's traffic on its busiest shard: the hot key, plus an even share of the rest

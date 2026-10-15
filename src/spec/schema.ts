@@ -50,6 +50,7 @@ export const ComponentSpec = z
     threads: z.number().int().min(1).max(10000).optional().describe('server/worker: threads per instance — every request in flight holds one, waiting on its calls included (thread-per-request, e.g. Tomcat 200). Unset: asynchronous, waiting holds nothing'),
     bulkhead: z.number().int().min(1).max(10000).optional().describe('calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread'),
     provisioned: z.number().int().min(0).max(10000).optional().describe('function: provisioned concurrency — executions kept warm, so no cold start up to it; billed by the hour whether used or not ($0.0000041667 per GB-s)'),
+    prefixes: z.number().int().min(1).max(100000).optional().describe('storage: key prefixes the objects are spread over (default 10) — S3 takes 5,500 reads or 3,500 writes a second per prefix; `hotKeyShare` puts that share on one prefix'),
     capacity: z.number().positive().optional().describe('override: req/s per size-S instance'),
     latencyMs: z.number().nonnegative().optional().describe('override: base service time'),
     costPerHour: z.number().nonnegative().optional().describe('override: $/h per size-S instance'),

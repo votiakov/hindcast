@@ -111,6 +111,8 @@ export interface SystemNodeData extends Record<string, unknown> {
   bulkhead?: number;
   /** function: provisioned concurrency — executions kept warm (no cold start up to it), billed hourly */
   provisioned?: number;
+  /** storage: key prefixes (default 10) — each takes 5,500 reads or 3,500 writes a second */
+  prefixes?: number;
   /** db: horizontal partitions (capacity and cost × shards) */
   shards?: number;
   /** db: share of its traffic on one key — all of it on one shard */
@@ -222,8 +224,8 @@ export const KINDS: Record<Kind, KindSpec> = {
   },
   storage: {
     kind: 'storage', label: 'Object Storage', prefix: 's3', color: '#94a3b8',
-    capacity: 50000, baseLatencyMs: 40, costPerHour: 0.03, tiered: false,
-    description: 'S3-style blob storage. Practically infinite throughput, but slow per request.',
+    capacity: 55000, baseLatencyMs: 40, costPerHour: 0.03, tiered: false,
+    description: 'S3-style object storage: slow per request, and 5,500 reads or 3,500 writes a second per key prefix (10 prefixes by default) — a hot prefix gets 503 SlowDown however big the bucket.',
   },
   queue: {
     kind: 'queue', label: 'Queue', prefix: 'queue', color: '#c084fc',
@@ -313,7 +315,8 @@ export const cacheHitRate = (d: SystemNodeData): number => (d.kind === 'cache' &
 export function capacityOf(d: SystemNodeData, reachable = instancesUp(d)): number {
   const spec = KINDS[d.kind];
   let cap: number;
-  if (d.kind === 'function' || d.kind === 'llmapi' || d.kind === 'external' || d.kind === 'kv' || d.kind === 'gateway') cap = d.limit ?? spec.capacity;
+  if (d.kind === 'storage') cap = d.capacity ?? PREFIX_READS * prefixesOf(d);
+  else if (d.kind === 'function' || d.kind === 'llmapi' || d.kind === 'external' || d.kind === 'kv' || d.kind === 'gateway') cap = d.limit ?? spec.capacity;
   else {
     const tier = spec.tiered ? TIERS[d.tier].capacity : 1;
     const batch = d.kind === 'llm' && d.batching ? BATCHING.capacity : 1;
@@ -322,6 +325,17 @@ export function capacityOf(d: SystemNodeData, reachable = instancesUp(d)): numbe
   }
   return cap * (d.degraded ?? 1);
 }
+
+/** an object store's key prefix: 5,500 GET or 3,500 PUT a second (S3) */
+export const PREFIX_READS = 5500;
+export const PREFIX_WRITES = 3500;
+/** an object store's prefixes (1 for everything else) */
+export const prefixesOf = (d: SystemNodeData): number => (d.kind === 'storage' ? Math.max(1, Math.floor(d.prefixes ?? 10)) : 1);
+/** the share of an object store's requests on its busiest prefix */
+export const hotPrefixShare = (d: SystemNodeData): number => {
+  const h = Math.min(1, Math.max(0, d.hotKeyShare ?? 0));
+  return h + (1 - h) / prefixesOf(d);
+};
 
 /** a stream's partitions (1 for everything else) */
 export const partitionsOf = (d: SystemNodeData): number => (d.kind === 'stream' ? Math.max(1, Math.floor(d.partitions ?? 4)) : 1);

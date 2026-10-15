@@ -178,6 +178,12 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
           )}
         </div>
       )}
+      {data.kind === 'storage' && (
+        <div className="nc-row" title="Key prefixes: S3 takes 5,500 reads or 3,500 writes a second per prefix, however big the bucket — spread hot keys over more prefixes">
+          <span className="nc-l">prefixes</span>
+          <input className="nc-num" type="number" min={1} max={100000} step={1} value={data.prefixes ?? 10} onChange={(e) => set({ prefixes: Math.max(1, Math.min(100000, Math.round(+e.target.value) || 1)) })} />
+        </div>
+      )}
       {data.kind === 'stream' && (
         <div className="nc-row" title="Partitions: 1,000 messages/s in each, $0.015/h each — and a subscriber cannot use more consumer instances than there are partitions">
           <span className="nc-l">partitions</span>
@@ -421,7 +427,7 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
             <option value="lat2000">+2 s</option>
             <option value="deg0.5">50% capacity</option>
             {(data.kind === 'cache' || data.kind === 'cdn') && <option value="flush">flush cache</option>}
-            {(data.kind === 'db' || data.kind === 'kv') && <option value={data.hotKeyShare ? 'hot0' : 'hot0.3'}>{data.hotKeyShare ? 'cool the hot key' : 'hot key (30% on one key)'}</option>}
+            {(data.kind === 'db' || data.kind === 'kv' || data.kind === 'storage') && <option value={data.hotKeyShare ? 'hot0' : 'hot0.3'}>{data.hotKeyShare ? 'cool the hot key' : data.kind === 'storage' ? 'hot prefix (30% on one)' : 'hot key (30% on one key)'}</option>}
             {(data.faultRate || data.faultLatencyMs || data.degraded !== undefined) && <option value="restore">restore</option>}
           </select>
         )}

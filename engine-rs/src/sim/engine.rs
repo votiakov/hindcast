@@ -810,6 +810,21 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
             r.routes = Some(vec![]);
             r
         }
+        // an object store: each key prefix is a bucket of prefix-seconds (a GET costs 1/5,500, a PUT
+        // 1/3,500); the hot prefix takes the hot share plus its even share of the rest
+        "storage" => {
+            let p = prefixes_of(c.d);
+            let deg = c.d.degraded.unwrap_or(1.0).max(1e-6);
+            let work = (c.arrivals * c.read_ratio / PREFIX_READS + c.arrivals * (1.0 - c.read_ratio) / PREFIX_WRITES) / deg;
+            let hot = hot_prefix_share(c.d);
+            let cold = if p > 1.0 { (1.0 - hot) / (p - 1.0) } else { 0.0 };
+            let served = |share: f64| if share * work > c.dt { c.dt / (share * work) } else { 1.0 };
+            let processed = c.arrivals * (hot * served(hot) + (1.0 - hot) * if p > 1.0 { served(cold) } else { 1.0 });
+            let util = (hot * work / c.dt).max(cold * work / c.dt);
+            let mut r = res(processed, c.arrivals - processed, 0.0, util, true);
+            r.routes = Some(vec![]);
+            r
+        }
         // a read replica is a data store: it answers, it does not call on (as a primary only reaches its replicas)
         "replica" => {
             let mut r = process_through(c, st);
@@ -855,7 +870,7 @@ fn fold(c: &FoldCtx, st: &NodeState) -> (f64, f64) {
 fn usage_cost(d: &NodeData, st: &NodeState, profile: &str) -> f64 {
     match d.kind.as_str() {
         "function" => st.in_rps * 3600.0 * request_price(d, profile),
-        "llmapi" | "external" | "kv" => (st.in_rps - st.drop_rps) * 3600.0 * (if d.cost_per_hour.is_none() { request_price(d, profile) } else { 0.0 }),
+        "llmapi" | "external" | "kv" | "storage" => (st.in_rps - st.drop_rps) * 3600.0 * (if d.cost_per_hour.is_none() { request_price(d, profile) } else { 0.0 }),
         _ => st.in_rps * 3600.0 * request_price(d, profile),
     }
 }
@@ -1618,7 +1633,7 @@ impl Engine {
                 let own = match d.kind.as_str() {
                     "client" | "queue" | "stream" | "gateway" => 0.0,
                     "function" => (SERVICE_P99 - 1.0) * base_latency_of(d),
-                    "llmapi" | "external" | "kv" => (API_P99 - 1.0) * base_latency_of(d),
+                    "llmapi" | "external" | "kv" | "storage" => (API_P99 - 1.0) * base_latency_of(d),
                     _ => service_tail(d, st),
                 };
                 let kids = if has_kids { tail * if retries > 0.0 { st.retry_amp } else { 1.0 } } else { 0.0 };
@@ -1637,7 +1652,7 @@ impl Engine {
                 let own_tail = match d.kind.as_str() {
                     "client" | "queue" | "stream" | "gateway" => 0.0,
                     "function" => (SERVICE_P99 - 1.0) * base_latency_of(d),
-                    "llmapi" | "external" | "kv" => (API_P99 - 1.0) * base_latency_of(d),
+                    "llmapi" | "external" | "kv" | "storage" => (API_P99 - 1.0) * base_latency_of(d),
                     _ => service_tail(d, st),
                 };
                 let own_mean = if d.kind == "client" { 0.0 } else { own_mean };

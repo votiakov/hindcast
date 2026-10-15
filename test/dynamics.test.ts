@@ -181,3 +181,34 @@ describe('a cut link', () => {
     expect(des.timeline.at(-1)!.errorRate).toBe(0);
   });
 });
+
+describe('object storage prefixes', () => {
+  const store = (extra: Record<string, unknown>) => ({ components: [{ id: 'u', kind: 'client' }, { id: 's3', kind: 'storage', ...extra }], connections: [['u', 's3']] });
+  const errs = (spec: unknown, rps: number, readRatio = 1) => {
+    const sc = { duration: 20, rps, readRatio };
+    return { fluid: simulate(spec as never, sc as never).summary.meanErrorRate, des: simulateDes(spec, sc, { seed: 6 }).summary.meanErrorRate };
+  };
+
+  it('a prefix takes 5,500 reads a second, however big the bucket', () => {
+    const one = errs(store({ prefixes: 1 }), 5000);
+    expect(one.fluid).toBeLessThan(0.01);
+    expect(one.des).toBeLessThan(0.01);
+    const over = errs(store({ prefixes: 1 }), 7000);
+    expect(over.fluid).toBeCloseTo(1 - 5500 / 7000, 1);
+    expect(over.des).toBeCloseTo(1 - 5500 / 7000, 1);
+  });
+
+  it('writes cost more: 3,500 a second', () => {
+    const w = errs(store({ prefixes: 1 }), 4000, 0);
+    expect(w.fluid).toBeCloseTo(1 - 3500 / 4000, 1);
+    expect(w.des).toBeCloseTo(1 - 3500 / 4000, 1);
+  });
+
+  it('a hot prefix throttles while the others idle', () => {
+    // 30% on one of 10 prefixes: it gets 37% of 20,000/s = 7,400/s against 5,500
+    const hot = errs(store({ hotKeyShare: 0.3 }), 20000);
+    for (const e of [hot.fluid, hot.des]) expect(e).toBeCloseTo((7400 - 5500) / 20000, 1);
+    const spread = errs(store({}), 20000);
+    expect(spread.fluid).toBeLessThan(0.01);
+  });
+});

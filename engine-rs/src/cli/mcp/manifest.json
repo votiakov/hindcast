@@ -313,6 +313,12 @@
            "minimum": 0,
            "maximum": 10000
           },
+          "prefixes": {
+           "description": "storage: key prefixes the objects are spread over (default 10) — S3 takes 5,500 reads or 3,500 writes a second per prefix; `hotKeyShare` puts that share on one prefix",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 100000
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -754,6 +760,12 @@
            "type": "integer",
            "minimum": 0,
            "maximum": 10000
+          },
+          "prefixes": {
+           "description": "storage: key prefixes the objects are spread over (default 10) — S3 takes 5,500 reads or 3,500 writes a second per prefix; `hotKeyShare` puts that share on one prefix",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 100000
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -1615,6 +1627,12 @@
            "minimum": 0,
            "maximum": 10000
           },
+          "prefixes": {
+           "description": "storage: key prefixes the objects are spread over (default 10) — S3 takes 5,500 reads or 3,500 writes a second per prefix; `hotKeyShare` puts that share on one prefix",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 100000
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -2046,6 +2064,12 @@
               "minimum": 0,
               "maximum": 10000
              },
+             "prefixes": {
+              "description": "storage: key prefixes the objects are spread over (default 10) — S3 takes 5,500 reads or 3,500 writes a second per prefix; `hotKeyShare` puts that share on one prefix",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000
+             },
              "capacity": {
               "description": "override: req/s per size-S instance",
               "type": "number",
@@ -2426,6 +2450,12 @@
                 "minimum": 0,
                 "maximum": 10000
                },
+               "prefixes": {
+                "description": "storage: key prefixes the objects are spread over (default 10) — S3 takes 5,500 reads or 3,500 writes a second per prefix; `hotKeyShare` puts that share on one prefix",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100000
+               },
                "capacity": {
                 "description": "override: req/s per size-S instance",
                 "type": "number",
@@ -2700,6 +2730,12 @@
                 "type": "integer",
                 "minimum": 0,
                 "maximum": 10000
+               },
+               "prefixes": {
+                "description": "storage: key prefixes the objects are spread over (default 10) — S3 takes 5,500 reads or 3,500 writes a second per prefix; `hotKeyShare` puts that share on one prefix",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100000
                },
                "capacity": {
                 "description": "override: req/s per size-S instance",
@@ -3516,6 +3552,12 @@
            "minimum": 0,
            "maximum": 10000
           },
+          "prefixes": {
+           "description": "storage: key prefixes the objects are spread over (default 10) — S3 takes 5,500 reads or 3,500 writes a second per prefix; `hotKeyShare` puts that share on one prefix",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 100000
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -3973,6 +4015,12 @@
            "type": "integer",
            "minimum": 0,
            "maximum": 10000
+          },
+          "prefixes": {
+           "description": "storage: key prefixes the objects are spread over (default 10) — S3 takes 5,500 reads or 3,500 writes a second per prefix; `hotKeyShare` puts that share on one prefix",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 100000
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -4822,6 +4870,12 @@
            "type": "integer",
            "minimum": 0,
            "maximum": 10000
+          },
+          "prefixes": {
+           "description": "storage: key prefixes the objects are spread over (default 10) — S3 takes 5,500 reads or 3,500 writes a second per prefix; `hotKeyShare` puts that share on one prefix",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 100000
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -5681,6 +5735,12 @@
            "minimum": 0,
            "maximum": 10000
           },
+          "prefixes": {
+           "description": "storage: key prefixes the objects are spread over (default 10) — S3 takes 5,500 reads or 3,500 writes a second per prefix; `hotKeyShare` puts that share on one prefix",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 100000
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -6207,6 +6267,12 @@
            "minimum": 0,
            "maximum": 10000
           },
+          "prefixes": {
+           "description": "storage: key prefixes the objects are spread over (default 10) — S3 takes 5,500 reads or 3,500 writes a second per prefix; `hotKeyShare` puts that share on one prefix",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 100000
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -6635,6 +6701,12 @@
              "minimum": 0,
              "maximum": 10000
             },
+            "prefixes": {
+             "description": "storage: key prefixes the objects are spread over (default 10) — S3 takes 5,500 reads or 3,500 writes a second per prefix; `hotKeyShare` puts that share on one prefix",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 100000
+            },
             "capacity": {
              "description": "override: req/s per size-S instance",
              "type": "number",
@@ -7015,6 +7087,12 @@
                "minimum": 0,
                "maximum": 10000
               },
+              "prefixes": {
+               "description": "storage: key prefixes the objects are spread over (default 10) — S3 takes 5,500 reads or 3,500 writes a second per prefix; `hotKeyShare` puts that share on one prefix",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 100000
+              },
               "capacity": {
                "description": "override: req/s per size-S instance",
                "type": "number",
@@ -7289,6 +7367,12 @@
                "type": "integer",
                "minimum": 0,
                "maximum": 10000
+              },
+              "prefixes": {
+               "description": "storage: key prefixes the objects are spread over (default 10) — S3 takes 5,500 reads or 3,500 writes a second per prefix; `hotKeyShare` puts that share on one prefix",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 100000
               },
               "capacity": {
                "description": "override: req/s per size-S instance",
@@ -8103,6 +8187,12 @@
            "minimum": 0,
            "maximum": 10000
           },
+          "prefixes": {
+           "description": "storage: key prefixes the objects are spread over (default 10) — S3 takes 5,500 reads or 3,500 writes a second per prefix; `hotKeyShare` puts that share on one prefix",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 100000
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -8531,6 +8621,12 @@
              "minimum": 0,
              "maximum": 10000
             },
+            "prefixes": {
+             "description": "storage: key prefixes the objects are spread over (default 10) — S3 takes 5,500 reads or 3,500 writes a second per prefix; `hotKeyShare` puts that share on one prefix",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 100000
+            },
             "capacity": {
              "description": "override: req/s per size-S instance",
              "type": "number",
@@ -8911,6 +9007,12 @@
                "minimum": 0,
                "maximum": 10000
               },
+              "prefixes": {
+               "description": "storage: key prefixes the objects are spread over (default 10) — S3 takes 5,500 reads or 3,500 writes a second per prefix; `hotKeyShare` puts that share on one prefix",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 100000
+              },
               "capacity": {
                "description": "override: req/s per size-S instance",
                "type": "number",
@@ -9185,6 +9287,12 @@
                "type": "integer",
                "minimum": 0,
                "maximum": 10000
+              },
+              "prefixes": {
+               "description": "storage: key prefixes the objects are spread over (default 10) — S3 takes 5,500 reads or 3,500 writes a second per prefix; `hotKeyShare` puts that share on one prefix",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 100000
               },
               "capacity": {
                "description": "override: req/s per size-S instance",

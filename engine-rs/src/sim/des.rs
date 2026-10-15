@@ -385,6 +385,9 @@ struct DNode {
     /// a key-value store: the hot key's partition, in partition-seconds of work available
     kv_bucket: f64,
     kv_t: f64,
+    /// an object store: each prefix's bucket of prefix-seconds, and when it was last topped up
+    px_bucket: Vec<f64>,
+    px_t: Vec<f64>,
     /// when it went down (DNS answers lag it)
     dead_since: Option<f64>,
     /// a stream: each subscriber's backlog and messages in flight, by child position
@@ -627,7 +630,12 @@ impl<'a> Des<'a> {
         let cap = capacity_of(d, Some(reach)).max(1e-6);
         let lat = base_latency_of(d).max(0.05);
         let kind = d.kind.as_str();
-        if kind == "gateway" || kind == "llmapi" || kind == "external" || kind == "kv" || kind == "stream" {
+        if kind == "storage" {
+            // a managed store: no pool to fill, only its prefixes' limits (checked as requests arrive)
+            n.rate = f64::INFINITY;
+            n.workers = f64::INFINITY;
+            n.svc_mean_ms = d.latency_ms.unwrap_or(spec(kind).base_latency_ms);
+        } else if kind == "gateway" || kind == "llmapi" || kind == "external" || kind == "kv" || kind == "stream" {
             n.rate = d.limit.unwrap_or(spec(kind).capacity);
             n.workers = f64::INFINITY;
             n.svc_mean_ms = if kind == "llmapi" || kind == "external" || kind == "kv" { d.latency_ms.unwrap_or(spec(kind).base_latency_ms) } else { lat };
@@ -842,7 +850,26 @@ impl<'a> Des<'a> {
                 n.kv_bucket -= cost;
             }
         }
-        if kind == "llmapi" || kind == "external" || kind == "kv" {
+        if kind == "storage" {
+            // the request's prefix: the hot one, or one picked by its key's hash
+            let p = super::catalog::prefixes_of(&self.nodes[i].data) as usize;
+            let h = self.nodes[i].data.hot_key_share.unwrap_or(0.0);
+            let k = if self.rng.next() < h { 0 } else { ((self.rng.next() * p as f64).floor() as usize).min(p - 1) };
+            let deg = self.nodes[i].data.degraded.unwrap_or(1.0).max(1e-6);
+            let n = &mut self.nodes[i];
+            if n.px_bucket.len() != p {
+                n.px_bucket = vec![1.0; p];
+                n.px_t = vec![now; p];
+            }
+            n.px_bucket[k] = (n.px_bucket[k] + (now - n.px_t[k])).min(1.0);
+            n.px_t[k] = now;
+            let cost = (if read { 1.0 / super::catalog::PREFIX_READS } else { 1.0 / super::catalog::PREFIX_WRITES }) / deg;
+            if n.px_bucket[k] < cost {
+                return self.fail(Some(i), why(i, R_LIMIT), done, 1.0); // 503 SlowDown
+            }
+            n.px_bucket[k] -= cost;
+        }
+        if kind == "llmapi" || kind == "external" || kind == "kv" || kind == "storage" {
             // provider capacity is not your problem — only its rate limit and latency are
             let n = &self.nodes[i];
             let (mean, fl) = (n.svc_mean_ms, n.data.fault_latency_ms.unwrap_or(0.0));
@@ -1407,7 +1434,7 @@ impl<'a> Des<'a> {
             let util = if n.sh_workers > 0.0 { w.hot_area / (n.sh_workers * win_s) } else if n.data.kind == "queue" { n.backlog.len() as f64 / QUEUE_BACKLOG_MAX as f64 } else if n.data.kind == "stream" { n.sub_backlog.iter().map(|q| q.len()).max().unwrap_or(0) as f64 / QUEUE_BACKLOG_MAX as f64 } else if n.rate.is_finite() { w.arrivals / (n.rate * win_s).max(1e-9) } else { w.busy_area / (workers * win_s) };
             // thread-per-request: the threads the offered load needs (rate × hold time, Little's law) over those there are
             let util = if n.threads_cap.is_finite() && w.held_n > 0.0 { util.max((w.arrivals / win_s) * (w.held_s / w.held_n) / n.threads_cap.max(1e-9)) } else { util };
-            let billed = if n.data.kind == "function" || n.data.kind == "llmapi" || n.data.kind == "external" || n.data.kind == "kv" { w.usage_reqs } else if n.data.kind == "client" { 0.0 } else { w.arrivals };
+            let billed = if n.data.kind == "function" || n.data.kind == "llmapi" || n.data.kind == "external" || n.data.kind == "kv" || n.data.kind == "storage" { w.usage_reqs } else if n.data.kind == "client" { 0.0 } else { w.arrivals };
             let usage = billed * request_price(&n.data, &self.pricing) * 3600.0;
             let cost_h = match &n.scaler {
                 Some(s) => cost_of(&NodeData { instances: Some(s.live + s.pending.len() as f64), ..n.data.clone() }, &self.pricing),
@@ -1584,6 +1611,8 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
             hot_last_t: 0.0,
             kv_bucket: 1.0,
             kv_t: 0.0,
+            px_bucket: vec![],
+            px_t: vec![],
             dead_since: None,
             sub_backlog: vec![],
             sub_inflight: vec![],
