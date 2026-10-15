@@ -257,6 +257,7 @@
 [data-theme='terminal'] .pane-stats { color: var(--r-ink-2); }
 [data-theme='terminal'] .pane-stats .good { color: var(--r-ok); }
 [data-theme='terminal'] .pane-stats .bad { color: var(--r-bad); }
+[data-theme='terminal'] .pane-stats .warn { color: var(--r-warn); }
 [data-theme='terminal'] .sb-title { color: var(--r-muted); }
 [data-theme='terminal'] .sb-time { color: var(--r-faint); }
 [data-theme='terminal'] .sb-watch { color: var(--r-ink-2); background: var(--r-accent-tint); padding: 7px 9px; border-radius: 3px; }

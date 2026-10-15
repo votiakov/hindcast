@@ -93,6 +93,7 @@ function PaneHeader({ b }: { b: BoardId }) {
         <span className={errTone}>{(g.errorRate * 100).toFixed(1)}% err</span>
         <span>{fmtMs(g.p99)} p99</span>
         {showCost && <span>${g.cost.toFixed(2)}/h</span>}
+        {g.staleReads >= 1 && <span className="warn" title="reads that could miss a write made before them: a lagging replica, a search index between refreshes">{num(g.staleReads)} stale</span>}
       </div>
       <PaneAudit b={b} />
       <select
@@ -197,6 +198,11 @@ function verdict(a: SideScore, b: SideScore, ta: string, tb: string): string {
   const dCost = costB - costA;
   const price = Math.abs(dCost) < 0.01 ? 'at the same cost' : dCost > 0 ? `for $${dCost.toFixed(2)}/h more` : `and $${(-dCost).toFixed(2)}/h cheaper`;
   if (Math.abs(a.failed - b.failed) < Math.max(5, 0.05 * Math.max(a.failed, b.failed))) {
+    // the same service, but one side's reads missed what was just written
+    if (Math.abs(a.outS - b.outS) < 1 && Math.abs(a.stale - b.stale) > 50) {
+      const [w, l, wn, ln] = b.stale <= a.stale ? [b, a, tb, ta] : [a, b, ta, tb];
+      return `${ta} and ${tb} served this run alike, ${Math.abs(dCost) < 0.01 ? 'at the same cost' : `$${Math.abs(dCost).toFixed(2)}/h apart`} — but ${ln} answered ${num(l.stale)} reads that could miss a write made before them, against ${num(w.stale)} for ${wn}.`;
+    }
     if (Math.abs(a.outS - b.outS) < 1) return `${ta} and ${tb} served this run alike; the difference is the bill: ${tb} ${Math.abs(dCost) < 0.01 ? 'costs the same' : dCost > 0 ? `costs $${dCost.toFixed(2)}/h more` : `costs $${(-dCost).toFixed(2)}/h less`}.`;
   }
   // nobody failed requests: the difference is time out of SLO (latency)
@@ -218,6 +224,7 @@ function Scoreboard({ a, b }: { a: SideScore; b: SideScore }) {
     { label: 'time out of SLO', va: a.outS, vb: b.outS, fmt: (n) => `${Math.round(n)} s` },
     { label: 'worst p99', va: a.peakP99, vb: b.peakP99, fmt: msx },
     { label: 'average cost', va: a.costSum / Math.max(1, a.n), vb: b.costSum / Math.max(1, b.n), fmt: (n) => `$${n.toFixed(2)}/h` },
+    ...(a.stale > 0 || b.stale > 0 ? [{ label: 'stale reads', va: a.stale, vb: b.stale, fmt: num }] : []),
   ];
   return (
     <table className="tk-score">
