@@ -121,6 +121,38 @@ describe('a worker that takes calls and also consumes a queue', () => {
   });
 });
 
+describe('latency of the successful answers, in both engines', () => {
+  // the fluid engine's answers pooled over the run (as scripts/engine-crosscheck.ts compares them)
+  // against the discrete-event engine's histogram, on boards worked out by hand
+  const both = (spec: object, rps: number) => {
+    const f = simulate(spec, { duration: 40, rps }, { answers: true });
+    const d = simulateDes(spec, { duration: 40, rps }, { seed: 1 }).summary;
+    return { f: { ...f.answers!, err: f.summary.meanErrorRate }, d: { p50Ms: d.p50Ms, p99Ms: d.p99Ms, err: d.meanErrorRate } };
+  };
+  const near = (x: number, want: number, tol: number) => expect(Math.abs(x - want)).toBeLessThanOrEqual(want * tol);
+
+  it('a function: warm answers at its service time, one cold start per environment it starts', () => {
+    const fn = { components: [{ id: 'users', kind: 'client' }, { id: 'fn', kind: 'function' }], connections: [['users', 'fn']] };
+    // lognormal 35 ms (cv 0.6): p50 = 35 × e^(−σ²/2) = 30 ms. From nothing to 200/s it starts about
+    // 200 × (0.4 + 0.035) = 87 environments, each with one cold answer: 1.1% of the run's 8000, so
+    // the p99 is a cold one (~435 ms). The fluid engine used to cold-start 200/s × 4 s of them and
+    // spread them over every answer: p50 42 ms
+    const a = both(fn, 200);
+    for (const e of [a.f, a.d]) {
+      near(e.p50Ms, 31, 0.1);
+      expect(e.p99Ms).toBeGreaterThan(300);
+    }
+    // at 2000/s the 105 environments of the 3000/s limit fill while they start: the rest of that
+    // first ~0.4 s is throttled (1% errors) and the cold answers are 0.13%: the p99 is a warm one,
+    // 3.1 × 35 = 109 ms
+    const b = both(fn, 2000);
+    for (const e of [b.f, b.d]) {
+      near(e.p99Ms, 115, 0.1);
+      near(e.err, 0.01, 0.3);
+    }
+  });
+});
+
 describe('retry amplification', () => {
   it('immediate retries amplify load geometrically', () => {
     expect(retryAmp(0, 3, 'immediate')).toBe(1);

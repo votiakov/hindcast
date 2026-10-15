@@ -218,6 +218,8 @@ pub struct NodeState {
     /// the calls wait as if those messages were not there
     pub pulled_share: f64,
     pub warm: f64,
+    /// a function's execution environments in their cold start: (done at, how many)
+    pub cold_starts: Vec<(f64, f64)>,
     pub cold_frac: f64,
     pub down_for: f64,
     pub cost_per_hour: f64,
@@ -289,6 +291,7 @@ fn fresh() -> NodeState {
         pushed_rps: 0.0,
         pulled_share: 0.0,
         warm: 0.0,
+        cold_starts: vec![],
         cold_frac: 0.0,
         down_for: 0.0,
         cost_per_hour: 0.0,
@@ -559,6 +562,17 @@ fn mix_then(dist: &[[f64; 3]], mean: f64, tail: f64, weight: f64) -> Vec<[f64; 3
     dist.iter().map(|c| [c[0] / w * weight, c[1] + mean, (c[2] * c[2] + tail * tail).sqrt()]).collect()
 }
 
+/// how long an idle execution environment is kept before it is reclaimed, s (Lambda keeps them for minutes)
+const FN_IDLE_S: f64 = 300.0;
+
+/// a function's cold start, ms: its runtime's, or the configured default
+fn cold_start_of(d: &NodeData, cfg: &EngineConfig) -> f64 {
+    match d.runtime.as_deref().filter(|r| !r.is_empty()) {
+        Some(r) if cfg.cold_start_ms > 0.0 => runtime(r).2,
+        _ => cfg.cold_start_ms,
+    }
+}
+
 /// lognormal service times (cv 0.6, as the discrete-event engine samples them): p99 ≈ 3.1 × mean
 const SERVICE_P99: f64 = 3.11;
 /// someone else's API answers more steadily than your own service (the DES samples it at half the
@@ -602,6 +616,8 @@ struct Ctx<'a> {
     now: f64,
     /// every node's arrivals last tick from callers other than queues, req/s
     pushed: &'a [f64],
+    /// every node's capacity for messages pulled from a queue, req/s
+    pull_cap: &'a [f64],
 }
 
 fn reachable(c: &Ctx) -> f64 {
@@ -831,7 +847,7 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
             let routes: Vec<Route> = c.routes.iter().filter(|k| k.up).cloned().collect();
             // consumers pull: each takes messages only with the capacity what is pushed at it leaves
             // free (a worker that also serves calls does not drop them to make room for the queue)
-            let free: Vec<f64> = routes.iter().map(|k| (capacity_of(&c.data[k.t], None) - c.pushed[k.t]).max(0.0)).collect();
+            let free: Vec<f64> = routes.iter().map(|k| (c.pull_cap[k.t] - c.pushed[k.t]).max(0.0)).collect();
             let drain: f64 = free.iter().sum();
             st.drain_rps = drain;
             let processed = st.queue.min(drain * c.dt);
@@ -881,15 +897,31 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
             r
         }
         "function" => {
-            let cap = capacity_of(c.d, None) * c.dt;
-            let processed = c.arrivals.min(cap);
-            let demand = c.arrivals / c.dt;
-            let k = |tau: f64| 1.0 - (-c.dt / tau).js_exp();
-            st.warm += (demand - st.warm) * k(if demand > st.warm { 4.0 } else { 1.0 });
-            // provisioned concurrency is warm whatever the demand
-            st.warm = st.warm.max(provisioned_rps(c.d));
-            st.cold_frac = if demand > 0.5 { ((demand - st.warm) / demand).max(0.0) } else { 0.0 };
-            res(processed, c.arrivals - processed, processed, c.arrivals / cap, true)
+            // execution environments, as the discrete-event engine runs them: a request that finds no
+            // idle warm one starts a new one and waits out its cold start in it; past the concurrency
+            // limit it is throttled. One cold request per new environment, so a jump cold-starts about
+            // rate × (cold start + work) of them, and the ones starting are busy until they finish
+            let (base, cold) = (base_latency_of(c.d), cold_start_of(c.d, c.cfg));
+            let limit = capacity_of(c.d, None) * base / 1000.0;
+            st.cold_starts.retain(|x| x.0 > c.now);
+            let starting: f64 = st.cold_starts.iter().map(|x| x.1).sum();
+            let ready = (st.warm - starting).max(0.0);
+            let busy = c.arrivals / c.dt * base / 1000.0;
+            let unserved = if busy > ready { c.arrivals * (busy - ready) / busy } else { 0.0 };
+            let new = unserved.min((limit - st.warm).max(0.0));
+            if new > 0.0 {
+                st.warm += new;
+                st.cold_starts.push((c.now + (cold + base) / 1000.0, new));
+            }
+            // idle ones are reclaimed after minutes; provisioned concurrency stays warm whatever the demand
+            let used = busy.max(starting + new);
+            if used < st.warm {
+                st.warm += (used - st.warm) * (1.0 - (-c.dt / FN_IDLE_S).js_exp());
+            }
+            st.warm = st.warm.max(c.d.provisioned.filter(|p| *p > 0.0).unwrap_or(0.0));
+            let processed = c.arrivals - (unserved - new);
+            st.cold_frac = if processed > 0.0 { new / processed } else { 0.0 };
+            res(processed, c.arrivals - processed, processed, busy / limit.max(1e-9), true)
         }
         "llmapi" | "external" | "archive" => {
             let cap = capacity_of(c.d, None) * c.dt;
@@ -988,10 +1020,7 @@ fn fold(c: &FoldCtx, st: &NodeState) -> (f64, f64) {
         "cache" | "cdn" | "edge" => (c.keep * (c.local_share + (1.0 - c.local_share) * kids_succ), service_latency(c.d, st) + (1.0 - c.local_share) * c.child_lat),
         "db" => (c.local_share * c.keep + (1.0 - c.local_share) * kids_succ, c.local_share * service_latency(c.d, st) + (1.0 - c.local_share) * c.child_lat),
         "queue" | "stream" => (c.keep, spec(&c.d.kind).base_latency_ms),
-        "function" => {
-            let cold = if c.cfg.cold_start_ms > 0.0 && c.d.runtime.as_deref().map(|r| !r.is_empty()).unwrap_or(false) { runtime(c.d.runtime.as_deref().unwrap()).2 } else { c.cfg.cold_start_ms };
-            (c.keep * kids_succ, base_latency_of(c.d) + st.cold_frac * cold + kids_lat)
-        }
+        "function" => (c.keep * kids_succ, base_latency_of(c.d) + st.cold_frac * cold_start_of(c.d, c.cfg) + kids_lat),
         // leaves: they answer themselves (their routes are empty, so they have no kids)
         "llmapi" | "external" | "kv" => (c.keep, c.d.latency_ms.unwrap_or(spec(&c.d.kind).base_latency_ms)),
         "archive" => (c.keep, base_latency_of(c.d)),
@@ -1339,6 +1368,23 @@ impl Engine {
         }
         let dead: Vec<f64> = (0..n).map(|i| self.nodes[sidx[i]].dead_for).collect();
         let pushed: Vec<f64> = (0..n).map(|i| self.nodes[sidx[i]].pushed_rps).collect();
+        // what a consumer can take from its queues: its capacity; a function's environments, those
+        // ready at a warm request's pace and those it may still start at a cold one's (the discrete-event
+        // engine hands a message only to an idle environment, so none is throttled)
+        let pull_cap: Vec<f64> = (0..n)
+            .map(|i| {
+                let d = &data[i];
+                if d.kind != "function" {
+                    return capacity_of(d, None);
+                }
+                let st = &self.nodes[sidx[i]];
+                let (base, cold) = (base_latency_of(d).max(0.05), cold_start_of(d, cfg));
+                let limit = capacity_of(d, None) * base / 1000.0;
+                let starting: f64 = st.cold_starts.iter().filter(|x| x.0 > now).map(|x| x.1).sum();
+                let ready = (st.warm - starting).max(0.0);
+                ready * 1000.0 / base + (limit - st.warm).max(0.0) * 1000.0 / (base + cold)
+            })
+            .collect();
         // what each node receives from queues this tick (the rest was pushed at it)
         let mut from_queues = vec![0.0; n];
         let mut stale_now = 0.0;
@@ -1413,7 +1459,7 @@ impl Engine {
                 st.queue = 0.0;
                 res(0.0, arrivals, 0.0, 0.0, false)
             } else {
-                let ctx = Ctx { d, data: &data, arrivals, dt, cfg, read_ratio, routes, pooled: pooled[i], edge_sync: &edge_sync, edge_lat: &edge_lat, lags: &lags, dead: &dead, now, pushed: &pushed };
+                let ctx = Ctx { d, data: &data, arrivals, dt, cfg, read_ratio, routes, pooled: pooled[i], edge_sync: &edge_sync, edge_lat: &edge_lat, lags: &lags, dead: &dead, now, pushed: &pushed, pull_cap: &pull_cap };
                 process(&ctx, &mut st)
             };
             // a search index: a write is searchable after the indexing backlog ahead of it and the next
@@ -1911,19 +1957,28 @@ impl Engine {
                     "cache" | "cdn" | "db" => (l.local_share, 1.0 - l.local_share),
                     _ => (if has_kids { 0.0 } else { 1.0 }, 1.0),
                 };
+                // a function's cold starts are a slow mode of their own, not a little on every answer
+                let modes: Vec<(f64, f64)> = if d.kind == "function" && st.cold_frac > 0.0 {
+                    let (cf, cold) = (st.cold_frac.min(1.0), cold_start_of(d, cfg));
+                    vec![(1.0 - cf, own_mean - cf * cold), (cf, own_mean + (1.0 - cf) * cold)]
+                } else {
+                    vec![(1.0, own_mean)]
+                };
                 let mut out: Vec<[f64; 3]> = vec![];
-                if own_share > 0.0 || kids.is_empty() {
-                    let w = own_share.max(if kids.is_empty() { 1.0 } else { 0.0 });
-                    if l.write_extra_ms > 0.0 {
-                        // writes wait for synchronous replicas: a slower mode of their own
-                        out.push([w * l.rr, own_mean, own_tail]);
-                        out.push([w * (1.0 - l.rr), own_mean + l.write_extra_ms, own_tail]);
-                    } else {
-                        out.push([w, own_mean, own_tail]);
+                for &(mw, own_mean) in &modes {
+                    if own_share > 0.0 || kids.is_empty() {
+                        let w = own_share.max(if kids.is_empty() { 1.0 } else { 0.0 }) * mw;
+                        if l.write_extra_ms > 0.0 {
+                            // writes wait for synchronous replicas: a slower mode of their own
+                            out.push([w * l.rr, own_mean, own_tail]);
+                            out.push([w * (1.0 - l.rr), own_mean + l.write_extra_ms, own_tail]);
+                        } else {
+                            out.push([w, own_mean, own_tail]);
+                        }
                     }
-                }
-                if kid_share > 0.0 && !kids.is_empty() {
-                    out.extend(mix_then(&kids, own_mean, own_tail, kid_share));
+                    if kid_share > 0.0 && !kids.is_empty() {
+                        out.extend(mix_then(&kids, own_mean, own_tail, kid_share * mw));
+                    }
                 }
                 if st.breaker_pass < 1.0 && d.fallback == Some(true) {
                     let p = st.breaker_pass;

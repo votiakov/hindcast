@@ -73,6 +73,16 @@ const describe = (spec: ReturnType<typeof generate>) =>
 // 1 / (capacity × (1 − √load)²): 44 s for a 100/s pool at 0.97, eight minutes at 0.99), so the DES's
 // percentiles depend on the path a run takes and the fluid engine's on its 98% cap (#101 above, for
 // errors). The generator makes many: 200 req/s split two ways is exactly a 100/s worker's capacity.
+//
+// What disagreed, and which engine was right (each checked by hand on a one- or two-component board):
+//  - Functions: the fluid engine cold-started rate × 4 s of requests on a jump (its warm pool was a
+//    request rate lagging demand by 4 s) and spread them over every answer's mean, so a function's p50
+//    read 43 ms instead of 31 ms and the run's p99 357 ms at any rate. The DES is right: a request that
+//    finds no idle environment starts one, cold, so a jump from nothing to 200/s cold-starts about
+//    200 × (0.4 + 0.035) ≈ 87 (1.1% of a 40 s run: p99 ≈ 430 ms at 20 and 200 req/s, 116 ms at 2000/s,
+//    where the 105 environments of the concurrency limit fill and the rest are throttled, 1% errors).
+//    Fixed: environments are counted, busy ones by Little's law, starting ones until their cold start
+//    ends; a cold start is a slow mode of the answers.
 
 const SEEDS = 5;
 const TOLERANCE = 0.25;

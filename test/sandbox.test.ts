@@ -420,10 +420,15 @@ describe('resilience behaviours', () => {
   it('a serverless function is limited by its concurrency, and cold-starts on a jump', () => {
     const b = board([U, { id: 'fn', kind: 'function', limit: 100 }], [['users', 'fn']]);
     expect(run(b, 200).global.errorRate).toBeCloseTo(0.5, 2);
+    // a jump past the environments already warm: 10/s keeps about 4 (the ones its first second
+    // cold-started), 1000/s needs 35 (a jump to 90/s, 3 of them, would start none); the first 50 ms of
+    // it are mostly cold starts (and the next few, with all 105 the limit allows starting, throttled)
+    const big = board([U, { id: 'fn', kind: 'function' }], [['users', 'fn']]);
     const e = new Engine();
-    for (let i = 0; i < 400; i++) e.step(b.nodes as never, b.edges as never, 10, 0.8, 0.05, DEFAULT_ENGINE_CONFIG);
-    for (let i = 0; i < 4; i++) e.step(b.nodes as never, b.edges as never, 90, 0.8, 0.05, DEFAULT_ENGINE_CONFIG);
-    expect(e.snapshot(b.nodes as never, b.edges as never).nodeStats.fn.coldFrac).toBeGreaterThan(0.3);
+    for (let i = 0; i < 400; i++) e.step(big.nodes as never, big.edges as never, 10, 0.8, 0.05, DEFAULT_ENGINE_CONFIG);
+    expect(e.snapshot(big.nodes as never, big.edges as never).nodeStats.fn.coldFrac).toBe(0);
+    e.step(big.nodes as never, big.edges as never, 1000, 0.8, 0.05, DEFAULT_ENGINE_CONFIG);
+    expect(e.snapshot(big.nodes as never, big.edges as never).nodeStats.fn.coldFrac).toBeGreaterThan(0.3);
   });
 });
 
