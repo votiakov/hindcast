@@ -11,7 +11,7 @@ const toYaml = () => {
   const { boards, settings } = useSim.getState();
   const m = boards.main;
   const spec = graphToSpec(m.nodes, m.edges, m.title);
-  return specToYaml(settings.pricing !== 'illustrative' ? { ...spec, pricing: settings.pricing } : spec);
+  return specToYaml(settings.pricing !== 'illustrative' ? { ...spec, pricing: settings.pricing, ...(settings.commitment !== 'none' ? { commitment: settings.commitment } : {}) } : spec);
 };
 
 /**

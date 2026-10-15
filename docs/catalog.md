@@ -110,6 +110,16 @@ component as a concrete SKU or usage line, on-demand, checked 2026-10-02:
 Streams and DNS in the other clouds: Kinesis at $0.015 per shard-hour + $0.014 per million records
 (AWS), Pub/Sub by throughput (GCP); a hosted zone at $0.50 (Route 53) or $0.20 (Cloud DNS) a month.
 
+**Commitments** (Settings → Pricing, or `commitment: 1y | 3y` next to `pricing:` in a spec) take
+the published rate off what can be reserved, no upfront where there is a choice; usage prices are
+not discounted, and a component without a published rate stays on-demand:
+
+| profile | servers, workers | databases, replicas | cache |
+|---|---|---|---|
+| `aws-us-east-1` | EC2 reserved (m7g): −34% / −55% ([Vantage](https://instances.vantage.sh/aws/ec2/m7g.large)) | RDS reserved 1 year: −23%; 3 years needs upfront, so the 1-year rate is kept ([Vantage](https://instances.vantage.sh/aws/rds/db.r7g.large)) | ElastiCache reserved: −32% / −48% ([Vantage](https://instances.vantage.sh/aws/elasticache/cache.r7g.large)) |
+| `gcp-us-central1` | committed use: −37% / −55% | Cloud SQL committed use: −20% / −40% | not discounted |
+| `azure-eastus` | reserved VM (D2ps v6, Retail Prices API): −41% / −62% | PostgreSQL reserved capacity: up to −40% / −60% | Redis Standard has no reservations |
+
 Under a real profile, size tiers are priced as the actual SKUs (cloud instance prices are linear, so
 the illustrative vertical-scaling premium disappears), and nodes show their SKU next to the price.
 Capacities stay workload-dependent: set `capacity` per component from your own load tests or

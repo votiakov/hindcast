@@ -388,6 +388,7 @@ pub fn check_architecture(v: &Value) -> (Option<Architecture>, Vec<Issue>) {
         top.string("name", false, 0);
         top.string("description", false, 0);
         top.one_of("pricing", &["illustrative", "aws-us-east-1", "gcp-us-central1", "azure-eastus"], false);
+        top.one_of("commitment", &["none", "1y", "3y"], false);
     }
     let mut components = vec![];
     match o.get("components") {
@@ -481,7 +482,11 @@ pub fn check_architecture(v: &Value) -> (Option<Architecture>, Vec<Issue>) {
     }
     (Some(Architecture {
         name: o.get("name").and_then(|x| x.as_str()).map(String::from),
-        pricing: o.get("pricing").and_then(|x| x.as_str()).map(String::from),
+        // a commitment travels with the profile: "aws-us-east-1@1y"
+        pricing: o.get("pricing").and_then(|x| x.as_str()).map(|p| match o.get("commitment").and_then(|x| x.as_str()) {
+            Some(c) if c != "none" => format!("{}@{}", p, c),
+            _ => p.to_string(),
+        }),
         components,
         connections,
         calls,
@@ -536,7 +541,11 @@ pub fn to_value(a: &Architecture) -> Value {
         o.insert("name".into(), json!(n));
     }
     if let Some(p) = &a.pricing {
-        o.insert("pricing".into(), json!(p));
+        let (base, commit) = p.split_once('@').map(|(b, c)| (b, Some(c))).unwrap_or((p.as_str(), None));
+        o.insert("pricing".into(), json!(base));
+        if let Some(c) = commit {
+            o.insert("commitment".into(), json!(c));
+        }
     }
     o.insert("components".into(), Value::Array(a.components.iter().map(|c| Value::Object(c.clone())).collect()));
     o.insert(

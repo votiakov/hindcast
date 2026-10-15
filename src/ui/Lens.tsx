@@ -23,6 +23,7 @@ export function Lens({ onClose }: { onClose: () => void }) {
   const nodes = useSim((s) => s.boards[s.mode === 'compare' ? s.focus : 'main'].nodes);
   const stats = useSim((s) => s.boards[s.mode === 'compare' ? s.focus : 'main'].nodeStats);
   const pricing = useSim((s) => s.settings.pricing);
+  const commitment = useSim((s) => s.settings.commitment);
   const edges = useSim((s) => s.boards[s.mode === 'compare' ? s.focus : 'main'].edges);
   const rpsKey = Math.round(g.rps / 50) * 50;
   // the same design, same load, under every pricing profile (a short headless run each)
@@ -31,12 +32,13 @@ export function Lens({ onClose }: { onClose: () => void }) {
     const spec = graphToSpec(nodes, edges);
     return (Object.keys(PRICING) as PricingId[]).map((id) => {
       try {
-        return { id, monthly: Math.round(simulate({ ...spec, pricing: id }, { duration: 8, rps: rpsKey, readRatio: useSim.getState().readRatio }).summary.meanCostPerHour * 730) };
+        const c = useSim.getState().settings.commitment;
+        return { id, monthly: Math.round(simulate({ ...spec, pricing: id, ...(c !== 'none' && id !== 'illustrative' ? { commitment: c } : {}) }, { duration: 8, rps: rpsKey, readRatio: useSim.getState().readRatio }).summary.meanCostPerHour * 730) };
       } catch {
         return { id, monthly: NaN };
       }
     });
-  }, [nodes, edges, rpsKey]);
+  }, [nodes, edges, rpsKey, commitment]);
 
   useEffect(() => {
     const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && !(e.target as HTMLElement).closest('.metrics') && onClose();

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Settings as Gear } from 'lucide-react';
 import { useSim, type Settings } from '../sim/store';
-import { PRICING, type PricingId } from '../sim/pricing';
+import { COMMITMENT_NOTE, PRICING, type Commitment, type PricingId } from '../sim/pricing';
 
 type BoolKey = { [K in keyof Settings]: Settings[K] extends boolean ? K : never }[keyof Settings];
 
@@ -55,9 +55,18 @@ export function SettingsButton() {
               ))}
             </div>
             {settings.pricing !== 'illustrative' && (
-              <div className="toggle-hint" style={{ marginTop: 6 }}>
-                Real SKUs, on-demand, as of {PRICING[settings.pricing].asOf}. Sources and assumptions: docs/catalog.md.
-              </div>
+              <>
+                <div className="seg" style={{ marginTop: 6 }}>
+                  {(['none', '1y', '3y'] as Commitment[]).map((c) => (
+                    <button key={c} className={settings.commitment === c ? 'on' : ''} onClick={() => setSetting('commitment', c)} title={c === 'none' ? 'On-demand prices' : `${c === '1y' ? 'One' : 'Three'}-year commitment: ${COMMITMENT_NOTE[settings.pricing as Exclude<PricingId, 'illustrative'>]}`}>
+                      {c === 'none' ? 'on-demand' : c === '1y' ? '1-year' : '3-year'}
+                    </button>
+                  ))}
+                </div>
+                <div className="toggle-hint" style={{ marginTop: 6 }}>
+                  Real SKUs, {settings.commitment === 'none' ? 'on-demand' : `${settings.commitment === '1y' ? '1' : '3'}-year commitment (${COMMITMENT_NOTE[settings.pricing as Exclude<PricingId, 'illustrative'>]})`}, as of {PRICING[settings.pricing].asOf}. Sources and assumptions: docs/catalog.md.
+                </div>
+              </>
             )}
           </div>
           {SECTIONS.map((sec) => (

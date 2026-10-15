@@ -51,7 +51,7 @@ const specOf = (b: BoardId) => {
   const { boards, settings } = useSim.getState();
   const { nodes, edges, title } = boards[b];
   // workers have their own module state, so the pricing profile travels inside the spec
-  return { ...graphToSpec(nodes, edges, title), pricing: settings.pricing };
+  return { ...graphToSpec(nodes, edges, title), pricing: settings.pricing, ...(settings.commitment !== 'none' ? { commitment: settings.commitment } : {}) };
 };
 
 function Result({ a, title }: { a: Analysis; title?: string }) {

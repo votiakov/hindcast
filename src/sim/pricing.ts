@@ -287,10 +287,42 @@ export const PRICING: Record<PricingId, PricingProfile> = {
 };
 
 let active: PricingId = 'illustrative';
+let commitment: Commitment = 'none';
+
+export type Commitment = 'none' | '1y' | '3y';
 
 export const getPricing = (): PricingId => active;
 export const setPricing = (id: PricingId) => {
   active = id;
+};
+export const getCommitment = (): Commitment => commitment;
+export const setCommitment = (c: Commitment) => {
+  commitment = c;
+};
+/** the profile as the engine takes it: the id, and the commitment after an @ */
+export const pricingProfile = (): string => (commitment === 'none' ? active : `${active}@${commitment}`);
+
+/**
+ * What a commitment takes off a fixed hourly price (usage prices are not discounted): published rates
+ * for the profile's SKUs, no upfront where there is a choice; none where none is published. Mirrors
+ * the engine's commitment_factor.
+ */
+export function commitmentFactor(kind: Kind, id: PricingId = active, c: Commitment = commitment): number {
+  if (c === 'none') return 1;
+  const three = c === '3y';
+  const compute = kind === 'server' || kind === 'worker';
+  const database = kind === 'db' || kind === 'replica';
+  if (id === 'aws-us-east-1') return compute ? (three ? 0.45 : 0.66) : database ? 0.77 : kind === 'cache' ? (three ? 0.52 : 0.68) : 1;
+  if (id === 'gcp-us-central1') return compute ? (three ? 0.45 : 0.63) : database ? (three ? 0.6 : 0.8) : 1;
+  if (id === 'azure-eastus') return compute ? (three ? 0.38 : 0.59) : database ? (three ? 0.4 : 0.6) : 1;
+  return 1;
+}
+
+/** where each commitment rate comes from, for the settings and the docs */
+export const COMMITMENT_NOTE: Record<Exclude<PricingId, 'illustrative'>, string> = {
+  'aws-us-east-1': 'EC2 reserved (m7g, no upfront) 34% / 55% off; RDS reserved 1 year 23% off (3 years needs upfront: 1-year rate kept); ElastiCache reserved 32% / 48% off',
+  'gcp-us-central1': 'Compute Engine committed use 37% / 55% off; Cloud SQL committed use 20% / 40% off; Memorystore not discounted here',
+  'azure-eastus': 'Reserved VM (D2ps v6) 41% / 62% off; PostgreSQL reserved capacity up to 40% / 60% off; Azure Cache for Redis Standard has no reservations',
 };
 
 export const kindPricing = (kind: Kind): KindPricing | undefined => PRICING[active].kinds[kind];

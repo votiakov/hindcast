@@ -11,7 +11,7 @@ import { nodesInZone } from './zones';
 import { SCENARIOS, findScenario, scenarioDuration, scenarioTraffic, type Scenario, type ScenarioAction } from '../scenarios/scenarios';
 import type { Graph } from '../scenarios/build';
 import { homeGraph } from '../ui/homeGraphs';
-import { setPricing, type PricingId } from './pricing';
+import { setCommitment, setPricing, type Commitment, type PricingId } from './pricing';
 import type { AuditResult } from './audit';
 import type { SimAction } from './actions';
 import { applyChangesToGraph } from '../spec/convert';
@@ -28,6 +28,8 @@ export interface Settings {
   replicaView: 'grouped' | 'each';
   /** cost model: teaching defaults or a cited real-cloud profile */
   pricing: PricingId;
+  /** a 1- or 3-year commitment (savings plan, reserved, committed use) on what a real profile prices */
+  commitment: Commitment;
   /** plain-English callouts on components under stress */
   explain: boolean;
   /** show $ everywhere and enforce budget goals */
@@ -50,6 +52,7 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   replicaView: 'grouped',
   pricing: 'illustrative',
+  commitment: 'none',
   explain: true,
   cost: true,
   particles: true,
@@ -496,6 +499,7 @@ export const useSim = create<State>()((set, get) => {
 
     setSetting: (k, v) => {
       if (k === 'pricing') setPricing(v as PricingId);
+      if (k === 'commitment') setCommitment(v as Commitment);
       set({ settings: { ...get().settings, [k]: v } });
     },
 

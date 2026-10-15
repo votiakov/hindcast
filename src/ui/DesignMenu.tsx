@@ -132,7 +132,7 @@ export function DesignMenu() {
             <button
               onClick={act(() => {
                 const m = useSim.getState().boards.main;
-                const url = `${location.origin}${location.pathname}#spec=${encodePayload({ ...graphToSpec(m.nodes, m.edges, m.title), pricing: useSim.getState().settings.pricing })}`;
+                const url = `${location.origin}${location.pathname}#spec=${encodePayload({ ...graphToSpec(m.nodes, m.edges, m.title), pricing: useSim.getState().settings.pricing, ...(useSim.getState().settings.commitment !== 'none' ? { commitment: useSim.getState().settings.commitment } : {}) })}`;
                 navigator.clipboard?.writeText(url);
                 s.toast('good', 'Share link copied');
               })}
@@ -143,7 +143,7 @@ export function DesignMenu() {
               onClick={act(() => {
                 const s2 = useSim.getState();
                 const m = s2.boards.main;
-                const url = `${location.origin}${location.pathname}?embed=1&rps=${s2.traffic}#spec=${encodePayload({ ...graphToSpec(m.nodes, m.edges, m.title), pricing: s2.settings.pricing })}`;
+                const url = `${location.origin}${location.pathname}?embed=1&rps=${s2.traffic}#spec=${encodePayload({ ...graphToSpec(m.nodes, m.edges, m.title), pricing: s2.settings.pricing, ...(s2.settings.commitment !== 'none' ? { commitment: s2.settings.commitment } : {}) })}`;
                 navigator.clipboard?.writeText(`<iframe src="${url}" width="100%" height="460" style="border:0;border-radius:12px" title="${m.title.replace(/"/g, '')} — live architecture"></iframe>`);
                 s.toast('good', 'Embed code copied — a live, running board for posts and docs');
               })}

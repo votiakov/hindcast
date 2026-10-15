@@ -1,5 +1,5 @@
 import type { Node, Edge } from '@xyflow/react';
-import { kindPricing } from './pricing';
+import { commitmentFactor, kindPricing } from './pricing';
 import type { AutoscaleSpec } from './autoscale';
 import * as wasm from '../backtest/wasm/hindcast_engine.js';
 
@@ -386,7 +386,7 @@ export function provisionedCostH(d: SystemNodeData): number {
 }
 
 export function costOf(d: SystemNodeData): number {
-  return fixedCostOf(d) + provisionedCostH(d);
+  return fixedCostOf(d) * (d.costPerHour === undefined ? commitmentFactor(d.kind) : 1) + provisionedCostH(d);
 }
 
 function fixedCostOf(d: SystemNodeData): number {

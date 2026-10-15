@@ -72,6 +72,7 @@ export const ArchitectureSpec = z.object({
   name: z.string().optional(),
   description: z.string().optional(),
   pricing: z.enum(['illustrative', 'aws-us-east-1', 'gcp-us-central1', 'azure-eastus']).optional().describe('cost model: illustrative teaching defaults, or cited AWS us-east-1 / Google Cloud us-central1 / Azure East US on-demand prices'),
+  commitment: z.enum(['none', '1y', '3y']).optional().describe('with a real pricing profile: a 1- or 3-year commitment (savings plan, reserved instances, committed use) at published rates, no upfront; usage prices are not discounted'),
   components: z.array(ComponentSpec).min(1),
   connections: z
     .array(

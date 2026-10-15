@@ -285,7 +285,7 @@ pub fn canonical_spec(v: &Value) -> Value {
     let o = v.as_object().cloned().unwrap_or_default();
     let mut s = JMap::new();
     s.insert("version".into(), json!(1));
-    for k in ["name", "description", "pricing"] {
+    for k in ["name", "description", "pricing", "commitment"] {
         if let Some(x) = o.get(k) {
             s.insert(k.into(), x.clone());
         }

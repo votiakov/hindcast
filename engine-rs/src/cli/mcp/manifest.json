@@ -66,6 +66,15 @@
          "azure-eastus"
         ]
        },
+       "commitment": {
+        "description": "with a real pricing profile: a 1- or 3-year commitment (savings plan, reserved instances, committed use) at published rates, no upfront; usage prices are not discounted",
+        "type": "string",
+        "enum": [
+         "none",
+         "1y",
+         "3y"
+        ]
+       },
        "components": {
         "minItems": 1,
         "type": "array",
@@ -535,6 +544,15 @@
          "aws-us-east-1",
          "gcp-us-central1",
          "azure-eastus"
+        ]
+       },
+       "commitment": {
+        "description": "with a real pricing profile: a 1- or 3-year commitment (savings plan, reserved instances, committed use) at published rates, no upfront; usage prices are not discounted",
+        "type": "string",
+        "enum": [
+         "none",
+         "1y",
+         "3y"
         ]
        },
        "components": {
@@ -1426,6 +1444,15 @@
          "azure-eastus"
         ]
        },
+       "commitment": {
+        "description": "with a real pricing profile: a 1- or 3-year commitment (savings plan, reserved instances, committed use) at published rates, no upfront; usage prices are not discounted",
+        "type": "string",
+        "enum": [
+         "none",
+         "1y",
+         "3y"
+        ]
+       },
        "components": {
         "minItems": 1,
         "type": "array",
@@ -1884,6 +1911,15 @@
             "aws-us-east-1",
             "gcp-us-central1",
             "azure-eastus"
+           ]
+          },
+          "commitment": {
+           "description": "with a real pricing profile: a 1- or 3-year commitment (savings plan, reserved instances, committed use) at published rates, no upfront; usage prices are not discounted",
+           "type": "string",
+           "enum": [
+            "none",
+            "1y",
+            "3y"
            ]
           },
           "components": {
@@ -3443,6 +3479,15 @@
          "azure-eastus"
         ]
        },
+       "commitment": {
+        "description": "with a real pricing profile: a 1- or 3-year commitment (savings plan, reserved instances, committed use) at published rates, no upfront; usage prices are not discounted",
+        "type": "string",
+        "enum": [
+         "none",
+         "1y",
+         "3y"
+        ]
+       },
        "components": {
         "minItems": 1,
         "type": "array",
@@ -3928,6 +3973,15 @@
          "aws-us-east-1",
          "gcp-us-central1",
          "azure-eastus"
+        ]
+       },
+       "commitment": {
+        "description": "with a real pricing profile: a 1- or 3-year commitment (savings plan, reserved instances, committed use) at published rates, no upfront; usage prices are not discounted",
+        "type": "string",
+        "enum": [
+         "none",
+         "1y",
+         "3y"
         ]
        },
        "components": {
@@ -4806,6 +4860,15 @@
          "aws-us-east-1",
          "gcp-us-central1",
          "azure-eastus"
+        ]
+       },
+       "commitment": {
+        "description": "with a real pricing profile: a 1- or 3-year commitment (savings plan, reserved instances, committed use) at published rates, no upfront; usage prices are not discounted",
+        "type": "string",
+        "enum": [
+         "none",
+         "1y",
+         "3y"
         ]
        },
        "components": {
@@ -5695,6 +5758,15 @@
          "azure-eastus"
         ]
        },
+       "commitment": {
+        "description": "with a real pricing profile: a 1- or 3-year commitment (savings plan, reserved instances, committed use) at published rates, no upfront; usage prices are not discounted",
+        "type": "string",
+        "enum": [
+         "none",
+         "1y",
+         "3y"
+        ]
+       },
        "components": {
         "minItems": 1,
         "type": "array",
@@ -6250,6 +6322,15 @@
          "azure-eastus"
         ]
        },
+       "commitment": {
+        "description": "with a real pricing profile: a 1- or 3-year commitment (savings plan, reserved instances, committed use) at published rates, no upfront; usage prices are not discounted",
+        "type": "string",
+        "enum": [
+         "none",
+         "1y",
+         "3y"
+        ]
+       },
        "components": {
         "minItems": 1,
         "type": "array",
@@ -6705,6 +6786,15 @@
            "aws-us-east-1",
            "gcp-us-central1",
            "azure-eastus"
+          ]
+         },
+         "commitment": {
+          "description": "with a real pricing profile: a 1- or 3-year commitment (savings plan, reserved instances, committed use) at published rates, no upfront; usage prices are not discounted",
+          "type": "string",
+          "enum": [
+           "none",
+           "1y",
+           "3y"
           ]
          },
          "components": {
@@ -8262,6 +8352,15 @@
          "azure-eastus"
         ]
        },
+       "commitment": {
+        "description": "with a real pricing profile: a 1- or 3-year commitment (savings plan, reserved instances, committed use) at published rates, no upfront; usage prices are not discounted",
+        "type": "string",
+        "enum": [
+         "none",
+         "1y",
+         "3y"
+        ]
+       },
        "components": {
         "minItems": 1,
         "type": "array",
@@ -8717,6 +8816,15 @@
            "aws-us-east-1",
            "gcp-us-central1",
            "azure-eastus"
+          ]
+         },
+         "commitment": {
+          "description": "with a real pricing profile: a 1- or 3-year commitment (savings plan, reserved instances, committed use) at published rates, no upfront; usage prices are not discounted",
+          "type": "string",
+          "enum": [
+           "none",
+           "1y",
+           "3y"
           ]
          },
          "components": {

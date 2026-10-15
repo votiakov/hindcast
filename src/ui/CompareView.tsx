@@ -27,7 +27,7 @@ function PaneAudit({ b }: { b: BoardId }) {
     setState({ busy: true, r: null, open: false });
     try {
       const r = await auditInBrowser(
-        { ...graphToSpec(ns, edges, title), pricing: s.settings.pricing },
+        { ...graphToSpec(ns, edges, title), pricing: s.settings.pricing, ...(s.settings.commitment !== 'none' ? { commitment: s.settings.commitment } : {}) },
         { rps, readRatio: sc?.readRatio ?? s.readRatio, slo: { maxErrorRate: s.settings.sloErrorRate, maxP99Ms: s.settings.sloP99Ms } },
         undefined,
         `cmp-${b}`,

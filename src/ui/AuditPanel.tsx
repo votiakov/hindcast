@@ -25,7 +25,7 @@ const SEV_LABEL: Record<Severity, string> = { critical: 'CRIT', major: 'MAJOR', 
 function currentSpec() {
   const { boards, settings } = useSim.getState();
   const { nodes, edges } = boards.main;
-  return { ...graphToSpec(nodes, edges, 'Sandbox'), pricing: settings.pricing };
+  return { ...graphToSpec(nodes, edges, 'Sandbox'), pricing: settings.pricing, ...(settings.commitment !== 'none' ? { commitment: settings.commitment } : {}) };
 }
 
 export async function runAudit() {

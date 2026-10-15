@@ -92,6 +92,18 @@ describe('pricing profiles', () => {
     expect(Math.abs(aws - azure) / aws).toBeLessThan(0.5);
   });
 
+  it('a commitment takes the published rate off what is reserved, and only that', async () => {
+    const { commitmentFactor } = await import('../src/sim/pricing');
+    for (const id of ['aws-us-east-1', 'gcp-us-central1', 'azure-eastus'] as const)
+      for (const c of ['1y', '3y'] as const)
+        for (const kind of ['server', 'db', 'cache', 'lb'] as const) {
+          const design = (commitment?: string) => ({ pricing: id, ...(commitment ? { commitment } : {}), components: [{ id: 'u', kind: 'client' }, { id: 'x', kind, tier: 'M' }], connections: [['u', 'x']] });
+          const od = simulate(design() as never, steady(0, 2)).summary.meanCostPerHour;
+          const committed = simulate(design(c) as never, steady(0, 2)).summary.meanCostPerHour;
+          expect([id, c, kind, committed]).toEqual([id, c, kind, expect.closeTo(od * commitmentFactor(kind, id, c), 2)]);
+        }
+  });
+
   it('the engine charges every fixed price the app shows with its source', () => {
     // one idle component of each kind, size S: the engine's hourly cost is the profile's S (or fixed) price
     for (const id of Object.keys(PRICING) as PricingId[]) {

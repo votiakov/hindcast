@@ -1,5 +1,5 @@
 import {  type RetryPolicy, type SystemEdge, type SystemNode } from './catalog';
-import { getPricing } from './pricing';
+import { pricingProfile } from './pricing';
 import * as wasm from '../backtest/wasm/hindcast_engine.js';
 
 /**
@@ -132,7 +132,7 @@ export class Engine {
     this.made?.reset();
   }
   step(nodes: SystemNode[], edges: SystemEdge[], trafficRps: number, readRatio: number, dt: number, cfg: EngineConfig = DEFAULT_ENGINE_CONFIG): SimEvent[] {
-    return this.impl.step(nodes, edges, trafficRps, readRatio, dt, cfg, getPricing()) as SimEvent[];
+    return this.impl.step(nodes, edges, trafficRps, readRatio, dt, cfg, pricingProfile()) as SimEvent[];
   }
   snapshot(nodes: SystemNode[], edges: SystemEdge[]): Snapshot {
     return this.impl.snapshot(nodes, edges) as Snapshot;

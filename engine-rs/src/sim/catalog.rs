@@ -251,7 +251,36 @@ pub struct KindPricing {
 /// answers for the TTL, so they scale with clients, not requests
 const DNS_ZONE_HOURLY: f64 = 0.5 / 730.0;
 
+/// what a commitment takes off a fixed hourly price (usage prices are not discounted): published
+/// rates for the profile's SKUs, no upfront where there is a choice; 1.0 where none is published
+/// (Azure Cache for Redis Standard, Memorystore, GPU instances, load balancers)
+pub fn commitment_factor(profile: &str, kind: &str) -> f64 {
+    let (base, c) = match profile.split_once('@') {
+        Some((b, c)) => (b, c),
+        None => return 1.0,
+    };
+    let three = c == "3y";
+    match (base, kind) {
+        // EC2 m7g reserved, no upfront: $0.054 / $0.037 against $0.082
+        ("aws-us-east-1", "server" | "worker") => if three { 0.45 } else { 0.66 },
+        // RDS db.r7g reserved 1 year, no upfront: $0.184 against $0.239 (3-year needs upfront: 1-year kept)
+        ("aws-us-east-1", "db" | "replica") => 0.77,
+        // ElastiCache cache.r7g reserved, no upfront: $0.149 / $0.114 against $0.219
+        ("aws-us-east-1", "cache") => if three { 0.52 } else { 0.68 },
+        // Compute Engine resource-based committed use: 37% / 55%
+        ("gcp-us-central1", "server" | "worker") => if three { 0.45 } else { 0.63 },
+        // Cloud SQL committed use: 20% / 40%
+        ("gcp-us-central1", "db" | "replica") => if three { 0.6 } else { 0.8 },
+        // Azure reserved VM D2ps v6: $363 / $701 for 1 / 3 years against $0.0702/h
+        ("azure-eastus", "server" | "worker") => if three { 0.38 } else { 0.59 },
+        // Azure Database for PostgreSQL reserved capacity: up to 40% / 60%
+        ("azure-eastus", "db" | "replica") => if three { 0.4 } else { 0.6 },
+        _ => 1.0,
+    }
+}
+
 pub fn kind_pricing(profile: &str, kind: &str) -> Option<KindPricing> {
+    let profile = profile.split_once('@').map(|x| x.0).unwrap_or(profile);
     let tiers = |s: f64, m: f64, l: f64| Some(KindPricing { tiers: Some([s, m, l]), ..Default::default() });
     let per = |p: f64| Some(KindPricing { per_request: Some(p), ..Default::default() });
     match profile {
@@ -529,7 +558,8 @@ pub fn fn_cost_per_request(d: &NodeData, profile: &str) -> f64 {
 
 /// fixed hourly cost under a pricing profile (usage cost is added by the engine)
 pub fn cost_of(d: &NodeData, profile: &str) -> f64 {
-    fixed_cost_of(d, profile) + provisioned_cost_h(d)
+    let committed = if d.cost_per_hour.is_none() { commitment_factor(profile, &d.kind) } else { 1.0 };
+    fixed_cost_of(d, profile) * committed + provisioned_cost_h(d)
 }
 
 fn fixed_cost_of(d: &NodeData, profile: &str) -> f64 {
