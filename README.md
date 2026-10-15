@@ -69,8 +69,8 @@ app), [use cases](docs/use-cases.md), the [capability list](docs/capabilities.md
 - **Backtest** – real history as a chart, strategies drawn over it, ranked; open any
   moment on the board; Studio card of the result.
 - **Live** – a running system that fails on arrival, with the next move pinned to the component under stress.
-- **Lessons** – a study path of 14 lessons, 44 levels, in four tracks: scaling a web service (Scale
-  101/201, Pastebin, Mint, sizing a cache), asynchrony and failure (queues, retry storms, elasticity,
+- **Lessons** – a study path of 15 lessons, 46 levels, in four tracks: scaling a web service (Scale
+  101/201, Pastebin, Mint, sizing a cache), asynchrony and failure (queues, event streams, retry storms, elasticity,
   zones), data at scale (CAP with sync/async replication and partitions, sharding and hot keys, a web
   crawler), and AI serving and runtimes. Every level has a reference solution ("show me"), a debrief
   and saved progress; each is proven solvable in the tests.
@@ -80,7 +80,7 @@ app), [use cases](docs/use-cases.md), the [capability list](docs/capabilities.md
   on the board; apply a verified fix with one click (undoable); copy the report as Markdown.
 - **Architecture as code** – a YAML editor that stays in sync with the board in both directions.
 - **Compare** – two designs, same traffic and failures, side by side, with a measured scoreboard and a
-  takeaway computed by the engine. Twenty-three built-in comparisons, each proven to show a difference.
+  takeaway computed by the engine. Twenty-five built-in comparisons, each proven to show a difference.
 - **Present** – press P: no chrome, large numbers, captions; ←/→ walks through the audit's incidents live.
 - **Studio** – scripted episodes rendered in the browser to MP4, GIF and a PDF carousel for posts
   (or frame-perfect from the command line with `npm run record`).
