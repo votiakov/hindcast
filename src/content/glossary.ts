@@ -56,6 +56,14 @@ export const GLOSSARY: Record<string, string> = {
   'Little’s law': 'Requests in flight = arrival rate × time each spends. It links concurrency, throughput and latency.',
   'prefix limit': 'S3 takes 5,500 reads or 3,500 writes a second per key prefix; a hot prefix gets 503 SlowDown.',
   'stale DNS answer': 'A client still using a cached DNS answer that points at a target which has since died.',
+  'refresh interval': 'How often a search index makes new writes searchable (1 s by default). Until the next refresh, searches miss them.',
+  recall: 'The share of the true nearest neighbours an approximate search returns. 0.99 walks far more of the index than 0.95.',
+  ANN: 'Approximate nearest neighbour search: finding similar vectors fast by giving up a little recall instead of comparing them all.',
+  HNSW: 'Hierarchical navigable small world: the graph most vector databases search. Fast while it fits in memory, slow from disk.',
+  'cold storage': 'Archive tiers (S3 Glacier) that cost pennies a GB to keep and are slow, and priced, to read back.',
+  restore: 'Bringing an archived object back from Glacier Flexible Retrieval: minutes to hours, paid for per request and per GB.',
+  'edge function': 'Small code that runs at the CDN’s edge before the origin (CloudFront Functions, Cloudflare Workers), near the user.',
+  'CPU limit': 'The CPU time an edge function may use per request (about 1 ms on CloudFront Functions, 10 ms on Workers Free); past it, it is killed.',
 };
 
 const TERMS = Object.keys(GLOSSARY).sort((a, b) => b.length - a.length);

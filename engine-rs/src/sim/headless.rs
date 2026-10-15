@@ -151,7 +151,7 @@ pub fn explain(d: &NodeData, st: Option<&NodeStats>, v: &View) -> Option<String>
         format!("{}/s of clients still hold an answer pointing at a dead target and time out: they keep going there until the health checks notice ({} s) and their cached answer expires (TTL {} s).", fmt(st.drop_rps), js_num(d.health_check_s.unwrap_or(30.0)), js_num(d.ttl_s.unwrap_or(60.0)))
     } else if d.kind == "vector" && vector_fit(d) < 0.999 && (v.health == "hot" || v.health == "warm") {
         format!(
-            "The index does not fit in memory: {} GB of graph against the {} GB its nodes keep for it, so {}% of lookups read the disk at ~{}× the cost. Add nodes (or bigger ones) until it fits — that buys more than CPU would.",
+            "The HNSW graph does not fit in memory: {} GB of it against the {} GB its nodes keep for it, so {}% of lookups read the disk at ~{}× the cost. Add nodes (or bigger ones) until it fits — that buys more than CPU would.",
             fmt(d.vectors_m.unwrap_or(1.0) * VECTOR_GB_PER_M),
             fmt(vector_memory_gb(d)),
             pct(1.0 - vector_fit(d)),
@@ -159,14 +159,14 @@ pub fn explain(d: &NodeData, st: Option<&NodeStats>, v: &View) -> Option<String>
         )
     } else if d.kind == "vector" && d.recall.unwrap_or(0.95) > 0.95 && (v.health == "hot" || v.health == "warm") {
         format!(
-            "Recall {} costs {}× the work of 0.95 per query: each halving of the neighbours a search may miss doubles the graph it walks. Is the last bit of recall worth {}% of the capacity?",
+            "Recall {} costs {}× the work of 0.95 per ANN query: each halving of the neighbours a search may miss doubles the graph it walks. Is the last bit of recall worth {}% of the capacity?",
             js_num(d.recall.unwrap_or(0.95)),
             js_to_fixed(0.05 / (1.0 - d.recall.unwrap_or(0.95).min(0.999)), 1),
             pct(1.0 - (1.0 - d.recall.unwrap_or(0.95).min(0.999)) / 0.05)
         )
     } else if d.kind == "search" && st.repl_lag_s > 1.0 {
         format!(
-            "New documents show up in search {} after they are written: the index refreshes every {} s{}. Searches in that window miss them — fine for a catalogue, wrong for \"I just posted it, where is it?\".",
+            "New documents show up in search {} after they are written: the refresh interval is {} s{}. Searches in that window miss them — fine for a catalogue, wrong for \"I just posted it, where is it?\".",
             fmt_ms(st.repl_lag_s * 1000.0),
             js_num(refresh_s_of(d)),
             if st.repl_lag_s > refresh_s_of(d) + 0.5 { ", and indexing is queued behind the queries the nodes are busy with" } else { "" }
@@ -196,14 +196,14 @@ pub fn explain(d: &NodeData, st: Option<&NodeStats>, v: &View) -> Option<String>
         )
     } else if d.kind == "edge" && edge_cpu_fail(d) > 0.005 && st.in_rps > 0.01 {
         format!(
-            "{}% of requests run past the {} ms CPU limit and are killed: CPU time here averages {} ms. Edge functions are for small, fast work (redirects, headers, auth checks); move the heavy part to the origin, or to a platform with a higher limit.",
+            "{}% of requests run past the {} ms CPU limit and are killed: CPU time here averages {} ms. An edge function is for small, fast work (redirects, headers, auth checks); move the heavy part to the origin, or to a platform with a higher limit.",
             pct(edge_cpu_fail(d)),
             js_num(d.cpu_limit_ms.unwrap_or(10.0)),
             js_num(cpu_ms_of(d))
         )
     } else if d.kind == "archive" && st.drop_rps > 1.0 {
         format!(
-            "Archive request limit: {}/s refused (503 SlowDown) above {}/s — {}. Archives are for data nobody reads in a hurry; put what users read in hot storage or a cache.",
+            "Archive request limit: {}/s refused (503 SlowDown) above {}/s — {}. Cold storage is for data nobody reads in a hurry; put what users read in hot storage or a cache.",
             fmt(st.drop_rps),
             fmt(archive_limit(d)),
             if retrieval_of(d) == "instant" { "Instant Retrieval shares S3's 5,500 GETs a second per prefix" } else { "restore requests are capped at 1,000 a second per account" }
