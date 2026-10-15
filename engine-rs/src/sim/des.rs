@@ -241,6 +241,8 @@ enum Cont {
     Failover { n: usize, read: bool, order: usize, i: usize, done: ContId },
     /// a queue's consumer finished one message
     Consumer { queue: usize },
+    /// a stream's subscriber (its k-th child) finished one message
+    SubConsumer { stream: usize, k: usize },
     /// a write-behind cache's flush to the origin settled
     Flushed,
     Free,
@@ -337,6 +339,9 @@ struct DNode {
     kv_t: f64,
     /// when it went down (DNS answers lag it)
     dead_since: Option<f64>,
+    /// a stream: each subscriber's backlog and messages in flight, by child position
+    sub_backlog: Vec<VecDeque<Job>>,
+    sub_inflight: Vec<f64>,
     queue: VecDeque<Job>,
     queue_max: f64,
     last_busy_t: f64,
@@ -548,7 +553,7 @@ impl<'a> Des<'a> {
         let cap = capacity_of(d, Some(reach)).max(1e-6);
         let lat = base_latency_of(d).max(0.05);
         let kind = d.kind.as_str();
-        if kind == "gateway" || kind == "llmapi" || kind == "external" || kind == "kv" {
+        if kind == "gateway" || kind == "llmapi" || kind == "external" || kind == "kv" || kind == "stream" {
             n.rate = d.limit.unwrap_or(spec(kind).capacity);
             n.workers = f64::INFINITY;
             n.svc_mean_ms = if kind == "llmapi" || kind == "external" || kind == "kv" { d.latency_ms.unwrap_or(spec(kind).base_latency_ms) } else { lat };
@@ -641,6 +646,11 @@ impl<'a> Des<'a> {
                 self.nodes[queue].inflight -= 1.0;
                 self.pump(queue);
             }
+            Cont::SubConsumer { stream, k } => {
+                self.release(id);
+                self.nodes[stream].sub_inflight[k] -= 1.0;
+                self.pump_stream(stream);
+            }
             Cont::Flushed => {
                 self.release(id);
                 if !ok {
@@ -683,6 +693,20 @@ impl<'a> Des<'a> {
                 }
                 n.tokens -= 1.0;
             }
+        }
+        if kind == "stream" {
+            // every subscriber gets it; past retention the oldest expire unread
+            for k in 0..self.nodes[i].children.len() {
+                let q = &mut self.nodes[i].sub_backlog[k];
+                if q.len() >= QUEUE_BACKLOG_MAX {
+                    q.pop_front();
+                }
+                q.push_back(Job { read, t_in: now, done: None, shard: NO_SHARD });
+            }
+            let ack = base_latency_of(&self.nodes[i].data);
+            self.at(ack, Ev::Deliver { done, ok: true }); // the producer gets the ack
+            self.pump_stream(i);
+            return;
         }
         if kind == "queue" {
             if self.nodes[i].backlog.len() >= QUEUE_BACKLOG_MAX {
@@ -941,6 +965,27 @@ impl<'a> Des<'a> {
             self.nodes[n].inflight += 1.0;
             let c = self.cont(Cont::Consumer { queue: n });
             self.arrive(free, job.read, c);
+        }
+    }
+
+    /// a stream's subscribers: each pulls from its own backlog, with no more messages in flight than
+    /// its instances can work on — and no more instances than the stream has partitions
+    fn pump_stream(&mut self, n: usize) {
+        let parts = partitions_of(&self.nodes[n].data);
+        for k in 0..self.nodes[n].children.len() {
+            let c = self.nodes[n].children[k];
+            if !self.reach(n, c) {
+                continue;
+            }
+            let x = &self.nodes[c];
+            let inst = instances_up(&x.data).max(1.0);
+            let limit = if spec(&x.data.kind).scalable { (x.workers / inst) * inst.min(parts) } else { x.workers };
+            while !self.nodes[n].sub_backlog[k].is_empty() && self.nodes[n].sub_inflight[k] < limit && self.nodes[c].busy + (self.nodes[c].queue.len() as f64) < self.nodes[c].workers {
+                let job = self.nodes[n].sub_backlog[k].pop_front().unwrap();
+                self.nodes[n].sub_inflight[k] += 1.0;
+                let cont = self.cont(Cont::SubConsumer { stream: n, k });
+                self.arrive(c, job.read, cont);
+            }
         }
     }
 
@@ -1225,7 +1270,7 @@ impl<'a> Des<'a> {
             let n = &self.nodes[i];
             let w = &n.win;
             let workers = if n.workers.is_finite() { n.workers } else { 1.0 };
-            let util = if n.sh_workers > 0.0 { w.hot_area / (n.sh_workers * win_s) } else if n.data.kind == "queue" { n.backlog.len() as f64 / QUEUE_BACKLOG_MAX as f64 } else if n.rate.is_finite() { w.arrivals / (n.rate * win_s).max(1e-9) } else { w.busy_area / (workers * win_s) };
+            let util = if n.sh_workers > 0.0 { w.hot_area / (n.sh_workers * win_s) } else if n.data.kind == "queue" { n.backlog.len() as f64 / QUEUE_BACKLOG_MAX as f64 } else if n.data.kind == "stream" { n.sub_backlog.iter().map(|q| q.len()).max().unwrap_or(0) as f64 / QUEUE_BACKLOG_MAX as f64 } else if n.rate.is_finite() { w.arrivals / (n.rate * win_s).max(1e-9) } else { w.busy_area / (workers * win_s) };
             let billed = if n.data.kind == "function" || n.data.kind == "llmapi" || n.data.kind == "external" || n.data.kind == "kv" { w.usage_reqs } else if n.data.kind == "client" { 0.0 } else { w.arrivals };
             let usage = billed * request_price(&n.data, &self.pricing) * 3600.0;
             let cost_h = match &n.scaler {
@@ -1237,7 +1282,7 @@ impl<'a> Des<'a> {
                 in_rps: w.arrivals / win_s,
                 drop_rps: w.drops / win_s,
                 util,
-                queue: if n.data.kind == "queue" { n.backlog.len() as f64 } else { (n.queue.len() + n.sh_queue.iter().map(|q| q.len()).sum::<usize>()) as f64 },
+                queue: if n.data.kind == "queue" { n.backlog.len() as f64 } else if n.data.kind == "stream" { n.sub_backlog.iter().map(|q| q.len()).max().unwrap_or(0) as f64 } else { (n.queue.len() + n.sh_queue.iter().map(|q| q.len()).sum::<usize>()) as f64 },
                 latency_ms: 0.0,
                 success: if w.arrivals != 0.0 { 1.0 - w.drops / w.arrivals } else { 1.0 },
                 hit_rps: w.hits / win_s,
@@ -1402,6 +1447,8 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
             kv_bucket: 1.0,
             kv_t: 0.0,
             dead_since: None,
+            sub_backlog: vec![],
+            sub_inflight: vec![],
             queue: VecDeque::new(),
             queue_max: 0.0,
             last_busy_t: 0.0,
@@ -1464,9 +1511,13 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
         }
         nodes[a].children.push(b);
         let k = nodes[a].data.kind.clone();
-        if k == "lb" || k == "gateway" || k == "queue" || nodes[a].data.fanout.unwrap_or(1.0) > 1.0 {
+        if k == "lb" || k == "gateway" || k == "queue" || k == "stream" || nodes[a].data.fanout.unwrap_or(1.0) > 1.0 {
             nodes[b].pooled = true;
         }
+    }
+    for n in nodes.iter_mut() {
+        n.sub_backlog = (0..n.children.len()).map(|_| VecDeque::new()).collect();
+        n.sub_inflight = vec![0.0; n.children.len()];
     }
     let mut tl: Vec<(f64, f64)> = match &sc.traffic {
         Some(t) if !t.is_empty() => t.clone(),
@@ -1626,6 +1677,7 @@ fn static_kind(k: &str) -> &'static str {
         "external" => "external",
         "kv" => "kv",
         "dns" => "dns",
+        "stream" => "stream",
         _ => "server",
     }
 }

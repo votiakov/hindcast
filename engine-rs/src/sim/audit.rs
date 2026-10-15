@@ -50,6 +50,7 @@ fn label_of(kind: &str) -> &'static str {
         "external" => "External API",
         "kv" => "Key-Value Store",
         "dns" => "DNS",
+        "stream" => "Stream",
         _ => "Component",
     }
 }
@@ -375,7 +376,7 @@ fn candidate_fixes(inc: &Incident, a: &Architecture, nm: &dyn Fn(&str) -> String
     let ks = children(&id);
     if inc.kind == "component" || inc.kind == "instance" {
         if kind_spec(kind).scalable {
-            let fed = ps.iter().any(|p| matches!(by_id(p).and_then(|x| get_str(x, "kind")), Some("lb") | Some("gateway") | Some("queue")));
+            let fed = ps.iter().any(|p| matches!(by_id(p).and_then(|x| get_str(x, "kind")), Some("lb") | Some("gateway") | Some("queue") | Some("stream")));
             let n = get_num(c, "instances").unwrap_or(1.0);
             if fed {
                 out.push(Cand { title: format!("Run {} × {}", js_num(n + 1.0), nm(&id)), why: "One more instance than the load needs (N+1): losing one leaves enough capacity.".into(), changes: vec![set(&id, json!({ "instances": n + 1.0 }))] });
@@ -571,10 +572,10 @@ pub fn audit(input: &Architecture, o: &AuditOptions, progress: &mut dyn FnMut(f6
         if kind == "kv" || (kind == "db" && get_num(c, "shards").unwrap_or(1.0) > 1.0) {
             incidents.push(Incident { id: format!("hot:{}", id), kind: "hot-key", target: id.clone(), title: format!("{}: 30% of traffic on one key", nm(&id)), events: fault(json!({ "type": "hot-key", "id": id, "share": 0.3 }), json!({ "type": "hot-key", "id": id, "share": 0 })), traffic: None });
         }
-        if kind != "lb" && kind != "queue" {
+        if kind != "lb" && kind != "queue" && kind != "stream" && kind != "dns" {
             incidents.push(Incident { id: format!("slow:{}", id), kind: "slow", target: id.clone(), title: format!("{} turns slow (+250 ms)", nm(&id)), events: fault(json!({ "type": "inject-latency", "id": id, "ms": 250 }), json!({ "type": "restore", "id": id })), traffic: None });
         }
-        if kind != "lb" && kind != "queue" && kind != "cdn" {
+        if kind != "lb" && kind != "queue" && kind != "stream" && kind != "dns" && kind != "cdn" {
             incidents.push(Incident { id: format!("errors:{}", id), kind: "errors", target: id.clone(), title: format!("{} fails 20% of requests", nm(&id)), events: fault(json!({ "type": "inject-errors", "id": id, "rate": 0.2 }), json!({ "type": "restore", "id": id })), traffic: None });
         }
     }

@@ -83,7 +83,7 @@ pub fn node_view(d0: &NodeData, st: Option<&NodeStats>, running: bool, has_outgo
         } else {
             "down"
         }
-    } else if d.kind == "queue" {
+    } else if d.kind == "queue" || d.kind == "stream" {
         if !up {
             "down"
         } else if drop > 1.0 {
@@ -141,6 +141,8 @@ pub fn explain(d: &NodeData, st: Option<&NodeStats>, v: &View) -> Option<String>
         format!("Retry amplification ×{}: failed calls are retried, multiplying the load on an already struggling dependency.", js_to_fixed(st.retry_amp, 1))
     } else if st.late_frac > 0.05 {
         format!("{}% of responses arrive after the {} timeout — the work was done, but the caller had already given up.", pct(st.late_frac), fmt_ms(d.timeout_ms.unwrap_or(0.0)))
+    } else if d.kind == "stream" && st.lag_s > 5.0 {
+        format!("The slowest subscriber is {} behind: every subscriber reads every message, each at its own pace, and no subscriber can use more consumers than the stream has partitions. Past retention, the oldest expire unread.", if st.lag_s.is_finite() { format!("{}s", js_to_fixed(st.lag_s, 0)) } else { "indefinitely".into() })
     } else if d.kind == "queue" && st.lag_s > 5.0 {
         format!("Backlog of {} messages: consumers are {} behind. Producers are unaffected — work completes later.", fmt(st.queue), if st.lag_s.is_finite() { format!("{}s", js_to_fixed(st.lag_s, 0)) } else { "indefinitely".into() })
     } else if d.kind == "dns" && st.drop_rps > 0.5 {
@@ -399,7 +401,7 @@ fn config(cfg: Option<&Value>) -> EngineConfig {
 /// a component whose every caller is a queue: it works off a backlog, users never wait on it
 fn async_only(id: &str, nodes: &[SimNode], edges: &[SimEdge]) -> bool {
     let callers: Vec<Option<&str>> = edges.iter().filter(|e| e.target == id).map(|e| nodes.iter().find(|n| n.id == e.source).map(|n| n.data.kind.as_str())).collect();
-    !callers.is_empty() && callers.iter().all(|k| *k == Some("queue"))
+    !callers.is_empty() && callers.iter().all(|k| *k == Some("queue") || *k == Some("stream"))
 }
 
 fn traffic_fn(sc: &Scenario) -> impl Fn(f64) -> f64 {

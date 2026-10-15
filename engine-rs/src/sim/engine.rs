@@ -232,6 +232,8 @@ pub struct NodeState {
     pub cold_util: f64,
     /// how long this component has been down, s (DNS answers lag it)
     pub dead_for: f64,
+    /// a stream: each subscriber's backlog, by its link
+    pub sub_backlog: Vec<(usize, f64)>,
 }
 
 /// how much faster than real time a replica catches up once it can reach its primary again
@@ -278,6 +280,7 @@ fn fresh() -> NodeState {
         hot_queue: 0.0,
         cold_util: 0.0,
         dead_for: 0.0,
+        sub_backlog: vec![],
     }
 }
 
@@ -290,7 +293,7 @@ fn ema(prev: f64, next: f64, dt: f64, tau: f64) -> f64 {
 pub fn dynamic_data(d: &NodeData, scaler: Option<&ScalerState>) -> NodeData {
     let mut e = effective_data(d, scaler);
     if let Some(fl) = e.fault_latency_ms.filter(|x| *x != 0.0 && !x.is_nan()) {
-        if !matches!(d.kind.as_str(), "gateway" | "llmapi" | "external" | "kv" | "client" | "queue") {
+        if !matches!(d.kind.as_str(), "gateway" | "llmapi" | "external" | "kv" | "client" | "queue" | "stream") {
             let base = base_latency_of(d).max(0.05);
             e.degraded = Some(e.degraded.unwrap_or(1.0) * (base / (base + fl)));
         }
@@ -711,6 +714,42 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
             r.routes = Some(routes);
             r
         }
+        // a log: producers are answered once a partition takes the message; every subscriber gets
+        // every message and drains its own backlog, one consumer per partition at most
+        "stream" => {
+            let cap = (capacity_of(c.d, None) * c.dt).max(1e-9);
+            let accepted = c.arrivals.min(cap);
+            let parts = partitions_of(c.d);
+            let (mut taken, mut worst) = (vec![], (0.0f64, 0.0f64));
+            for k in c.routes {
+                let pos = match st.sub_backlog.iter().position(|x| x.0 == k.e) {
+                    Some(p) => p,
+                    None => {
+                        st.sub_backlog.push((k.e, 0.0));
+                        st.sub_backlog.len() - 1
+                    }
+                };
+                let q = &mut st.sub_backlog[pos].1;
+                *q += accepted;
+                let drain = if k.up { subscriber_rps(&c.data[k.t], parts) } else { 0.0 };
+                let take = q.min(drain * c.dt);
+                *q = (*q - take).min(QUEUE_MAX_BACKLOG); // past retention, the oldest expire unread
+                if k.up {
+                    taken.push((k.e, take));
+                }
+                let lag = if drain > 0.0 { *q / drain } else if *q > 1.0 { f64::INFINITY } else { 0.0 };
+                if lag >= worst.0 || worst.1 == 0.0 {
+                    worst = (lag, drain);
+                    st.queue = *q;
+                    st.drain_rps = drain;
+                }
+            }
+            let forward: f64 = taken.iter().map(|x| x.1).sum();
+            let mut r = res(accepted, c.arrivals - accepted, forward, c.arrivals / cap, true);
+            r.routes = Some(c.routes.iter().filter(|k| k.up).cloned().collect());
+            r.shares = Some(taken.iter().map(|&(e, v)| (e, if forward > 0.0 { v / forward } else { 0.0 })).collect());
+            r
+        }
         "function" => {
             let cap = capacity_of(c.d, None) * c.dt;
             let processed = c.arrivals.min(cap);
@@ -774,7 +813,7 @@ fn fold(c: &FoldCtx, st: &NodeState) -> (f64, f64) {
         "gateway" => (if c.has_kids { c.keep * c.child_succ } else { 0.0 }, spec("gateway").base_latency_ms + c.child_lat),
         "cache" | "cdn" => (c.keep * (c.local_share + (1.0 - c.local_share) * kids_succ), service_latency(c.d, st) + (1.0 - c.local_share) * c.child_lat),
         "db" => (c.local_share * c.keep + (1.0 - c.local_share) * kids_succ, c.local_share * service_latency(c.d, st) + (1.0 - c.local_share) * c.child_lat),
-        "queue" => (c.keep, spec("queue").base_latency_ms),
+        "queue" | "stream" => (c.keep, spec(&c.d.kind).base_latency_ms),
         "function" => {
             let cold = if c.cfg.cold_start_ms > 0.0 && c.d.runtime.as_deref().map(|r| !r.is_empty()).unwrap_or(false) { runtime(c.d.runtime.as_deref().unwrap()).2 } else { c.cfg.cold_start_ms };
             (c.keep * kids_succ, base_latency_of(c.d) + st.cold_frac * cold + kids_lat)
@@ -1034,7 +1073,7 @@ impl Engine {
             };
             let sd = &data[si];
             // instances are reachable behind a balancer/queue, or when a scatter-gather caller addresses partitions
-            if sd.kind == "lb" || sd.kind == "gateway" || sd.kind == "queue" || sd.fanout.unwrap_or(1.0) > 1.0 {
+            if sd.kind == "lb" || sd.kind == "gateway" || sd.kind == "queue" || sd.kind == "stream" || sd.fanout.unwrap_or(1.0) > 1.0 {
                 pooled[ti] = true;
             }
             // a dead primary's links to its replicas are not the network's: failover is decided around it
@@ -1534,12 +1573,12 @@ impl Engine {
             } else {
                 let (own_share, kid_share) = match d.kind.as_str() {
                     "client" => (0.0, 1.0),
-                    "queue" => (0.0, 0.0),
+                    "queue" | "stream" => (0.0, 0.0),
                     "cache" | "cdn" | "db" => (1.0, 1.0 - l.local_share),
                     _ => (1.0, 1.0),
                 };
                 let own = match d.kind.as_str() {
-                    "client" | "queue" | "gateway" => 0.0,
+                    "client" | "queue" | "stream" | "gateway" => 0.0,
                     "function" => (SERVICE_P99 - 1.0) * base_latency_of(d),
                     "llmapi" | "external" | "kv" => (API_P99 - 1.0) * base_latency_of(d),
                     _ => service_tail(d, st),
@@ -1558,7 +1597,7 @@ impl Engine {
             } else {
                 let own_mean = fold(&FoldCtx { d, keep, local_share: 1.0, child_succ: 1.0, child_lat: 0.0, has_kids: false, cfg }, st).1 + d.fault_latency_ms.filter(|x| !x.is_nan()).unwrap_or(0.0);
                 let own_tail = match d.kind.as_str() {
-                    "client" | "queue" | "gateway" => 0.0,
+                    "client" | "queue" | "stream" | "gateway" => 0.0,
                     "function" => (SERVICE_P99 - 1.0) * base_latency_of(d),
                     "llmapi" | "external" | "kv" => (API_P99 - 1.0) * base_latency_of(d),
                     _ => service_tail(d, st),
@@ -1585,7 +1624,7 @@ impl Engine {
                 }
                 let (own_share, kid_share) = match d.kind.as_str() {
                     "client" => (0.0, 1.0),
-                    "queue" => (1.0, 0.0),
+                    "queue" | "stream" => (1.0, 0.0),
                     "cache" | "cdn" | "db" => (l.local_share, 1.0 - l.local_share),
                     _ => (if has_kids { 0.0 } else { 1.0 }, 1.0),
                 };
@@ -1635,7 +1674,7 @@ impl Engine {
                 None => cost_of(d, profile),
             };
             st.cost_per_hour = fixed + usage;
-            let over = l.up && d.kind != "client" && d.kind != "queue" && st.drop_rps > (st.in_rps * 0.02).max(1.0);
+            let over = l.up && d.kind != "client" && d.kind != "queue" && d.kind != "stream" && st.drop_rps > (st.in_rps * 0.02).max(1.0);
             if over && !st.overloaded {
                 events.push(SimEvent { kind: "overload".into(), node_id: id.into(), name: d.name.clone(), detail: None });
             }

@@ -381,7 +381,7 @@ pub fn optimize(spec_in: &Value, scenario: &Value, o: &OptimizeOptions) -> Resul
                 log.push("grow: no single change improves the SLO — the topology itself is the limit".into());
                 // the most common structural blocker: instances nobody can reach
                 let kind_of = |id: &str| cur.components.iter().find(|x| x.get("id").and_then(|v| v.as_str()) == Some(id)).map(|x| get_str(x, "kind", "").to_string()).unwrap_or_default();
-                let fed: Vec<String> = cur.connections.iter().filter(|(a, _, _)| ["lb", "gateway", "queue"].contains(&kind_of(a).as_str())).map(|(_, b, _)| b.clone()).collect();
+                let fed: Vec<String> = cur.connections.iter().filter(|(a, _, _)| ["lb", "gateway", "queue", "stream"].contains(&kind_of(a).as_str())).map(|(_, b, _)| b.clone()).collect();
                 for id in &cur_e.hot {
                     if let Some(c) = cur.components.iter().find(|x| x.get("id").and_then(|v| v.as_str()) == Some(id.as_str())) {
                         if spec(get_str(c, "kind", "")).scalable && !fed.contains(id) {

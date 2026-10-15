@@ -24,8 +24,8 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
   const instances = data.instances ?? 1;
   const set = (patch: Partial<SystemNodeData>) => updateNode(b, id, patch);
   const caller = CALLERS.has(data.kind);
-  const bounded = data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'external' && data.kind !== 'kv' && data.kind !== 'function' && data.kind !== 'queue';
-  const calibratable = data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'external' && data.kind !== 'kv' && data.kind !== 'function' && data.kind !== 'queue';
+  const bounded = data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'external' && data.kind !== 'kv' && data.kind !== 'function' && data.kind !== 'queue' && data.kind !== 'stream';
+  const calibratable = data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'external' && data.kind !== 'kv' && data.kind !== 'function' && data.kind !== 'queue' && data.kind !== 'stream';
   const tuned = (data.retries ?? 0) > 0 || !!data.breaker || !!data.timeoutMs || (data.routing && data.routing !== 'split') || (data.fanout ?? 1) > 1 || data.queueS !== undefined;
   const [more, setMore] = useState(tuned);
   const [cal, setCal] = useState(false);
@@ -176,6 +176,12 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
               <b className="nc-v">{Math.round((data.hitRate ?? 0.85) * 100)}%</b>
             </>
           )}
+        </div>
+      )}
+      {data.kind === 'stream' && (
+        <div className="nc-row" title="Partitions: 1,000 messages/s in each, $0.015/h each — and a subscriber cannot use more consumer instances than there are partitions">
+          <span className="nc-l">partitions</span>
+          <input className="nc-num" type="number" min={1} max={1024} step={1} value={data.partitions ?? 4} onChange={(e) => set({ partitions: Math.max(1, Math.min(1024, Math.round(+e.target.value) || 1)) })} />
         </div>
       )}
       {data.kind === 'dns' && (

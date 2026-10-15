@@ -22,7 +22,7 @@ export interface LevelResult {
 /** the longest backlog any queue holds, in seconds of draining */
 /** the share of the jobs queue consumers take that fail, downstream included */
 export function jobErrorRate(sys: SystemNode[], edges: { source: string; target: string }[], stats: Record<string, NodeStats>): number {
-  const queues = new Set(sys.filter((n) => n.data.kind === 'queue').map((n) => n.id));
+  const queues = new Set(sys.filter((n) => n.data.kind === 'queue' || n.data.kind === 'stream').map((n) => n.id));
   const consumers = new Set(edges.filter((e) => queues.has(e.source)).map((e) => e.target));
   let jobs = 0;
   let failed = 0;
@@ -35,7 +35,7 @@ export function jobErrorRate(sys: SystemNode[], edges: { source: string; target:
   return jobs > 0 ? failed / jobs : 0;
 }
 
-export const maxLag = (sys: SystemNode[], stats: Record<string, NodeStats>) => Math.max(0, ...sys.filter((n) => n.data.kind === 'queue').map((n) => stats[n.id]?.lagS ?? 0));
+export const maxLag = (sys: SystemNode[], stats: Record<string, NodeStats>) => Math.max(0, ...sys.filter((n) => n.data.kind === 'queue' || n.data.kind === 'stream').map((n) => stats[n.id]?.lagS ?? 0));
 
 export interface Board {
   nodes: AppNode[];

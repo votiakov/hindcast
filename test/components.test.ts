@@ -46,6 +46,8 @@ const HARNESS: Record<Exclude<Kind, 'client'>, Harness> = {
   llmapi: alone('llmapi'),
   external: alone('external'),
   kv: alone('kv'),
+  // past what its subscriber drains: producers are still answered, the subscriber falls behind
+  stream: { comps: [U, { id: 'x', kind: 'stream' }, { id: 'w', kind: 'worker' }], conns: [['users', 'x'], ['x', 'w']], cap: KINDS.worker.capacity, over: 'queue' },
   // a name that only answers: what is behind it overloads, and the board says so there
   dns: { comps: [U, { id: 'x', kind: 'dns' }, { id: 'app', kind: 'server' }], conns: [['users', 'x'], ['x', 'app']], cap: KINDS.server.capacity, over: 'shed', focus: 'app' },
   lb: { comps: [U, { id: 'x', kind: 'lb' }, sink('app')], conns: [['users', 'x'], ['x', 'app']], cap: KINDS.lb.capacity, over: 'shed' },
@@ -174,5 +176,46 @@ describe('DNS: failover waits for the health check, then for the caches', () => 
     const rr = { ...regions(20), components: regions(20).components.map((c) => (c.id === 'x' ? { id: 'x', kind: 'dns' as Kind, ttlS: 20, healthCheckS: 10 } : c)) };
     const d = simulateDes(rr, sc, { seed: 3 }).summary.meanErrorRate;
     expect(Math.abs(d - (10 + 10) / 60 / 2)).toBeLessThan(0.03);
+  });
+});
+
+describe('a stream: every subscriber reads everything, at its own pace', () => {
+  const two = { components: [U, { id: 'x', kind: 'stream' as Kind }, { id: 'fast', kind: 'worker' as Kind, instances: 4 }, { id: 'slow', kind: 'worker' as Kind }], connections: [['users', 'x'], ['x', 'fast'], ['x', 'slow']] as [string, string][] };
+
+  it('each subscriber gets every message; a slow one falls behind without slowing the others or failing producers', () => {
+    const b = specToGraph(two);
+    const e = new Engine();
+    for (let i = 0; i < 1200; i++) e.step(b.nodes as never, b.edges as never, 200, 0.8, 0.05, DEFAULT_ENGINE_CONFIG);
+    const s = e.snapshot(b.nodes as never, b.edges as never);
+    expect(s.edgeStats['e-x-fast'].rps).toBeCloseTo(200, 0);
+    expect(s.edgeStats['e-x-slow'].rps).toBeCloseTo(100, 0); // all it can drain
+    expect(s.nodeStats.x.lagS).toBeGreaterThan(50);
+    expect(s.global.errorRate).toBeLessThan(0.001);
+    const d = simulateDes(two, { duration: 40, rps: 200 }, { seed: 5 });
+    expect(d.summary.meanErrorRate).toBeLessThan(0.005);
+    expect(d.components.fast.meanUtil).toBeGreaterThan(0.4);
+    expect(d.components.fast.meanUtil).toBeLessThan(0.6);
+    expect(d.components.slow.meanUtil).toBeGreaterThan(0.9);
+  });
+
+  it('a subscriber cannot use more consumers than the stream has partitions', () => {
+    const sub = (partitions: number) => ({ components: [U, { id: 'x', kind: 'stream' as Kind, partitions }, { id: 'w', kind: 'worker' as Kind, instances: 8 }], connections: [['users', 'x'], ['x', 'w']] as [string, string][] });
+    for (const [p, util] of [[2, 0.25], [8, 0.75]] as const) {
+      const b = specToGraph(sub(p));
+      const e = new Engine();
+      for (let i = 0; i < 1200; i++) e.step(b.nodes as never, b.edges as never, 600, 0.8, 0.05, DEFAULT_ENGINE_CONFIG);
+      // 8 workers can drain 800/s; with 2 partitions only 2 of them get one
+      expect(e.snapshot(b.nodes as never, b.edges as never).edgeStats['e-x-w'].rps, `fluid, ${p} partitions`).toBeCloseTo(Math.min(600, p * 100), 0);
+      expect(Math.abs(simulateDes(sub(p), { duration: 40, rps: 600 }, { seed: 5 }).components.w.meanUtil - util), `DES, ${p} partitions`).toBeLessThan(0.06);
+    }
+  });
+
+  it('a queue splits the messages between its consumers; a stream gives each all of them', () => {
+    const q = { ...two, components: two.components.map((c) => (c.id === 'x' ? { id: 'x', kind: 'queue' as Kind } : c)) };
+    const b = specToGraph(q);
+    const e = new Engine();
+    for (let i = 0; i < 1200; i++) e.step(b.nodes as never, b.edges as never, 200, 0.8, 0.05, DEFAULT_ENGINE_CONFIG);
+    const s = e.snapshot(b.nodes as never, b.edges as never);
+    expect(s.edgeStats['e-x-fast'].rps + s.edgeStats['e-x-slow'].rps).toBeCloseTo(200, 0);
   });
 });

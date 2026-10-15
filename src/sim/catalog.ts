@@ -17,7 +17,8 @@ export type Kind =
   | 'llm' | 'llmapi'
   | 'external'
   | 'kv'
-  | 'dns';
+  | 'dns'
+  | 'stream';
 export type Tier = 'S' | 'M' | 'L';
 
 /** how a node spreads its outgoing calls across children */
@@ -98,6 +99,8 @@ export interface SystemNodeData extends Record<string, unknown> {
   workingSetGb?: number;
   /** cache: Zipf exponent of key popularity (default 1) */
   skew?: number;
+  /** stream: partitions — 1,000 messages/s in each, and one consumer each per subscriber (default 4) */
+  partitions?: number;
   /** dns: how long clients cache an answer, s (default 60) */
   ttlS?: number;
   /** dns: how long health checks take to notice a dead target, s (default 30) */
@@ -223,6 +226,11 @@ export const KINDS: Record<Kind, KindSpec> = {
     capacity: 100, baseLatencyMs: 1500, costPerHour: 0, costPerRequest: 0.002, tiered: false,
     description: 'Hosted model API. Scales for you, but enforces a rate limit (429s) and bills per request (~$0.002).',
   },
+  stream: {
+    kind: 'stream', label: 'Stream', prefix: 'stream', color: '#a78bfa',
+    capacity: 1000, baseLatencyMs: 5, costPerHour: 0.015, tiered: false,
+    description: 'A log you publish to and many subscribe to (Kinesis, Kafka): every subscriber reads every message at its own pace. Per partition: 1,000 messages/s in, $0.015/h, and one consumer — a subscriber cannot use more instances than there are partitions.',
+  },
   dns: {
     kind: 'dns', label: 'DNS', prefix: 'dns', color: '#93c5fd',
     capacity: 1e9, baseLatencyMs: 1, costPerHour: 0.001, tiered: false,
@@ -251,7 +259,7 @@ export const CATEGORIES: { id: string; label: string; kinds: Kind[] }[] = [
   { id: 'edge', label: 'Edge & Network', kinds: ['dns', 'cdn', 'lb', 'gateway'] },
   { id: 'compute', label: 'Compute', kinds: ['server', 'worker', 'function'] },
   { id: 'data', label: 'Data', kinds: ['cache', 'db', 'replica', 'kv', 'storage'] },
-  { id: 'async', label: 'Messaging', kinds: ['queue'] },
+  { id: 'async', label: 'Messaging', kinds: ['queue', 'stream'] },
   { id: 'ai', label: 'AI', kinds: ['llm', 'llmapi'] },
   { id: 'outside', label: 'Third party', kinds: ['external'] },
 ];
@@ -296,10 +304,13 @@ export function capacityOf(d: SystemNodeData, reachable = instancesUp(d)): numbe
     const tier = spec.tiered ? TIERS[d.tier].capacity : 1;
     const batch = d.kind === 'llm' && d.batching ? BATCHING.capacity : 1;
     const rt = d.runtime ? RUNTIMES[d.runtime].throughput : 1;
-    cap = (d.capacity ?? spec.capacity) * tier * batch * rt * (spec.scalable ? Math.max(1, reachable) : 1) * shardsOf(d);
+    cap = (d.capacity ?? spec.capacity) * tier * batch * rt * (spec.scalable ? Math.max(1, reachable) : 1) * shardsOf(d) * partitionsOf(d);
   }
   return cap * (d.degraded ?? 1);
 }
+
+/** a stream's partitions (1 for everything else) */
+export const partitionsOf = (d: SystemNodeData): number => (d.kind === 'stream' ? Math.max(1, Math.floor(d.partitions ?? 4)) : 1);
 
 /** a database's shard count (1 for everything else) */
 export const shardsOf = (d: SystemNodeData): number => (d.kind === 'db' || d.kind === 'replica' ? Math.max(1, Math.floor(d.shards ?? 1)) : 1);
@@ -325,7 +336,7 @@ export function fnCostPerRequest(d: SystemNodeData): number {
 /** fixed hourly cost (usage cost is added by the engine) — follows the active pricing profile */
 export function costOf(d: SystemNodeData): number {
   const spec = KINDS[d.kind];
-  const n = (d.instances ?? 1) * shardsOf(d);
+  const n = (d.instances ?? 1) * shardsOf(d) * partitionsOf(d);
   const p = d.costPerHour === undefined ? kindPricing(d.kind) : undefined;
   if (p?.tiers) return p.tiers[spec.tiered ? d.tier : 'S'].hourly * n;
   if (p?.fixed) return p.fixed.hourly * n;

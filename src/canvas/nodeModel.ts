@@ -1,4 +1,4 @@
-import { KINDS, QUEUE_MAX_BACKLOG, capacityOf, costOf, hotShardShare, instancesUp, isUp, shardsOf, skuOf, type SystemNodeData } from '../sim/catalog';
+import { KINDS, QUEUE_MAX_BACKLOG, capacityOf, costOf, hotShardShare, partitionsOf, instancesUp, isUp, shardsOf, skuOf, type SystemNodeData } from '../sim/catalog';
 import type { NodeStats } from '../sim/engine';
 
 export type Health = 'idle' | 'ok' | 'warm' | 'hot' | 'down';
@@ -52,7 +52,7 @@ export function nodeView(d0: SystemNodeData, st: NodeStats | undefined, running:
   let health: Health;
   // users have no capacity: their health is how many of their requests succeed
   if (d.kind === 'client') health = !up ? 'down' : inRps <= 0.5 ? 'idle' : (st?.success ?? 1) < 0.9 ? 'hot' : (st?.success ?? 1) < 0.99 ? 'warm' : 'ok';
-  else if (d.kind === 'queue') health = !up ? 'down' : dropRps > 1 ? 'hot' : (st?.queue ?? 0) > 500 ? 'warm' : inRps < 0.5 ? 'idle' : 'ok';
+  else if (d.kind === 'queue' || d.kind === 'stream') health = !up ? 'down' : dropRps > 1 ? 'hot' : (st?.queue ?? 0) > 500 ? 'warm' : inRps < 0.5 ? 'idle' : 'ok';
   else if (failover === 'electing') health = 'hot';
   else health = healthOf(util, dropRps, inRps, up);
 
@@ -68,7 +68,8 @@ export function nodeView(d0: SystemNodeData, st: NodeStats | undefined, running:
       ];
       meter = null;
       break;
-    case 'queue': {
+    case 'queue':
+    case 'stream': {
       const backlog = st?.queue ?? 0;
       const lag = st?.lagS ?? 0;
       stats = [
@@ -145,7 +146,7 @@ export function nodeView(d0: SystemNodeData, st: NodeStats | undefined, running:
     booting: st?.scaling?.pending ?? 0,
     unreachable: !!spec.scalable && d.kind !== 'llm' && instancesUp(d) > 1 && (st?.reachable ?? 1) < instancesUp(d) && running,
     noOrigin: (d.kind === 'cache' || d.kind === 'cdn') && !hasOutgoing,
-    noTargets: (d.kind === 'lb' || d.kind === 'gateway') && !hasOutgoing,
+    noTargets: (d.kind === 'lb' || d.kind === 'gateway' || d.kind === 'dns' || d.kind === 'stream') && !hasOutgoing,
     cost: st?.costPerHour ?? costOf(d),
     sku: skuOf(d),
     stats,
@@ -172,13 +173,14 @@ export function explain(d: SystemNodeData, st: NodeStats | undefined, v: NodeVie
   if (st.breaker === 'open') return { tone: 'warn', text: `Circuit breaker open: calls to the failing dependency are cut off${d.fallback ? ' and a fallback response is served' : ' and fail fast'}, giving it room to recover.` };
   if (st.retryAmp > 1.5) return { tone: 'bad', text: `Retry amplification ×${st.retryAmp.toFixed(1)}: failed calls are retried, multiplying the load on an already struggling dependency.` };
   if (st.lateFrac > 0.05) return { tone: 'bad', text: `${Math.round(st.lateFrac * 100)}% of responses arrive after the ${fmtMs(d.timeoutMs ?? 0)} timeout — the work was done, but the caller had already given up.` };
+  if (d.kind === 'stream' && st.lagS > 5) return { tone: 'warn', text: `The slowest subscriber is ${isFinite(st.lagS) ? `${st.lagS.toFixed(0)} s` : 'indefinitely'} behind: every subscriber reads every message at its own pace, and none can use more consumers than the stream's ${partitionsOf(d)} partitions. Past retention, the oldest expire unread.` };
   if (d.kind === 'queue' && st.lagS > 5) return { tone: 'warn', text: `Backlog of ${fmt(st.queue)} messages: consumers are ${isFinite(st.lagS) ? `${st.lagS.toFixed(0)}s` : 'indefinitely'} behind. Producers are unaffected — work completes later.` };
   if (d.kind === 'dns' && st.dropRps > 0.5) return { tone: 'bad', text: `${fmt(st.dropRps)}/s of clients still hold an answer pointing at a dead target and time out: they keep going there until the health checks notice (${d.healthCheckS ?? 30} s) and their cached answer expires (TTL ${d.ttlS ?? 60} s).` };
     if (d.kind === 'kv' && d.hotKeyShare && st.dropRps > 1 && st.inRps < capacityOf(d) * 0.98) return { tone: 'bad', text: `Hot partition: ${Math.round(d.hotKeyShare * 100)}% of requests are for one key, and one partition takes 3,000 reads or 1,000 writes a second however much the table allows (reads take it first; writes to that key starve) — ${fmt(st.dropRps)}/s are throttled. Cache that key, or spread it over several (write sharding).` };
   if ((d.kind === 'gateway' || d.kind === 'llmapi' || d.kind === 'external' || d.kind === 'kv') && st.dropRps > 1) return { tone: 'warn', text: `Rate limit reached: ${fmt(st.dropRps)}/s rejected with HTTP 429 to protect what is behind it.` };
   if (d.kind === 'function' && st.coldFrac > 0.05) return { tone: 'warn', text: `${Math.round(st.coldFrac * 100)}% of invocations hit a cold start while new instances spin up.` };
   if (d.kind === 'replica' && (st.replLagS ?? 0) > 1) return { tone: 'warn', text: `${(st.replLagS ?? 0) >= 60 ? `${Math.round((st.replLagS ?? 0) / 60)} min` : `${Math.round(st.replLagS ?? 0)} s`} behind its primary: reads here miss the latest writes, and a failover now would lose them.` };
-  if (v.noTargets && st.inRps > 0.01) return { tone: 'bad', text: `Nothing behind this ${d.kind === 'lb' ? 'load balancer' : 'gateway'}: the ${fmt(st.inRps)} req/s it receives have nowhere to go and fail. Connect it to what it fronts.` };
+  if (v.noTargets && st.inRps > 0.01) return { tone: 'bad', text: `Nothing behind this ${d.kind === 'lb' ? 'load balancer' : d.kind === 'dns' ? 'name' : d.kind === 'stream' ? 'stream (no subscribers)' : 'gateway'}: the ${fmt(st.inRps)} req/s it receives have nowhere to go and fail. Connect it to what it fronts.` };
   if (v.noOrigin && st.dropRps > 0.01) return { tone: 'bad', text: `No origin behind this cache: its ${fmt(st.dropRps)} misses a second have nowhere to go and fail. Connect it to the store it caches, or make it a database if it is the store.` };
   if (d.kind === 'db' && shardsOf(d) > 1 && d.hotKeyShare && (v.health === 'hot' || st.dropRps > 1)) {
     const share = hotShardShare(d);

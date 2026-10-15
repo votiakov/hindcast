@@ -1,4 +1,4 @@
-import { Cpu, Globe2, KeyRound, Signpost, Sparkles, Cog, Database, DatabaseBackup, Globe, HardDrive, Inbox, Network, Server, ShieldCheck, SquareFunction, Users, Zap, type LucideIcon } from 'lucide-react';
+import { Cpu, Globe2, KeyRound, Rss, Signpost, Sparkles, Cog, Database, DatabaseBackup, Globe, HardDrive, Inbox, Network, Server, ShieldCheck, SquareFunction, Users, Zap, type LucideIcon } from 'lucide-react';
 import type { Kind } from '../sim/catalog';
 
 export const KIND_ICONS: Record<Kind, LucideIcon> = {
@@ -19,4 +19,5 @@ export const KIND_ICONS: Record<Kind, LucideIcon> = {
   external: Globe2,
   kv: KeyRound,
   dns: Signpost,
+  stream: Rss,
 };

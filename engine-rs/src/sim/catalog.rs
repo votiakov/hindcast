@@ -95,6 +95,10 @@ pub struct NodeData {
     /// dns: how long clients keep a cached answer, s (default 60)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ttl_s: Option<f64>,
+    /// stream: partitions — ingest (1,000 messages/s each) and how many consumer instances a
+    /// subscriber can use in parallel
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub partitions: Option<f64>,
     /// dns: how long the health checks take to notice a dead target, s (default 30)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub health_check_s: Option<f64>,
@@ -145,6 +149,9 @@ pub fn spec(kind: &str) -> KindSpec {
         "external" => k(1000.0, 200.0, 0.0, false),
         // a managed key-value store (DynamoDB on demand): no box to size — a throughput limit for the
         // table, a per-partition one for any single key, and a price per request (80/20 reads/writes)
+        // a log you publish to and many subscribe to (Kinesis, Kafka): per partition, 1,000 messages/s in
+        // and $0.015/h; capacity and cost are per partition
+        "stream" => k(1000.0, 5.0, 0.015, false),
         // DNS with health-checked failover (Route 53): cached everywhere, so effectively free and instant
         "dns" => k(1e9, 1.0, 0.001, false),
         "kv" => KindSpec { cost_per_request: Some(0.45 / 1_000_000.0), ..k(40000.0, 5.0, 0.0, false) },
@@ -302,7 +309,7 @@ pub fn capacity_of(d: &NodeData, reachable: Option<f64>) -> f64 {
         let t = if sp.tiered { tier(&d.tier).0 } else { 1.0 };
         let batch = if d.kind == "llm" && d.batching == Some(true) { BATCHING_CAPACITY } else { 1.0 };
         let rt = d.runtime.as_deref().filter(|r| !r.is_empty()).map(|r| runtime(r).0).unwrap_or(1.0);
-        d.capacity.unwrap_or(sp.capacity) * t * batch * rt * (if sp.scalable { reachable.max(1.0) } else { 1.0 }) * shards_of(d)
+        d.capacity.unwrap_or(sp.capacity) * t * batch * rt * (if sp.scalable { reachable.max(1.0) } else { 1.0 }) * shards_of(d) * partitions_of(d)
     };
     cap * d.degraded.unwrap_or(1.0)
 }
@@ -313,6 +320,25 @@ pub fn shards_of(d: &NodeData) -> f64 {
         d.shards.unwrap_or(1.0).max(1.0).floor()
     } else {
         1.0
+    }
+}
+
+/// a stream's partitions (1 for everything else)
+pub fn partitions_of(d: &NodeData) -> f64 {
+    if d.kind == "stream" {
+        d.partitions.unwrap_or(4.0).max(1.0).floor()
+    } else {
+        1.0
+    }
+}
+
+/// what one subscriber of a stream drains, messages/s: its instances, but no more of them than the
+/// stream has partitions (one consumer per partition)
+pub fn subscriber_rps(consumer: &NodeData, partitions: f64) -> f64 {
+    if spec(&consumer.kind).scalable {
+        capacity_of(consumer, Some(instances_up(consumer).min(partitions)))
+    } else {
+        capacity_of(consumer, None)
     }
 }
 
@@ -391,7 +417,7 @@ pub fn fn_cost_per_request(d: &NodeData, profile: &str) -> f64 {
 /// fixed hourly cost under a pricing profile (usage cost is added by the engine)
 pub fn cost_of(d: &NodeData, profile: &str) -> f64 {
     let sp = spec(&d.kind);
-    let n = d.instances.unwrap_or(1.0) * shards_of(d);
+    let n = d.instances.unwrap_or(1.0) * shards_of(d) * partitions_of(d);
     let p = if d.cost_per_hour.is_none() { kind_pricing(profile, &d.kind) } else { None };
     if let Some(p) = p {
         if let Some(t) = p.tiers {

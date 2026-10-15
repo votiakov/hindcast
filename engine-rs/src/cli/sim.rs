@@ -271,7 +271,7 @@ impl Validated {
     }
 }
 
-const COMPONENT_KEYS: [&str; 32] = ["id", "kind", "name", "tier", "instances", "runtime", "hitRate", "limit", "batching", "retries", "retryPolicy", "timeoutMs", "breaker", "fallback", "routing", "stallRate", "stallMs", "fanout", "queueS", "autoscale", "warmupS", "writePolicy", "workingSetGb", "skew", "shards", "hotKeyShare", "ttlS", "healthCheckS", "capacity", "latencyMs", "costPerHour", ""];
+const COMPONENT_KEYS: [&str; 33] = ["id", "kind", "name", "tier", "instances", "runtime", "hitRate", "limit", "batching", "retries", "retryPolicy", "timeoutMs", "breaker", "fallback", "routing", "stallRate", "stallMs", "fanout", "queueS", "autoscale", "warmupS", "writePolicy", "workingSetGb", "skew", "shards", "hotKeyShare", "ttlS", "healthCheckS", "partitions", "capacity", "latencyMs", "costPerHour", ""];
 
 /// the spec as the schema returns it: its keys in schema order, unknown keys dropped, "a -> b" as a pair
 pub fn canonical_spec(v: &Value) -> Value {
@@ -495,7 +495,7 @@ pub fn validate(input: &Value) -> Validated {
         let kids = outs.get(&cid).unwrap_or(&empty);
         let parents_ids = into.get(&cid).unwrap_or(&empty);
         let parents: Vec<Option<String>> = parents_ids.iter().map(|p| ids.get(p).map(|i| kind(&comps[*i]))).collect();
-        if (k == "lb" || k == "gateway" || k == "queue") && kids.is_empty() {
+        if (k == "lb" || k == "gateway" || k == "queue" || k == "stream" || k == "dns") && kids.is_empty() {
             out.push(("error", format!("{} \"{}\" has nothing behind it — every request fails", k, cid)));
         }
         if (k == "cache" || k == "cdn") && kids.is_empty() {
@@ -503,7 +503,7 @@ pub fn validate(input: &Value) -> Validated {
         }
         let fanned = parents_ids.iter().any(|p| ids.get(p).and_then(|i| comps[*i].get("fanout")).and_then(|x| x.as_f64()).unwrap_or(1.0) > 1.0);
         let inst = c.get("instances").and_then(|x| x.as_f64()).unwrap_or(1.0);
-        if inst > 1.0 && k != "llm" && !fanned && !parents.iter().any(|p| matches!(p.as_deref(), Some("lb" | "gateway" | "queue"))) {
+        if inst > 1.0 && k != "llm" && !fanned && !parents.iter().any(|p| matches!(p.as_deref(), Some("lb" | "gateway" | "queue" | "stream"))) {
             out.push(("warning", format!("\"{}\" has {} instances but no lb/gateway/queue in front — only one receives traffic", cid, js_num(inst))));
         }
         if k == "replica" && !parents.iter().any(|p| p.as_deref() == Some("db")) {
