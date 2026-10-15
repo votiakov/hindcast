@@ -2,6 +2,19 @@
 // error rates differ by more than 5 points. Then a second, separately seeded set of 100 boards that
 // includes search, vector, archive and edge (the first set is left as it was, so its count stays
 // comparable). npx tsx scripts/engine-crosscheck.ts
+//
+// The one board of the first set still past 5 points, #101 (200/s: users > queue00, users > function01
+// t500 fanout > queue10 + worker11, queue00 > worker11; fluid 16.5%, DES 30.0%), is a modelling limit,
+// not a bug. Half the users' requests are enqueued and answered at once; the other half's calls to
+// worker11 arrive at exactly its capacity (100/s against 100/s) and the queue's messages may only take
+// what those leave idle. At a load of exactly 1 the wait in front of a pool has no steady state: the
+// queue of calls wanders up to its 1 s limit and back, so how many outlast the function's 500 ms deadline
+// depends on the path a run takes. The DES gives 30%, 45% and 29% for seeds 1–3; the fluid engine, which
+// holds the M/M/c wait at 98% load, a steady 16.5%. Below a load of 1 they agree (at 120, 160 and 180
+// req/s: fluid 0.0/0.0/0.3%, DES 0.0/0.0/0.0%). The other two boards that disagreed were bugs, fixed:
+// #19 and #82 (a deadline over a fast branch and a failing slow one counted the slow one's lateness
+// against the fast one's answers too) and #101's first half (the queue pushed its consumer's whole
+// capacity at it, dropping its calls, instead of the consumer pulling with what the calls left free).
 import { loadEngine } from '../src/backtest/native';
 import { simulateDes } from '../src/sim/des/des';
 import { simulate } from '../src/sim/headless';

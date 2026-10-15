@@ -210,6 +210,13 @@ pub struct NodeState {
     pub overloaded: bool,
     pub reachable: f64,
     pub drain_rps: f64,
+    /// what reached it last tick from callers other than queues, req/s: a queue's consumers pull
+    /// only with what that leaves free
+    pub pushed_rps: f64,
+    /// a consumer that also takes calls: the share of its work pulled from queues last tick. Pulled
+    /// messages only fill workers the calls leave idle, and a call takes the next free one, so
+    /// the calls wait as if those messages were not there
+    pub pulled_share: f64,
     pub warm: f64,
     pub cold_frac: f64,
     pub down_for: f64,
@@ -279,6 +286,8 @@ fn fresh() -> NodeState {
         overloaded: false,
         reachable: 1.0,
         drain_rps: 0.0,
+        pushed_rps: 0.0,
+        pulled_share: 0.0,
         warm: 0.0,
         cold_frac: 0.0,
         down_for: 0.0,
@@ -459,7 +468,7 @@ fn shard_parts(d: &NodeData, st: &NodeState) -> Vec<(f64, f64, f64)> {
     let total = capacity_of(d, Some(st.reachable)).max(1e-6);
     // a replica's shards share its reads evenly: one pool
     if n <= 1.0 || d.kind != "db" {
-        let (m, t) = pool_latency(d, total, st.util, st.queue);
+        let (m, t) = pool_latency(d, total, st.util * (1.0 - st.pulled_share), st.queue);
         return vec![(1.0, m, t)];
     }
     let s = hot_shard_share(d);
@@ -573,6 +582,8 @@ struct Ctx<'a> {
     dead: &'a [f64],
     /// the simulation clock, s
     now: f64,
+    /// every node's arrivals last tick from callers other than queues, req/s
+    pushed: &'a [f64],
 }
 
 fn reachable(c: &Ctx) -> f64 {
@@ -800,12 +811,18 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
                 st.queue = QUEUE_MAX_BACKLOG;
             }
             let routes: Vec<Route> = c.routes.iter().filter(|k| k.up).cloned().collect();
-            let drain = routes.iter().fold(0.0, |s, k| s + capacity_of(&c.data[k.t], None));
+            // consumers pull: each takes messages only with the capacity what is pushed at it leaves
+            // free (a worker that also serves calls does not drop them to make room for the queue)
+            let free: Vec<f64> = routes.iter().map(|k| (capacity_of(&c.data[k.t], None) - c.pushed[k.t]).max(0.0)).collect();
+            let drain: f64 = free.iter().sum();
             st.drain_rps = drain;
             let processed = st.queue.min(drain * c.dt);
             st.queue -= processed;
             st.forwarded = processed;
             let mut r = res(processed, failed, processed, st.queue / QUEUE_MAX_BACKLOG, true);
+            if drain > 0.0 && routes.iter().any(|k| c.pushed[k.t] > 0.0) {
+                r.shares = Some(routes.iter().zip(&free).map(|(k, f)| (k.e, f / drain)).collect());
+            }
             r.routes = Some(routes);
             r
         }
@@ -1281,6 +1298,9 @@ impl Engine {
             st.dead_for = if is_up(&data[i]) { 0.0 } else { st.dead_for + dt };
         }
         let dead: Vec<f64> = (0..n).map(|i| self.nodes[sidx[i]].dead_for).collect();
+        let pushed: Vec<f64> = (0..n).map(|i| self.nodes[sidx[i]].pushed_rps).collect();
+        // what each node receives from queues this tick (the rest was pushed at it)
+        let mut from_queues = vec![0.0; n];
         let mut stale_now = 0.0;
         let mut inflow = vec![0.0; n];
         let mut done = vec![false; n];
@@ -1353,7 +1373,7 @@ impl Engine {
                 st.queue = 0.0;
                 res(0.0, arrivals, 0.0, 0.0, false)
             } else {
-                let ctx = Ctx { d, data: &data, arrivals, dt, cfg, read_ratio, routes, pooled: pooled[i], edge_sync: &edge_sync, edge_lat: &edge_lat, lags: &lags, dead: &dead, now };
+                let ctx = Ctx { d, data: &data, arrivals, dt, cfg, read_ratio, routes, pooled: pooled[i], edge_sync: &edge_sync, edge_lat: &edge_lat, lags: &lags, dead: &dead, now, pushed: &pushed };
                 process(&ctx, &mut st)
             };
             // a search index: a write is searchable after the indexing backlog ahead of it and the next
@@ -1467,6 +1487,9 @@ impl Engine {
                     } else {
                         inflow[t] += v;
                         inflow_r[t] += v_r;
+                        if d.kind == "queue" {
+                            from_queues[t] += v;
+                        }
                     }
                     edge_flow[e] += v;
                 }
@@ -1529,6 +1552,9 @@ impl Engine {
                     } else {
                         inflow[t] += v;
                         inflow_r[t] += v * fwd_r;
+                        if d.kind == "queue" {
+                            from_queues[t] += v;
+                        }
                     }
                     edge_flow[e] += v;
                 }
@@ -1539,6 +1565,8 @@ impl Engine {
                 r.failed += unroutable;
             }
             st.in_rps = ema(st.in_rps, arrivals / dt, dt, 0.6);
+            st.pushed_rps = (arrivals - from_queues[i]).max(0.0) / dt;
+            st.pulled_share = if from_queues[i] > 0.0 && st.pushed_rps > 0.0 { (from_queues[i] / arrivals).min(1.0) } else { 0.0 };
             st.drop_rps = ema(st.drop_rps, r.failed / dt, dt, 0.6);
             st.hit_rps = ema(st.hit_rps, r.hits.unwrap_or(0.0) / dt, dt, 0.6);
             st.util = ema(st.util, r.util, dt, 0.4);

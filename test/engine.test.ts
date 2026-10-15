@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { simulate, breakingPoint, compare } from '../src/sim/headless';
-import { retryAmp } from '../src/sim/engine';
+import { DEFAULT_ENGINE_CONFIG, Engine, retryAmp } from '../src/sim/engine';
+import { specToGraph } from '../src/spec/convert';
 import { shop, shopWithReplica, steady } from './fixtures';
 import { PRICING, type PricingId } from '../src/sim/pricing';
 import type { Kind } from '../src/sim/catalog';
@@ -97,6 +98,26 @@ describe('a breaker whose calls fail exactly half the time', () => {
     expect(d.events.some((e) => e.what.startsWith('breaker-open'))).toBe(true);
     expect(f.summary.meanErrorRate).toBeLessThan(0.15);
     expect(d.summary.meanErrorRate).toBeLessThan(0.15);
+  });
+});
+
+describe('a worker that takes calls and also consumes a queue', () => {
+  // 60 calls/s and a queue of 60 messages/s, one worker of 100/s. Consumers pull: the queue gets the
+  // 40/s the calls leave free and backs up, and the calls are neither dropped nor kept waiting behind
+  // the messages (the queue used to push its consumer's whole capacity at it: 160/s against 100/s)
+  const spec = {
+    components: [{ id: 'users', kind: 'client' }, { id: 'jobs', kind: 'queue' }, { id: 'api', kind: 'function', timeoutMs: 500 }, { id: 'w', kind: 'worker' }],
+    connections: [['users', 'jobs'], ['users', 'api'], ['jobs', 'w'], ['api', 'w']],
+  };
+  it('the calls do not fail in either engine; the queue drains what is left', () => {
+    const b = specToGraph(spec);
+    const e = new Engine();
+    for (let i = 0; i < 40 / 0.05; i++) e.step(b.nodes as never, b.edges as never, 120, 0.8, 0.05, DEFAULT_ENGINE_CONFIG);
+    const s = e.snapshot(b.nodes as never, b.edges as never);
+    expect(s.global.errorRate).toBeLessThan(0.01);
+    expect(s.nodeStats.w.dropRps).toBeLessThan(1);
+    expect(s.edgeStats['e-jobs-w'].rps).toBeCloseTo(40, 0);
+    expect(simulateDes(spec, { duration: 40, rps: 120 }, { seed: 1 }).summary.meanErrorRate).toBeLessThan(0.01);
   });
 });
 
