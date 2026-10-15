@@ -19,7 +19,7 @@ const SECTIONS: { title: string; items: { key: BoolKey; label: string; hint: str
     title: 'Display',
     items: [
       { key: 'particles', label: 'Request particles', hint: 'Animated requests along connections' },
-      { key: 'explain', label: 'Explanations', hint: 'Plain-English callouts on stressed components (Terminal and Reference themes)' },
+      { key: 'explain', label: 'Explanations', hint: 'Plain-English callouts on stressed components; underlined terms explain themselves' },
       { key: 'alerts', label: 'Alert toasts', hint: 'Pop-ups for overloads, recoveries, failovers' },
     ],
   },
