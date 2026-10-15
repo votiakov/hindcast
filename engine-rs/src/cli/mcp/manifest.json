@@ -363,6 +363,21 @@
            "exclusiveMinimum": 0,
            "maximum": 86400
           },
+          "everyS": {
+           "description": "client: a scheduled job instead of users (a cron, a nightly export) — every everyS seconds it sends `batch` requests over `batchS` (default 10 s), the first run 10 s in; it takes no share of the user traffic, and its requests do not count as the users'",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
+          "batch": {
+           "description": "client with everyS: requests per run",
+           "type": "number",
+           "minimum": 0
+          },
+          "batchS": {
+           "description": "client with everyS: how long a run takes to send them, s (default 10)",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -854,6 +869,21 @@
            "type": "number",
            "exclusiveMinimum": 0,
            "maximum": 86400
+          },
+          "everyS": {
+           "description": "client: a scheduled job instead of users (a cron, a nightly export) — every everyS seconds it sends `batch` requests over `batchS` (default 10 s), the first run 10 s in; it takes no share of the user traffic, and its requests do not count as the users'",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
+          "batch": {
+           "description": "client with everyS: requests per run",
+           "type": "number",
+           "minimum": 0
+          },
+          "batchS": {
+           "description": "client with everyS: how long a run takes to send them, s (default 10)",
+           "type": "number",
+           "exclusiveMinimum": 0
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -1765,6 +1795,21 @@
            "exclusiveMinimum": 0,
            "maximum": 86400
           },
+          "everyS": {
+           "description": "client: a scheduled job instead of users (a cron, a nightly export) — every everyS seconds it sends `batch` requests over `batchS` (default 10 s), the first run 10 s in; it takes no share of the user traffic, and its requests do not count as the users'",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
+          "batch": {
+           "description": "client with everyS: requests per run",
+           "type": "number",
+           "minimum": 0
+          },
+          "batchS": {
+           "description": "client with everyS: how long a run takes to send them, s (default 10)",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -2246,6 +2291,21 @@
               "exclusiveMinimum": 0,
               "maximum": 86400
              },
+             "everyS": {
+              "description": "client: a scheduled job instead of users (a cron, a nightly export) — every everyS seconds it sends `batch` requests over `batchS` (default 10 s), the first run 10 s in; it takes no share of the user traffic, and its requests do not count as the users'",
+              "type": "number",
+              "exclusiveMinimum": 0
+             },
+             "batch": {
+              "description": "client with everyS: requests per run",
+              "type": "number",
+              "minimum": 0
+             },
+             "batchS": {
+              "description": "client with everyS: how long a run takes to send them, s (default 10)",
+              "type": "number",
+              "exclusiveMinimum": 0
+             },
              "capacity": {
               "description": "override: req/s per size-S instance",
               "type": "number",
@@ -2667,6 +2727,21 @@
                 "exclusiveMinimum": 0,
                 "maximum": 86400
                },
+               "everyS": {
+                "description": "client: a scheduled job instead of users (a cron, a nightly export) — every everyS seconds it sends `batch` requests over `batchS` (default 10 s), the first run 10 s in; it takes no share of the user traffic, and its requests do not count as the users'",
+                "type": "number",
+                "exclusiveMinimum": 0
+               },
+               "batch": {
+                "description": "client with everyS: requests per run",
+                "type": "number",
+                "minimum": 0
+               },
+               "batchS": {
+                "description": "client with everyS: how long a run takes to send them, s (default 10)",
+                "type": "number",
+                "exclusiveMinimum": 0
+               },
                "capacity": {
                 "description": "override: req/s per size-S instance",
                 "type": "number",
@@ -2982,6 +3057,21 @@
                 "type": "number",
                 "exclusiveMinimum": 0,
                 "maximum": 86400
+               },
+               "everyS": {
+                "description": "client: a scheduled job instead of users (a cron, a nightly export) — every everyS seconds it sends `batch` requests over `batchS` (default 10 s), the first run 10 s in; it takes no share of the user traffic, and its requests do not count as the users'",
+                "type": "number",
+                "exclusiveMinimum": 0
+               },
+               "batch": {
+                "description": "client with everyS: requests per run",
+                "type": "number",
+                "minimum": 0
+               },
+               "batchS": {
+                "description": "client with everyS: how long a run takes to send them, s (default 10)",
+                "type": "number",
+                "exclusiveMinimum": 0
                },
                "capacity": {
                 "description": "override: req/s per size-S instance",
@@ -3848,6 +3938,21 @@
            "exclusiveMinimum": 0,
            "maximum": 86400
           },
+          "everyS": {
+           "description": "client: a scheduled job instead of users (a cron, a nightly export) — every everyS seconds it sends `batch` requests over `batchS` (default 10 s), the first run 10 s in; it takes no share of the user traffic, and its requests do not count as the users'",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
+          "batch": {
+           "description": "client with everyS: requests per run",
+           "type": "number",
+           "minimum": 0
+          },
+          "batchS": {
+           "description": "client with everyS: how long a run takes to send them, s (default 10)",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -4355,6 +4460,21 @@
            "type": "number",
            "exclusiveMinimum": 0,
            "maximum": 86400
+          },
+          "everyS": {
+           "description": "client: a scheduled job instead of users (a cron, a nightly export) — every everyS seconds it sends `batch` requests over `batchS` (default 10 s), the first run 10 s in; it takes no share of the user traffic, and its requests do not count as the users'",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
+          "batch": {
+           "description": "client with everyS: requests per run",
+           "type": "number",
+           "minimum": 0
+          },
+          "batchS": {
+           "description": "client with everyS: how long a run takes to send them, s (default 10)",
+           "type": "number",
+           "exclusiveMinimum": 0
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -5254,6 +5374,21 @@
            "type": "number",
            "exclusiveMinimum": 0,
            "maximum": 86400
+          },
+          "everyS": {
+           "description": "client: a scheduled job instead of users (a cron, a nightly export) — every everyS seconds it sends `batch` requests over `batchS` (default 10 s), the first run 10 s in; it takes no share of the user traffic, and its requests do not count as the users'",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
+          "batch": {
+           "description": "client with everyS: requests per run",
+           "type": "number",
+           "minimum": 0
+          },
+          "batchS": {
+           "description": "client with everyS: how long a run takes to send them, s (default 10)",
+           "type": "number",
+           "exclusiveMinimum": 0
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -6163,6 +6298,21 @@
            "exclusiveMinimum": 0,
            "maximum": 86400
           },
+          "everyS": {
+           "description": "client: a scheduled job instead of users (a cron, a nightly export) — every everyS seconds it sends `batch` requests over `batchS` (default 10 s), the first run 10 s in; it takes no share of the user traffic, and its requests do not count as the users'",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
+          "batch": {
+           "description": "client with everyS: requests per run",
+           "type": "number",
+           "minimum": 0
+          },
+          "batchS": {
+           "description": "client with everyS: how long a run takes to send them, s (default 10)",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -6739,6 +6889,21 @@
            "exclusiveMinimum": 0,
            "maximum": 86400
           },
+          "everyS": {
+           "description": "client: a scheduled job instead of users (a cron, a nightly export) — every everyS seconds it sends `batch` requests over `batchS` (default 10 s), the first run 10 s in; it takes no share of the user traffic, and its requests do not count as the users'",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
+          "batch": {
+           "description": "client with everyS: requests per run",
+           "type": "number",
+           "minimum": 0
+          },
+          "batchS": {
+           "description": "client with everyS: how long a run takes to send them, s (default 10)",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -7217,6 +7382,21 @@
              "exclusiveMinimum": 0,
              "maximum": 86400
             },
+            "everyS": {
+             "description": "client: a scheduled job instead of users (a cron, a nightly export) — every everyS seconds it sends `batch` requests over `batchS` (default 10 s), the first run 10 s in; it takes no share of the user traffic, and its requests do not count as the users'",
+             "type": "number",
+             "exclusiveMinimum": 0
+            },
+            "batch": {
+             "description": "client with everyS: requests per run",
+             "type": "number",
+             "minimum": 0
+            },
+            "batchS": {
+             "description": "client with everyS: how long a run takes to send them, s (default 10)",
+             "type": "number",
+             "exclusiveMinimum": 0
+            },
             "capacity": {
              "description": "override: req/s per size-S instance",
              "type": "number",
@@ -7638,6 +7818,21 @@
                "exclusiveMinimum": 0,
                "maximum": 86400
               },
+              "everyS": {
+               "description": "client: a scheduled job instead of users (a cron, a nightly export) — every everyS seconds it sends `batch` requests over `batchS` (default 10 s), the first run 10 s in; it takes no share of the user traffic, and its requests do not count as the users'",
+               "type": "number",
+               "exclusiveMinimum": 0
+              },
+              "batch": {
+               "description": "client with everyS: requests per run",
+               "type": "number",
+               "minimum": 0
+              },
+              "batchS": {
+               "description": "client with everyS: how long a run takes to send them, s (default 10)",
+               "type": "number",
+               "exclusiveMinimum": 0
+              },
               "capacity": {
                "description": "override: req/s per size-S instance",
                "type": "number",
@@ -7953,6 +8148,21 @@
                "type": "number",
                "exclusiveMinimum": 0,
                "maximum": 86400
+              },
+              "everyS": {
+               "description": "client: a scheduled job instead of users (a cron, a nightly export) — every everyS seconds it sends `batch` requests over `batchS` (default 10 s), the first run 10 s in; it takes no share of the user traffic, and its requests do not count as the users'",
+               "type": "number",
+               "exclusiveMinimum": 0
+              },
+              "batch": {
+               "description": "client with everyS: requests per run",
+               "type": "number",
+               "minimum": 0
+              },
+              "batchS": {
+               "description": "client with everyS: how long a run takes to send them, s (default 10)",
+               "type": "number",
+               "exclusiveMinimum": 0
               },
               "capacity": {
                "description": "override: req/s per size-S instance",
@@ -8817,6 +9027,21 @@
            "exclusiveMinimum": 0,
            "maximum": 86400
           },
+          "everyS": {
+           "description": "client: a scheduled job instead of users (a cron, a nightly export) — every everyS seconds it sends `batch` requests over `batchS` (default 10 s), the first run 10 s in; it takes no share of the user traffic, and its requests do not count as the users'",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
+          "batch": {
+           "description": "client with everyS: requests per run",
+           "type": "number",
+           "minimum": 0
+          },
+          "batchS": {
+           "description": "client with everyS: how long a run takes to send them, s (default 10)",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -9295,6 +9520,21 @@
              "exclusiveMinimum": 0,
              "maximum": 86400
             },
+            "everyS": {
+             "description": "client: a scheduled job instead of users (a cron, a nightly export) — every everyS seconds it sends `batch` requests over `batchS` (default 10 s), the first run 10 s in; it takes no share of the user traffic, and its requests do not count as the users'",
+             "type": "number",
+             "exclusiveMinimum": 0
+            },
+            "batch": {
+             "description": "client with everyS: requests per run",
+             "type": "number",
+             "minimum": 0
+            },
+            "batchS": {
+             "description": "client with everyS: how long a run takes to send them, s (default 10)",
+             "type": "number",
+             "exclusiveMinimum": 0
+            },
             "capacity": {
              "description": "override: req/s per size-S instance",
              "type": "number",
@@ -9716,6 +9956,21 @@
                "exclusiveMinimum": 0,
                "maximum": 86400
               },
+              "everyS": {
+               "description": "client: a scheduled job instead of users (a cron, a nightly export) — every everyS seconds it sends `batch` requests over `batchS` (default 10 s), the first run 10 s in; it takes no share of the user traffic, and its requests do not count as the users'",
+               "type": "number",
+               "exclusiveMinimum": 0
+              },
+              "batch": {
+               "description": "client with everyS: requests per run",
+               "type": "number",
+               "minimum": 0
+              },
+              "batchS": {
+               "description": "client with everyS: how long a run takes to send them, s (default 10)",
+               "type": "number",
+               "exclusiveMinimum": 0
+              },
               "capacity": {
                "description": "override: req/s per size-S instance",
                "type": "number",
@@ -10031,6 +10286,21 @@
                "type": "number",
                "exclusiveMinimum": 0,
                "maximum": 86400
+              },
+              "everyS": {
+               "description": "client: a scheduled job instead of users (a cron, a nightly export) — every everyS seconds it sends `batch` requests over `batchS` (default 10 s), the first run 10 s in; it takes no share of the user traffic, and its requests do not count as the users'",
+               "type": "number",
+               "exclusiveMinimum": 0
+              },
+              "batch": {
+               "description": "client with everyS: requests per run",
+               "type": "number",
+               "minimum": 0
+              },
+              "batchS": {
+               "description": "client with everyS: how long a run takes to send them, s (default 10)",
+               "type": "number",
+               "exclusiveMinimum": 0
               },
               "capacity": {
                "description": "override: req/s per size-S instance",

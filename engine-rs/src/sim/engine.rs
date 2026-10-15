@@ -1230,7 +1230,7 @@ impl Engine {
         let mut edge_flow = vec![0.0; edges.len()];
         let mut local: Vec<Option<Local>> = (0..n).map(|_| None).collect();
         let mut promoted = vec![false; n];
-        let clients: Vec<usize> = (0..n).filter(|&i| data[i].kind == "client" && data[i].alive).collect();
+        let clients: Vec<usize> = (0..n).filter(|&i| data[i].kind == "client" && data[i].alive && job_rate(&data[i], now).is_none()).collect();
         let per_client = if clients.is_empty() { 0.0 } else { (traffic * dt) / clients.len() as f64 };
 
         // ---- forward pass ----
@@ -1239,7 +1239,15 @@ impl Engine {
             let id = nodes_in[i].id.as_str();
             let routes = &out[i];
             let (late_in, late_r) = if d.kind == "client" { (0.0, 0.0) } else { carried.remove(id).unwrap_or((0.0, 0.0)) };
-            let arrivals = if d.kind == "client" { if d.alive { per_client } else { 0.0 } } else { inflow[i] + late_in };
+            let arrivals = if d.kind == "client" {
+                match (d.alive, job_rate(d, now)) {
+                    (false, _) => 0.0,
+                    (true, Some(r)) => r * dt,
+                    (true, None) => per_client,
+                }
+            } else {
+                inflow[i] + late_in
+            };
             let read_ratio = if d.kind == "client" || arrivals <= 0.0 { read_ratio } else { ((inflow_r[i] + late_r) / arrivals).clamp(0.0, 1.0) };
             done[i] = true;
             let mut st = std::mem::replace(&mut self.nodes[sidx[i]], fresh());

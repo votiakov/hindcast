@@ -275,8 +275,8 @@ fn reason_text(r: u8) -> &'static str {
 
 #[derive(Clone, Copy)]
 enum Cont {
-    /// a user's request finished
-    User { t0: f64 },
+    /// a user's request finished (a scheduled job's: not counted as the users')
+    User { t0: f64, job: bool },
     /// one attempt of a call settled (the answer, or its deadline): reachable twice when timed
     Settle { call: usize, k: f64, settled: bool, refs: u8 },
     /// one part of a fan-out or scatter-gather
@@ -717,7 +717,10 @@ impl<'a> Des<'a> {
     fn deliver(&mut self, id: ContId, why: Why) {
         let ok = why == OK;
         match self.conts[id] {
-            Cont::User { t0 } => {
+            Cont::User { job: true, .. } => {
+                self.release(id);
+            }
+            Cont::User { t0, .. } => {
                 self.release(id);
                 let ms = (self.now - t0) * 1000.0;
                 self.win_reqs += 1.0;
@@ -1409,12 +1412,14 @@ impl<'a> Des<'a> {
 
     /// Poisson arrivals with a time-varying rate (thinning at a 250 ms horizon)
     fn generate(&mut self, c: usize, emit: bool) {
-        let rate = self.rps_at(self.now) / (self.clients.len() as f64).max(1.0);
+        let job = super::catalog::job_rate(&self.nodes[c].data, self.now);
+        let users = self.clients.iter().filter(|&&k| super::catalog::job_rate(&self.nodes[k].data, 0.0).is_none()).count();
+        let rate = job.unwrap_or(self.rps_at(self.now) / (users as f64).max(1.0));
         if emit && rate > 0.0 && self.nodes[c].data.alive {
             let t0 = self.now;
             let read = self.rng.next() < self.sc.read_ratio;
             self.nodes[c].win.arrivals += 1.0;
-            let finish = self.cont(Cont::User { t0 });
+            let finish = self.cont(Cont::User { t0, job: job.is_some() });
             if self.nodes[c].children.is_empty() {
                 self.deliver(finish, why(c, R_NO_ROUTE));
             } else {

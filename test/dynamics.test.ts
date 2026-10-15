@@ -308,3 +308,30 @@ describe('a connection limit', () => {
     expect(refused(50).fluid).toBeLessThan(0.001);
   });
 });
+
+describe('a scheduled job', () => {
+  // users read from the database; every 60 s a batch job sends it 6,000 requests over 10 s
+  const spec = (job: boolean) => ({
+    components: [
+      { id: 'users', kind: 'client' },
+      ...(job ? [{ id: 'export', kind: 'client', everyS: 60, batch: 6000, batchS: 10 }] : []),
+      { id: 'db', kind: 'db' },
+    ],
+    connections: [['users', 'db'], ...(job ? [['export', 'db']] : [])],
+  });
+  const sc = { duration: 120, rps: 600 };
+
+  it('takes no share of the users’ traffic, and fails the users while it runs', () => {
+    for (const r of [simulate(spec(false) as never, sc as never).summary, simulateDes(spec(false), sc, { seed: 13 }).summary]) expect(r.meanErrorRate).toBeLessThan(0.01);
+    // 600 + 600 req/s against ~1,000 for 10 s of every 60: the users lose some of theirs
+    const fluid = simulate(spec(true) as never, sc as never).summary;
+    const des = simulateDes(spec(true), sc, { seed: 13 }).summary;
+    for (const r of [fluid, des]) {
+      expect(r.meanErrorRate).toBeGreaterThan(0.01);
+      expect(r.meanErrorRate).toBeLessThan(0.2);
+      // the users' requests only: 600 req/s for 120 s
+      expect(r.requests).toBeGreaterThan(600 * 110);
+      expect(r.requests).toBeLessThan(600 * 130);
+    }
+  });
+});

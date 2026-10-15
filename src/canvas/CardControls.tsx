@@ -203,6 +203,25 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
           ) : null}
         </div>
       )}
+      {data.kind === 'client' && (
+        <div className="nc-row" title="Users share the traffic slider; a scheduled job (a cron, a nightly export) sends its own batch every so often, and its requests don't count as the users'">
+          <span className="nc-l">sends</span>
+          <select value={data.everyS ?? 0} onChange={(e) => set({ everyS: +e.target.value || undefined, ...(+e.target.value && !data.batch ? { batch: 5000 } : {}) })}>
+            <option value={0}>user traffic</option>
+            {[60, 300, 3600].map((n) => (
+              <option key={n} value={n}>
+                a job every {n >= 3600 ? `${n / 3600} h` : `${n / 60} min`}
+              </option>
+            ))}
+          </select>
+          {data.everyS ? (
+            <>
+              <input className="nc-num" type="number" min={0} step={500} value={data.batch ?? 0} onChange={(e) => set({ batch: Math.max(0, +e.target.value || 0) })} />
+              <span className="nc-l">requests in {data.batchS ?? 10}s</span>
+            </>
+          ) : null}
+        </div>
+      )}
       {data.kind === 'storage' && (
         <div className="nc-row" title="Key prefixes: S3 takes 5,500 reads or 3,500 writes a second per prefix, however big the bucket — spread hot keys over more prefixes">
           <span className="nc-l">prefixes</span>

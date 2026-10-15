@@ -141,6 +141,15 @@ pub struct NodeData {
     /// lb/gateway: how long each request holds its connection, s (default 30)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub connection_s: Option<f64>,
+    /// client: a scheduled job instead of users — every `every_s` seconds it sends `batch` requests
+    /// over `batch_s` (default 10), the first run 10 s in; it takes no share of the user traffic,
+    /// and its requests are not the users'
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub every_s: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub batch: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub batch_s: Option<f64>,
     /// a network partition's side this component is on (set by the partition action): links between
     /// components on different sides are cut
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -528,6 +537,14 @@ pub fn hot_prefix_share(d: &NodeData) -> f64 {
     h + (1.0 - h) / p
 }
 
+
+/// a scheduled job's request rate at time t (None: users, who share the traffic)
+pub fn job_rate(d: &NodeData, t: f64) -> Option<f64> {
+    let every = d.every_s.filter(|e| *e > 0.0 && d.kind == "client")?;
+    let span = d.batch_s.unwrap_or(10.0).max(0.1).min(every);
+    let since = t - 10.0;
+    Some(if since >= 0.0 && since % every < span { d.batch.unwrap_or(0.0).max(0.0) / span } else { 0.0 })
+}
 
 /// Erlang B: the share of arrivals refused by c connections at an offered load of a (arrival rate ×
 /// holding time) — exact by recursion up to 20,000 connections, the fluid limit max(0, 1 − c/a) above

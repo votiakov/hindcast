@@ -125,6 +125,10 @@ export interface SystemNodeData extends Record<string, unknown> {
   maxConnections?: number;
   /** lb/gateway: how long each request holds its connection, s (default 30) */
   connectionS?: number;
+  /** client: a scheduled job — every everyS seconds it sends `batch` requests over batchS (default 10) */
+  everyS?: number;
+  batch?: number;
+  batchS?: number;
   /** db: horizontal partitions (capacity and cost × shards) */
   shards?: number;
   /** db: share of its traffic on one key — all of it on one shard */

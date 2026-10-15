@@ -8,7 +8,7 @@ const NODE_W = 240;
 const NODE_H = 190;
 const ZONE_PAD = 44;
 
-const DATA_KEYS = ['tier', 'instances', 'runtime', 'hitRate', 'limit', 'batching', 'retries', 'retryPolicy', 'timeoutMs', 'breaker', 'fallback', 'routing', 'fanout', 'stallRate', 'stallMs', 'queueS', 'capacity', 'latencyMs', 'costPerHour', 'autoscale', 'warmupS', 'writePolicy', 'workingSetGb', 'skew', 'shards', 'hotKeyShare', 'ttlS', 'healthCheckS', 'partitions', 'threads', 'bulkhead', 'provisioned', 'prefixes', 'hotRowShare', 'burst', 'maxReceives', 'visibilityS', 'maxConnections', 'connectionS'] as const;
+const DATA_KEYS = ['tier', 'instances', 'runtime', 'hitRate', 'limit', 'batching', 'retries', 'retryPolicy', 'timeoutMs', 'breaker', 'fallback', 'routing', 'fanout', 'stallRate', 'stallMs', 'queueS', 'capacity', 'latencyMs', 'costPerHour', 'autoscale', 'warmupS', 'writePolicy', 'workingSetGb', 'skew', 'shards', 'hotKeyShare', 'ttlS', 'healthCheckS', 'partitions', 'threads', 'bulkhead', 'provisioned', 'prefixes', 'hotRowShare', 'burst', 'maxReceives', 'visibilityS', 'maxConnections', 'connectionS', 'everyS', 'batch', 'batchS'] as const;
 
 export const pairs = (spec: ArchitectureSpec): [string, string][] => spec.connections.map((c) => (Array.isArray(c) ? [c[0], c[1]] : [c.from, c.to]));
 /** connections with their link properties */

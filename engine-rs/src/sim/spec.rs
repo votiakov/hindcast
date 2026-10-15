@@ -7,7 +7,7 @@ use crate::math::js_num;
 use serde_json::{json, Map as JMap, Value};
 
 const KINDS: [&str; 18] = ["client", "cdn", "lb", "gateway", "server", "worker", "function", "cache", "db", "replica", "storage", "queue", "llm", "llmapi", "external", "kv", "dns", "stream"];
-const DATA_KEYS: [&str; 39] = ["tier", "instances", "runtime", "hitRate", "limit", "batching", "retries", "retryPolicy", "timeoutMs", "breaker", "fallback", "routing", "fanout", "stallRate", "stallMs", "queueS", "capacity", "latencyMs", "costPerHour", "autoscale", "warmupS", "writePolicy", "workingSetGb", "skew", "shards", "hotKeyShare", "ttlS", "healthCheckS", "partitions", "threads", "bulkhead", "provisioned", "prefixes", "hotRowShare", "burst", "maxReceives", "visibilityS", "maxConnections", "connectionS"];
+const DATA_KEYS: [&str; 42] = ["tier", "instances", "runtime", "hitRate", "limit", "batching", "retries", "retryPolicy", "timeoutMs", "breaker", "fallback", "routing", "fanout", "stallRate", "stallMs", "queueS", "capacity", "latencyMs", "costPerHour", "autoscale", "warmupS", "writePolicy", "workingSetGb", "skew", "shards", "hotKeyShare", "ttlS", "healthCheckS", "partitions", "threads", "bulkhead", "provisioned", "prefixes", "hotRowShare", "burst", "maxReceives", "visibilityS", "maxConnections", "connectionS", "everyS", "batch", "batchS"];
 
 #[derive(Clone, Debug, Default)]
 pub struct Issue {
@@ -187,6 +187,9 @@ fn check_component(c: &JMap<String, Value>, path: Vec<Value>, issues: &mut Vec<I
     v.number("visibilityS", false, Some((0.0, true)), Some(43200.0), false);
     v.number("maxConnections", false, Some((1.0, true)), None, true);
     v.number("connectionS", false, Some((0.0, false)), Some(86400.0), false);
+    v.number("everyS", false, Some((0.0, false)), None, false);
+    v.number("batch", false, Some((0.0, true)), None, false);
+    v.number("batchS", false, Some((0.0, false)), None, false);
     v.number("capacity", false, Some((0.0, false)), None, false);
     v.number("latencyMs", false, Some((0.0, true)), None, false);
     v.number("costPerHour", false, Some((0.0, true)), None, false);

@@ -51,6 +51,7 @@ zones:                          # optional failure domains
 | `burst` | gateway | the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000 |
 | `maxReceives`, `visibilityS` | queue | a redrive policy (SQS maxReceiveCount): a message a consumer fails comes back after `visibilityS` (default 30 s) until it has been received `maxReceives` times, then goes to the dead-letter queue; unset, a failed message is gone |
 | `maxConnections`, `connectionS` | lb, gateway | connections it can hold at once; each request holds one for `connectionS` (default 30 s) — a websocket session, a streamed answer, a long poll. Past the limit new ones are refused, as Erlang B has it |
+| `everyS`, `batch`, `batchS` | client | a scheduled job instead of users (a cron, a nightly export): every `everyS` seconds it sends `batch` requests over `batchS` (default 10 s), the first run 10 s in. It takes no share of the user traffic, and its requests are not counted as the users' |
 | `routing` | any caller | `split` (default) · `fanout` (call all, wait for all) · `failover` (in order) |
 | `fanout` | any caller | scatter-gather: each call goes to N partitions of the callee in parallel and waits for the slowest (also makes the callee's instances reachable) |
 | `stallRate`, `stallMs` | any | rare hiccups: share of requests that stall, and for how long (GC pause, compaction, noisy neighbor) |

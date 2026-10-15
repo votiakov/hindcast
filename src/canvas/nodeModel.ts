@@ -164,6 +164,7 @@ export function explain(d: SystemNodeData, st: NodeStats | undefined, v: NodeVie
   const cap = capacityOf(d, st.reachable);
   if (v.failedOver) return { tone: 'info', text: 'Primary is down. A replica was promoted and now takes writes; this node only forwards.' };
   if (v.electing) return { tone: 'bad', text: 'Primary lost. Electing a replica — writes fail until one is promoted; reads continue on replicas.' };
+  if (d.kind === 'client' && d.everyS) return { tone: 'info', text: `A scheduled job, not users: ${fmt(d.batch ?? 0)} requests over ${d.batchS ?? 10} s every ${d.everyS >= 3600 ? `${d.everyS / 3600} h` : d.everyS >= 60 ? `${d.everyS / 60} min` : `${d.everyS} s`}. It competes with the users for what it calls; its own failures are not counted as theirs.` };
   if (d.kind === 'client' && v.up && st.inRps > 0.5 && st.success < 0.99) return { tone: st.success < 0.9 ? 'bad' : 'warn', text: `${Math.round((1 - st.success) * 1000) / 10}% of these users' requests fail. Follow the red links to where they are lost.` };
   if (!v.up) return { tone: 'bad', text: 'Unavailable. Every request routed here fails unless an upstream load balancer can route around it.' };
   if (d.faultRate) return { tone: 'bad', text: `Injected fault: ${Math.round(d.faultRate * 100)}% of requests here fail — a bad deploy looks exactly like this. Callers with retries amplify it.` };
