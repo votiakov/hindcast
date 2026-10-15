@@ -35,7 +35,7 @@
 <tr><td>Answer</td><td>$ saved or spent, minutes out of SLO, failed requests, the worst moment and why, with confidence bands</td><td>a risk register with verified, priced fixes; comparisons; breaking points</td></tr>
 <tr><td>Where</td><td><a href="backtest.html">Backtest</a>, the CLI, a pull-request check, <a href="agents.html">your AI agent</a></td><td><a href="live.html">Live</a>, <a href="lessons.html">Lessons</a>, <a href="sandbox.html">Sandbox</a>, <a href="compare.html">Compare</a>, <a href="studio.html">Studio</a></td></tr>
 </table></div>
-<p>Accuracy is measured, not claimed. Three open demo systems were run under load with their telemetry recorded. Calibrated on one run, the model predicted runs it never saw: p99 within 3–10%, breaking points within 0–14% (single runs; several rules were written after a miss on them). On a Kubernetes cluster it was asked nine questions out of sample, with its answers committed before each run: 3 right, 1 wrong, 5 inconclusive. Misses included, see <a href="accuracy.html">accuracy</a>.</p>
+<p>Accuracy is measured, not claimed. Three open demo systems were run under load with their telemetry recorded. Calibrated on one run, the model predicted runs it never saw: p99 within 3–10%, breaking points within 0–14% (single runs; several rules were written after a miss on them). Asked to predict the end of its own history, which held an overload the earlier part never reached, it missed p99 by 72–99%. On a Kubernetes cluster it was asked nine questions out of sample, with its answers committed before each run: 3 right, 1 wrong, 5 inconclusive. Misses included, see <a href="accuracy.html">accuracy</a>.</p>
 
 <h2>Start</h2>
 <pre><code>npm install

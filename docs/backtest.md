@@ -251,4 +251,8 @@ How well this works is measured, not claimed. See [reference/README.md](../refer
 open demo systems were run under load in Docker with telemetry recorded, imported, calibrated on one
 run and checked against runs the model never saw — a strategy actually applied, and step load tests
 to the breaking point. Targets: p99 within 20% (over every request of the run), breaking point within 15%,
-cost within 10% of the bill.
+cost within 10% of the bill. Those checks pass (p99 off by 3–9%, breaking points by 0–14%, cost by
+0–3%), single runs each; the holdout (the end of each history, which holds an overload the earlier
+part never reached) misses p99 by 72–99%. On a kind cluster, verdicts committed before nine runs got
+3 right, 1 wrong and 5 inconclusive, against 6 right and 3 wrong for a plain CPU-ratio rule
+([reference/k8s](../reference/k8s/README.md)). The evidence is demo systems, not a production fleet.

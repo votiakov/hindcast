@@ -164,7 +164,9 @@ icon in `canvas/icons.tsx`, colours in `theme/themes.ts`, and (if it has new kno
   all six comparison scenarios (error, p99, cost on both sides every 5 s, jitter off): 0 mismatches.
 - **Near saturation.** At 900 req/s (90 % utilised) the fluid engine gives p99 ≈ 99 ms and the DES
   98 ms; at 1,200 req/s both give 14.8 % errors. Across 200 generated boards the two engines' error
-  rates agree within 5 points on 194 (test/sandbox.test.ts checks the core cases on every change).
+  rates agree within 5 points on 199 (`scripts/engine-crosscheck.ts`; test/sandbox.test.ts checks the
+  core cases on every change). The one left is a worker loaded to exactly its capacity, where the DES
+  itself has no steady state (29–45% failed depending on the seed) and the fluid engine holds 16.5%.
 - **Metastable failure emerges.** 700 req/s with a 6 s spike to 1,600, client timeout 1 s, API queue 3 s:
 
   | client | errors during spike | errors 20–30 s | errors 50–60 s |
