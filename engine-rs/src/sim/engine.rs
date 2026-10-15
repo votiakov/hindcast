@@ -642,6 +642,9 @@ struct Ctx<'a> {
     now: f64,
     /// every node's arrivals last tick from callers other than queues, req/s
     pushed: &'a [f64],
+    /// per edge out of a queue: the share of its consumer's free capacity that queue may pull (a
+    /// consumer fed by several queues shares it between them)
+    pull_share: &'a [f64],
     /// every node's capacity for messages pulled from a queue, req/s
     pull_cap: &'a [f64],
 }
@@ -873,14 +876,14 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
             let routes: Vec<Route> = c.routes.iter().filter(|k| k.up).cloned().collect();
             // consumers pull: each takes messages only with the capacity what is pushed at it leaves
             // free (a worker that also serves calls does not drop them to make room for the queue)
-            let free: Vec<f64> = routes.iter().map(|k| (c.pull_cap[k.t] - c.pushed[k.t]).max(0.0)).collect();
+            let free: Vec<f64> = routes.iter().map(|k| (c.pull_cap[k.t] - c.pushed[k.t]).max(0.0) * c.pull_share[k.e]).collect();
             let drain: f64 = free.iter().sum();
             st.drain_rps = drain;
             let processed = st.queue.min(drain * c.dt);
             st.queue -= processed;
             st.forwarded = processed;
             let mut r = res(processed, failed, processed, st.queue / QUEUE_MAX_BACKLOG, true);
-            if drain > 0.0 && routes.iter().any(|k| c.pushed[k.t] > 0.0) {
+            if drain > 0.0 && routes.iter().any(|k| c.pushed[k.t] > 0.0 || c.pull_share[k.e] < 1.0) {
                 r.shares = Some(routes.iter().zip(&free).map(|(k, f)| (k.e, f / drain)).collect());
             }
             r.routes = Some(routes);
@@ -1411,6 +1414,31 @@ impl Engine {
                 ready * 1000.0 / base + (limit - st.warm).max(0.0) * 1000.0 / (base + cold)
             })
             .collect();
+        // a consumer fed by several queues: each queue pulls a share of what the consumer has free, by
+        // what it has to hand over (last tick's arrivals and its backlog, a second's worth), so together
+        // they never take more than the consumer can work on (the discrete-event engine pumps a message
+        // only into an idle worker, whichever queue it comes from)
+        let pull_share: Vec<f64> = {
+            let demand = |i: usize| {
+                let st = &self.nodes[sidx[i]];
+                st.in_rps + st.queue
+            };
+            let mut total = vec![0.0; n];
+            let mut feeds = vec![0usize; n];
+            for i in (0..n).filter(|&i| data[i].kind == "queue") {
+                for k in out[i].iter().filter(|k| k.up) {
+                    total[k.t] += demand(i);
+                    feeds[k.t] += 1;
+                }
+            }
+            let mut share = vec![1.0; edges.len()];
+            for i in (0..n).filter(|&i| data[i].kind == "queue") {
+                for k in out[i].iter().filter(|k| feeds[k.t] > 1) {
+                    share[k.e] = if total[k.t] > 0.0 { demand(i) / total[k.t] } else { 1.0 / feeds[k.t] as f64 };
+                }
+            }
+            share
+        };
         // what each node receives from queues this tick (the rest was pushed at it)
         let mut from_queues = vec![0.0; n];
         let mut stale_now = 0.0;
@@ -1485,7 +1513,7 @@ impl Engine {
                 st.queue = 0.0;
                 res(0.0, arrivals, 0.0, 0.0, false)
             } else {
-                let ctx = Ctx { d, data: &data, arrivals, dt, cfg, read_ratio, routes, pooled: pooled[i], edge_sync: &edge_sync, edge_lat: &edge_lat, lags: &lags, dead: &dead, now, pushed: &pushed, pull_cap: &pull_cap };
+                let ctx = Ctx { d, data: &data, arrivals, dt, cfg, read_ratio, routes, pooled: pooled[i], edge_sync: &edge_sync, edge_lat: &edge_lat, lags: &lags, dead: &dead, now, pushed: &pushed, pull_share: &pull_share, pull_cap: &pull_cap };
                 process(&ctx, &mut st)
             };
             // a search index: a write is searchable after the indexing backlog ahead of it and the next

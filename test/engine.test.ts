@@ -121,6 +121,29 @@ describe('a worker that takes calls and also consumes a queue', () => {
   });
 });
 
+describe('a worker that consumes two queues', () => {
+  // 80 messages/s into each of two queues, one worker of 100/s pulling from both. Together the queues
+  // hand it no more than it can work on (100/s, about half each) and back up; the worker drops nothing.
+  // Each queue used to drain at the worker's whole capacity: 160/s pushed at a 100/s worker
+  const spec = {
+    components: [{ id: 'users', kind: 'client' }, { id: 'q1', kind: 'queue' }, { id: 'q2', kind: 'queue' }, { id: 'w', kind: 'worker' }],
+    connections: [['users', 'q1'], ['users', 'q2'], ['q1', 'w'], ['q2', 'w']],
+  };
+  it('shares its capacity between them in both engines', () => {
+    const b = specToGraph(spec);
+    const e = new Engine();
+    for (let i = 0; i < 40 / 0.05; i++) e.step(b.nodes as never, b.edges as never, 160, 0.8, 0.05, DEFAULT_ENGINE_CONFIG);
+    const s = e.snapshot(b.nodes as never, b.edges as never);
+    expect(s.nodeStats.w.dropRps).toBeLessThan(1);
+    expect(s.edgeStats['e-q1-w'].rps + s.edgeStats['e-q2-w'].rps).toBeCloseTo(100, 0);
+    expect(s.edgeStats['e-q1-w'].rps).toBeCloseTo(50, 0);
+    expect(s.nodeStats.q1.queue).toBeGreaterThan(1000);
+    const d = simulateDes(spec, { duration: 40, rps: 160 }, { seed: 1 });
+    expect(d.components.w.droppedTotal).toBe(0);
+    expect(d.components.w.meanUtil).toBeGreaterThan(0.95);
+  });
+});
+
 describe('latency of the successful answers, in both engines', () => {
   // the fluid engine's answers pooled over the run (as scripts/engine-crosscheck.ts compares them)
   // against the discrete-event engine's histogram, on boards worked out by hand
