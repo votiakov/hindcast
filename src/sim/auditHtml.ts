@@ -44,7 +44,7 @@ function curveSvg(r: AuditResult): string {
 
 function finding(f: Finding): string {
   const i = f.impact;
-  const rec = f.kind === 'headroom' ? '' : f.kind === 'surge' ? (i.selfHealS !== null && i.selfHealS > 24 ? `back within SLO ${i.selfHealS - 24} s after the surge` : 'held through the surge') : i.recoveryS === null ? 'never recovers (metastable)' : i.selfHealS !== null && i.selfHealS > 0 ? `heals by itself in ${i.selfHealS} s` : f.severity === 'ok' ? 'absorbed' : `recovers ${i.recoveryS} s after the fault clears`;
+  const rec = f.kind === 'headroom' ? '' : f.kind === 'surge' ? (i.selfHealS !== null && i.selfHealS > 24 ? `back within SLO ${i.selfHealS - 24} s after the surge` : 'held through the surge') : i.recoveryS === null ? 'never recovers (metastable)' : i.selfHealS !== null && i.selfHealS > 0 ? `heals by itself in ${i.selfHealS} s` : f.severity === 'ok' ? 'absorbed' : i.recoveryS === 0 ? 'recovers when the fault clears' : `recovers ${i.recoveryS} s after the fault clears`;
   return `<section class="f sev-${f.severity}">
   <h3><span class="sev">${SEV[f.severity]}</span> ${esc(f.title)}</h3>
   <p>${esc(f.explanation)}</p>
@@ -103,7 +103,7 @@ footer { margin-top: 40px; color: var(--mut); font-size: 12px; border-top: 1px s
 <p class="sub">At ${r.load.rps.toLocaleString('en-US')} req/s (${Math.round(r.load.readRatio * 100)}% reads). SLO: errors ≤ ${pct(r.slo.maxErrorRate)}, p99 ≤ ${ms(r.slo.maxP99Ms)}.</p>
 <div class="kpis">
   <div class="kpi"><b class="${r.score >= 80 ? 'good' : r.score >= 50 ? 'warn' : 'bad'}">${r.score}<small style="font-size:14px;letter-spacing:0">/100</small></b><span>resilience — survives ${r.survived} of ${r.total} incidents</span></div>
-  <div class="kpi"><b>${availPct(r.availability.estimate)}</b><span>availability by design — ${downtimeText(r.availability.downtimeHoursPerYear)} of downtime a year</span></div>
+  <div class="kpi"><b>${availPct(r.availability.estimate)}</b><span>availability from SLAs (published), not measured — ${downtimeText(r.availability.downtimeHoursPerYear)} of downtime a year</span></div>
   <div class="kpi"><b>${r.headroom.ratio.toFixed(1)}×</b><span>headroom — ${r.headroom.maxRps >= 1 ? `${Math.round(r.headroom.maxRps).toLocaleString('en-US')} req/s${r.headroom.limitedBy ? `, then ${esc(r.headroom.limitedBy)}` : ''}` : 'misses the SLO at any load'}</span></div>
   <div class="kpi"><b>$${r.baseline.monthly.toLocaleString('en-US')}</b><span>per month at this load${r.baseline.meetsSlo ? '' : ' — <span class="bad">already outside the SLO</span>'}</span></div>
 </div>

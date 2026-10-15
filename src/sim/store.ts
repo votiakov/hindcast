@@ -41,7 +41,6 @@ export interface Settings {
   /** fire-and-forget toasts for overloads / recoveries */
   alerts: boolean;
   autoFailover: boolean;
-  failoverS: number;
   coldStarts: boolean;
   timeoutS: number;
   /** service level objective used by metrics, the audit, analysis and present mode */
@@ -59,7 +58,6 @@ export const DEFAULT_SETTINGS: Settings = {
   jitter: true,
   alerts: true,
   autoFailover: true,
-  failoverS: DEFAULT_ENGINE_CONFIG.failoverS ?? 3,
   coldStarts: true,
   timeoutS: DEFAULT_ENGINE_CONFIG.timeoutS,
   sloErrorRate: 0.01,
@@ -790,7 +788,7 @@ export const useSim = create<State>()((set, get) => {
       const sc = s.mode === 'compare' ? scenarioById(cmp.scenarioId) : undefined;
       const cfg = {
         timeoutS: s.settings.timeoutS,
-        failoverS: s.settings.autoFailover ? s.settings.failoverS : null,
+        failoverS: s.settings.autoFailover ? DEFAULT_ENGINE_CONFIG.failoverS : null,
         coldStartMs: s.settings.coldStarts ? DEFAULT_ENGINE_CONFIG.coldStartMs : 0,
       };
 

@@ -18,7 +18,7 @@ export interface DesConfig {
   serviceCv: number;
   /** default bounded queue length, seconds of work */
   queueS: number;
-  /** seconds before a replica is promoted; null = no automatic failover */
+  /** seconds before a replica is promoted, for databases without their own failoverS; null = no automatic failover */
   failoverS: number | null;
   coldStartMs: number;
   /** one-way network hop between components */

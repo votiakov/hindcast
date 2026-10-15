@@ -66,6 +66,15 @@ describe('kubernetes import', () => {
   it('produces a valid spec', () => {
     expect(validateSpec(r.spec).ok).toBe(true);
   });
+
+  it('gives a plain Postgres StatefulSet no automatic failover, and an operator one the default', () => {
+    expect(byId.get('postgres')?.failoverS).toBe(1800);
+    expect(r.assumptions.some((a) => a.includes('no automatic failover'))).toBe(true);
+    const patroni = docs.map((d) => (d.kind === 'StatefulSet' && d.metadata.name === 'postgres' ? { ...d, spec: { ...d.spec, template: { ...d.spec.template, spec: { containers: [{ name: 'postgres', image: 'ghcr.io/zalando/spilo-16:3.2-p2' }] } } } } : d));
+    const p = importKubernetes(patroni, 'shop');
+    expect(p.spec.components.find((c) => c.id === 'postgres')?.failoverS).toBeUndefined();
+    expect(p.assumptions.some((a) => a.includes('automatic failover assumed'))).toBe(true);
+  });
 });
 
 import { parseTrafficCsv } from '../src/spec/trafficCsv';
@@ -97,4 +106,17 @@ describe('notes on the board', () => {
     expect(graphToSpec(g.nodes, g.edges).notes).toEqual([{ text: 'one server, for now', x: 10, y: -120 }]);
     expect(simulate(spec as never, { duration: 5, rps: 50 } as never).summary.meanErrorRate).toBe(0);
   });
+});
+
+// every knob the schema accepts survives the engine's key lists (a new knob missing from one of
+// them is silently dropped: the canonical spec, the board, the engine)
+describe('component keys', () => {
+  const keys = Object.keys(ArchitectureSpec.shape.components.element.shape).filter((k) => !['id', 'kind', 'name'].includes(k)).sort();
+  const listed = (file: string, name: string) => {
+    const m = readFileSync(file, 'utf8').match(new RegExp(`${name}(?::[^=]*)? = \\[([^\\]]*)\\]`));
+    return m![1].split(',').map((x) => x.trim().replace(/^['"]|['"]$/g, '')).filter((k) => k && !['id', 'kind', 'name'].includes(k)).sort();
+  };
+  it('the CLI canonical spec keeps every one', () => expect(listed('engine-rs/src/cli/sim.rs', 'const COMPONENT_KEYS')).toEqual(keys));
+  it('the engine reads every one', () => expect(listed('engine-rs/src/sim/spec.rs', 'const DATA_KEYS')).toEqual(keys));
+  it('the board keeps every one', () => expect(listed('src/spec/convert.ts', 'const DATA_KEYS')).toEqual(keys));
 });

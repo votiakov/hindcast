@@ -127,7 +127,9 @@ for (const [kind, h] of Object.entries(HARNESS) as [Exclude<Kind, 'client'>, Har
       expect(own.length, `${kind}: no incident targets it`).toBeGreaterThan(0);
       const death = own.find((f) => f.kind === 'component' || f.kind === 'instance');
       expect(death, `${kind}: its death is not replayed`).toBeDefined();
-      if (death!.severity === 'critical' || death!.severity === 'major') expect(death!.fixes.length, `${kind}: dies with nothing to propose`).toBeGreaterThan(0);
+      // a DNS provider's outage has a remedy (a second provider) that is named, not modelled
+      if (kind === 'dns') expect(death!.explanation).toContain('second DNS provider');
+      else if (death!.severity === 'critical' || death!.severity === 'major') expect(death!.fixes.length, `${kind}: dies with nothing to propose`).toBeGreaterThan(0);
     });
   });
 }

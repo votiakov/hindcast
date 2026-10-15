@@ -399,7 +399,7 @@ const readScale: Scenario = {
   id: 'replicas-vs-bigger-db',
   title: 'Read Replicas vs One Bigger Database',
   tagline: 'Reads triple, then the primary dies. Scale up, or scale out?',
-  watch: 'Both survive the growth. When the primary dies, A is down until it is restored; B promotes a replica in seconds — for less money every hour.',
+  watch: 'Both survive the growth. When the primary dies, A is down until it is restored; B keeps answering reads from its replicas while writes fail, until one is promoted (about a minute, as RDS Multi-AZ) — for less money every hour.',
   readRatio: 0.9,
   a: {
     title: 'One large database',
@@ -439,7 +439,7 @@ const readScale: Scenario = {
   ],
   takeaway: {
     a: 'A database four times the size carried the reads — and was the only copy. When it died, everything stopped until it was restored.',
-    b: 'Reads spread over three small machines for less money, and when the primary died a replica was promoted within seconds.',
+    b: 'Reads spread over three small machines for less money, and when the primary died the replicas kept serving the reads (nine in ten requests). Writes failed for the rest of the run: promoting a replica takes about a minute (RDS Multi-AZ: 60–120 s).',
     lesson: 'Scaling up buys capacity; scaling out buys capacity and a spare. For read-heavy load, replicas are usually both cheaper and more available — at the price of replication lag and failover logic.',
   },
 };

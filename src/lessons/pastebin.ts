@@ -19,7 +19,7 @@ export const pastebin: Lesson = {
     [
       ['users', 'client', X[0], 200],
       ['api', 'server', X[1], 200, { name: 'paste api' }],
-      ['db', 'db', X[2], 200, { name: 'pastes' }],
+      ['db', 'db', X[2], 200, { name: 'pastes', failoverS: 30 }],
     ],
     [['users', 'api'], ['api', 'db']],
   ),
@@ -67,15 +67,16 @@ export const pastebin: Lesson = {
       title: 'The database dies',
       story:
         'At 3 a.m. the database host fails. Everything the CDN misses — and every new paste — goes to a database that is not there. ' +
+        'It is an Aurora-class database: given a replica, it promotes one in under 30 s (RDS Multi-AZ takes 60–120 s). ' +
         'You cannot stop it from failing. You can decide what happens next.',
-      objective: 'Within 10s of the failure be back under 1% errors, and stay there for 10s.',
+      objective: 'Within 45s of the failure be back under 1% errors, and stay there for 10s.',
       traffic: { from: 300, to: 300, rampSeconds: 0 },
-      goal: { maxErrorRate: 0.01, maxP99: 400, holdSeconds: 10, startAfter: 5, deadline: 25 },
+      goal: { maxErrorRate: 0.01, maxP99: 400, holdSeconds: 10, startAfter: 30, deadline: 50 },
       chaos: [{ at: 3, action: { type: 'kill-id', id: 'db' }, message: 'The database host failed' }],
       hintAfter: 8,
       hint:
         'Add a Read Replica behind the database (pastes → replica). While the primary is down the replica keeps serving reads; ' +
-        'after a few seconds of election it is promoted and takes the writes too.',
+        'after the election (30 s here) it is promoted and takes the writes too.',
       solution: {
         note: 'A read replica, promoted when the primary dies',
         changes: [
@@ -83,7 +84,7 @@ export const pastebin: Lesson = {
           { op: 'connect', from: 'db', to: 'replica' },
         ],
       },
-      takeaway: 'A replica turns a dead database into a few seconds of failed writes: reads keep working through the election, then the replica takes over. Without one, the outage lasts until someone wakes up.',
+      takeaway: 'A replica turns a dead database into half a minute of failed writes (a minute or two on RDS Multi-AZ): reads keep working through the election, then the replica takes over. Without one, the outage lasts until someone wakes up.',
     },
   ],
 };

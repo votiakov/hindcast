@@ -340,6 +340,12 @@
             "minimum": 0,
             "maximum": 1
           },
+          "failoverS": {
+            "description": "db: seconds from the primary dying to a replica taking writes (default 60, RDS Multi-AZ: 60–120 s; Aurora under 30 s; Cloud SQL HA about 60 s). Reads go on to the replicas meanwhile; with no automatic failover, the time someone takes to promote one by hand",
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 86400
+          },
           "burst": {
             "description": "gateway: the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000",
             "type": "number",

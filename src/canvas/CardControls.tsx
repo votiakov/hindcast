@@ -316,6 +316,18 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
           {data.hotKeyShare ? <b className="nc-v" title="Share of traffic on the busiest shard: the hot key plus its even share of the rest">hot shard {Math.round(hotShardShare(data) * 100)}%</b> : null}
         </div>
       )}
+      {data.kind === 'db' && (
+        <div className="nc-row" title="How long writes fail after the primary dies, until a replica is promoted (reads go on to replicas meanwhile). RDS Multi-AZ: 60–120 s; Multi-AZ DB cluster: about 35 s; Aurora: under 30 s; Cloud SQL HA: about 60 s. Without automatic failover, the time someone takes to promote one by hand.">
+          <span className="nc-l">failover</span>
+          <select value={data.failoverS ?? 60} onChange={(e) => set({ failoverS: +e.target.value === 60 ? undefined : +e.target.value })}>
+            {pick(data.failoverS ?? 60, [30, 60, 120, 1800]).map((n) => (
+              <option key={n} value={n}>
+                {n >= 600 ? `${n / 60} min (by hand)` : `${n}s`}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       {data.kind === 'cache' && (
         <div className="nc-row">
           <span className="nc-l" title="The data this cache fronts: with it, the hit rate follows from the cache's size (S 6.4, M 13, L 26 GB) and how skewed the reads are">data GB</span>

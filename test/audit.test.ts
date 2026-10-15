@@ -12,6 +12,14 @@ describe('failure audit', () => {
     expect(crit).toContain('component:lb');
   });
 
+  it('reports recovery net of the fluid engine\'s smoothing, and says why a slow component sheds', () => {
+    // a component that comes back answers at once (the discrete-event engine agrees); only the
+    // engine's 0.3 s smoothing chain made it look like 4–5 s
+    expect(r.findings.find((f) => f.id === 'component:db')!.impact.recoveryS).toBe(0);
+    expect(r.findings.find((f) => f.id === 'component:lb')!.impact.recoveryS).toBe(0);
+    expect(r.findings.find((f) => f.id === 'slow:api')!.explanation).toMatch(/busy 11× as long.*sheds the rest/);
+  });
+
   it('absorbs the loss of one instance of a 4-instance fleet', () => {
     expect(r.findings.find((f) => f.id === 'instance:api')!.severity).toBe('ok');
   });
@@ -20,7 +28,9 @@ describe('failure audit', () => {
     const db = r.findings.find((f) => f.id === 'component:db')!;
     expect(db.fixes[0].title).toMatch(/replica/);
     expect(db.fixes[0].monthlyDelta).toBeGreaterThan(0);
-    expect(['ok', 'minor']).toContain(db.fixes[0].after.severity);
+    // reads go on to the replica; writes wait out the failover (60 s), longer than the incident
+    expect(db.fixes[0].after.severity).toBe('major');
+    expect(db.fixes[0].after.errorRate).toBeLessThan(db.impact.errorRate / 2);
     const lb = r.findings.find((f) => f.id === 'component:lb')!;
     expect(lb.fixes[0].after.severity).toBe('ok');
   });

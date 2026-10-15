@@ -38,7 +38,7 @@ export function auditMarkdown(r: AuditResult): string {
   L.push('|---|---|');
   L.push(`| Resilience score | **${r.score}/100** — survives ${r.survived} of ${r.total} incidents within SLO |`);
   const weak = r.availability.weakest.map((w) => `${w.name} (${downtimeText(w.downtimeHoursPerYear)})`);
-  L.push(`| Availability by design | ${availPct(r.availability.estimate)} — about ${downtimeText(r.availability.downtimeHoursPerYear)} of downtime a year${weak.length ? `; costs the most: ${weak.join(', ')}` : ''} |`);
+  L.push(`| Availability, SLA (published), not measured | ${availPct(r.availability.estimate)} — about ${downtimeText(r.availability.downtimeHoursPerYear)} of downtime a year${weak.length ? `; costs the most: ${weak.join(', ')}` : ''} |`);
   L.push(`| Headroom | ${r.headroom.ratio.toFixed(1)}× — ${Math.round(r.headroom.maxRps).toLocaleString('en-US')} req/s, then **${r.headroom.limitedBy ?? '—'}** gives out |`);
   L.push(`| Normal operation | errors ${pct(r.baseline.errorRate)}, p99 ${ms(r.baseline.p99Ms)}, ${money(r.baseline.monthly)}/month${r.baseline.meetsSlo ? '' : ' — **already outside the SLO**'} |`);
   L.push('');
@@ -49,7 +49,7 @@ export function auditMarkdown(r: AuditResult): string {
     L.push('|---|---|---|---|---|---|---|');
     for (const f of bad) {
       const fix = f.fixes[0];
-      const rec = f.impact.recoveryS === null ? '**never** (metastable)' : f.impact.selfHealS !== null && f.impact.selfHealS > 0 ? `by itself in ${f.impact.selfHealS} s` : `${f.impact.recoveryS} s after fix`;
+      const rec = f.impact.recoveryS === null ? '**never** (metastable)' : f.impact.selfHealS !== null && f.impact.selfHealS > 0 ? `by itself in ${f.impact.selfHealS} s` : f.impact.recoveryS === 0 ? 'when the fault clears' : `${f.impact.recoveryS} s after fix`;
       L.push(`| ${SEV[f.severity]} | ${f.title} | ${pct(f.impact.errorRate)} errors, p99 ${ms(f.impact.peakP99Ms)} | ${f.kind === 'headroom' ? '—' : rec} | ${f.blastRadius.join(', ') || '—'} | ${fix ? `${fix.title} → ${SEV[fix.after.severity].toLowerCase()}` : '—'} | ${fix ? money(fix.monthlyDelta) : ''} |`);
     }
     L.push('');

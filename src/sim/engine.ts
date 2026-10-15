@@ -21,13 +21,14 @@ import * as wasm from '../backtest/wasm/hindcast_engine.js';
 export interface EngineConfig {
   /** default bounded-queue length (s); failed requests count as this latency in p99 */
   timeoutS: number;
-  /** seconds to elect a replica after the primary dies; null = no automatic failover */
+  /** seconds to promote a replica after the primary dies, for databases without their own failoverS
+   *  (60: RDS Multi-AZ takes 60–120 s); null = no automatic failover */
   failoverS: number | null;
   /** extra latency for requests that hit a cold serverless instance; 0 = no cold starts */
   coldStartMs: number;
 }
 
-export const DEFAULT_ENGINE_CONFIG: EngineConfig = { timeoutS: 1, failoverS: 3, coldStartMs: 400 };
+export const DEFAULT_ENGINE_CONFIG: EngineConfig = { timeoutS: 1, failoverS: 60, coldStartMs: 400 };
 
 const BACKOFF = { spread: 0.3, delayMs: 200 };
 const RETRY_BUDGET = 0.1;

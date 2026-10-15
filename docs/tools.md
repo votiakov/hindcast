@@ -63,7 +63,7 @@ Registered for Claude Code in `.mcp.json` (restart Claude Code in this folder an
 | `compare_architectures` | `architecture`, `variants[]`, `scenario?` | ranked variants + per-variant summaries |
 | `find_breaking_point` | `architecture`, `readRatio?`, `slo?` | max req/s within SLO, limiting component |
 | `optimize_cost` | `architecture`, `scenario?`, `allow_runtimes?`, `slo?` | before/after cost, savings, changes as a ready variant, log, verification |
-| `audit_resilience` | `architecture`, `rps?`, `read_ratio?`, `slo?`, `incident_cost_per_minute?` | resilience score, availability by design, headroom, ranked risk register with blast radius and recovery, verified + priced fixes, Markdown report |
+| `audit_resilience` | `architecture`, `rps?`, `read_ratio?`, `slo?`, `incident_cost_per_minute?` | resilience score, availability from published SLAs (not measured), headroom, ranked risk register with blast radius and recovery, verified + priced fixes, Markdown report |
 | `import_terraform` | `terraform_json`, `name?` | spec, assumptions, skipped resources, lint |
 | `import_kubernetes` | `manifests_yaml`, `name?` | spec, assumptions, skipped objects, lint |
 | `show_architecture` | `architecture`, `compare_with?`, `scenario?` | **live canvas**: renders the simulation inline in MCP Apps hosts (Claude, ChatGPT…); text + link elsewhere |
@@ -115,10 +115,11 @@ metastable failure), **major** (out of SLO for more than 3 s), **minor** (a blip
 within 8 s with < 5 % errors — failover, autoscaling), **ok**. The resilience score is the share of
 incidents survived, weighted by severity.
 
-**Availability by design** is what the structure promises before any load: each unit's availability
-follows the public SLA of the managed service its kind stands for (one VM or single-AZ database
+**Availability, SLA (published), not measured** is what the structure promises before any load: each unit's availability
+is the published SLA of the managed service its kind stands for (one VM or single-AZ database
 99.5 %, a load balancer 99.99 %, a key-value store 99.99 %, API Gateway and Lambda 99.95 %, CDN,
-cache, object storage, queues and third-party APIs 99.9 %, DNS 100 %). A DNS name routes around a
+cache, object storage, queues and third-party APIs 99.9 %, DNS 100 %). An SLA is a refund promise, not
+a measurement: real outages (a provider-wide DNS outage such as Dyn's in 2016) are not in these numbers. A DNS name routes around a
 dead target, but each outage of one costs its health-check time plus half its TTL (of an assumed
 30-minute outage) for the share that target had. Components in sequence multiply; redundant ones — instances behind a
 balancer, a replica that is promoted, a failover route — multiply their unavailability; a cache answers

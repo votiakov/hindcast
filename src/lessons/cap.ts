@@ -14,7 +14,7 @@ const initial = link(
       ['users', 'client', X[0], 330],
       ['lb', 'lb', X[1], 330],
       ['api', 'server', X[2], 330, { instances: 4 }],
-      ['db', 'db', X[3] + 40, 110, { name: 'primary' }],
+      ['db', 'db', X[3] + 40, 110, { name: 'primary', failoverS: 3 }],
       ['rep', 'replica', X[3] + 40, 560, { name: 'replica' }],
     ],
     [['users', 'lb'], ['lb', 'api'], ['api', 'db'], ['db', 'rep']],
@@ -55,7 +55,7 @@ export const cap: Lesson = {
       title: 'The network splits, then us-east goes dark',
       story:
         'At 3 s the link between the regions fails: both keep running, but the replica stops receiving writes. ' +
-        'At 12 s us-east loses power. The replica is promoted — with everything it never received missing. Finance says: never lose an acknowledged write.',
+        'At 12 s us-east loses power. The replica is promoted 3 s later (a lesson-speed failover; managed databases take 30–120 s) — with everything it never received missing. Finance says: never lose an acknowledged write.',
       objective: 'Lose no acknowledged writes. Up to 25% errors are tolerated while it happens.',
       traffic: { from: 400, to: 400, rampSeconds: 0 },
       goal: { maxErrorRate: 0.25, maxP99: 1500, maxLostWrites: 0, holdSeconds: 25, startAfter: 2, deadline: 31 },

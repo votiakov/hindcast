@@ -388,8 +388,8 @@ describe('resilience behaviours', () => {
     };
     expect(step(400).global.errorRate).toBeLessThan(0.001);
     patch(b, 'db', { alive: false });
-    // electing (3 s): writes fail (20% of everything); reads go to the replica
-    const electing = step(58).global.errorRate;
+    // electing (60 s): writes fail (20% of everything); reads go to the replica
+    const electing = step(1100).global.errorRate;
     expect(electing).toBeGreaterThan(0.15);
     expect(electing).toBeLessThan(0.25);
     expect(step(400).global.errorRate).toBeLessThan(0.01); // promoted
@@ -468,15 +468,15 @@ describe('replication, partitions and failover (CAP)', () => {
 
   it('failing over to a replica that fell behind loses the writes it never received', () => {
     const events = [{ at: 5, action: partition }, { at: 25, action: { type: 'kill-id', id: 'db' } }, { at: 25.01, action: { type: 'heal-partition' } }];
-    // 20 s behind × 50 writes/s ≈ 1,000 writes lost when the replica is promoted
-    const f = simulate(spec('async'), { duration: 40, rps: 100, readRatio: 0.5, events }).summary.lostWrites ?? 0;
+    // 20 s behind × 50 writes/s ≈ 1,000 writes lost when the replica is promoted (60 s after the primary died)
+    const f = simulate(spec('async'), { duration: 100, rps: 100, readRatio: 0.5, events }).summary.lostWrites ?? 0;
     expect(f).toBeGreaterThan(800);
     expect(f).toBeLessThan(1200);
-    const d = simulateDes(spec('async'), { duration: 40, rps: 100, readRatio: 0.5, events }, { seed: 1 }).summary.lostWrites ?? 0;
+    const d = simulateDes(spec('async'), { duration: 100, rps: 100, readRatio: 0.5, events }, { seed: 1 }).summary.lostWrites ?? 0;
     expect(d).toBeGreaterThan(700);
     expect(d).toBeLessThan(1300);
     // synchronous: nothing lost
-    expect(simulate(spec('sync'), { duration: 40, rps: 100, readRatio: 0.5, events: [{ at: 25, action: { type: 'kill-id', id: 'db' } }] }).summary.lostWrites ?? 0).toBe(0);
+    expect(simulate(spec('sync'), { duration: 100, rps: 100, readRatio: 0.5, events: [{ at: 25, action: { type: 'kill-id', id: 'db' } }] }).summary.lostWrites ?? 0).toBe(0);
   });
 });
 
