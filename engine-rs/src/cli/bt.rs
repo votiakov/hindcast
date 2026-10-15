@@ -72,7 +72,7 @@ fn print_accuracy(m: &Value, out: &mut Out) {
         return;
     }
     for a in acc {
-        out.log(&format!("  {} {}", bold(if s(a, &["method"]) == "reference" { "checked against recorded runs" } else { "holdout" }), dim(&s(a, &["label"]))));
+        out.log(&format!("  {} {}", bold(if s(a, &["method"]) == "reference" { "checked against" } else { "holdout" }), dim(&s(a, &["label"]))));
         for l in reports::accuracy_lines(a) {
             out.log(&format!(
                 "  {}",
