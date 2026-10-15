@@ -200,6 +200,9 @@ pub struct NodeState {
     pub success_r: f64,
     pub success_w: f64,
     pub latency_ms: f64,
+    /// how long this component's failed answers take, ms: a rejection comes back at once, a call that
+    /// failed downstream after the time that took, a late one at its deadline
+    pub fail_ms: f64,
     /// p99 − mean of the answers this component gives (its own tail and what it waits on)
     pub tail_ms: f64,
     /// the latency of this component's successful answers as a small mixture of (weight, mean, p99 − mean):
@@ -218,6 +221,8 @@ pub struct NodeState {
     /// the calls wait as if those messages were not there
     pub pulled_share: f64,
     pub warm: f64,
+    /// a function's execution environments in their cold start: (done at, how many)
+    pub cold_starts: Vec<(f64, f64)>,
     pub cold_frac: f64,
     pub down_for: f64,
     pub cost_per_hour: f64,
@@ -279,6 +284,7 @@ fn fresh() -> NodeState {
         success_r: 1.0,
         success_w: 1.0,
         latency_ms: 0.0,
+        fail_ms: FAST_FAIL_MS,
         tail_ms: 0.0,
         dist: vec![],
         drop_ratio: 0.0,
@@ -289,6 +295,7 @@ fn fresh() -> NodeState {
         pushed_rps: 0.0,
         pulled_share: 0.0,
         warm: 0.0,
+        cold_starts: vec![],
         cold_frac: 0.0,
         down_for: 0.0,
         cost_per_hour: 0.0,
@@ -381,17 +388,30 @@ fn window_above(p: f64, n: f64, t: f64) -> f64 {
 }
 
 /// share of answers slower than a deadline, for answers with this mean and p99 − mean: right-skewed,
-/// about 40% above the mean, 1% above the p99, decaying exponentially in between and beyond
+/// about 40% above the mean, 1% above the p99, decaying exponentially in between and beyond. Below the
+/// mean, the body of a lognormal with that mean and p99 (none answer in no time: a quarter of the mean
+/// holds about 1% of the answers at the services' spread, as the discrete-event engine samples them)
 fn late_share(mean: f64, tail: f64, deadline: f64) -> f64 {
     if !mean.is_finite() {
         return 1.0;
     }
-    let x = (deadline - mean) / tail.max(1e-6).max(mean * 0.05);
+    let spread = tail.max(1e-6).max(mean * 0.05);
+    let x = (deadline - mean) / spread;
     if x >= 0.0 {
-        0.4 * 0.025_f64.js_pow(x)
-    } else {
-        1.0 - 0.6 * (3.0 * x).js_exp()
+        return 0.4 * 0.025_f64.js_pow(x);
     }
+    if deadline <= 0.0 {
+        return 1.0;
+    }
+    // σ of the lognormal whose p99 / mean is this: exp(−σ²/2 + 2.326σ) = p99 / mean
+    let r = ((mean + spread) / mean).min(14.9);
+    let z99 = 2.326;
+    let s = z99 - (z99 * z99 - 2.0 * r.js_ln()).max(0.0).sqrt();
+    if s < 1e-6 {
+        return 1.0;
+    }
+    let below = |z: f64| 1.0 - crate::math::normal_tail(z);
+    1.0 - 0.6 * below(((deadline / mean).js_ln() + s * s / 2.0) / s) / below(s / 2.0)
 }
 
 /// an outgoing connection: edge index, target node index, target up
@@ -457,37 +477,43 @@ fn queue_on(queue: &mut f64, arrivals: f64, cap_per_s: f64, dt: f64, queue_s: f6
 
 /// service time plus the wait in front of it: a component is a pool of workers (capacity × service
 /// time of them, as the discrete-event engine runs it), waiting as M/M/c; past saturation, the backlog
-fn service_latency(d: &NodeData, st: &NodeState) -> f64 {
-    shard_parts(d, st).iter().map(|p| p.0 * p.1).sum()
+fn service_latency(d: &NodeData, st: &NodeState, cfg: &EngineConfig) -> f64 {
+    shard_parts(d, st, cfg).iter().map(|p| p.0 * p.1).sum()
 }
 
 /// a component's own answer time as (weight, mean, p99 − mean) parts: one for most, and for a sharded
 /// database the busiest shard and the rest, each a pool of workers of its own
-fn shard_parts(d: &NodeData, st: &NodeState) -> Vec<(f64, f64, f64)> {
+fn shard_parts(d: &NodeData, st: &NodeState, cfg: &EngineConfig) -> Vec<(f64, f64, f64)> {
+    let bound = queue_seconds(d, cfg) * 1000.0;
     let n = shards_of(d);
     let total = capacity_of(d, Some(st.reachable)).max(1e-6);
     // a replica's shards share its reads evenly: one pool
     if n <= 1.0 || d.kind != "db" {
-        let (m, t) = pool_latency(d, total, st.util * (1.0 - st.pulled_share), st.queue);
+        let (m, t) = pool_latency(d, total, st.util * (1.0 - st.pulled_share), st.queue, bound);
         return vec![(1.0, m, t)];
     }
     let s = hot_shard_share(d);
     let one = total / n;
-    let (hm, ht) = pool_latency(d, one, st.util, st.hot_queue);
-    let (cm, ct) = pool_latency(d, one * (n - 1.0), st.cold_util, st.queue);
+    let (hm, ht) = pool_latency(d, one, st.util, st.hot_queue, bound);
+    let (cm, ct) = pool_latency(d, one * (n - 1.0), st.cold_util, st.queue, bound);
     vec![(s, hm, ht), (1.0 - s, cm, ct)]
 }
 
 /// mean and p99 − mean of an answer from a pool of workers at a utilisation, with a backlog
-fn pool_latency(d: &NodeData, cap: f64, util: f64, queue: f64) -> (f64, f64) {
+fn pool_latency(d: &NodeData, cap: f64, util: f64, queue: f64, bound_ms: f64) -> (f64, f64) {
     let base = base_latency_of(d);
     let cap = cap.max(1e-6);
     let workers = js_round(cap * (base.max(0.05) / 1000.0)).max(1.0);
     let w = crate::math::mmc_wait(util.min(0.98) * cap, workers, cap);
-    let mean = base + w.mean_ms * WAIT_SCALE + (queue / cap.max(1.0)) * 1000.0 + d.stall_rate.unwrap_or(0.0) * d.stall_ms.unwrap_or(0.0);
+    // the wait: the M/M/c one, plus past saturation the backlog in front; no longer than the queue's
+    // bound (a request that would wait longer is shed), and with no more spread than is left under it:
+    // a backlog at its bound is waited out in about the same time by every request
+    let (mmc, backlog) = (w.mean_ms * WAIT_SCALE, (queue / cap.max(1.0)) * 1000.0);
+    let wait_mean = (mmc + backlog).min(bound_ms.max(mmc));
+    let mean = base + wait_mean + d.stall_rate.unwrap_or(0.0) * d.stall_ms.unwrap_or(0.0);
     let stall = if d.stall_rate.unwrap_or(0.0) >= 0.01 { d.stall_ms.unwrap_or(0.0) } else { 0.0 };
     // service time and wait are independent: their spreads add in quadrature
-    let (svc, wait) = ((SERVICE_P99 - 1.0) * base, (w.p99_ms - w.mean_ms).max(0.0) * WAIT_SCALE);
+    let (svc, wait) = ((SERVICE_P99 - 1.0) * base, ((w.p99_ms - w.mean_ms).max(0.0) * WAIT_SCALE).min((bound_ms - wait_mean).max(0.0)));
     (mean, (svc * svc + wait * wait).sqrt() + stall)
 }
 
@@ -519,6 +545,24 @@ fn mix_mean_p99(dist: &[[f64; 3]]) -> (f64, f64) {
     (mean, hi)
 }
 
+/// a mixture's q-quantile (the share above it is 1 − q)
+pub fn mix_quantile(dist: &[[f64; 3]], q: f64) -> f64 {
+    let w: f64 = dist.iter().map(|c| c[0]).sum();
+    if w <= 0.0 {
+        return 0.0;
+    }
+    let (mut lo, mut hi) = (0.0, dist.iter().map(|c| c[1] + 4.0 * c[2] + 1.0).fold(0.0, f64::max));
+    for _ in 0..40 {
+        let mid = (lo + hi) / 2.0;
+        if mix_late(dist, mid) > 1.0 - q {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    hi
+}
+
 /// at most four components: the two closest in mean merge until it fits
 fn mix_merge(mut dist: Vec<[f64; 3]>) -> Vec<[f64; 3]> {
     dist.retain(|c| c[0] > 1e-12 && c[1].is_finite());
@@ -541,6 +585,20 @@ fn mix_then(dist: &[[f64; 3]], mean: f64, tail: f64, weight: f64) -> Vec<[f64; 3
     dist.iter().map(|c| [c[0] / w * weight, c[1] + mean, (c[2] * c[2] + tail * tail).sqrt()]).collect()
 }
 
+/// a request shed, refused or throttled is answered at once, ms (as the discrete-event engine fails it)
+const FAST_FAIL_MS: f64 = 0.5;
+
+/// how long an idle execution environment is kept before it is reclaimed, s (Lambda keeps them for minutes)
+const FN_IDLE_S: f64 = 300.0;
+
+/// a function's cold start, ms: its runtime's, or the configured default
+fn cold_start_of(d: &NodeData, cfg: &EngineConfig) -> f64 {
+    match d.runtime.as_deref().filter(|r| !r.is_empty()) {
+        Some(r) if cfg.cold_start_ms > 0.0 => runtime(r).2,
+        _ => cfg.cold_start_ms,
+    }
+}
+
 /// lognormal service times (cv 0.6, as the discrete-event engine samples them): p99 ≈ 3.1 × mean
 const SERVICE_P99: f64 = 3.11;
 /// someone else's API answers more steadily than your own service (the DES samples it at half the
@@ -552,8 +610,8 @@ const WAIT_SCALE: f64 = 0.68;
 
 /// p99 − mean of a component's own part of an answer: service-time spread, the M/M/c wait's tail,
 /// and stalls once they reach 1% of requests
-fn service_tail(d: &NodeData, st: &NodeState) -> f64 {
-    let parts = shard_parts(d, st);
+fn service_tail(d: &NodeData, st: &NodeState, cfg: &EngineConfig) -> f64 {
+    let parts = shard_parts(d, st, cfg);
     if parts.len() == 1 {
         return parts[0].2;
     }
@@ -584,6 +642,11 @@ struct Ctx<'a> {
     now: f64,
     /// every node's arrivals last tick from callers other than queues, req/s
     pushed: &'a [f64],
+    /// per edge out of a queue: the share of its consumer's free capacity that queue may pull (a
+    /// consumer fed by several queues shares it between them)
+    pull_share: &'a [f64],
+    /// every node's capacity for messages pulled from a queue, req/s
+    pull_cap: &'a [f64],
 }
 
 fn reachable(c: &Ctx) -> f64 {
@@ -813,14 +876,14 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
             let routes: Vec<Route> = c.routes.iter().filter(|k| k.up).cloned().collect();
             // consumers pull: each takes messages only with the capacity what is pushed at it leaves
             // free (a worker that also serves calls does not drop them to make room for the queue)
-            let free: Vec<f64> = routes.iter().map(|k| (capacity_of(&c.data[k.t], None) - c.pushed[k.t]).max(0.0)).collect();
+            let free: Vec<f64> = routes.iter().map(|k| (c.pull_cap[k.t] - c.pushed[k.t]).max(0.0) * c.pull_share[k.e]).collect();
             let drain: f64 = free.iter().sum();
             st.drain_rps = drain;
             let processed = st.queue.min(drain * c.dt);
             st.queue -= processed;
             st.forwarded = processed;
             let mut r = res(processed, failed, processed, st.queue / QUEUE_MAX_BACKLOG, true);
-            if drain > 0.0 && routes.iter().any(|k| c.pushed[k.t] > 0.0) {
+            if drain > 0.0 && routes.iter().any(|k| c.pushed[k.t] > 0.0 || c.pull_share[k.e] < 1.0) {
                 r.shares = Some(routes.iter().zip(&free).map(|(k, f)| (k.e, f / drain)).collect());
             }
             r.routes = Some(routes);
@@ -863,15 +926,31 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
             r
         }
         "function" => {
-            let cap = capacity_of(c.d, None) * c.dt;
-            let processed = c.arrivals.min(cap);
-            let demand = c.arrivals / c.dt;
-            let k = |tau: f64| 1.0 - (-c.dt / tau).js_exp();
-            st.warm += (demand - st.warm) * k(if demand > st.warm { 4.0 } else { 1.0 });
-            // provisioned concurrency is warm whatever the demand
-            st.warm = st.warm.max(provisioned_rps(c.d));
-            st.cold_frac = if demand > 0.5 { ((demand - st.warm) / demand).max(0.0) } else { 0.0 };
-            res(processed, c.arrivals - processed, processed, c.arrivals / cap, true)
+            // execution environments, as the discrete-event engine runs them: a request that finds no
+            // idle warm one starts a new one and waits out its cold start in it; past the concurrency
+            // limit it is throttled. One cold request per new environment, so a jump cold-starts about
+            // rate × (cold start + work) of them, and the ones starting are busy until they finish
+            let (base, cold) = (base_latency_of(c.d), cold_start_of(c.d, c.cfg));
+            let limit = capacity_of(c.d, None) * base / 1000.0;
+            st.cold_starts.retain(|x| x.0 > c.now);
+            let starting: f64 = st.cold_starts.iter().map(|x| x.1).sum();
+            let ready = (st.warm - starting).max(0.0);
+            let busy = c.arrivals / c.dt * base / 1000.0;
+            let unserved = if busy > ready { c.arrivals * (busy - ready) / busy } else { 0.0 };
+            let new = unserved.min((limit - st.warm).max(0.0));
+            if new > 0.0 {
+                st.warm += new;
+                st.cold_starts.push((c.now + (cold + base) / 1000.0, new));
+            }
+            // idle ones are reclaimed after minutes; provisioned concurrency stays warm whatever the demand
+            let used = busy.max(starting + new);
+            if used < st.warm {
+                st.warm += (used - st.warm) * (1.0 - (-c.dt / FN_IDLE_S).js_exp());
+            }
+            st.warm = st.warm.max(c.d.provisioned.filter(|p| *p > 0.0).unwrap_or(0.0));
+            let processed = c.arrivals - (unserved - new);
+            st.cold_frac = if processed > 0.0 { new / processed } else { 0.0 };
+            res(processed, c.arrivals - processed, processed, busy / limit.max(1e-9), true)
         }
         "llmapi" | "external" | "archive" => {
             let cap = capacity_of(c.d, None) * c.dt;
@@ -965,19 +1044,16 @@ fn fold(c: &FoldCtx, st: &NodeState) -> (f64, f64) {
     let kids_lat = if c.has_kids { c.child_lat } else { 0.0 };
     match c.d.kind.as_str() {
         "client" => (if c.has_kids { c.child_succ } else { 0.0 }, c.child_lat),
-        "lb" | "dns" => (if c.has_kids { c.keep * c.child_succ } else { 0.0 }, service_latency(c.d, st) + c.child_lat),
+        "lb" | "dns" => (if c.has_kids { c.keep * c.child_succ } else { 0.0 }, service_latency(c.d, st, c.cfg) + c.child_lat),
         "gateway" => (if c.has_kids { c.keep * c.child_succ } else { 0.0 }, spec("gateway").base_latency_ms + c.child_lat),
-        "cache" | "cdn" | "edge" => (c.keep * (c.local_share + (1.0 - c.local_share) * kids_succ), service_latency(c.d, st) + (1.0 - c.local_share) * c.child_lat),
-        "db" => (c.local_share * c.keep + (1.0 - c.local_share) * kids_succ, c.local_share * service_latency(c.d, st) + (1.0 - c.local_share) * c.child_lat),
+        "cache" | "cdn" | "edge" => (c.keep * (c.local_share + (1.0 - c.local_share) * kids_succ), service_latency(c.d, st, c.cfg) + (1.0 - c.local_share) * c.child_lat),
+        "db" => (c.local_share * c.keep + (1.0 - c.local_share) * kids_succ, c.local_share * service_latency(c.d, st, c.cfg) + (1.0 - c.local_share) * c.child_lat),
         "queue" | "stream" => (c.keep, spec(&c.d.kind).base_latency_ms),
-        "function" => {
-            let cold = if c.cfg.cold_start_ms > 0.0 && c.d.runtime.as_deref().map(|r| !r.is_empty()).unwrap_or(false) { runtime(c.d.runtime.as_deref().unwrap()).2 } else { c.cfg.cold_start_ms };
-            (c.keep * kids_succ, base_latency_of(c.d) + st.cold_frac * cold + kids_lat)
-        }
+        "function" => (c.keep * kids_succ, base_latency_of(c.d) + st.cold_frac * cold_start_of(c.d, c.cfg) + kids_lat),
         // leaves: they answer themselves (their routes are empty, so they have no kids)
         "llmapi" | "external" | "kv" => (c.keep, c.d.latency_ms.unwrap_or(spec(&c.d.kind).base_latency_ms)),
         "archive" => (c.keep, base_latency_of(c.d)),
-        _ => (c.keep * kids_succ, service_latency(c.d, st) + kids_lat),
+        _ => (c.keep * kids_succ, service_latency(c.d, st, c.cfg) + kids_lat),
     }
 }
 
@@ -1122,6 +1198,28 @@ impl Engine {
 
     pub fn reset(&mut self) {
         *self = Engine::default();
+    }
+
+    /// the users' successful answers this tick as a mixture of (share of the traffic, mean, p99 − mean):
+    /// the clients' answer mixtures, each client sending an equal share and answered at its success
+    /// (by share, not by the clients' smoothed arrival rate: the first ticks' answers count in full)
+    pub fn answer_mix(&self, nodes: &[SimNode]) -> Vec<[f64; 3]> {
+        let clients: Vec<&SimNode> = nodes.iter().filter(|n| n.data.kind == "client" && n.data.alive).collect();
+        let mut out = vec![];
+        for n in &clients {
+            if let Some(st) = self.nodes.get(&n.id) {
+                let ok = st.success / clients.len() as f64;
+                if ok <= 0.0 {
+                    continue;
+                }
+                if st.dist.is_empty() {
+                    out.push([ok, st.latency_ms, st.tail_ms]);
+                } else {
+                    out.extend(mix_then(&st.dist, 0.0, 0.0, ok));
+                }
+            }
+        }
+        out
     }
 
     /// writes acknowledged and then lost so far
@@ -1299,6 +1397,48 @@ impl Engine {
         }
         let dead: Vec<f64> = (0..n).map(|i| self.nodes[sidx[i]].dead_for).collect();
         let pushed: Vec<f64> = (0..n).map(|i| self.nodes[sidx[i]].pushed_rps).collect();
+        // what a consumer can take from its queues: its capacity; a function's environments, those
+        // ready at a warm request's pace and those it may still start at a cold one's (the discrete-event
+        // engine hands a message only to an idle environment, so none is throttled)
+        let pull_cap: Vec<f64> = (0..n)
+            .map(|i| {
+                let d = &data[i];
+                if d.kind != "function" {
+                    return capacity_of(d, None);
+                }
+                let st = &self.nodes[sidx[i]];
+                let (base, cold) = (base_latency_of(d).max(0.05), cold_start_of(d, cfg));
+                let limit = capacity_of(d, None) * base / 1000.0;
+                let starting: f64 = st.cold_starts.iter().filter(|x| x.0 > now).map(|x| x.1).sum();
+                let ready = (st.warm - starting).max(0.0);
+                ready * 1000.0 / base + (limit - st.warm).max(0.0) * 1000.0 / (base + cold)
+            })
+            .collect();
+        // a consumer fed by several queues: each queue pulls a share of what the consumer has free, by
+        // what it has to hand over (last tick's arrivals and its backlog, a second's worth), so together
+        // they never take more than the consumer can work on (the discrete-event engine pumps a message
+        // only into an idle worker, whichever queue it comes from)
+        let pull_share: Vec<f64> = {
+            let demand = |i: usize| {
+                let st = &self.nodes[sidx[i]];
+                st.in_rps + st.queue
+            };
+            let mut total = vec![0.0; n];
+            let mut feeds = vec![0usize; n];
+            for i in (0..n).filter(|&i| data[i].kind == "queue") {
+                for k in out[i].iter().filter(|k| k.up) {
+                    total[k.t] += demand(i);
+                    feeds[k.t] += 1;
+                }
+            }
+            let mut share = vec![1.0; edges.len()];
+            for i in (0..n).filter(|&i| data[i].kind == "queue") {
+                for k in out[i].iter().filter(|k| feeds[k.t] > 1) {
+                    share[k.e] = if total[k.t] > 0.0 { demand(i) / total[k.t] } else { 1.0 / feeds[k.t] as f64 };
+                }
+            }
+            share
+        };
         // what each node receives from queues this tick (the rest was pushed at it)
         let mut from_queues = vec![0.0; n];
         let mut stale_now = 0.0;
@@ -1373,7 +1513,7 @@ impl Engine {
                 st.queue = 0.0;
                 res(0.0, arrivals, 0.0, 0.0, false)
             } else {
-                let ctx = Ctx { d, data: &data, arrivals, dt, cfg, read_ratio, routes, pooled: pooled[i], edge_sync: &edge_sync, edge_lat: &edge_lat, lags: &lags, dead: &dead, now, pushed: &pushed };
+                let ctx = Ctx { d, data: &data, arrivals, dt, cfg, read_ratio, routes, pooled: pooled[i], edge_sync: &edge_sync, edge_lat: &edge_lat, lags: &lags, dead: &dead, now, pushed: &pushed, pull_share: &pull_share, pull_cap: &pull_cap };
                 process(&ctx, &mut st)
             };
             // a search index: a write is searchable after the indexing backlog ahead of it and the next
@@ -1592,6 +1732,9 @@ impl Engine {
             let tmo = d.timeout_ms.filter(|t| *t != 0.0 && !t.is_nan());
             let mut late: Option<f64> = None;
             let mut kids_mix: Vec<[f64; 3]> = vec![];
+            // how long a failed call to the kids takes (late ones aside): each kid's failures' time, by
+            // how many of the calls fail there; across a partition, the connection's timeout
+            let mut kid_fail = FAST_FAIL_MS;
             if has_kids {
                 // a link that makes N calls per request: all must succeed, the caller waits for the slowest
                 let timeout_ms = cfg.timeout_s * 1000.0;
@@ -1609,6 +1752,16 @@ impl Engine {
                     let admit = bulkhead_admit(d, bulk_reach, f / dt, kl);
                     (ks * admit, admit * kl + (1.0 - admit) * 0.5, f, kt)
                 };
+                {
+                    let (mut w, mut ms) = (0.0, 0.0);
+                    for k in &l.routes {
+                        let (ks, _, f, _) = kid(k);
+                        let wk = f.max(1e-9) * (1.0 - ks).max(1e-9);
+                        w += wk;
+                        ms += wk * if edge_cut[k.e] { timeout_ms } else { self.nodes[sidx[k.t]].fail_ms + edge_lat[k.e] };
+                    }
+                    kid_fail = ms / w;
+                }
                 // a kid's answers as a mixture (its own one, or its mean and tail), the link's latency added
                 let kid_dist = |k: &Route| -> Vec<[f64; 3]> {
                     let s = &self.nodes[sidx[k.t]];
@@ -1747,13 +1900,25 @@ impl Engine {
             let mut child_succ = attempt;
             let (mut child_r, mut child_w) = (attempt_r, attempt_w);
             let mut child_lat = lat;
+            // a failed attempt costs the time it took to fail: the deadline for a late one, the kids'
+            // failures' time for the rest (a rejected call comes back at once, not after an answer's time)
+            let (late_w, kid_w) = (succ * st.late_frac, 1.0 - succ);
+            let attempt_fail_ms = match tmo {
+                Some(t) if late_w + kid_w > 1e-12 => (late_w * t + kid_w * kid_fail) / (late_w + kid_w),
+                _ => kid_fail,
+            };
             let retries = d.retries.unwrap_or(0.0);
+            let mut call_fail_ms = attempt_fail_ms;
             if retries > 0.0 && has_kids {
                 let policy = d.retry_policy.as_deref().unwrap_or("immediate");
                 child_succ = retry_success(attempt, retries, policy, st.retry_amp);
                 child_r = retry_success(attempt_r, retries, policy, st.retry_amp);
                 child_w = retry_success(attempt_w, retries, policy, st.retry_amp);
-                child_lat = lat * st.retry_amp + if policy == "backoff" { (st.retry_amp - 1.0) * BACKOFF_DELAY_MS * 4.0 } else { 0.0 };
+                let backoff = if policy == "backoff" { BACKOFF_DELAY_MS * 4.0 } else { 0.0 };
+                child_lat = lat + (st.retry_amp - 1.0) * (attempt_fail_ms + backoff);
+                // a call that fails in the end failed every attempt it was allowed
+                let tries = if policy == "budget" { st.retry_amp } else { retries + 1.0 };
+                call_fail_ms = tries * attempt_fail_ms + (tries - 1.0) * backoff;
             }
             if st.breaker_pass < 1.0 {
                 let p = st.breaker_pass;
@@ -1762,6 +1927,7 @@ impl Engine {
                 child_r = p * child_r + (1.0 - p) * fb;
                 child_w = p * child_w + (1.0 - p) * fb;
                 child_lat = p * child_lat + (1.0 - p) * 2.0;
+                call_fail_ms = p * call_fail_ms + (1.0 - p) * 2.0;
             }
             st.hold_ms = ema(st.hold_ms, if has_kids { child_lat } else { 0.0 }, dt, 0.3);
             // a queue with a redrive policy: of what its consumers failed, the messages with receives
@@ -1817,14 +1983,14 @@ impl Engine {
                 let (own_share, kid_share) = match d.kind.as_str() {
                     "client" => (0.0, 1.0),
                     "queue" | "stream" => (0.0, 0.0),
-                    "cache" | "cdn" | "db" => (1.0, 1.0 - l.local_share),
+                    "cache" | "cdn" | "edge" | "db" => (1.0, 1.0 - l.local_share),
                     _ => (1.0, 1.0),
                 };
                 let own = match d.kind.as_str() {
                     "client" | "queue" | "stream" | "gateway" => 0.0,
                     "function" => (SERVICE_P99 - 1.0) * base_latency_of(d),
                     "llmapi" | "external" | "kv" | "storage" | "archive" => (API_P99 - 1.0) * base_latency_of(d),
-                    _ => service_tail(d, st),
+                    _ => service_tail(d, st, cfg),
                 };
                 let kids = if has_kids { tail * if retries > 0.0 { st.retry_amp } else { 1.0 } } else { 0.0 };
                 let t = (own_share * own * own + kid_share * kids * kids).sqrt();
@@ -1843,7 +2009,7 @@ impl Engine {
                     "client" | "queue" | "stream" | "gateway" => 0.0,
                     "function" => (SERVICE_P99 - 1.0) * base_latency_of(d),
                     "llmapi" | "external" | "kv" | "storage" | "archive" => (API_P99 - 1.0) * base_latency_of(d),
-                    _ => service_tail(d, st),
+                    _ => service_tail(d, st, cfg),
                 };
                 let own_mean = if d.kind == "client" { 0.0 } else { own_mean };
                 let mut kids = if !has_kids {
@@ -1868,22 +2034,31 @@ impl Engine {
                 let (own_share, kid_share) = match d.kind.as_str() {
                     "client" => (0.0, 1.0),
                     "queue" | "stream" => (1.0, 0.0),
-                    "cache" | "cdn" | "db" => (l.local_share, 1.0 - l.local_share),
+                    "cache" | "cdn" | "edge" | "db" => (l.local_share, 1.0 - l.local_share),
                     _ => (if has_kids { 0.0 } else { 1.0 }, 1.0),
                 };
+                // a function's cold starts are a slow mode of their own, not a little on every answer
+                let modes: Vec<(f64, f64)> = if d.kind == "function" && st.cold_frac > 0.0 {
+                    let (cf, cold) = (st.cold_frac.min(1.0), cold_start_of(d, cfg));
+                    vec![(1.0 - cf, own_mean - cf * cold), (cf, own_mean + (1.0 - cf) * cold)]
+                } else {
+                    vec![(1.0, own_mean)]
+                };
                 let mut out: Vec<[f64; 3]> = vec![];
-                if own_share > 0.0 || kids.is_empty() {
-                    let w = own_share.max(if kids.is_empty() { 1.0 } else { 0.0 });
-                    if l.write_extra_ms > 0.0 {
-                        // writes wait for synchronous replicas: a slower mode of their own
-                        out.push([w * l.rr, own_mean, own_tail]);
-                        out.push([w * (1.0 - l.rr), own_mean + l.write_extra_ms, own_tail]);
-                    } else {
-                        out.push([w, own_mean, own_tail]);
+                for &(mw, own_mean) in &modes {
+                    if own_share > 0.0 || kids.is_empty() {
+                        let w = own_share.max(if kids.is_empty() { 1.0 } else { 0.0 }) * mw;
+                        if l.write_extra_ms > 0.0 {
+                            // writes wait for synchronous replicas: a slower mode of their own
+                            out.push([w * l.rr, own_mean, own_tail]);
+                            out.push([w * (1.0 - l.rr), own_mean + l.write_extra_ms, own_tail]);
+                        } else {
+                            out.push([w, own_mean, own_tail]);
+                        }
                     }
-                }
-                if kid_share > 0.0 && !kids.is_empty() {
-                    out.extend(mix_then(&kids, own_mean, own_tail, kid_share));
+                    if kid_share > 0.0 && !kids.is_empty() {
+                        out.extend(mix_then(&kids, own_mean, own_tail, kid_share * mw));
+                    }
                 }
                 if st.breaker_pass < 1.0 && d.fallback == Some(true) {
                     let p = st.breaker_pass;
@@ -1912,6 +2087,19 @@ impl Engine {
             st.latency_ms = ema(st.latency_ms, latency, dt, 0.3);
             let own_now = if l.up && d.kind != "client" { fold(&FoldCtx { d, keep, local_share: 1.0, child_succ: 1.0, child_lat: 0.0, has_kids: false, cfg }, st).1 + d.fault_latency_ms.filter(|x| !x.is_nan()).unwrap_or(0.0) } else { 0.0 };
             st.own_ms = ema(st.own_ms, own_now, dt, 0.3);
+            // its failures: what it sheds itself comes back at once; a call that failed downstream
+            // after its own work and the time the failed calls took
+            let fail_now = {
+                let shed = 1.0 - keep;
+                let downstream = if matches!(d.kind.as_str(), "cache" | "cdn" | "edge" | "db") { 1.0 - l.local_share } else { 1.0 };
+                let calls = if has_kids && l.up { keep * (1.0 - child_succ).max(0.0) * downstream } else { 0.0 };
+                if calls > 1e-12 {
+                    (shed * FAST_FAIL_MS + calls * (own_now + call_fail_ms)) / (shed + calls)
+                } else {
+                    FAST_FAIL_MS
+                }
+            };
+            st.fail_ms = ema(st.fail_ms, fail_now, dt, 0.3);
             st.tail_ms = ema(st.tail_ms, tail_total, dt, 0.3);
             let usage = usage_cost(d, st, profile);
             let fixed = match billed {

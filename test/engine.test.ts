@@ -65,6 +65,21 @@ describe('fluid engine', () => {
 
 import { simulateDes } from '../src/sim/des/des';
 
+describe("a component's peak and mean utilisation", () => {
+  // both engines report the load offered over capacity: the shop's 4 × 250/s API offered 2000 req/s is
+  // at 200%, and 500 req/s at 50%. (The discrete-event engine reported its pool's busy share, which
+  // stops at 100% however far it is overloaded: 131.6% where the fluid engine said 320% on Black Friday)
+  it('is the same quantity in both engines', () => {
+    for (const [rps, load] of [[2000, 2], [500, 0.5]]) {
+      const f = simulate(shop, steady(rps)).components.api;
+      const d = simulateDes(shop, steady(rps), { seed: 1 }).components.api;
+      expect(f.meanUtil).toBeCloseTo(load, 1);
+      expect(Math.abs(d.meanUtil - load)).toBeLessThan(load * 0.05);
+      expect(Math.abs(d.peakUtil - f.peakUtil)).toBeLessThan(load * 0.15);
+    }
+  });
+});
+
 describe('a deadline over a fast branch and a slow, failing one', () => {
   // api splits its calls between `fast` and `slow`, with a 200 ms deadline. slow takes 500/s against
   // 100/s: it sheds 400/s and the 100/s it serves wait ~1 s in its queue, past the deadline. So every
@@ -118,6 +133,95 @@ describe('a worker that takes calls and also consumes a queue', () => {
     expect(s.nodeStats.w.dropRps).toBeLessThan(1);
     expect(s.edgeStats['e-jobs-w'].rps).toBeCloseTo(40, 0);
     expect(simulateDes(spec, { duration: 40, rps: 120 }, { seed: 1 }).summary.meanErrorRate).toBeLessThan(0.01);
+  });
+});
+
+describe('a worker that consumes two queues', () => {
+  // 80 messages/s into each of two queues, one worker of 100/s pulling from both. Together the queues
+  // hand it no more than it can work on (100/s, about half each) and back up; the worker drops nothing.
+  // Each queue used to drain at the worker's whole capacity: 160/s pushed at a 100/s worker
+  const spec = {
+    components: [{ id: 'users', kind: 'client' }, { id: 'q1', kind: 'queue' }, { id: 'q2', kind: 'queue' }, { id: 'w', kind: 'worker' }],
+    connections: [['users', 'q1'], ['users', 'q2'], ['q1', 'w'], ['q2', 'w']],
+  };
+  it('shares its capacity between them in both engines', () => {
+    const b = specToGraph(spec);
+    const e = new Engine();
+    for (let i = 0; i < 40 / 0.05; i++) e.step(b.nodes as never, b.edges as never, 160, 0.8, 0.05, DEFAULT_ENGINE_CONFIG);
+    const s = e.snapshot(b.nodes as never, b.edges as never);
+    expect(s.nodeStats.w.dropRps).toBeLessThan(1);
+    expect(s.edgeStats['e-q1-w'].rps + s.edgeStats['e-q2-w'].rps).toBeCloseTo(100, 0);
+    expect(s.edgeStats['e-q1-w'].rps).toBeCloseTo(50, 0);
+    expect(s.nodeStats.q1.queue).toBeGreaterThan(1000);
+    const d = simulateDes(spec, { duration: 40, rps: 160 }, { seed: 1 });
+    expect(d.components.w.droppedTotal).toBe(0);
+    expect(d.components.w.meanUtil).toBeGreaterThan(0.95);
+  });
+});
+
+describe('latency of the successful answers, in both engines', () => {
+  // the fluid engine's answers pooled over the run (as scripts/engine-crosscheck.ts compares them)
+  // against the discrete-event engine's histogram, on boards worked out by hand
+  const both = (spec: object, rps: number) => {
+    const f = simulate(spec, { duration: 40, rps }, { answers: true });
+    const d = simulateDes(spec, { duration: 40, rps }, { seed: 1 }).summary;
+    return { f: { ...f.answers!, err: f.summary.meanErrorRate }, d: { p50Ms: d.p50Ms, p99Ms: d.p99Ms, err: d.meanErrorRate } };
+  };
+  const near = (x: number, want: number, tol: number) => expect(Math.abs(x - want)).toBeLessThanOrEqual(want * tol);
+
+  it('a function: warm answers at its service time, one cold start per environment it starts', () => {
+    const fn = { components: [{ id: 'users', kind: 'client' }, { id: 'fn', kind: 'function' }], connections: [['users', 'fn']] };
+    // lognormal 35 ms (cv 0.6): p50 = 35 × e^(−σ²/2) = 30 ms. From nothing to 200/s it starts about
+    // 200 × (0.4 + 0.035) = 87 environments, each with one cold answer: 1.1% of the run's 8000, so
+    // the p99 is a cold one (~435 ms). The fluid engine used to cold-start 200/s × 4 s of them and
+    // spread them over every answer: p50 42 ms
+    const a = both(fn, 200);
+    for (const e of [a.f, a.d]) {
+      near(e.p50Ms, 31, 0.1);
+      expect(e.p99Ms).toBeGreaterThan(300);
+    }
+    // at 2000/s the 105 environments of the 3000/s limit fill while they start: the rest of that
+    // first ~0.4 s is throttled (1% errors) and the cold answers are 0.13%: the p99 is a warm one,
+    // 3.1 × 35 = 109 ms
+    const b = both(fn, 2000);
+    for (const e of [b.f, b.d]) {
+      near(e.p99Ms, 115, 0.1);
+      near(e.err, 0.01, 0.3);
+    }
+  });
+
+  it('an edge: what it answers itself is a mode of its own', () => {
+    // half answered at the edge in ~3 ms, half by the server (~25 ms): the p50 is where they meet
+    const a = both({ components: [{ id: 'users', kind: 'client' }, { id: 'edge', kind: 'edge' }, { id: 'api', kind: 'server' }], connections: [['users', 'edge'], ['edge', 'api']] }, 200);
+    for (const e of [a.f, a.d]) expect(e.p50Ms).toBeLessThan(15);
+    near(a.f.p99Ms, a.d.p99Ms, 0.15);
+  });
+
+  it('a retry after a shed call costs the time the shed took, not an answer', () => {
+    // api (retries 2) splits 600/s between a 100/s worker and storage: the worker sheds two thirds of
+    // its calls at once (0.5 ms) and they are retried; its answers wait its 1 s queue. The p99 is
+    // one of those, ~1.2 s, in both (the fluid engine used to charge each retry a whole answer's time)
+    const a = both({ components: [{ id: 'users', kind: 'client' }, { id: 'api', kind: 'server', capacity: 1e5, retries: 2 }, { id: 'w', kind: 'worker' }, { id: 's', kind: 'storage' }], connections: [['users', 'api'], ['api', 'w'], ['api', 's']] }, 600);
+    for (const e of [a.f, a.d]) near(e.p99Ms, 1200, 0.1);
+  });
+
+  it("an overloaded pool: its answers wait out the queue's bound, no longer", () => {
+    // a 100/s worker offered 300/s: two thirds shed; the rest wait ~1 s (the queue's bound) and are
+    // served in 80 ms (p99 3.1 × 80): p50 ≈ 1.05 s, p99 ≈ 1.2 s. The fluid engine used to add the
+    // M/M/c wait at 98% load on top of the full backlog: p50 1.3 s, p99 2.6 s
+    const a = both({ components: [{ id: 'users', kind: 'client' }, { id: 'w', kind: 'worker' }], connections: [['users', 'w']] }, 300);
+    for (const e of [a.f, a.d]) {
+      near(e.p50Ms, 1040, 0.06);
+      near(e.p99Ms, 1220, 0.06);
+    }
+  });
+
+  it('the lower half of an answer: none in no time', () => {
+    // a cache that hits 40%: the p50 is the server's answers' 17th percentile, lognormal 25 ms ×
+    // e^(−σ²/2 − 0.97σ) ≈ 12.5 ms, plus the cache, the wait and the hops: the DES says 16. The fluid
+    // shape below the mean was exponential, with far too many answers near zero: p50 12 ms
+    const a = both({ components: [{ id: 'users', kind: 'client' }, { id: 'c', kind: 'cache', hitRate: 0.4 }, { id: 'api', kind: 'server' }], connections: [['users', 'c'], ['c', 'api']] }, 100);
+    for (const e of [a.f, a.d]) near(e.p50Ms, 16, 0.12);
   });
 });
 

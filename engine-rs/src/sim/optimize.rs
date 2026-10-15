@@ -280,7 +280,7 @@ pub fn optimize(spec_in: &Value, scenario: &Value, o: &OptimizeOptions) -> Resul
     let allow_rt = o.allow_runtimes == Some(true);
     let mut log: Vec<String> = vec![];
     let mut evaluations = 0.0;
-    let so = SimOptions { dt: None, sample_every: Some(1.0), cfg: None };
+    let so = SimOptions { dt: None, sample_every: Some(1.0), cfg: None, answers: None };
 
     let mut evaluate = |a: &Architecture| -> Eval {
         evaluations += 1.0;

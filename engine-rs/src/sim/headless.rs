@@ -4,7 +4,7 @@
 //! come with it.
 
 use super::catalog::*;
-use super::engine::{Engine, EngineConfig, NodeStats, SimEdge, SimNode};
+use super::engine::{mix_quantile, Engine, EngineConfig, NodeStats, SimEdge, SimNode};
 use super::spec::{apply_variant, graph_of, parse_architecture, parse_scenario, Action, Architecture, Scenario};
 use crate::backtest::{js_max, js_sort_by};
 use crate::math::{js_num, js_round, js_to_fixed};
@@ -466,6 +466,17 @@ pub struct SimResult {
     pub components: IndexMap<String, ComponentReport>,
     pub bottlenecks: Vec<Bottleneck>,
     pub events: Vec<Event>,
+    /// with `answers`: the successful answers' latency, as the discrete-event engine's histogram
+    /// measures it (the p99 above counts failures as timeouts once they pass 1%)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub answers: Option<Answers>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Answers {
+    pub p50_ms: f64,
+    pub p99_ms: f64,
 }
 
 #[derive(Deserialize, Clone, Debug, Default)]
@@ -474,6 +485,8 @@ pub struct SimOptions {
     pub dt: Option<f64>,
     pub sample_every: Option<f64>,
     pub cfg: Option<Value>,
+    /// also report the successful answers' p50 and p99 (scripts/engine-crosscheck.ts)
+    pub answers: Option<bool>,
 }
 
 fn config(cfg: Option<&Value>) -> EngineConfig {
@@ -547,6 +560,8 @@ pub fn simulate_parsed(spec: &Architecture, sc: &Scenario, o: &SimOptions) -> Si
     let mut last: IndexMap<String, NodeStats> = IndexMap::new();
     let mut since_sample = sample_every;
     let (mut requests, mut failed, mut breach) = (0.0, 0.0, 0.0);
+    // every tick's successful answers, pooled over the run as the discrete-event engine's histogram is
+    let mut ans: Vec<[f64; 3]> = vec![];
     let (mut worst_t, mut worst_score) = (0.0, -1.0);
     let mut rand = crate::backtest::rng(12345.0);
     let has_out: std::collections::HashSet<String> = edges.iter().map(|e| e.source.clone()).collect();
@@ -578,6 +593,9 @@ pub fn simulate_parsed(spec: &Architecture, sc: &Scenario, o: &SimOptions) -> Si
         let snap = engine.snapshot_with(&nodes, &edges, false);
         max_lag = max_lag.max(engine.replica_lag());
         let gl = snap.global;
+        if o.answers == Some(true) {
+            ans.extend(engine.answer_mix(&nodes).into_iter().map(|c| [c[0] * traffic(t) * dt, c[1], c[2]]));
+        }
         requests += gl.rps * dt;
         failed += gl.rps * gl.error_rate * dt;
         let ok = gl.error_rate <= max_err && gl.p99 <= max_p99;
@@ -675,6 +693,7 @@ pub fn simulate_parsed(spec: &Architecture, sc: &Scenario, o: &SimOptions) -> Si
         components,
         bottlenecks,
         events,
+        answers: if o.answers == Some(true) && !ans.is_empty() { Some(Answers { p50_ms: js_round(mix_quantile(&ans, 0.5)), p99_ms: js_round(mix_quantile(&ans, 0.99)) }) } else { None },
     }
 }
 
@@ -785,7 +804,7 @@ pub fn breaking_point_parsed(a: &Architecture, o: &BreakingOptions) -> BreakingP
     let slo = (o.slo.as_ref().and_then(|s| s.get("maxErrorRate")).and_then(|x| x.as_f64()).unwrap_or(0.01), o.slo.as_ref().and_then(|s| s.get("maxP99Ms")).and_then(|x| x.as_f64()).unwrap_or(300.0));
     let hold = o.hold_s.unwrap_or(25.0);
     let cap = o.max_rps.unwrap_or(1_000_000.0);
-    let so = SimOptions { dt: None, sample_every: Some(1.0), cfg: o.cfg.clone() };
+    let so = SimOptions { dt: None, sample_every: Some(1.0), cfg: o.cfg.clone(), answers: None };
     let probe = |rps: f64| {
         let r = simulate_parsed(a, &steady(o.read_ratio.unwrap_or(0.8), rps, hold, slo), &so);
         let (err, p99, _) = tail_of(&r);
@@ -836,7 +855,7 @@ pub fn load_curve(spec: &Value, max_rps: f64, points: Option<f64>, read_ratio: O
 
 pub fn load_curve_parsed(a: &Architecture, max_rps: f64, points: Option<f64>, read_ratio: Option<f64>, hold_s: Option<f64>, cfg: Option<Value>) -> Vec<CurvePoint> {
     let n = points.unwrap_or(16.0) as usize;
-    let so = SimOptions { dt: None, sample_every: None, cfg };
+    let so = SimOptions { dt: None, sample_every: None, cfg, answers: None };
     let mut out = vec![];
     for i in 1..=n {
         let rps = js_round((max_rps * i as f64) / n as f64);

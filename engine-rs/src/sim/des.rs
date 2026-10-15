@@ -1575,8 +1575,12 @@ impl<'a> Des<'a> {
             let n = &self.nodes[i];
             let fo = failover_after(&n.data, self.cfg.failover_s);
             let w = &n.win;
-            let workers = if n.workers.is_finite() { n.workers } else { 1.0 };
-            let util = if n.sh_workers > 0.0 { w.hot_area / (n.sh_workers * win_s) } else if n.data.kind == "queue" { n.backlog.len() as f64 / QUEUE_BACKLOG_MAX as f64 } else if n.data.kind == "stream" { n.sub_backlog.iter().map(|q| q.len()).max().unwrap_or(0) as f64 / QUEUE_BACKLOG_MAX as f64 } else if n.rate.is_finite() { w.arrivals / (n.rate * win_s).max(1e-9) } else { w.busy_area / (workers * win_s) };
+            // the load offered over capacity, as the fluid engine reports it (past 100%, by how much:
+            // the busy share of a pool stops at 100% however far it is overloaded); a sharded
+            // database's busiest shard's busy share, if that is more
+            let reach = if n.pooled || n.data.kind == "llm" || super::catalog::clustered(&n.data.kind) { instances_up(&n.data) } else { instances_up(&n.data).min(1.0) };
+            let offered = w.arrivals / (capacity_of(&n.data, Some(reach)) * win_s).max(1e-9);
+            let util = if n.sh_workers > 0.0 { offered.max(w.hot_area / (n.sh_workers * win_s)) } else if n.data.kind == "queue" { n.backlog.len() as f64 / QUEUE_BACKLOG_MAX as f64 } else if n.data.kind == "stream" { n.sub_backlog.iter().map(|q| q.len()).max().unwrap_or(0) as f64 / QUEUE_BACKLOG_MAX as f64 } else { offered };
             // a hot row's lock is a one-writer resource: its busy share is the database's too
             let util = if n.lock_busy || w.lock_s > 0.0 { util.max(w.lock_s / win_s) } else { util };
             // thread-per-request: the threads the offered load needs (rate × hold time, Little's law) over those there are

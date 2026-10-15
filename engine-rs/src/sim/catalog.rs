@@ -283,13 +283,6 @@ pub fn provisioned_cost_h(d: &NodeData) -> f64 {
     }
 }
 
-/// the request rate a function's provisioned concurrency serves warm
-pub fn provisioned_rps(d: &NodeData) -> f64 {
-    match d.provisioned.filter(|p| *p > 0.0 && d.kind == "function") {
-        Some(p) => p / (base_latency_of(d).max(1.0) / 1000.0),
-        None => 0.0,
-    }
-}
 pub const BATCHING_CAPACITY: f64 = 4.0;
 pub const BATCHING_LATENCY_MS: f64 = 400.0;
 pub const QUEUE_MAX_BACKLOG: f64 = 200_000.0;
