@@ -45,7 +45,7 @@ zones:                          # optional failure domains
 | `fallback` | with `breaker` | serve a degraded response while open |
 | `threads` | server, worker | threads per instance: every request in flight holds one, waiting on its calls included (thread-per-request, e.g. Tomcat's 200); unset = asynchronous. A slow dependency then exhausts them, and requests that never touch it fail too |
 | `bulkhead` | any caller | calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread |
-| `provisioned` | function | provisioned concurrency: executions kept warm, so no cold start up to it; billed by the hour whether used or not ($0.0000041667 per GB-s, AWS) |
+| `provisioned` | function | provisioned concurrency: executions kept warm, so no cold start up to it; billed by the hour whether used or not at Lambda's $0.0000041667 per GB-s, under every pricing profile (GCP min instances and Azure premium plans price differently) |
 | `prefixes` | storage | key prefixes the objects are spread over (default 10): each takes 5,500 reads or 3,500 writes a second (S3), past it 503 SlowDown; `hotKeyShare` puts that share on one prefix |
 | `hotRowShare` | db | share of the writes that update one row (a stock counter, a balance): its lock takes them one at a time, each for a write's time — at most 1,000 ÷ latency a second, however big the database |
 | `burst` | gateway | the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000 |
