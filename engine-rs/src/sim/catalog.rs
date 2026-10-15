@@ -122,6 +122,10 @@ pub struct NodeData {
     /// one at a time
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hot_row_share: Option<f64>,
+    /// gateway: the token bucket's size, requests (default: one second of the limit) — a burst
+    /// above the rate passes until the bucket is empty (API Gateway: rate 10,000, burst 5,000)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub burst: Option<f64>,
     /// a network partition's side this component is on (set by the partition action): links between
     /// components on different sides are cut
     #[serde(skip_serializing_if = "Option::is_none")]

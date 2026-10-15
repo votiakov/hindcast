@@ -232,3 +232,19 @@ describe('a hot row', () => {
     expect(hot.des.bottlenecks[0].note).toMatch(/^Hot row/);
   });
 });
+
+describe('a gateway’s burst', () => {
+  const spec = (burst?: number) => ({ components: [{ id: 'u', kind: 'client' }, { id: 'gw', kind: 'gateway', limit: 1000, ...(burst ? { burst } : {}) }, { id: 'api', kind: 'server', instances: 20 }], connections: [['u', 'gw'], ['gw', 'api']] });
+  // 5 s at 1,800/s over a 1,000/s limit: 4,000 requests above the rate (long enough for the fluid
+  // engine, which smooths over fractions of a second, to see it whole)
+  const sc = { duration: 25, traffic: [{ at: 0, rps: 500 }, { at: 9.9, rps: 500 }, { at: 10, rps: 1800 }, { at: 15, rps: 1800 }, { at: 15.1, rps: 500 }, { at: 25, rps: 500 }] };
+  const failed = (spec: unknown) => ({ fluid: simulate(spec as never, sc as never).summary, des: simulateDes(spec, sc, { seed: 9 }).summary });
+
+  it('a bucket of 5,000 lets a short burst through; one second of the limit does not', () => {
+    const big = failed(spec(5000));
+    const small = failed(spec());
+    for (const r of [big.fluid, big.des]) expect(r.meanErrorRate).toBeLessThan(0.01);
+    // ~3,000 of ~17,000 requests fail without the burst
+    for (const r of [small.fluid, small.des]) expect(r.meanErrorRate).toBeGreaterThan(0.12);
+  });
+});

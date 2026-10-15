@@ -253,6 +253,19 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
           <b className="nc-v">{fmt(data.limit ?? 1000)}/s</b>
         </div>
       )}
+      {data.kind === 'gateway' && (
+        <div className="nc-row" title="Burst: the token bucket's size — a burst above the rate passes until it is empty (API Gateway: rate 10,000/s, burst 5,000)">
+          <span className="nc-l">burst</span>
+          <select value={data.burst ?? 0} onChange={(e) => set({ burst: +e.target.value || undefined })}>
+            <option value={0}>1 s of the limit</option>
+            {[500, 1000, 2000, 5000, 10000].map((n) => (
+              <option key={n} value={n}>
+                {fmt(n)} requests
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       {data.kind === 'function' && (
         <div className="nc-row" title="Provisioned concurrency: executions kept warm — no cold start up to it — billed by the hour whether used or not">
           <span className="nc-l">provisioned</span>

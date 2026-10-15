@@ -231,6 +231,8 @@ pub struct NodeState {
     pub hot_queue: f64,
     /// a database: writes waiting for the hot row's lock
     pub lock_queue: f64,
+    /// a gateway's token bucket (NaN: not started — full)
+    pub tokens: f64,
     pub cold_util: f64,
     /// how long this component has been down, s (DNS answers lag it)
     pub dead_for: f64,
@@ -285,6 +287,7 @@ fn fresh() -> NodeState {
         repl_lag: 0.0,
         hot_queue: 0.0,
         lock_queue: 0.0,
+        tokens: f64::NAN,
         cold_util: 0.0,
         dead_for: 0.0,
         sub_backlog: vec![],
@@ -612,7 +615,11 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
         }
         "gateway" => {
             let limit = c.d.limit.unwrap_or(f64::INFINITY);
-            let processed = c.arrivals.min(limit * c.dt);
+            // a token bucket: refilled at the limit, holding up to the burst
+            let burst = c.d.burst.filter(|b| *b > 0.0).unwrap_or(limit);
+            st.tokens = if st.tokens.is_nan() { burst } else { (st.tokens + limit * c.dt).min(burst) };
+            let processed = c.arrivals.min(st.tokens.max(0.0));
+            st.tokens -= processed;
             let routes: Vec<Route> = c.routes.iter().filter(|k| k.up).cloned().collect();
             let failed = c.arrivals - processed + (if routes.is_empty() { processed } else { 0.0 });
             let mut r = res(processed, failed, if routes.is_empty() { 0.0 } else { processed }, c.arrivals / (limit * c.dt), true);

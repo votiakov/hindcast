@@ -325,6 +325,11 @@
            "minimum": 0,
            "maximum": 1
           },
+          "burst": {
+           "description": "gateway: the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -778,6 +783,11 @@
            "type": "number",
            "minimum": 0,
            "maximum": 1
+          },
+          "burst": {
+           "description": "gateway: the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000",
+           "type": "number",
+           "exclusiveMinimum": 0
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -1651,6 +1661,11 @@
            "minimum": 0,
            "maximum": 1
           },
+          "burst": {
+           "description": "gateway: the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -2094,6 +2109,11 @@
               "minimum": 0,
               "maximum": 1
              },
+             "burst": {
+              "description": "gateway: the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000",
+              "type": "number",
+              "exclusiveMinimum": 0
+             },
              "capacity": {
               "description": "override: req/s per size-S instance",
               "type": "number",
@@ -2486,6 +2506,11 @@
                 "minimum": 0,
                 "maximum": 1
                },
+               "burst": {
+                "description": "gateway: the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000",
+                "type": "number",
+                "exclusiveMinimum": 0
+               },
                "capacity": {
                 "description": "override: req/s per size-S instance",
                 "type": "number",
@@ -2772,6 +2797,11 @@
                 "type": "number",
                 "minimum": 0,
                 "maximum": 1
+               },
+               "burst": {
+                "description": "gateway: the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000",
+                "type": "number",
+                "exclusiveMinimum": 0
                },
                "capacity": {
                 "description": "override: req/s per size-S instance",
@@ -3600,6 +3630,11 @@
            "minimum": 0,
            "maximum": 1
           },
+          "burst": {
+           "description": "gateway: the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -4069,6 +4104,11 @@
            "type": "number",
            "minimum": 0,
            "maximum": 1
+          },
+          "burst": {
+           "description": "gateway: the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000",
+           "type": "number",
+           "exclusiveMinimum": 0
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -4930,6 +4970,11 @@
            "type": "number",
            "minimum": 0,
            "maximum": 1
+          },
+          "burst": {
+           "description": "gateway: the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000",
+           "type": "number",
+           "exclusiveMinimum": 0
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -5801,6 +5846,11 @@
            "minimum": 0,
            "maximum": 1
           },
+          "burst": {
+           "description": "gateway: the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -6339,6 +6389,11 @@
            "minimum": 0,
            "maximum": 1
           },
+          "burst": {
+           "description": "gateway: the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -6779,6 +6834,11 @@
              "minimum": 0,
              "maximum": 1
             },
+            "burst": {
+             "description": "gateway: the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000",
+             "type": "number",
+             "exclusiveMinimum": 0
+            },
             "capacity": {
              "description": "override: req/s per size-S instance",
              "type": "number",
@@ -7171,6 +7231,11 @@
                "minimum": 0,
                "maximum": 1
               },
+              "burst": {
+               "description": "gateway: the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000",
+               "type": "number",
+               "exclusiveMinimum": 0
+              },
               "capacity": {
                "description": "override: req/s per size-S instance",
                "type": "number",
@@ -7457,6 +7522,11 @@
                "type": "number",
                "minimum": 0,
                "maximum": 1
+              },
+              "burst": {
+               "description": "gateway: the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000",
+               "type": "number",
+               "exclusiveMinimum": 0
               },
               "capacity": {
                "description": "override: req/s per size-S instance",
@@ -8283,6 +8353,11 @@
            "minimum": 0,
            "maximum": 1
           },
+          "burst": {
+           "description": "gateway: the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -8723,6 +8798,11 @@
              "minimum": 0,
              "maximum": 1
             },
+            "burst": {
+             "description": "gateway: the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000",
+             "type": "number",
+             "exclusiveMinimum": 0
+            },
             "capacity": {
              "description": "override: req/s per size-S instance",
              "type": "number",
@@ -9115,6 +9195,11 @@
                "minimum": 0,
                "maximum": 1
               },
+              "burst": {
+               "description": "gateway: the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000",
+               "type": "number",
+               "exclusiveMinimum": 0
+              },
               "capacity": {
                "description": "override: req/s per size-S instance",
                "type": "number",
@@ -9401,6 +9486,11 @@
                "type": "number",
                "minimum": 0,
                "maximum": 1
+              },
+              "burst": {
+               "description": "gateway: the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000",
+               "type": "number",
+               "exclusiveMinimum": 0
               },
               "capacity": {
                "description": "override: req/s per size-S instance",

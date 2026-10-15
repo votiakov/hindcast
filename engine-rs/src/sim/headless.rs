@@ -600,7 +600,8 @@ pub fn simulate_parsed(spec: &Architecture, sc: &Scenario, o: &SimOptions) -> Si
         summary: Summary {
             duration_s: sc.duration,
             mean_rps: round(mean(&|x| x.rps), 1),
-            mean_error_rate: round(mean(&|x| x.error_rate), 4),
+            // of every request the users sent, as the discrete-event engine counts it
+            mean_error_rate: round(if requests > 0.0 { failed / requests } else { 0.0 }, 4),
             peak_error_rate: round(peak(&|x| x.error_rate), 4),
             mean_p99_ms: js_round(mean(&|x| x.p99_ms)),
             peak_p99_ms: js_round(peak(&|x| x.p99_ms)),

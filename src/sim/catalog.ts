@@ -115,6 +115,8 @@ export interface SystemNodeData extends Record<string, unknown> {
   prefixes?: number;
   /** db: share of the writes that update one row — they take its lock one at a time */
   hotRowShare?: number;
+  /** gateway: token bucket size, requests (default one second of the limit) */
+  burst?: number;
   /** db: horizontal partitions (capacity and cost × shards) */
   shards?: number;
   /** db: share of its traffic on one key — all of it on one shard */

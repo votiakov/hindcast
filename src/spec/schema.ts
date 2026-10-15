@@ -52,6 +52,7 @@ export const ComponentSpec = z
     provisioned: z.number().int().min(0).max(10000).optional().describe('function: provisioned concurrency — executions kept warm, so no cold start up to it; billed by the hour whether used or not ($0.0000041667 per GB-s)'),
     prefixes: z.number().int().min(1).max(100000).optional().describe('storage: key prefixes the objects are spread over (default 10) — S3 takes 5,500 reads or 3,500 writes a second per prefix; `hotKeyShare` puts that share on one prefix'),
     hotRowShare: z.number().min(0).max(1).optional().describe('db: share of the writes that update one row (a stock counter, a balance): its lock takes them one at a time, each for a write\'s time — at most 1,000 ÷ latency a second, however big the database'),
+    burst: z.number().positive().optional().describe('gateway: the token bucket\'s size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway\'s rate 10,000 and burst 5,000'),
     capacity: z.number().positive().optional().describe('override: req/s per size-S instance'),
     latencyMs: z.number().nonnegative().optional().describe('override: base service time'),
     costPerHour: z.number().nonnegative().optional().describe('override: $/h per size-S instance'),

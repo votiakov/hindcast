@@ -654,7 +654,7 @@ impl<'a> Des<'a> {
             // keep total capacity exact: workers / service time = capacity
             n.svc_mean_ms = (n.workers / cap) * 1000.0;
         }
-        n.tokens = n.tokens.min(n.rate);
+        n.tokens = n.tokens.min(d.burst.filter(|b| *b > 0.0 && kind == "gateway").unwrap_or(n.rate));
         n.threads_cap = match d.threads.filter(|t| *t > 0.0) {
             Some(t) if kind == "server" || kind == "worker" => t * reach,
             _ => f64::INFINITY,
@@ -799,7 +799,8 @@ impl<'a> Des<'a> {
         {
             let n = &mut self.nodes[i];
             if n.rate.is_finite() {
-                n.tokens = n.rate.min(n.tokens + (now - n.last_refill) * n.rate);
+                let cap = n.data.burst.filter(|b| *b > 0.0 && n.data.kind == "gateway").unwrap_or(n.rate);
+                n.tokens = cap.min(n.tokens + (now - n.last_refill) * n.rate);
                 n.last_refill = now;
                 if n.tokens < 1.0 {
                     return self.fail(Some(i), why(i, R_LIMIT), done, 1.0); // 429
