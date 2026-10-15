@@ -1,0 +1,42 @@
+<!-- title: Why Hindcast | lede: What it is for, how it differs from the system-design simulators you may have seen, why you can check its numbers, and what it can't do. -->
+<section class="prose">
+<h2>What it is for</h2>
+<p>Hindcast answers one question before a change ships: <b>what would this have done to our real traffic?</b> A resize, an autoscaler, a cache, a replica, a retry policy, Graviton, a Kubernetes manifest diff, a Terraform plan. It builds a model of your system from what it already exports — Prometheus metrics, OpenTelemetry traces, the cloud bill — replays the change over the history, and says what it would have cost in money and in minutes out of SLO, with how far to trust the answer.</p>
+<p>Around that sit the tools the same people need on a whiteboard: a simulator to design and break systems, a failure audit that tries every failure and prices every fix, lessons and comparisons to learn from, and an MCP server so an AI agent can do the work itself.</p>
+
+<h2>"Isn't this a Breakscale clone?"</h2>
+<p>Breakscale is a good system-design simulator: draw components, push traffic, watch queues fill and retries storm. So are PaperDraw, systemInPain and others — "drag boxes, press play" is a genre, and Hindcast has one too. If learning by breaking diagrams is all you want, Breakscale is free, open source and excellent; use it.</p>
+<p>Hindcast exists for what a diagram can't tell you:</p>
+<div class="table-wrap"><table class="ledger">
+<tr><th></th><th>a system-design simulator</th><th>Hindcast</th></tr>
+<tr><td>what it simulates</td><td>the system you drew, with the numbers you typed</td><td>also <b>your</b> system: capacities, latencies, CPU per request, throttling, memory and leaks fitted from your telemetry, with a trust report per service</td></tr>
+<tr><td>the question it answers</td><td>where does this design break?</td><td>also: what would this change have done to last week's traffic, in $ and minutes out of SLO, and how sure is that?</td></tr>
+<tr><td>evidence its numbers hold</td><td>its own simulation</td><td>predictions committed to the repository <i>before</i> real Kubernetes runs, then scored against every request — misses published (<a href="accuracy.html">accuracy</a>)</td></tr>
+<tr><td>money</td><td>compute list prices, if any</td><td>every component priced from cited SKUs on AWS, GCP and Azure, 1- and 3-year commitments, or your own bill</td></tr>
+<tr><td>failure</td><td>inject a fault, watch</td><td>an audit that kills every component, slows every dependency, chills every cache, darkens every zone — each fix re-tested on the same incident and priced per month</td></tr>
+<tr><td>Kubernetes</td><td>—</td><td>CPU-quota throttling, OOM kills and leaks, node pools, losing a node at the peak, manifest diffs, PR checks</td></tr>
+<tr><td>engines</td><td>one</td><td>two that check each other: a fluid model for speed and a discrete-event one for tails; a cross-check in CI</td></tr>
+</table></div>
+<p>The simulator side was built independently, in Rust, with its own two engines; the parts that look alike look alike because load balancers, caches and queues do.</p>
+
+<h2>Why you can check the numbers</h2>
+<p>Every claim about accuracy comes from a reference system anyone can rebuild: the OpenTelemetry Astronomy Shop on a kind cluster, replaying NASA's July 1995 web traffic (<a href="accuracy.html">accuracy</a>, <code>reference/k8s</code>). Before each out-of-sample run, the model's verdict was committed; then the run was recorded and scored. Some of it went well: calibration read a memory leak from one ordinary day, and from it the replay said whether that container would be OOM-killed in 11 of 13 runs, usually a few minutes early. It said a doubled memory limit would stop the kill on launch day, and that day passed with no errors. Some of it didn't: on a 1.5× day it predicted the kill but called the day a pass, while checkout had failed for six minutes as the container stalled at its limit before the kernel killed it. That stall is not in the model yet. Another service's capacity, read from low-load latency, came out too low. The hits and misses are in the same tables.</p>
+
+<h2>What it touches in your systems</h2>
+<p>Nothing, beyond reading. It queries Prometheus and Jaeger or Tempo, reads exported files and the bill, and runs <code>kubectl get</code> only when asked. Every answer is computed on your machine or in your browser; nothing is sent anywhere.</p>
+
+<h2>What it doesn't do</h2>
+<ul>
+<li>It doesn't replace a load test for a change far past anything your history shows — it says so (confidence <i>low</i>, "load-test before trusting it").</li>
+<li>It has no term yet for callers that stay broken after a dependency restarts (a stuck gRPC channel), or for a container stalling before an OOM kill; treat its recovery times as the platform's.</li>
+<li>It models what your telemetry shows. A service nobody instruments is a guess, labelled as one.</li>
+<li>The simulator's built-in capacities are teaching defaults; calibrate them, or use a real pricing profile and your own numbers.</li>
+</ul>
+
+<h2>Who it is for</h2>
+<ul>
+<li><b>Platform engineers and SREs</b>: verify a change before it ships, review capacity, find the single points of failure, gate pull requests.</li>
+<li><b>CTOs and leads</b>: what a decision costs and what it risks, in one page, with its basis.</li>
+<li><b>Engineers learning system design</b>: lessons, comparisons and a sandbox where every number has an explanation, and real systems to start from.</li>
+</ul>
+</section>
