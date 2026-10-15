@@ -14,11 +14,12 @@ import { cap } from './cap';
 import { sharding } from './sharding';
 import { crawler } from './crawler';
 import { events } from './events';
+import { bulkheads } from './bulkheads';
 
 /** the study path: tracks in order, each building on the one before */
 export const TRACKS: { id: string; label: string; lessons: Lesson[] }[] = [
   { id: 'foundations', label: 'Foundations: scale a web service', lessons: [lesson1, scale201, pastebin, mint, sizeCache] },
-  { id: 'resilience', label: 'Asynchrony and failure', lessons: [queues, events, retryStorm, elastic, zones] },
+  { id: 'resilience', label: 'Asynchrony and failure', lessons: [queues, events, retryStorm, bulkheads, elastic, zones] },
   { id: 'data', label: 'Data at scale', lessons: [cap, sharding, crawler] },
   { id: 'ai', label: 'AI and runtimes', lessons: [aiServing, runtimes] },
 ];
