@@ -30,6 +30,10 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
   const [more, setMore] = useState(tuned);
   const [cal, setCal] = useState(false);
   const hasResilience = caller || data.kind !== 'client';
+  // routing only means something with more than one component to route to
+  const outgoing = useSim((s) => s.boards[b].edges.filter((e) => e.source === id).length);
+  const as = data.autoscale;
+  const pick = (v: number, list: number[]) => [...new Set([...list, v])].sort((x, y) => x - y);
 
   // an opened card can grow under the play bar: pan the board up just enough to show all of it
   const box = useRef<HTMLDivElement>(null);
@@ -62,7 +66,7 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
                   <Minus size={12} />
                 </button>
                 <b>{instances}</b>
-                <button onClick={() => set({ instances: Math.min(24, instances + 1) })} title="Add an instance">
+                <button onClick={() => set({ instances: Math.min(500, instances + 1) })} title="Add an instance">
                   <Plus size={12} />
                 </button>
               </span>
@@ -86,29 +90,57 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
       {spec.scalable && (
         <div className="nc-row" title="Target-tracking autoscaling: adds instances when utilisation passes the target, after a warm-up">
           <span className="nc-l">autoscale</span>
-          <button className={`nc-toggle ${data.autoscale ? 'on' : ''}`} onClick={() => set({ autoscale: data.autoscale ? undefined : { min: instances, max: Math.min(24, Math.max(instances * 4, 4)), targetUtil: 0.6, warmupS: 30, cooldownS: 60 } })}>
-            {data.autoscale ? 'on' : 'off'}
+          <button className={`nc-toggle ${as ? 'on' : ''}`} onClick={() => set({ autoscale: as ? undefined : { min: instances, max: Math.min(500, Math.max(instances * 4, 4)), targetUtil: 0.6, warmupS: 30, cooldownS: 60 } })}>
+            {as ? 'on' : 'off'}
           </button>
-          {data.autoscale && (
+          {as && (
             <>
-              <span className="nc-l">max</span>
-              <select value={data.autoscale.max} onChange={(e) => set({ autoscale: { ...data.autoscale!, max: Math.max(+e.target.value, data.autoscale!.min) } })}>
-                {[2, 4, 6, 8, 12, 16, 24].map((n) => (
+              <span className="nc-l">min</span>
+              <select value={as.min} onChange={(e) => set({ autoscale: { ...as, min: Math.min(+e.target.value, as.max) } })} title="Never fewer than this">
+                {pick(as.min, [1, 2, 3, 4, 5, 8, 12, 16]).map((n) => (
                   <option key={n} value={n}>
                     {n}
                   </option>
                 ))}
               </select>
-              <span className="nc-l">warm-up</span>
-              <select value={data.autoscale.warmupS ?? 30} onChange={(e) => set({ autoscale: { ...data.autoscale!, warmupS: +e.target.value } })} title="Launch → serving. k8s pod 5–20 s · Fargate 30–60 s · EC2 ASG 90–180 s">
-                {[5, 15, 30, 60, 120, 180].map((n) => (
+              <span className="nc-l">max</span>
+              <select value={as.max} onChange={(e) => set({ autoscale: { ...as, max: Math.max(+e.target.value, as.min) } })} title="Never more than this">
+                {pick(as.max, [2, 4, 6, 8, 12, 16, 24, 32, 48, 64, 100]).map((n) => (
                   <option key={n} value={n}>
-                    {n}s
+                    {n}
                   </option>
                 ))}
               </select>
             </>
           )}
+        </div>
+      )}
+      {spec.scalable && as && (
+        <div className="nc-row" title="The utilisation it scales to; how long a new instance takes to serve; how long it waits before scaling in">
+          <span className="nc-l">target</span>
+          <select value={as.targetUtil ?? 0.6} onChange={(e) => set({ autoscale: { ...as, targetUtil: +e.target.value } })}>
+            {pick(as.targetUtil ?? 0.6, [0.4, 0.5, 0.6, 0.7, 0.8]).map((n) => (
+              <option key={n} value={n}>
+                {Math.round(n * 100)}%
+              </option>
+            ))}
+          </select>
+          <span className="nc-l">warm-up</span>
+          <select value={as.warmupS ?? 30} onChange={(e) => set({ autoscale: { ...as, warmupS: +e.target.value } })} title="Launch → serving. k8s pod 5–20 s · Fargate 30–60 s · EC2 ASG 90–180 s">
+            {pick(as.warmupS ?? 30, [5, 10, 15, 30, 60, 120, 180]).map((n) => (
+              <option key={n} value={n}>
+                {n}s
+              </option>
+            ))}
+          </select>
+          <span className="nc-l">cooldown</span>
+          <select value={as.cooldownS ?? 60} onChange={(e) => set({ autoscale: { ...as, cooldownS: +e.target.value } })} title="Wait after scaling before giving instances back">
+            {pick(as.cooldownS ?? 60, [10, 30, 60, 120, 300]).map((n) => (
+              <option key={n} value={n}>
+                {n}s
+              </option>
+            ))}
+          </select>
         </div>
       )}
 
@@ -167,6 +199,14 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
       )}
       {(data.kind === 'cache' || data.kind === 'cdn') && (
         <div className="nc-row">
+          <span className="nc-l" title="After a restart or flush the cache is empty: the hit rate comes back over this time constant">re-warm</span>
+          <select value={data.warmupS ?? 20} onChange={(e) => set({ warmupS: +e.target.value })}>
+            {pick(data.warmupS ?? 20, [5, 10, 20, 60, 300]).map((n) => (
+              <option key={n} value={n}>
+                {n}s
+              </option>
+            ))}
+          </select>
           <span className="nc-l">writes</span>
           <select value={data.writePolicy ?? 'through'} onChange={(e) => set({ writePolicy: e.target.value as 'through' | 'behind' })} title="through: writes go on to the origin. behind: acknowledged at the cache and flushed ~5 s later — lost if the cache dies first">
             <option value="through">through</option>
@@ -237,7 +277,7 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
               )}
             </div>
           )}
-          {data.kind !== 'client' && (
+          {data.kind !== 'client' && (outgoing > 1 || (data.routing ?? 'split') !== 'split' || data.kind === 'server' || data.kind === 'worker' || data.kind === 'function') && (
             <div className="nc-row" title="How calls spread over the components this one calls">
               <span className="nc-l">routing</span>
               <select value={data.routing ?? 'split'} onChange={(e) => set({ routing: e.target.value as RouteMode })}>

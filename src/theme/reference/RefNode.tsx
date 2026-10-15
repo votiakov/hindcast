@@ -150,7 +150,9 @@ export function RefNode({ data, st, v, selected, showCost, running, motion = fal
       {spec.scalable && (v.instances > 1 || v.booting > 0 || data.autoscale) && !fleet && (
         <div className="ref-instances">
           {Array.from({ length: v.instances }, (_, i) => {
-            const s = i >= v.instancesUp ? 'dead' : i >= reachable ? 'idle' : healthOf(util, st?.dropRps ?? 0, st?.inRps ?? 0, true);
+            // 'idle' styles an unreachable instance (dashed); one that is simply not busy is healthy
+            const h = healthOf(util, st?.dropRps ?? 0, st?.inRps ?? 0, true);
+            const s = i >= v.instancesUp ? 'dead' : i >= reachable ? 'idle' : h === 'idle' ? 'ok' : h;
             return <span key={i} className={`ri-${s}`} title={`${data.name}-${i + 1}: ${s === 'dead' ? 'down' : s === 'idle' ? 'unreachable (no load balancer)' : `${Math.round(util * 100)}%`}`} />;
           })}
           {Array.from({ length: v.booting }, (_, i) => (
