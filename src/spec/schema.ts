@@ -5,7 +5,7 @@ import { z } from 'zod';
  * (app, CLI, MCP server, future engines). Plain data, JSON or YAML.
  */
 
-export const KIND_VALUES = ['client', 'cdn', 'lb', 'gateway', 'server', 'worker', 'function', 'cache', 'db', 'replica', 'storage', 'queue', 'llm', 'llmapi', 'external', 'kv', 'dns', 'stream', 'search'] as const;
+export const KIND_VALUES = ['client', 'cdn', 'lb', 'gateway', 'server', 'worker', 'function', 'cache', 'db', 'replica', 'storage', 'queue', 'llm', 'llmapi', 'external', 'kv', 'dns', 'stream', 'search', 'vector'] as const;
 
 export const ComponentSpec = z
   .object({
@@ -46,6 +46,8 @@ export const ComponentSpec = z
     hotKeyShare: z.number().min(0).max(1).optional().describe('db/kv: share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which saturates first'),
     partitions: z.number().int().min(1).max(1024).optional().describe('stream: partitions (default 4) — 1,000 messages/s in each, and a subscriber can use at most one consumer instance per partition'),
     refreshS: z.number().min(0).max(3600).optional().describe('search: how often the index refreshes, s (default 1) — a document is searchable only after the next refresh; a longer interval indexes faster but searches miss recent writes for longer'),
+    recall: z.number().min(0.5).max(0.999).optional().describe('vector: the recall queries are tuned for (default 0.95) — each halving of the neighbours a search may miss doubles its work: 0.99 costs five times 0.95'),
+    vectorsM: z.number().positive().max(100000).optional().describe('vector: vectors in the index, millions (default 1; 768 dimensions, 3.5 GB of graph a million) — what does not fit in the nodes\' memory (4/8/16 GB a node by size) is read from disk at ~10× the cost'),
     ttlS: z.number().min(0).max(86400).optional().describe('dns: how long clients cache an answer, s (default 60) — a dead target keeps getting traffic until it expires'),
     healthCheckS: z.number().min(0).max(3600).optional().describe('dns: how long health checks take to notice a dead target, s (default 30; 3 checks × 10 s)'),
     threads: z.number().int().min(1).max(10000).optional().describe('server/worker: threads per instance — every request in flight holds one, waiting on its calls included (thread-per-request, e.g. Tomcat 200). Unset: asynchronous, waiting holds nothing'),

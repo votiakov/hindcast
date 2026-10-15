@@ -30,7 +30,7 @@ zones:                          # optional failure domains
 | field | applies to | meaning |
 |---|---|---|
 | `id` | all | unique id |
-| `kind` | all | `client cdn lb gateway server worker function cache db replica storage queue llm llmapi external kv dns stream search` |
+| `kind` | all | `client cdn lb gateway server worker function cache db replica storage queue llm llmapi external kv dns stream search vector` |
 | `name` | all | display name |
 | `tier` | sizable kinds | `S` (×1 capacity, ×1 cost), `M` (×2, ×2.2), `L` (×4, ×4.8) |
 | `instances` | server, worker, llm | horizontal instances (1–500); reachable only behind lb/gateway/queue |
@@ -62,6 +62,8 @@ zones:                          # optional failure domains
 | `workingSetGb`, `skew` | cache | the data the cache fronts (GB) and how concentrated reads are on popular keys (Zipf exponent, default 1): with them the hit rate follows from the cache's memory (S 6.4, M 13, L 26 GB) instead of `hitRate` |
 | `shards` | db, replica | horizontal partitions (1–256), each a full database holding part of the keys: capacity and cost × shards. Writes split with the data, which replicas and caches cannot do. Give a sharded database's replica the same count (a replica per shard) |
 | `refreshS` | search | how often the index refreshes, s (default 1): a document is searchable only after the next refresh, later still while indexing queues behind busy nodes; searches in that window miss it |
+| `recall` | vector | the recall queries are tuned for (default 0.95, 0.5–0.999): work per query × 0.05 ÷ (1 − recall), so 0.99 takes five times the capacity of 0.95 |
+| `vectorsM` | vector | vectors in the index, millions (default 1; 768 dimensions, 3.52 GB of graph a million); what does not fit in the nodes' memory (4 / 8 / 16 GB a node by size) is read from disk at ~10× the cost |
 | `partitions` | stream | partitions (default 4): 1,000 messages/s in and $0.015/h each, and the most consumer instances any one subscriber can use |
 | `ttlS`, `healthCheckS` | dns | how long clients cache an answer (default 60 s) and how long health checks take to notice a dead target (default 30 s): after a target dies, everyone sent there fails until the checks notice, then fewer as caches expire |
 | `hotKeyShare` | db, kv | share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which takes `hotKeyShare + (1 − hotKeyShare) / shards` of the load and saturates first |

@@ -149,6 +149,21 @@ pub fn explain(d: &NodeData, st: Option<&NodeStats>, v: &View) -> Option<String>
         format!("Backlog of {} messages: consumers are {} behind. Producers are unaffected — work completes later.", fmt(st.queue), if st.lag_s.is_finite() { format!("{}s", js_to_fixed(st.lag_s, 0)) } else { "indefinitely".into() })
     } else if d.kind == "dns" && st.drop_rps > 0.5 {
         format!("{}/s of clients still hold an answer pointing at a dead target and time out: they keep going there until the health checks notice ({} s) and their cached answer expires (TTL {} s).", fmt(st.drop_rps), js_num(d.health_check_s.unwrap_or(30.0)), js_num(d.ttl_s.unwrap_or(60.0)))
+    } else if d.kind == "vector" && vector_fit(d) < 0.999 && (v.health == "hot" || v.health == "warm") {
+        format!(
+            "The index does not fit in memory: {} GB of graph against the {} GB its nodes keep for it, so {}% of lookups read the disk at ~{}× the cost. Add nodes (or bigger ones) until it fits — that buys more than CPU would.",
+            fmt(d.vectors_m.unwrap_or(1.0) * VECTOR_GB_PER_M),
+            fmt(vector_memory_gb(d)),
+            pct(1.0 - vector_fit(d)),
+            js_num(VECTOR_DISK_FACTOR)
+        )
+    } else if d.kind == "vector" && d.recall.unwrap_or(0.95) > 0.95 && (v.health == "hot" || v.health == "warm") {
+        format!(
+            "Recall {} costs {}× the work of 0.95 per query: each halving of the neighbours a search may miss doubles the graph it walks. Is the last bit of recall worth {}% of the capacity?",
+            js_num(d.recall.unwrap_or(0.95)),
+            js_to_fixed(0.05 / (1.0 - d.recall.unwrap_or(0.95).min(0.999)), 1),
+            pct(1.0 - (1.0 - d.recall.unwrap_or(0.95).min(0.999)) / 0.05)
+        )
     } else if d.kind == "search" && st.repl_lag_s > 1.0 {
         format!(
             "New documents show up in search {} after they are written: the index refreshes every {} s{}. Searches in that window miss them — fine for a catalogue, wrong for \"I just posted it, where is it?\".",

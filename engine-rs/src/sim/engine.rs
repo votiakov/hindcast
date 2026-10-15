@@ -879,7 +879,7 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
         }
         // a read replica is a data store: it answers, it does not call on (as a primary only reaches its replicas);
         // so is a search index — its nodes share the queries between them
-        "replica" | "search" => {
+        "replica" | "search" | "vector" => {
             let mut r = process_through(c, st);
             r.forward = 0.0;
             r.routes = Some(vec![]);

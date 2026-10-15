@@ -19,7 +19,8 @@ export type Kind =
   | 'kv'
   | 'dns'
   | 'stream'
-  | 'search';
+  | 'search'
+  | 'vector';
 export type Tier = 'S' | 'M' | 'L';
 
 /** how a node spreads its outgoing calls across children */
@@ -104,6 +105,10 @@ export interface SystemNodeData extends Record<string, unknown> {
   partitions?: number;
   /** search: how often the index refreshes, s (default 1) — a write is searchable only after the next refresh */
   refreshS?: number;
+  /** vector: the recall queries are tuned for (default 0.95) — each halving of what they miss doubles the work */
+  recall?: number;
+  /** vector: vectors in the index, millions (default 1; 768 dimensions) */
+  vectorsM?: number;
   /** dns: how long clients cache an answer, s (default 60) */
   ttlS?: number;
   /** dns: how long health checks take to notice a dead target, s (default 30) */
@@ -281,6 +286,11 @@ export const KINDS: Record<Kind, KindSpec> = {
     capacity: 200, baseLatencyMs: 20, costPerHour: 0.2, tiered: true, scalable: true,
     description: 'Full-text search (OpenSearch, Elasticsearch): data nodes that share the queries between them — no load balancer needed. A write is searchable only after the next refresh (1 s by default), later still when indexing queues behind busy nodes.',
   },
+  vector: {
+    kind: 'vector', label: 'Vector Database', prefix: 'vectors', color: '#f0abfc',
+    capacity: 300, baseLatencyMs: 10, costPerHour: 0.2, tiered: true, scalable: true,
+    description: 'Nearest-neighbour search over embeddings (OpenSearch k-NN, pgvector): an HNSW graph spread over its nodes. Higher recall walks more of the graph — 0.99 costs five times 0.95 — and a graph that does not fit in memory is read from disk.',
+  },
   external: {
     kind: 'external', label: 'External API', prefix: 'ext', color: '#38bdf8',
     capacity: 1000, baseLatencyMs: 200, costPerHour: 0, tiered: false,
@@ -298,7 +308,7 @@ export const CATEGORIES: { id: string; label: string; kinds: Kind[] }[] = [
   { id: 'traffic', label: 'Traffic', kinds: ['client'] },
   { id: 'edge', label: 'Edge & Network', kinds: ['dns', 'cdn', 'lb', 'gateway'] },
   { id: 'compute', label: 'Compute', kinds: ['server', 'worker', 'function'] },
-  { id: 'data', label: 'Data', kinds: ['cache', 'db', 'replica', 'kv', 'storage', 'search'] },
+  { id: 'data', label: 'Data', kinds: ['cache', 'db', 'replica', 'kv', 'storage', 'search', 'vector'] },
   { id: 'async', label: 'Messaging', kinds: ['queue', 'stream'] },
   { id: 'ai', label: 'AI', kinds: ['llm', 'llmapi'] },
   { id: 'outside', label: 'Third party', kinds: ['external'] },
@@ -345,7 +355,7 @@ export function capacityOf(d: SystemNodeData, reachable = instancesUp(d)): numbe
     const tier = spec.tiered ? TIERS[d.tier].capacity : 1;
     const batch = d.kind === 'llm' && d.batching ? BATCHING.capacity : 1;
     const rt = d.runtime ? RUNTIMES[d.runtime].throughput : 1;
-    cap = (d.capacity ?? spec.capacity) * tier * batch * rt * (spec.scalable ? Math.max(1, reachable) : 1) * shardsOf(d) * partitionsOf(d);
+    cap = ((d.capacity ?? spec.capacity) * tier * batch * rt * (spec.scalable ? Math.max(1, reachable) : 1) * shardsOf(d) * partitionsOf(d)) / vectorWork(d);
   }
   return cap * (d.degraded ?? 1);
 }
@@ -372,7 +382,26 @@ export const hotPrefixShare = (d: SystemNodeData): number => {
 };
 
 /** a cluster that spreads requests over its own nodes (no load balancer needed in front) */
-export const clustered = (kind: Kind): boolean => kind === 'search';
+export const clustered = (kind: Kind): boolean => kind === 'search' || kind === 'vector';
+
+/** an HNSW index's memory per million vectors, GB: 1.1 × (4 × 768 dimensions + 8 × M=16 links) bytes (OpenSearch k-NN sizing) */
+export const VECTOR_GB_PER_M = 3.52;
+/** a graph lookup that misses memory costs this many in-memory ones */
+export const VECTOR_DISK_FACTOR = 10;
+/** what a vector database's nodes keep in memory for the graph, GB: a quarter of RAM each (16/32/64 GiB nodes) */
+export const vectorMemoryGb = (d: SystemNodeData): number => ({ S: 4, M: 8, L: 16 })[d.tier] * Math.max(1, instancesUp(d));
+/** the share of a vector database's graph its nodes hold in memory */
+export function vectorFit(d: SystemNodeData): number {
+  const index = Math.max(0, d.vectorsM ?? 1) * VECTOR_GB_PER_M;
+  return index > 0 ? Math.min(1, vectorMemoryGb(d) / index) : 1;
+}
+/** a vector query's work relative to recall 0.95 with the graph in memory (mirrors the engine) */
+export function vectorWork(d: SystemNodeData): number {
+  if (d.kind !== 'vector') return 1;
+  const recall = Math.min(0.999, Math.max(0.5, d.recall ?? 0.95));
+  const fit = vectorFit(d);
+  return (0.05 / (1 - recall)) * (fit + (1 - fit) * VECTOR_DISK_FACTOR);
+}
 /** a search index's refresh interval, s */
 export const refreshSOf = (d: SystemNodeData): number => Math.max(0, d.refreshS ?? 1);
 
@@ -396,7 +425,7 @@ export function threadsCapacity(d: SystemNodeData, reachable: number, holdMs: nu
 
 export function baseLatencyOf(d: SystemNodeData): number {
   const rt = d.runtime ? RUNTIMES[d.runtime].latency : 1;
-  return (d.latencyMs ?? KINDS[d.kind].baseLatencyMs) * rt + (d.kind === 'llm' && d.batching ? BATCHING.latencyMs : 0);
+  return (d.latencyMs ?? KINDS[d.kind].baseLatencyMs) * rt * vectorWork(d) + (d.kind === 'llm' && d.batching ? BATCHING.latencyMs : 0);
 }
 
 /** serverless $ per request: flat catalog price, or memory × duration when a runtime is chosen */

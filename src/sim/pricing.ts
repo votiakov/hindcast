@@ -121,6 +121,11 @@ export const PRICING: Record<PricingId, PricingProfile> = {
         source: VANTAGE('opensearch/r7g.large.search'),
         note: 'OpenSearch Service data node, per node; storage (EBS) and dedicated masters not included',
       },
+      vector: {
+        tiers: { S: { sku: 'r7g.large.search', hourly: 0.178 }, M: { sku: 'r7g.xlarge.search', hourly: 0.356 }, L: { sku: 'r7g.2xlarge.search', hourly: 0.712 } },
+        source: VANTAGE('opensearch/r7g.large.search'),
+        note: 'OpenSearch Service k-NN on a memory-optimised data node, per node',
+      },
       dns: {
         fixed: { sku: 'Route 53 hosted zone', hourly: 0.5 / 730 },
         source: 'https://aws.amazon.com/route53/pricing/',
@@ -205,6 +210,11 @@ export const PRICING: Record<PricingId, PricingProfile> = {
         tiers: { S: { sku: 'n2-highmem-2', hourly: 0.131 }, M: { sku: 'n2-highmem-4', hourly: 0.262 }, L: { sku: 'n2-highmem-8', hourly: 0.524 } },
         source: 'https://gcloud-compute.com/n2-highmem-2.html',
         note: 'no managed OpenSearch on Google Cloud: OpenSearch/Elasticsearch run on Compute Engine, per node',
+      },
+      vector: {
+        tiers: { S: { sku: 'n2-highmem-2', hourly: 0.131 }, M: { sku: 'n2-highmem-4', hourly: 0.262 }, L: { sku: 'n2-highmem-8', hourly: 0.524 } },
+        source: 'https://gcloud-compute.com/n2-highmem-2.html',
+        note: 'a vector database (OpenSearch k-NN, pgvector) self-run on Compute Engine, per node',
       },
       dns: {
         fixed: { sku: 'Cloud DNS managed zone', hourly: 0.2 / 730 },
@@ -291,6 +301,11 @@ export const PRICING: Record<PricingId, PricingProfile> = {
         tiers: { S: { sku: 'AI Search Basic', hourly: 0.101 }, M: { sku: 'AI Search Standard S1', hourly: 0.336 }, L: { sku: 'AI Search Standard S2', hourly: 1.344 } },
         source: AZURE,
         note: 'Azure AI Search, per search unit (replica × partition); S2 is about four S1s, so calibrate capacity',
+      },
+      vector: {
+        tiers: { S: { sku: 'AI Search Basic', hourly: 0.101 }, M: { sku: 'AI Search Standard S1', hourly: 0.336 }, L: { sku: 'AI Search Standard S2', hourly: 1.344 } },
+        source: AZURE,
+        note: 'Azure AI Search vector indexes, per search unit; its vector quota per unit is not the memory model here, so calibrate',
       },
       dns: {
         fixed: { sku: 'Azure DNS zone', hourly: 0.5 / 730 },

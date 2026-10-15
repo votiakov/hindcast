@@ -1203,7 +1203,7 @@ impl<'a> Des<'a> {
                 return;
             }
         }
-        if kind == "db" || kind == "replica" || kind == "search" {
+        if kind == "db" || kind == "replica" || kind == "search" || kind == "vector" {
             return self.deliver(done, OK);
         }
         if self.nodes[n].children.is_empty() {
@@ -2000,6 +2000,7 @@ fn static_kind(k: &str) -> &'static str {
         "dns" => "dns",
         "stream" => "stream",
         "search" => "search",
+        "vector" => "vector",
         _ => "server",
     }
 }

@@ -154,6 +154,13 @@ pub struct NodeData {
     /// next refresh
     #[serde(skip_serializing_if = "Option::is_none")]
     pub refresh_s: Option<f64>,
+    /// vector: the recall the queries are tuned for (default 0.95) — each halving of what they miss
+    /// doubles the work per query
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recall: Option<f64>,
+    /// vector: vectors in the index, millions (default 1; 768 dimensions)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vectors_m: Option<f64>,
     /// a network partition's side this component is on (set by the partition action): links between
     /// components on different sides are cut
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -213,6 +220,9 @@ pub fn spec(kind: &str) -> KindSpec {
         // per S node (2 vCPU, r7g.large.search-like) a search thread pool of vCPU × 1.5 + 1 = 4 threads
         // at ~20 ms a query ≈ 200 queries/s
         "search" => KindSpec { scalable: true, ..k(200.0, 20.0, 0.2, true) },
+        // a vector database (OpenSearch k-NN, pgvector): an HNSW index over its nodes; 300 queries/s per
+        // S node at recall 0.95 with the graph in memory
+        "vector" => KindSpec { scalable: true, ..k(300.0, 10.0, 0.2, true) },
         "kv" => KindSpec { cost_per_request: Some(0.45 / 1_000_000.0), ..k(40000.0, 5.0, 0.0, false) },
         _ => k(250.0, 25.0, 0.1, true),
     }
@@ -326,7 +336,7 @@ pub fn kind_pricing(profile: &str, kind: &str) -> Option<KindPricing> {
             "stream" => Some(KindPricing { fixed: Some(0.015), per_request: Some(0.014 / 1_000_000.0), ..Default::default() }),
             "dns" => Some(KindPricing { fixed: Some(DNS_ZONE_HOURLY), ..Default::default() }),
             // OpenSearch Service r7g.large/xlarge/2xlarge.search data nodes
-            "search" => tiers(0.178, 0.356, 0.712),
+            "search" | "vector" => tiers(0.178, 0.356, 0.712),
             _ => None,
         },
         "gcp-us-central1" => match kind {
@@ -347,7 +357,7 @@ pub fn kind_pricing(profile: &str, kind: &str) -> Option<KindPricing> {
             "stream" => per(0.11 / 1_000_000.0),
             "dns" => Some(KindPricing { fixed: Some(0.2 / 730.0), ..Default::default() }),
             // no managed OpenSearch: self-run on Compute Engine n2-highmem-2/4/8
-            "search" => tiers(0.131, 0.262, 0.524),
+            "search" | "vector" => tiers(0.131, 0.262, 0.524),
             _ => None,
         },
         // Azure Retail Prices API (prices.azure.com), East US, pay as you go, 2026-10-15
@@ -371,7 +381,7 @@ pub fn kind_pricing(profile: &str, kind: &str) -> Option<KindPricing> {
             "stream" => Some(KindPricing { fixed: Some(0.03), per_request: Some(0.028 / 1_000_000.0), ..Default::default() }),
             "dns" => Some(KindPricing { fixed: Some(DNS_ZONE_HOURLY), ..Default::default() }),
             // Azure AI Search, per search unit: Basic, Standard S1, Standard S2
-            "search" => tiers(0.101, 0.336, 1.344),
+            "search" | "vector" => tiers(0.101, 0.336, 1.344),
             _ => None,
         },
         _ => None,
@@ -455,14 +465,48 @@ pub fn capacity_of(d: &NodeData, reachable: Option<f64>) -> f64 {
         let t = if sp.tiered { tier(&d.tier).0 } else { 1.0 };
         let batch = if d.kind == "llm" && d.batching == Some(true) { BATCHING_CAPACITY } else { 1.0 };
         let rt = d.runtime.as_deref().filter(|r| !r.is_empty()).map(|r| runtime(r).0).unwrap_or(1.0);
-        d.capacity.unwrap_or(sp.capacity) * t * batch * rt * (if sp.scalable { reachable.max(1.0) } else { 1.0 }) * shards_of(d) * partitions_of(d)
+        d.capacity.unwrap_or(sp.capacity) * t * batch * rt * (if sp.scalable { reachable.max(1.0) } else { 1.0 }) * shards_of(d) * partitions_of(d) / vector_work(d)
     };
     cap * d.degraded.unwrap_or(1.0)
 }
 
 /// a cluster that spreads its requests over its own nodes (no load balancer needed in front)
 pub fn clustered(kind: &str) -> bool {
-    kind == "search"
+    kind == "search" || kind == "vector"
+}
+
+/// an HNSW index's memory per million vectors, GB: 1.1 × (4 × 768 dimensions + 8 × M=16 links) bytes
+/// a vector (the OpenSearch k-NN sizing formula)
+pub const VECTOR_GB_PER_M: f64 = 3.52;
+/// a graph lookup that misses memory and reads the disk costs this many in-memory ones
+pub const VECTOR_DISK_FACTOR: f64 = 10.0;
+
+/// what a vector database's nodes keep in memory for the graph, GB: a quarter of RAM each (half the
+/// RAM is the JVM heap, half of the rest the k-NN circuit breaker allows) — 16/32/64 GiB nodes
+pub fn vector_memory_gb(d: &NodeData) -> f64 {
+    let per = match d.tier.as_str() {
+        "M" => 8.0,
+        "L" => 16.0,
+        _ => 4.0,
+    };
+    per * instances_up(d).max(1.0)
+}
+
+/// the share of a vector database's graph its nodes hold in memory
+pub fn vector_fit(d: &NodeData) -> f64 {
+    let index = d.vectors_m.unwrap_or(1.0).max(0.0) * VECTOR_GB_PER_M;
+    if index > 0.0 { (vector_memory_gb(d) / index).min(1.0) } else { 1.0 }
+}
+
+/// a vector query's work relative to recall 0.95 with the whole graph in memory: each halving of
+/// what it may miss (1 − recall) doubles it; the share of the graph that does not fit is read from disk
+pub fn vector_work(d: &NodeData) -> f64 {
+    if d.kind != "vector" {
+        return 1.0;
+    }
+    let recall = d.recall.unwrap_or(0.95).clamp(0.5, 0.999);
+    let fit = vector_fit(d);
+    (0.05 / (1.0 - recall)) * (fit + (1.0 - fit) * VECTOR_DISK_FACTOR)
 }
 
 /// a search index's refresh interval, s
@@ -662,7 +706,7 @@ pub fn per_instance_capacity(d: &NodeData) -> f64 {
 
 pub fn base_latency_of(d: &NodeData) -> f64 {
     let rt = d.runtime.as_deref().filter(|r| !r.is_empty()).map(|r| runtime(r).1).unwrap_or(1.0);
-    d.latency_ms.unwrap_or(spec(&d.kind).base_latency_ms) * rt + (if d.kind == "llm" && d.batching == Some(true) { BATCHING_LATENCY_MS } else { 0.0 })
+    d.latency_ms.unwrap_or(spec(&d.kind).base_latency_ms) * rt * vector_work(d) + (if d.kind == "llm" && d.batching == Some(true) { BATCHING_LATENCY_MS } else { 0.0 })
 }
 
 /// serverless $ per request: flat catalogue price, or memory × duration when a runtime is chosen

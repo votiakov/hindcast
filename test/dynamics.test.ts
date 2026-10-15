@@ -368,3 +368,24 @@ describe('a search index: searchable after the refresh, nodes share the queries'
     });
   }
 });
+
+describe('a vector database: recall and memory decide its capacity', () => {
+  const vdb = (extra: Record<string, unknown>) => ({ components: [{ id: 'users', kind: 'client' }, { id: 'v', kind: 'vector', ...extra }], connections: [['users', 'v']] });
+
+  for (const [name, run] of [['fluid', simulate], ['des', (s: never, c: never) => simulateDes(s, c, { seed: 3 })]] as const) {
+    it(`${name}: recall 0.99 walks five times the graph of 0.95 — the same node takes a fifth of the queries`, () => {
+      const sc = { duration: 40, rps: 150, readRatio: 1 } as never;
+      expect(run(vdb({}) as never, sc).summary.meanErrorRate).toBeLessThan(0.01);
+      const strict = run(vdb({ recall: 0.99 }) as never, sc).summary.meanErrorRate;
+      expect(strict).toBeGreaterThan(0.5); // 60/s of 150
+      expect(strict).toBeLessThan(0.7);
+    });
+
+    it(`${name}: a graph that does not fit in memory reads the disk; nodes enough to hold it fix it`, () => {
+      const sc = { duration: 40, rps: 100, readRatio: 1 } as never;
+      // 3 million vectors: 10.6 GB of graph against 4 GB on one S node, 12 GB on three
+      expect(run(vdb({ vectorsM: 3 }) as never, sc).summary.meanErrorRate).toBeGreaterThan(0.4);
+      expect(run(vdb({ vectorsM: 3, instances: 3 }) as never, sc).summary.meanErrorRate).toBeLessThan(0.01);
+    });
+  }
+});

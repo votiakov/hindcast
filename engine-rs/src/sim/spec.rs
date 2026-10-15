@@ -6,8 +6,8 @@ use super::engine::{EdgeData, SimEdge, SimNode};
 use crate::math::js_num;
 use serde_json::{json, Map as JMap, Value};
 
-const KINDS: [&str; 19] = ["client", "cdn", "lb", "gateway", "server", "worker", "function", "cache", "db", "replica", "storage", "queue", "llm", "llmapi", "external", "kv", "dns", "stream", "search"];
-const DATA_KEYS: [&str; 43] = ["tier", "instances", "runtime", "hitRate", "limit", "batching", "retries", "retryPolicy", "timeoutMs", "breaker", "fallback", "routing", "fanout", "stallRate", "stallMs", "queueS", "capacity", "latencyMs", "costPerHour", "autoscale", "warmupS", "writePolicy", "workingSetGb", "skew", "shards", "hotKeyShare", "ttlS", "healthCheckS", "partitions", "threads", "bulkhead", "provisioned", "prefixes", "hotRowShare", "burst", "maxReceives", "visibilityS", "maxConnections", "connectionS", "everyS", "batch", "batchS", "refreshS"];
+const KINDS: [&str; 20] = ["client", "cdn", "lb", "gateway", "server", "worker", "function", "cache", "db", "replica", "storage", "queue", "llm", "llmapi", "external", "kv", "dns", "stream", "search", "vector"];
+const DATA_KEYS: [&str; 45] = ["tier", "instances", "runtime", "hitRate", "limit", "batching", "retries", "retryPolicy", "timeoutMs", "breaker", "fallback", "routing", "fanout", "stallRate", "stallMs", "queueS", "capacity", "latencyMs", "costPerHour", "autoscale", "warmupS", "writePolicy", "workingSetGb", "skew", "shards", "hotKeyShare", "ttlS", "healthCheckS", "partitions", "threads", "bulkhead", "provisioned", "prefixes", "hotRowShare", "burst", "maxReceives", "visibilityS", "maxConnections", "connectionS", "everyS", "batch", "batchS", "refreshS", "recall", "vectorsM"];
 
 #[derive(Clone, Debug, Default)]
 pub struct Issue {
@@ -191,6 +191,8 @@ fn check_component(c: &JMap<String, Value>, path: Vec<Value>, issues: &mut Vec<I
     v.number("batch", false, Some((0.0, true)), None, false);
     v.number("batchS", false, Some((0.0, false)), None, false);
     v.number("refreshS", false, Some((0.0, true)), Some(3600.0), false);
+    v.number("recall", false, Some((0.5, true)), Some(0.999), false);
+    v.number("vectorsM", false, Some((0.0, false)), Some(100000.0), false);
     v.number("capacity", false, Some((0.0, false)), None, false);
     v.number("latencyMs", false, Some((0.0, true)), None, false);
     v.number("costPerHour", false, Some((0.0, true)), None, false);

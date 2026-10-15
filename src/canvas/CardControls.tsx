@@ -246,6 +246,20 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
           </select>
         </div>
       )}
+      {data.kind === 'vector' && (
+        <div className="nc-row" title="Recall: the share of the true nearest neighbours a search finds. Each halving of what it may miss doubles the graph it walks. Vectors: the index size — 3.5 GB of graph per million 768-dimension vectors; what does not fit in the nodes' memory is read from disk">
+          <span className="nc-l">recall</span>
+          <select value={data.recall ?? 0.95} onChange={(e) => set({ recall: +e.target.value })}>
+            {pick(data.recall ?? 0.95, [0.9, 0.95, 0.98, 0.99, 0.999]).map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+          <span className="nc-l">vectors (M)</span>
+          <input className="nc-num" type="number" min={0.1} max={100000} step={0.5} value={data.vectorsM ?? 1} onChange={(e) => set({ vectorsM: Math.max(0.1, Math.min(100000, +e.target.value || 1)) })} />
+        </div>
+      )}
       {data.kind === 'dns' && (
         <div className="nc-row" title="Clients cache an answer for the TTL; health checks notice a dead target after a few failed checks. Until both pass, users keep going to the dead one.">
           <span className="nc-l">TTL</span>

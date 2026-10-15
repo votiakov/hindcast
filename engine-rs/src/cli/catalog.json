@@ -199,6 +199,17 @@
       "scalesHorizontally": true
     },
     {
+      "kind": "vector",
+      "label": "Vector Database",
+      "description": "Nearest-neighbour search over embeddings (OpenSearch k-NN, pgvector): an HNSW graph spread over its nodes. Higher recall walks more of the graph — 0.99 costs five times 0.95 — and a graph that does not fit in memory is read from disk.",
+      "capacityPerInstanceRps": 300,
+      "baseLatencyMs": 10,
+      "costPerHour": 0.2,
+      "costPerRequest": null,
+      "sizable": true,
+      "scalesHorizontally": true
+    },
+    {
       "kind": "external",
       "label": "External API",
       "description": "Someone else's service: a payment provider, a partner API, the websites a crawler fetches. You cannot size it — only respect its rate limit and live with its latency and errors.",
@@ -472,6 +483,24 @@
             "source": "https://instances.vantage.sh/aws/opensearch/r7g.large.search",
             "note": "OpenSearch Service data node, per node; storage (EBS) and dedicated masters not included"
           },
+          "vector": {
+            "tiers": {
+              "S": {
+                "sku": "r7g.large.search",
+                "hourly": 0.178
+              },
+              "M": {
+                "sku": "r7g.xlarge.search",
+                "hourly": 0.356
+              },
+              "L": {
+                "sku": "r7g.2xlarge.search",
+                "hourly": 0.712
+              }
+            },
+            "source": "https://instances.vantage.sh/aws/opensearch/r7g.large.search",
+            "note": "OpenSearch Service k-NN on a memory-optimised data node, per node"
+          },
           "dns": {
             "fixed": {
               "sku": "Route 53 hosted zone",
@@ -670,6 +699,24 @@
             },
             "source": "https://gcloud-compute.com/n2-highmem-2.html",
             "note": "no managed OpenSearch on Google Cloud: OpenSearch/Elasticsearch run on Compute Engine, per node"
+          },
+          "vector": {
+            "tiers": {
+              "S": {
+                "sku": "n2-highmem-2",
+                "hourly": 0.131
+              },
+              "M": {
+                "sku": "n2-highmem-4",
+                "hourly": 0.262
+              },
+              "L": {
+                "sku": "n2-highmem-8",
+                "hourly": 0.524
+              }
+            },
+            "source": "https://gcloud-compute.com/n2-highmem-2.html",
+            "note": "a vector database (OpenSearch k-NN, pgvector) self-run on Compute Engine, per node"
           },
           "dns": {
             "fixed": {
@@ -873,6 +920,24 @@
             },
             "source": "https://prices.azure.com/api/retail/prices",
             "note": "Azure AI Search, per search unit (replica × partition); S2 is about four S1s, so calibrate capacity"
+          },
+          "vector": {
+            "tiers": {
+              "S": {
+                "sku": "AI Search Basic",
+                "hourly": 0.101
+              },
+              "M": {
+                "sku": "AI Search Standard S1",
+                "hourly": 0.336
+              },
+              "L": {
+                "sku": "AI Search Standard S2",
+                "hourly": 1.344
+              }
+            },
+            "source": "https://prices.azure.com/api/retail/prices",
+            "note": "Azure AI Search vector indexes, per search unit; its vector quota per unit is not the memory model here, so calibrate"
           },
           "dns": {
             "fixed": {
