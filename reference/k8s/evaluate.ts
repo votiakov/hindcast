@@ -172,7 +172,10 @@ async function telemetryOf(runs: string[], out: string, settle = false): Promise
       collected.set(key, d);
       return d;
     }
-    if (runs.length > 1) throw e;
+    // the committed collections are what the published tables were computed from: re-importing the
+    // recorded files gives different tables, so only on request
+    if (runs.length > 1 || !process.argv.includes('--from-recordings'))
+      throw new Error(`${out}/dataset.json is missing and the cluster is unreachable (${why}). The published tables come from the committed collections; --from-recordings imports the recorded files instead, which gives different numbers`);
     console.warn(`(${runs[0]}: live telemetry unavailable — ${why}; using the recorded files)`);
     // hindcast.import.yaml from a collection today; the recorded runs predate the rename
     const tel = join(runDir(runs[0]), 'workspace', 'telemetry');
@@ -522,6 +525,16 @@ async function main() {
           const why = k === 1 ? 'added after the throttle model was designed on the runs above' : `round ${k}, chosen after round ${k - 1} was scored`;
           return ['', `*Out of sample* — ${why}; the verdicts are the ones committed in \`validation/${file}\` before each run was recorded:`, '', ...head, ...oos.map(row), '', tally(oos)];
         }),
+        ...(rounds.length > 1 ? (() => {
+          const all = mod.rows.filter((r) => r.oos);
+          const naiveWrong = all.filter((r) => !r.agrees.naive).length;
+          return ['', `**Every out-of-sample round together** (${all.length} runs): ${tally(all).replace(/ Naive CPU ratio: .*$/, '')} Naive CPU ratio: ${all.length - naiveWrong} right, ${naiveWrong} wrong (a rule like that never abstains).`];
+        })() : []),
+        (() => {
+          const off = mod.rows.map((r) => Math.abs(r.exPost.p99Ms - r.measured.p99Ms) / Math.max(1, r.measured.p99Ms));
+          const miss = off.filter((x) => x > 0.2).sort((a, b) => a - b);
+          return `\np99 of the model on each day's real traffic, against the measured p99: within 20% in **${off.length - miss.length} of ${off.length}** runs${miss.length ? `; the others off by ${Math.round(miss[0] * 100)}–${Math.round(miss[miss.length - 1] * 100)}%` : ''}.`;
+        })(),
       ].join('\n');
     })
     .join('\n\n');

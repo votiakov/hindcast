@@ -23,14 +23,31 @@ OpenTelemetry). From that it covers the questions a platform team answers by han
   failure, and the replicas that survive it.
 - **`review_capacity`:** all of it in one report.
 
-It was validated on a real cluster serving real traffic:
+It was tested on a kind cluster (one laptop) serving the OpenTelemetry Astronomy Shop, with k6
+replaying the arrival curve of NASA's 1995 web log:
 
-- **In-sample:** five decisions answered from an ordinary day, then made for real. The throttle
-  rules were designed on these runs.
-- **Out of sample:** four more, predicted and committed before they ran.
-- **A node failure:** a node stopped at the peak.
+- **In-sample:** five decisions answered from an ordinary day, then made for real: 4 right, 1
+  wrong. The throttle rules were designed on these runs.
+- **Out of sample:** nine more in three rounds, with each verdict committed before the run was
+  recorded: 3 right, 1 wrong, 5 inconclusive (3 of those leaned the right way). A plain CPU-ratio
+  rule got 6 right and 3 wrong; the model is wrong less often because it abstains more, not because
+  it is right more often.
+- **p99:** the model's p99 on each day's own traffic is within 20% of the measured p99 in 3 of 14
+  runs. It underestimates busy days.
+- **A node failure:** a node stopped at the peak. The replay timed Kubernetes' recovery right; the
+  outage lasted 50% longer because a client's gRPC channel stayed broken, which it doesn't model.
+
+Everything needed to regenerate these tables from a clone is committed.
 
 See [reference/k8s](reference/k8s/README.md).
+
+One command takes a cluster from nothing to a capacity review. It connects, collects the history,
+calibrates and writes the report, which opens with a five-line summary: risk, headroom, cost, the
+one change worth making, and how far to trust it.
+
+```
+hindcast quickstart --prometheus http://localhost:9090 --jaeger http://localhost:16686 --last 24h
+```
 
 Draw a system (or import it from Terraform or Kubernetes manifests, or paste a YAML spec), push traffic and failures through
 it, and watch where it gives out. Then run the failure audit: every component dying, every dependency
@@ -39,14 +56,23 @@ users would have seen, and each fix is verified by re-running the same incident 
 
 **For AI agents** ([docs/agents.md](docs/agents.md)): give Claude Code (or any MCP host, or any
 agent with a shell) the Hindcast tools and it does the work itself. It connects to your Prometheus
-and Jaeger or Tempo, collects a week of history, calibrates the model, reads its trust report, and
+and Jaeger or Tempo, collects the history you point it at (a day to two weeks), calibrates the model, reads its trust report, and
 verifies a change before proposing it: a strategy, a Kubernetes diff or a Terraform plan. The
 answer is a verdict (pass / fail / inconclusive) with a confidence that says which services the
 change pushes past anything the history showed, the money with its basis, and the SLO minutes.
 Read-only towards your systems.
 
-It runs in four places over the same engine: a visual app, a CLI, an MCP server, and agent tools
-on both.
+It runs in five places over the same engine: a visual app, a CLI, an MCP server (stdio or HTTP),
+agent tools on both, and a VS Code extension that draws the spec you are editing beside it, live
+([docs/vscode.md](docs/vscode.md)).
+
+How it differs from the system-design simulators you may have seen, and what it can't do:
+[Why Hindcast](docs-site/pages/why.html) (`/docs/why.html` in the app).
+
+Needs Node 20+. The CLI, the MCP server and the agent tools are one native binary: `bin/hindcast`
+builds it on first use, which needs a Rust toolchain ([rustup](https://rustup.rs)). The app
+doesn't: the engine is committed as WebAssembly (rebuilding it with `npm run engine:build` needs the
+`wasm32-unknown-unknown` target and `wasm-bindgen-cli`).
 
 ```
 npm install
@@ -94,9 +120,9 @@ manifests or a `terraform show -json` file on the board to open it. `?` lists th
 
 Two engines take the same inputs:
 
-- **fluid** (`src/sim/engine.ts`) – request volume per 50 ms tick through a queueing model. Fast enough
+- **fluid** (`engine-rs/src/sim/engine.rs`) – request volume per 50 ms tick through a queueing model. Fast enough
   for the live board, breaking-point search, the optimizer and the audit (≈ 1 ms per simulated second).
-- **discrete-event** (`src/sim/des/`) – every request simulated: real p50/p99/p99.9, retry storms,
+- **discrete-event** (`engine-rs/src/sim/des.rs`) – every request simulated: real p50/p99/p99.9, retry storms,
   timeouts and breaker oscillation emerge rather than being approximated; seeded and deterministic;
   Monte Carlo with confidence intervals.
 
@@ -162,7 +188,7 @@ changes an architecture spec. Every command takes `--json`.
 ## MCP server
 
 Agents working on a live system: `connect_telemetry` → `collect_telemetry` → `calibrate_model` →
-`verify_change` (plus `suggest_changes`, `find_headroom`, `verify_design`, `read_cluster`, `model_status`); see
+`review_capacity` → `verify_change` (plus `suggest_changes`, `find_headroom`, `verify_design`, `read_cluster`, `model_status`); see
 [docs/agents.md](docs/agents.md). The server is the `hindcast` binary itself (`npm run cli:build` →
 `engine-rs/target/release/hindcast`): `claude mcp add hindcast -- …/hindcast mcp`, or
 `hindcast agent setup` for any host.

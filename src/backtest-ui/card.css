@@ -1,5 +1,5 @@
 /* Studio card / clip of a backtest — the strategy terminal at poster scale */
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap');
+@import '../theme/fonts.css';
 
 .cd {
   --bg: #10161d;

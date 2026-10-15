@@ -5,8 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>For AI agents · Hindcast docs</title>
 <meta name="description" content="Let your agent check an infrastructure change against last week's production before it proposes it. It connects to your telemetry, builds the model and reads its trust report, then answers with a verdict, the money, the SLO minutes and how far to trust them.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="fonts.css">
 <link rel="stylesheet" href="docs.css">
 </head>
 <body>
@@ -30,8 +29,12 @@
 <pre><code>connect_telemetry  →  collect_telemetry  →  calibrate_model  →  verify_change
 probe Prometheus,     history into the       the model, and      verdict, confidence,
 Jaeger or Tempo       workspace              how far to trust it $, SLO minutes, why</code></pre>
-<p>Your agent (Claude Code, Cursor, Claude Desktop, or anything with a shell) gets nine tools over MCP or as <code>hindcast agent &lt;tool&gt;</code> with JSON in and out. The user asks "can we move checkout to Graviton?". The agent finds the Prometheus and Jaeger, collects a week of history, fits the model, backtests the change and answers with evidence.</p>
+<p>Your agent (Claude Code, Cursor, Claude Desktop, or anything with a shell) gets eleven tools over MCP or as <code>hindcast agent &lt;tool&gt;</code> with JSON in and out. The user asks "can we move checkout to Graviton?". The agent finds the Prometheus and Jaeger, collects a week of history, fits the model, backtests the change and answers with evidence.</p>
 <p>Everything is read-only towards your systems: queries to your Prometheus and Jaeger or Tempo, and one <code>kubectl get</code> against a context you name. Credentials stay in environment variables. Nothing leaves your machine.</p>
+
+<h2>Or one command</h2>
+<pre><code>hindcast quickstart --prometheus http://localhost:9090 --jaeger http://localhost:16686 --last 24h</code></pre>
+<p>Connects, collects, calibrates and writes the capacity review, showing each step and its time; on the reference cluster it takes about 20 seconds. The review opens with five lines a lead can read: whether the recorded day held its SLO and whether 1.5× and 2× days would, the headroom, the cost (with what a commitment saves), the one change that passed its backtest, and how many services the model fits. Then the commands to run next.</p>
 
 <h2>Set up</h2>
 <pre><code>npm run sim -- agent setup                 # proves the server starts, prints every host's config

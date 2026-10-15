@@ -1,6 +1,6 @@
 # Component catalog
 
-Defaults from `src/sim/catalog.ts`. All numbers are illustrative — they make tradeoffs visible
+Defaults from `engine-rs/src/sim/catalog.rs` (the engine; `src/sim/catalog.ts` mirrors it for the UI). All numbers are illustrative — they make tradeoffs visible
 in the right direction and magnitude; override `capacity`, `latencyMs` and `costPerHour` per
 component to calibrate to a real system. `npm run sim -- catalog` prints the live values.
 
@@ -16,7 +16,7 @@ component to calibrate to a real system. `npm run sim -- catalog` prints the liv
 | `cache` | Cache | 20,000 req/s | 1 ms | $0.15/h | ✓ | | default hit rate 85 % |
 | `db` | Database | 1,000 req/s | 10 ms | $0.40/h | ✓ | | writes stay here; reads shared with replicas; failover; `shards` × capacity and cost |
 | `replica` | Read Replica | 1,000 req/s | 10 ms | $0.35/h | ✓ | | connect from a db |
-| `storage` | Object Storage | 50,000 req/s | 40 ms | $0.03/h | | | |
+| `storage` | Object Storage | 55,000 req/s | 40 ms | $0.03/h | | | |
 | `queue` | Queue | 50,000 req/s ingest | 3 ms ack | $0.06/h | | | backlog ≤ 200,000; consumers pull |
 | `llm` | GPU Inference | 6 req/s per GPU | 800 ms | $4.00/h per GPU | | ✓ | batching ×4 capacity, +400 ms; queue 3 s |
 | `llmapi` | LLM Provider API | rate limit (default 100 req/s) | 1,500 ms | $0.002 / request | | | latency independent of your load |
@@ -131,8 +131,8 @@ not discounted, and a component without a published rate stays on-demand:
 Under a real profile, size tiers are priced as the actual SKUs (cloud instance prices are linear, so
 the illustrative vertical-scaling premium disappears), and nodes show their SKU next to the price.
 Capacities stay workload-dependent: set `capacity` per component from your own load tests or
-metrics. Free tiers, savings plans, reserved instances, data transfer between AZs and storage GB are
-not included. A `costPerHour` override on a component always wins over the profile.
+metrics. Free tiers, data transfer between AZs (the backtest prices it; the simulator doesn't) and storage
+GB (except `archive`) are not included; 1- and 3-year commitments are a setting (above). A `costPerHour` override on a component always wins over the profile.
 
 ## Engine-wide defaults
 

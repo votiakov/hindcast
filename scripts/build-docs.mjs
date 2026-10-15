@@ -14,7 +14,7 @@
 //
 // For every screen the build inserts the screenshot (public/docs/shots/<shot>.png) with a numbered
 // pin per <li>, placed from public/docs/shots/pins.json (written by scripts/docs-shots.mjs).
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -100,8 +100,7 @@ const layout = (file, m, body) => {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(m.title)} · Hindcast docs</title>
 <meta name="description" content="${esc(m.lede ?? '')}">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="fonts.css">
 <link rel="stylesheet" href="docs.css">
 </head>
 <body>
@@ -140,6 +139,18 @@ for (const f of readdirSync(SRC).filter((f) => f.endsWith('.html'))) {
   const m = meta(src, f);
   out[`${file}.html`] = layout(file, m, src.replace(/^<!--[\s\S]*?-->\s*/, ''));
   built++;
+}
+// the fonts, served with the pages (no request to a font service)
+if (!check) {
+  mkdirSync(join(OUT, 'fonts'), { recursive: true });
+  const faces = [];
+  for (const [pkg, family] of [['ibm-plex-mono', 'IBM Plex Mono'], ['ibm-plex-sans-condensed', 'IBM Plex Sans Condensed']])
+    for (const w of [400, 500, 600]) {
+      const f = `${pkg}-latin-${w}-normal.woff2`;
+      copyFileSync(join(ROOT, 'node_modules/@fontsource', pkg, 'files', f), join(OUT, 'fonts', f));
+      faces.push(`@font-face { font-family: '${family}'; font-style: normal; font-weight: ${w}; font-display: swap; src: url(fonts/${f}) format('woff2'); }`);
+    }
+  writeFileSync(join(OUT, 'fonts.css'), `/* IBM Plex, SIL Open Font License 1.1 */\n${faces.join('\n')}\n`);
 }
 // every local link and anchor resolves
 const ids = Object.fromEntries(Object.entries(out).map(([f, h]) => [f, new Set([...h.matchAll(/id="([^"]+)"/g)].map((x) => x[1]))]));

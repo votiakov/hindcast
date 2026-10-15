@@ -70,7 +70,7 @@ Registered for Claude Code in `.mcp.json` (restart Claude Code in this folder an
 | `open_in_app` | `architecture`, `compare_with?` (variant), `scenario?` | URL for the app (sandbox, or side-by-side comparison playing the scenario) |
 | `backtest_strategy` | `model?`, `dataset?` (paths; default the workspace's), `strategies[]` (objects or YAML), `last?`, `draws?` | the backtest of each strategy over the recorded history: $/month, minutes out of SLO, worst moment, incidents, ranking, the model's accuracy |
 | `replay_outage` | `model?`, `outage`, `strategies?`, `rps?` | a public outage replayed against the model, as built and with strategies |
-| `connect_telemetry` … `read_cluster` | see [agents.md](agents.md#tool-reference) | nine tools for an agent working on a live system: connect, collect, calibrate, verify (strategies, Kubernetes diffs, Terraform plans), suggest fixes and savings, headroom, design checks, cluster snapshots, status |
+| `connect_telemetry` … `read_cluster` | see [agents.md](agents.md#tool-reference) | eleven tools for an agent working on a live system: connect, collect, calibrate, verify (strategies, Kubernetes diffs, Terraform plans), suggest fixes and savings, headroom, the capacity review, node loss, design checks, cluster snapshots, status |
 
 Prompts: `verify-infra-change` and `check-my-design` ([agents.md](agents.md#prompts)).
 

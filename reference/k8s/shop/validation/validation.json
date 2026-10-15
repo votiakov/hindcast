@@ -12329,9 +12329,9 @@
      "errorRate": 0.01
     },
     "traffic": {
-     "mean": 90.20814788983468,
-     "p90": 142.63142761907935,
-     "peak": 164.46666666666673
+     "mean": 90.21,
+     "p90": 142.63,
+     "peak": 164.47
     },
     "services": [
      {
@@ -12346,7 +12346,7 @@
       "replicas": 3,
       "historyPeakUtil": 0.41,
       "basis": "extrapolated",
-      "cost": "no price",
+      "cost": "$0.0258/replica-hour, its requests' share of a node",
       "notes": [
        "memory: peaks at 115 MiB per container against a 512 MiB limit (22%), +11.8 MiB per 100 req/s per replica",
        "CPU quota throttling: 7% of periods throttled at 38% of the limit, rising ×1.56 per 10 points (R² 0.63); it reaches 25% at 66% of the limit, so that is the CPU it can use (extrapolated)",
@@ -12364,7 +12364,7 @@
       "replicas": 1,
       "historyPeakUtil": 0,
       "basis": "no limit seen",
-      "cost": "no price",
+      "cost": "$0.0202/replica-hour, its requests' share of a node",
       "notes": [
        "CPU barely follows load (R² 0.00) — capacity is not CPU-bound or CPU data is noisy",
        "memory: peaks at 210 MiB per container against a 400 MiB limit (52%), +21.1 MiB per 100 req/s per replica",
@@ -12384,7 +12384,7 @@
       "replicas": 1,
       "historyPeakUtil": 0.07,
       "basis": "extrapolated",
-      "cost": "no price",
+      "cost": "$0.0090/replica-hour, its requests' share of a node",
       "notes": [
        "memory: peaks at 26 MiB per container against a 128 MiB limit (20%), flat with load",
        "replaying the history reproduces its self time within 30% (mean abs. error)",
@@ -12403,7 +12403,7 @@
       "replicas": 1,
       "historyPeakUtil": 0.01,
       "basis": "extrapolated",
-      "cost": "no price",
+      "cost": "$0.0090/replica-hour, its requests' share of a node",
       "notes": [
        "CPU barely follows load (R² 0.03) — capacity is not CPU-bound or CPU data is noisy",
        "memory: peaks at 72 MiB per container against a 150 MiB limit (48%), flat with load",
@@ -12423,7 +12423,7 @@
       "replicas": 1,
       "historyPeakUtil": 0.13,
       "basis": "extrapolated",
-      "cost": "no price",
+      "cost": "$0.0090/replica-hour, its requests' share of a node",
       "notes": [
        "CPU barely follows load (R² 0.27) — capacity is not CPU-bound or CPU data is noisy",
        "memory grows with the requests a container has served, not with load: +9.6 MiB per 1,000 requests (R² 0.98) — a leak; it reaches the limit after about 8,132 requests per container, then is OOM-killed",
@@ -12446,7 +12446,7 @@
       "replicas": 1,
       "historyPeakUtil": 0.02,
       "basis": "extrapolated",
-      "cost": "no price",
+      "cost": "$0.0090/replica-hour, its requests' share of a node",
       "notes": [
        "memory: peaks at 3 MiB per container against a 128 MiB limit (2%), +2.8 MiB per 100 req/s per replica",
        "replaying the history reproduces its self time within 4% (mean abs. error)",
@@ -12465,7 +12465,7 @@
       "replicas": 1,
       "historyPeakUtil": 0.01,
       "basis": "extrapolated",
-      "cost": "no price",
+      "cost": "$0.0090/replica-hour, its requests' share of a node",
       "notes": [
        "CPU barely follows load (R² 0.08) — capacity is not CPU-bound or CPU data is noisy",
        "memory: peaks at 22 MiB per container against a 128 MiB limit (17%), flat with load",
@@ -12485,7 +12485,7 @@
       "replicas": 1,
       "historyPeakUtil": 0.11,
       "basis": "extrapolated",
-      "cost": "no price",
+      "cost": "$0.0179/replica-hour, its requests' share of a node",
       "notes": [
        "memory: peaks at 67 MiB per container against a 200 MiB limit (33%), flat with load",
        "replaying the history reproduces its self time within 5% (mean abs. error)",
@@ -12504,7 +12504,7 @@
       "replicas": 1,
       "historyPeakUtil": 0,
       "basis": "extrapolated",
-      "cost": "no price",
+      "cost": "$0.0090/replica-hour, its requests' share of a node",
       "notes": [
        "CPU barely follows load (R² 0.01) — capacity is not CPU-bound or CPU data is noisy",
        "memory: peaks at 12 MiB per container against a 128 MiB limit (10%), flat with load",
@@ -12524,7 +12524,7 @@
       "replicas": 1,
       "historyPeakUtil": 0.06,
       "basis": "extrapolated",
-      "cost": "no price",
+      "cost": "$0.0090/replica-hour, its requests' share of a node",
       "notes": [
        "memory: peaks at 3 MiB per container against a 128 MiB limit (2%), flat with load",
        "replaying the history reproduces its self time within 3% (mean abs. error)",
@@ -12543,7 +12543,7 @@
       "replicas": 1,
       "historyPeakUtil": 0,
       "basis": "not modelled",
-      "cost": "no price",
+      "cost": "$0.0090/replica-hour, its requests' share of a node",
       "notes": [
        "CPU barely follows load (R² 0.00) — capacity is not CPU-bound or CPU data is noisy",
        "memory: peaks at 46 MiB per container against a 96 MiB limit (47%), flat with load",
@@ -12563,7 +12563,7 @@
       "replicas": 1,
       "historyPeakUtil": 0.23,
       "basis": "extrapolated",
-      "cost": "no price",
+      "cost": "$0.0129/replica-hour, its requests' share of a node",
       "notes": [
        "memory: peaks at 20 MiB per container against a 256 MiB limit (8%), flat with load",
        "load never approached capacity; the CPU limit is extrapolated",
@@ -12583,7 +12583,7 @@
       "replicas": 1,
       "historyPeakUtil": 0.4,
       "basis": "extrapolated",
-      "cost": "no price",
+      "cost": "$0.0090/replica-hour, its requests' share of a node",
       "notes": [
        "memory: peaks at 55 MiB per container against a 128 MiB limit (43%), flat with load",
        "CPU quota throttling: 25% of periods throttled at 31% of the limit, rising ×3.18 per 10 points (R² 0.70); it reaches 25% at 31% of the limit, so that is the CPU it can use",
@@ -12601,7 +12601,7 @@
       "replicas": 1,
       "historyPeakUtil": 0,
       "basis": "no limit seen",
-      "cost": "no price",
+      "cost": "$0.0258/replica-hour, its requests' share of a node",
       "notes": [
        "CPU barely follows load (R² 0.00) — capacity is not CPU-bound or CPU data is noisy",
        "memory: peaks at 1471 MiB per container against a 2048 MiB limit (72%), flat with load",
@@ -12618,9 +12618,8 @@
       "replicas": 1,
       "historyPeakUtil": 0,
       "basis": "no limit seen",
-      "cost": "no price",
+      "cost": "$0.0179/replica-hour, its requests' share of a node",
       "notes": [
-       "memory: peaks at -Infinity MiB per container against a 1024 MiB limit (-Infinity%), flat with load",
        "not seen in traces or request metrics — modelled for cost only",
        "requests 0.5 cores + 256 MiB = 4.5% of a node, $0.0179/replica-hour"
       ]
@@ -12716,14 +12715,16 @@
       "product-catalog: capacity extrapolated (history peaked at 23% of it)"
      ],
      "untrusted": [
-      "recommendation: fit poor — memory: peaks at 55 MiB per container against a 128 MiB limit (43%), flat with load",
+      "recommendation: fit poor — never loaded past 29% of capacity: CPU (33) and latency (71) read the limit differently, the band spans both",
       "jaeger: fit unexplained — CPU barely follows load (R² 0.00) — capacity is not CPU-bound or CPU data is noisy"
      ],
      "costOnly": [
       "otel-collector"
      ]
     },
-    "warnings": [],
+    "warnings": [
+     "accuracy not measured: the data has no end-to-end latency per endpoint (span names that carry raw URLs are dropped). Name server spans by route (http.route), or give request logs, so the model can be checked on held-back history"
+    ],
     "files": {
      "model": "model.json",
      "calibration": "calibration.json"
@@ -25070,9 +25071,9 @@
      "errorRate": 0.01
     },
     "traffic": {
-     "mean": 145.68204710765568,
-     "p90": 358.7447085097163,
-     "peak": 594.9666666666667
+     "mean": 145.68,
+     "p90": 358.74,
+     "peak": 594.97
     },
     "services": [
      {
@@ -25087,7 +25088,7 @@
       "replicas": 3,
       "historyPeakUtil": 1.18,
       "basis": "limit seen in history",
-      "cost": "no price",
+      "cost": "$0.0258/replica-hour, its requests' share of a node",
       "notes": [
        "memory: peaks at 125 MiB per container against a 512 MiB limit (24%), +6.7 MiB per 100 req/s per replica",
        "CPU quota throttling: 36% of periods throttled at 81% of the limit, rising ×1.49 per 10 points (R² 0.91); it reaches 25% at 72% of the limit, so that is the CPU it can use",
@@ -25109,7 +25110,7 @@
       "replicas": 1,
       "historyPeakUtil": 0.19,
       "basis": "extrapolated",
-      "cost": "no price",
+      "cost": "$0.0202/replica-hour, its requests' share of a node",
       "notes": [
        "memory: peaks at 246 MiB per container against a 400 MiB limit (61%), flat with load",
        "never loaded past 18% of capacity: CPU (1166) and latency (410) read the limit differently, the band spans both",
@@ -25129,7 +25130,7 @@
       "replicas": 1,
       "historyPeakUtil": 0.18,
       "basis": "extrapolated",
-      "cost": "no price",
+      "cost": "$0.0090/replica-hour, its requests' share of a node",
       "notes": [
        "memory: peaks at 27 MiB per container against a 128 MiB limit (21%), flat with load",
        "replaying the history reproduces its self time within 29% (mean abs. error)",
@@ -25148,7 +25149,7 @@
       "replicas": 1,
       "historyPeakUtil": 0.31,
       "basis": "extrapolated",
-      "cost": "no price",
+      "cost": "$0.0179/replica-hour, its requests' share of a node",
       "notes": [
        "memory: peaks at 89 MiB per container against a 200 MiB limit (44%), +4.8 MiB per 100 req/s per replica",
        "replaying the history reproduces its self time within 7% (mean abs. error)",
@@ -25167,7 +25168,7 @@
       "replicas": 1,
       "historyPeakUtil": 0,
       "basis": "extrapolated",
-      "cost": "no price",
+      "cost": "$0.0090/replica-hour, its requests' share of a node",
       "notes": [
        "CPU barely follows load (R² 0.00) — capacity is not CPU-bound or CPU data is noisy",
        "memory: peaks at 12 MiB per container against a 128 MiB limit (10%), flat with load",
@@ -25187,7 +25188,7 @@
       "replicas": 1,
       "historyPeakUtil": 0.05,
       "basis": "extrapolated",
-      "cost": "no price",
+      "cost": "$0.0090/replica-hour, its requests' share of a node",
       "notes": [
        "memory: peaks at 5 MiB per container against a 128 MiB limit (4%), +6.2 MiB per 100 req/s per replica",
        "replaying the history reproduces its self time within 3% (mean abs. error)",
@@ -25206,7 +25207,7 @@
       "replicas": 1,
       "historyPeakUtil": 0.04,
       "basis": "extrapolated",
-      "cost": "no price",
+      "cost": "$0.0090/replica-hour, its requests' share of a node",
       "notes": [
        "memory: peaks at 44 MiB per container against a 128 MiB limit (34%), flat with load",
        "replaying the history reproduces its self time within 2% (mean abs. error)",
@@ -25225,7 +25226,7 @@
       "replicas": 1,
       "historyPeakUtil": 0.13,
       "basis": "extrapolated",
-      "cost": "no price",
+      "cost": "$0.0090/replica-hour, its requests' share of a node",
       "notes": [
        "memory: peaks at 9 MiB per container against a 128 MiB limit (7%), flat with load",
        "load never approached capacity; the CPU limit is extrapolated",
@@ -25245,7 +25246,7 @@
       "replicas": 1,
       "historyPeakUtil": 0,
       "basis": "not modelled",
-      "cost": "no price",
+      "cost": "$0.0090/replica-hour, its requests' share of a node",
       "notes": [
        "CPU barely follows load (R² 0.02) — capacity is not CPU-bound or CPU data is noisy",
        "memory: peaks at 60 MiB per container against a 96 MiB limit (62%), flat with load",
@@ -25265,7 +25266,7 @@
       "replicas": 1,
       "historyPeakUtil": 0.13,
       "basis": "extrapolated",
-      "cost": "no price",
+      "cost": "$0.0090/replica-hour, its requests' share of a node",
       "notes": [
        "memory grows with the requests a container has served, not with load: +9.2 MiB per 1,000 requests (R² 0.97) — a leak; it reaches the limit after about 7,384 requests per container, then is OOM-killed",
        "memory: peaks at 143 MiB per container against a 150 MiB limit (95%), rising with the requests served",
@@ -25285,7 +25286,7 @@
       "replicas": 1,
       "historyPeakUtil": 0.06,
       "basis": "extrapolated",
-      "cost": "no price",
+      "cost": "$0.0090/replica-hour, its requests' share of a node",
       "notes": [
        "memory: peaks at 108 MiB per container against a 150 MiB limit (72%), flat with load",
        "load never approached capacity; the CPU limit is extrapolated",
@@ -25305,7 +25306,7 @@
       "replicas": 1,
       "historyPeakUtil": 0.47,
       "basis": "extrapolated",
-      "cost": "no price",
+      "cost": "$0.0129/replica-hour, its requests' share of a node",
       "notes": [
        "memory: peaks at 31 MiB per container against a 256 MiB limit (12%), +1.9 MiB per 100 req/s per replica",
        "replaying the history reproduces its self time within 4% (mean abs. error)",
@@ -25324,7 +25325,7 @@
       "replicas": 1,
       "historyPeakUtil": 0.9,
       "basis": "limit seen in history",
-      "cost": "no price",
+      "cost": "$0.0090/replica-hour, its requests' share of a node",
       "notes": [
        "memory: peaks at 81 MiB per container against a 128 MiB limit (63%), flat with load",
        "CPU quota throttling: 100% of periods throttled at 75% of the limit, rising ×1.75 per 10 points (R² 0.77); it reaches 25% at 48% of the limit, so that is the CPU it can use",
@@ -25341,7 +25342,7 @@
       "replicas": 1,
       "historyPeakUtil": 0,
       "basis": "no limit seen",
-      "cost": "no price",
+      "cost": "$0.0258/replica-hour, its requests' share of a node",
       "notes": [
        "CPU barely follows load (R² 0.00) — capacity is not CPU-bound or CPU data is noisy",
        "memory: peaks at 1999 MiB per container against a 2048 MiB limit (98%), flat with load",
@@ -25358,9 +25359,8 @@
       "replicas": 1,
       "historyPeakUtil": 0,
       "basis": "no limit seen",
-      "cost": "no price",
+      "cost": "$0.0179/replica-hour, its requests' share of a node",
       "notes": [
-       "memory: peaks at -Infinity MiB per container against a 1024 MiB limit (-Infinity%), flat with load",
        "not seen in traces or request metrics — modelled for cost only",
        "requests 0.5 cores + 256 MiB = 4.5% of a node, $0.0179/replica-hour"
       ]
@@ -25467,8 +25467,8 @@
       "product-catalog: capacity extrapolated (history peaked at 47% of it)"
      ],
      "untrusted": [
-      "frontend: fit poor — memory: peaks at 125 MiB per container against a 512 MiB limit (24%), +6.7 MiB per 100 req/s per replica",
-      "recommendation: fit poor — memory: peaks at 81 MiB per container against a 128 MiB limit (63%), flat with load",
+      "frontend: fit poor — replaying the history reproduces its self time within 36% (mean abs. error)",
+      "recommendation: fit poor — replaying the history reproduces its self time within 36% (mean abs. error)",
       "jaeger: fit unexplained — CPU barely follows load (R² 0.00) — capacity is not CPU-bound or CPU data is noisy"
      ],
      "costOnly": [
@@ -25606,5 +25606,5 @@
    }
   }
  ],
- "evaluatedAt": "2026-10-15T13:33:37.815Z"
+ "evaluatedAt": "2026-10-15T16:12:30.849Z"
 }
