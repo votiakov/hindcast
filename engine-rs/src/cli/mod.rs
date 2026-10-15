@@ -26,6 +26,7 @@ const USAGE: &str = r#"Hindcast CLI — the simulation engine without the UI. (I
   hindcast import-terraform <terraform-show.json> [--name "My system"] [--out arch.yaml]
   hindcast import-k8s      <manifests.yaml …> [--name "My system"] [--out arch.yaml]      (Deployments, HPAs, StatefulSets, Services, Ingress)
   hindcast catalog
+  hindcast mcp            [--http [--port 8787] [--host 127.0.0.1] [--all-tools]]   (MCP server: stdio, or Streamable HTTP)
 
 Backtesting on real data (files only; see docs/backtest.md):
   hindcast export-prometheus --url http://prom:9090 --start 2026-09-01 --end 2026-09-15 [--step 60] [--preset otel-spanmetrics,cadvisor] --out telemetry/
