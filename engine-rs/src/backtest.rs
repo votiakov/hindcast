@@ -516,6 +516,17 @@ pub fn explain_moment(r: &RunResult, plan: &Plan, i: usize) -> (String, Option<S
     if let Some((id, s)) = ooms.first() {
         let mem = plan.services[*id].memory.as_ref().unwrap();
         let per_rep = s.rps[i] / s.replicas[i].max(1.0);
+        if mem.leak > 0.0 {
+            return (
+                format!(
+                    "{} OOM-killed: its memory grows with the requests it serves (a leak, +{} MiB per 1,000) until it passes the {} MiB limit, its pods restarting (CrashLoopBackOff)",
+                    id,
+                    js_to_fixed(mem.leak * 1024.0 * 1000.0, 1),
+                    js_num(js_round(mem.limit * 1024.0))
+                ),
+                Some((*id).clone()),
+            );
+        }
         return (
             format!(
                 "{} OOM-killed: working set {} MiB per container against a {} MiB limit, its pods restarting (CrashLoopBackOff)",

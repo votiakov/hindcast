@@ -51,8 +51,17 @@ pub fn review_capacity(ws: &Workspace, o: &Value) -> Result<Value, String> {
     let throttled: Vec<Value> = svcs.iter().filter(|s| truthy(g(s, &["capacity", "throttle"]))).map(|x| json!({ "service": g(x, &["id"]), "kneeShareOfLimit": num(js_round(n(x, &["capacity", "throttle", "knee"]) * 100.0) / 100.0), "cpuLimit": g(x, &["cpuLimit"]), "perReplicaRps": num(r1(inf(x, &["capacity", "perReplicaRps"]))) })).collect();
     let memory: Vec<Value> = svcs
         .iter()
-        .filter(|x| truthy(g(x, &["memory", "limit"])) && n(x, &["memory", "peak"]) / n(x, &["memory", "limit"]) >= 0.75)
-        .map(|x| json!({ "service": g(x, &["id"]), "peakMiB": num(js_round(n(x, &["memory", "peak"]) * 1024.0)), "limitMiB": num(js_round(n(x, &["memory", "limit"]) * 1024.0)), "share": num(js_round((n(x, &["memory", "peak"]) / n(x, &["memory", "limit"])) * 100.0) / 100.0) }))
+        .filter(|x| truthy(g(x, &["memory", "limit"])) && (n(x, &["memory", "peak"]) / n(x, &["memory", "limit"]) >= 0.75 || g(x, &["memory", "leak"]).as_f64().unwrap_or(0.0) > 0.0))
+        .map(|x| {
+            let mut o = json!({ "service": g(x, &["id"]), "peakMiB": num(js_round(n(x, &["memory", "peak"]) * 1024.0)), "limitMiB": num(js_round(n(x, &["memory", "limit"]) * 1024.0)), "share": num(js_round((n(x, &["memory", "peak"]) / n(x, &["memory", "limit"])) * 100.0) / 100.0) });
+            // a leak: after how many requests per container it reaches its limit
+            let leak = g(x, &["memory", "leak"]).as_f64().unwrap_or(0.0);
+            if leak > 0.0 {
+                o["leakMiBPer1000"] = num(js_round(leak * 1024.0 * 1000.0 * 10.0) / 10.0);
+                o["requestsToLimit"] = num(js_round(((n(x, &["memory", "limit"]) - n(x, &["memory", "base"]) - n(x, &["memory", "spike"])) / leak).max(0.0)));
+            }
+            o
+        })
         .collect();
     super::progress("fixes and savings", 3.0, 5.0);
     // suggest_changes reports no phases of its own here
@@ -159,7 +168,17 @@ pub fn review_markdown(r: &Value) -> String {
             l.push(format!("- **{}** is held back by its CPU quota: throttling takes over at {}% of its {}-core limit ({} req/s per replica)", s(t, &["service"]), js_num(js_round(n(t, &["kneeShareOfLimit"]) * 100.0)), crate::cli::agent::sources_str(t.get("cpuLimit")), js_num(n(t, &["perReplicaRps"]))));
         }
         for x in mem {
-            l.push(format!("- **{}** peaked at {} MiB of its {} MiB memory limit ({}%)", s(x, &["service"]), js_num(n(x, &["peakMiB"])), js_num(n(x, &["limitMiB"])), js_num(js_round(n(x, &["share"]) * 100.0))));
+            if x.get("leakMiBPer1000").is_some() {
+                l.push(format!(
+                    "- **{}** leaks: its memory grows +{} MiB per 1,000 requests it serves, reaching its {} MiB limit after about {} requests per container — then it is OOM-killed and restarts. A busier day gets there sooner; a restart before then, a higher limit or fixing the leak avoids it",
+                    s(x, &["service"]),
+                    js_num(n(x, &["leakMiBPer1000"])),
+                    js_num(n(x, &["limitMiB"])),
+                    crate::math::js_locale(n(x, &["requestsToLimit"]))
+                ));
+            } else {
+                l.push(format!("- **{}** peaked at {} MiB of its {} MiB memory limit ({}%)", s(x, &["service"]), js_num(n(x, &["peakMiB"])), js_num(n(x, &["limitMiB"])), js_num(js_round(n(x, &["share"]) * 100.0))));
+            }
         }
         l.push(String::new());
     }
