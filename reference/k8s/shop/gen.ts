@@ -569,4 +569,8 @@ writeFileSync(join(HERE, 'variants', 'frontend-hpa.yaml'), manifests({ frontendR
 writeFileSync(join(HERE, 'variants', 'frontend-2-1cpu.yaml'), manifests({ frontendReplicas: 2, frontendCpu: '1' }));
 writeFileSync(join(HERE, 'variants', 'frontend-1-1cpu.yaml'), manifests({ frontendReplicas: 1, frontendCpu: '1' }));
 writeFileSync(join(HERE, 'variants', 'frontend-1-750m.yaml'), manifests({ frontendReplicas: 1, frontendCpu: '750m' }));
-console.log('wrote shop.yaml and 6 variants');
+// out of sample, second round: scale out, an autoscaler with headroom, a limit between the two seen
+writeFileSync(join(HERE, 'variants', 'frontend-4.yaml'), manifests({ frontendReplicas: 4 }));
+writeFileSync(join(HERE, 'variants', 'frontend-hpa-2-5.yaml'), manifests({ frontendReplicas: 2, hpa: { min: 2, max: 5, cpu: 50 } }));
+writeFileSync(join(HERE, 'variants', 'frontend-2-750m.yaml'), manifests({ frontendReplicas: 2, frontendCpu: '750m' }));
+console.log('wrote shop.yaml and 9 variants');

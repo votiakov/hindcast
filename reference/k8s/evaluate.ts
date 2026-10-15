@@ -53,8 +53,8 @@ interface Case {
   question: string;
   /** frontend cores per pod after the change (default: as built, half a core) */
   cpu?: number;
-  /** added after the throttle model was designed on the other runs; predicted before it ran */
-  oos?: boolean;
+  /** out of sample: the round whose committed predictions it is scored on (made before it ran) */
+  oos?: number;
 }
 
 const LAUNCH = 2.22; // 13 July's busiest 10 minutes over 12 July's, from the log itself
@@ -64,10 +64,13 @@ const CASES: Case[] = [
   { run: 'launch-2', asBuilt: 'launch', head: 'variants/frontend-2.yaml', scale: LAUNCH, question: '2 frontend replicas instead of 3, on launch day?' },
   { run: 'normal-1', asBuilt: 'history', head: 'variants/frontend-1.yaml', scale: 1, question: '1 frontend replica, on an ordinary day?' },
   { run: 'launch-hpa', asBuilt: 'launch', head: 'variants/frontend-hpa.yaml', scale: LAUNCH, question: 'An HPA (1–3 replicas at 60% CPU) instead of 3 fixed, on launch day?' },
-  { run: 'launch-2c', asBuilt: 'launch', head: 'variants/frontend-2-1cpu.yaml', scale: LAUNCH, cpu: 1, oos: true, question: '2 frontend replicas at 1 core instead of 3 at half a core, on launch day?' },
-  { run: 'normal-1c', asBuilt: 'history', head: 'variants/frontend-1-1cpu.yaml', scale: 1, cpu: 1, oos: true, question: '1 frontend replica at 1 core, on an ordinary day?' },
-  { run: 'normal-1-750', asBuilt: 'history', head: 'variants/frontend-1-750m.yaml', scale: 1, cpu: 0.75, oos: true, question: '1 frontend replica at 750m, on an ordinary day?' },
-  { run: 'launch-x1.3', asBuilt: 'launch-x1.3', scale: LAUNCH * 1.3, oos: true, question: 'As built, on a launch day with 30% more traffic?' },
+  { run: 'launch-2c', asBuilt: 'launch', head: 'variants/frontend-2-1cpu.yaml', scale: LAUNCH, cpu: 1, oos: 1, question: '2 frontend replicas at 1 core instead of 3 at half a core, on launch day?' },
+  { run: 'normal-1c', asBuilt: 'history', head: 'variants/frontend-1-1cpu.yaml', scale: 1, cpu: 1, oos: 1, question: '1 frontend replica at 1 core, on an ordinary day?' },
+  { run: 'normal-1-750', asBuilt: 'history', head: 'variants/frontend-1-750m.yaml', scale: 1, cpu: 0.75, oos: 1, question: '1 frontend replica at 750m, on an ordinary day?' },
+  { run: 'launch-x1.3', asBuilt: 'launch-x1.3', scale: LAUNCH * 1.3, oos: 1, question: 'As built, on a launch day with 30% more traffic?' },
+  { run: 'launch-x1.3-4', asBuilt: 'launch-x1.3', head: 'variants/frontend-4.yaml', scale: LAUNCH * 1.3, oos: 2, question: '4 frontend replicas, on a launch day with 30% more traffic?' },
+  { run: 'launch-x1.3-hpa', asBuilt: 'launch-x1.3', head: 'variants/frontend-hpa-2-5.yaml', scale: LAUNCH * 1.3, oos: 2, question: 'An HPA (2–5 replicas at 50% CPU), on a launch day with 30% more traffic?' },
+  { run: 'launch-2-750', asBuilt: 'launch', head: 'variants/frontend-2-750m.yaml', scale: LAUNCH, cpu: 0.75, oos: 2, question: '2 frontend replicas at 750m instead of 3 at half a core, on launch day?' },
 ];
 const AS_BUILT_CPU = 0.5;
 
@@ -265,6 +268,8 @@ function naive(history: Dataset, replicasAfter: number | 'hpa', scale: number, c
 }
 
 const strategyName = (head: string) => {
+  const hpa = /hpa-(\d)-(\d)/.exec(head);
+  if (hpa) return `Frontend on an HPA, ${hpa[1]}–${hpa[2]} replicas`;
   if (head.includes('hpa')) return 'Frontend on an HPA, 1–3 replicas';
   const [, n, cpu] = /frontend-(\d)(?:-(\w+))?\.yaml/.exec(head)!;
   return `Frontend at ${n} replica${n === '1' ? '' : 's'}${cpu ? `, ${cpu.replace('cpu', ' core')} each` : ''}`;
@@ -292,11 +297,12 @@ function forecast(c: Case, ws: Workspace, base: string) {
   };
 }
 
-const predictionsPath = () => join(SYS, 'validation', 'predictions-oos.json');
+/** the committed predictions of one out-of-sample round (the first round's file keeps its name) */
+const predictionsPath = (round: number) => join(SYS, 'validation', round === 1 ? 'predictions-oos.json' : `predictions-oos-${round}.json`);
 type Forecast = ReturnType<typeof forecast>;
-function predictionsOf(model: string): Record<string, Forecast> | undefined {
-  if (!existsSync(predictionsPath())) return undefined;
-  return (JSON.parse(readFileSync(predictionsPath(), 'utf8')) as { models: Record<string, Record<string, Forecast>> }).models[model];
+function predictionsOf(model: string, round: number): Record<string, Forecast> | undefined {
+  if (!existsSync(predictionsPath(round))) return undefined;
+  return (JSON.parse(readFileSync(predictionsPath(round), 'utf8')) as { models: Record<string, Record<string, Forecast>> }).models[model];
 }
 
 /** score one calibrated model on every recorded case */
@@ -311,14 +317,16 @@ async function score(label: string, ws: Workspace, base: string, evalDir: string
     const log = settled(requestsOf(c.run), meta(c.run).start);
     const head = c.head ? resolve(SYS, c.head) : undefined;
     // out-of-sample runs are scored on the verdict committed before they ran, not one computed after
-    const committed = c.oos ? predictionsOf(label)?.[c.run] : undefined;
+    const committed = c.oos ? predictionsOf(label, c.oos)?.[c.run] : undefined;
     const now = forecast(c, ws, base);
     if (committed && committed.verdict !== now.verdict) console.warn(`(${label} ${c.run}: predicted ${committed.verdict} before the run; today's code says ${now.verdict})`);
     const exAnte = committed ?? now;
     const actual = measured(log, m.slo);
     const actualBase = measured(settled(requestsOf(c.asBuilt), meta(c.asBuilt).start), m.slo);
     const post = predicted(m, ws, run, meta(c.run).start, head, base);
-    const nv = naive(history, !c.head ? 3 : c.head.includes('hpa') ? 'hpa' : replicasOfHead(c.head), c.scale, c.cpu);
+    // an autoscaler, to the spreadsheet, is its maximum
+    const hpaMax = c.head ? /hpa-\d-(\d)/.exec(c.head) : null;
+    const nv = naive(history, !c.head ? 3 : hpaMax ? Number(hpaMax[1]) : c.head.includes('hpa') ? 'hpa' : replicasOfHead(c.head), c.scale, c.cpu);
     // reality's verdict, judged like verify_change's gate: more than 0.5 min out of SLO added over
     // the as-built system on the same day (for the as-built system itself: more than 0.5 min)
     const added = c.run === c.asBuilt ? actual.minutesOutOfSlo : actual.minutesOutOfSlo - actualBase.minutesOutOfSlo;
@@ -327,7 +335,7 @@ async function score(label: string, ws: Workspace, base: string, evalDir: string
     const row = {
       run: c.run,
       question: c.question,
-      oos: !!c.oos,
+      oos: c.oos ?? 0,
       exAnte,
       exPost: { p99Ms: Math.round(post.p99), errorRate: post.errorRate, minutesOutOfSlo: post.minutesOutOfSlo, frontendReplicasPeak: post.frontendReplicasPeak },
       measured: { p99Ms: Math.round(actual.p99), errorRate: actual.errorRate, minutesOutOfSlo: actual.minutesOutOfSlo, requests: actual.requests, addedOverAsBuilt: Math.round(added * 10) / 10 },
@@ -414,19 +422,21 @@ async function main() {
 
   // --predict: write down what each model says about the out-of-sample runs before they are recorded
   if (process.argv.includes('--predict')) {
+    const round = process.argv.includes('--round') ? Number(process.argv[process.argv.indexOf('--round') + 1]) : 1;
     const out = { madeAt: new Date().toISOString(), commit: spawnSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).stdout.trim(), models: {} as Record<string, Record<string, Forecast>> };
     for (const mod of models) {
       const ws = new Workspace(join(evalDir, mod.id));
       out.models[mod.id] = {};
-      for (const c of CASES.filter((x) => x.oos)) {
+      for (const c of CASES.filter((x) => x.oos === round)) {
         out.models[mod.id][c.run] = forecast(c, ws, base);
         const f = out.models[mod.id][c.run];
         console.log(`[${mod.id}] ${c.run.padEnd(13)} predicts ${String(f.verdict).padEnd(12)} ${f.confidence ?? ''} ${f.minutesOutOfSlo ?? ''} min — ${c.question}`);
       }
     }
-    if (existsSync(predictionsPath()) && !process.argv.includes('--force')) throw new Error(`${predictionsPath()} exists: predictions are made once (--force to redo before any run is recorded)`);
-    writeFileSync(predictionsPath(), JSON.stringify(out, null, 1));
-    console.log(`wrote ${predictionsPath()}`);
+    if (existsSync(predictionsPath(round)) && !process.argv.includes('--force')) throw new Error(`${predictionsPath(round)} exists: predictions are made once (--force to redo before any run is recorded)`);
+    if (CASES.some((x) => x.oos === round && recorded(x.run))) throw new Error(`round ${round} has runs recorded already: predictions are made before them`);
+    writeFileSync(predictionsPath(round), JSON.stringify(out, null, 1));
+    console.log(`wrote ${predictionsPath(round)}`);
     return;
   }
 
@@ -478,7 +488,7 @@ async function main() {
   const md = models
     .map((mod) => {
       const ins = mod.rows.filter((r) => !r.oos);
-      const oos = mod.rows.filter((r) => r.oos);
+      const rounds = [...new Set(mod.rows.map((r) => r.oos).filter((x) => x > 0))].sort();
       return [
         `**${mod.label[0].toUpperCase()}${mod.label.slice(1)}:**`,
         '',
@@ -486,7 +496,12 @@ async function main() {
         ...ins.map(row),
         '',
         tally(ins),
-        ...(oos.length ? ['', `*Out of sample* — added after the throttle model was designed on the runs above; the verdicts are the ones committed in \`validation/predictions-oos.json\` before each run was recorded:`, '', ...head, ...oos.map(row), '', tally(oos)] : []),
+        ...rounds.flatMap((k) => {
+          const oos = mod.rows.filter((r) => r.oos === k);
+          const file = k === 1 ? 'predictions-oos.json' : `predictions-oos-${k}.json`;
+          const why = k === 1 ? 'added after the throttle model was designed on the runs above' : `round ${k}, chosen after round ${k - 1} was scored`;
+          return ['', `*Out of sample* — ${why}; the verdicts are the ones committed in \`validation/${file}\` before each run was recorded:`, '', ...head, ...oos.map(row), '', tally(oos)];
+        }),
       ].join('\n');
     })
     .join('\n\n');
