@@ -105,6 +105,10 @@ export interface SystemNodeData extends Record<string, unknown> {
   ttlS?: number;
   /** dns: how long health checks take to notice a dead target, s (default 30) */
   healthCheckS?: number;
+  /** server/worker: threads per instance — a request holds one while it waits on its calls too (unset: async) */
+  threads?: number;
+  /** calls that may wait on any one dependency at once, per instance; past it a call fails at once */
+  bulkhead?: number;
   /** db: horizontal partitions (capacity and cost × shards) */
   shards?: number;
   /** db: share of its traffic on one key — all of it on one shard */
@@ -319,6 +323,12 @@ export const shardsOf = (d: SystemNodeData): number => (d.kind === 'db' || d.kin
 export function hotShardShare(d: SystemNodeData): number {
   const h = d.kind === 'db' ? Math.min(1, Math.max(0, d.hotKeyShare ?? 0)) : 0;
   return h + (1 - h) / shardsOf(d);
+}
+
+/** thread-per-request: requests a second the threads can finish, each held for the work and its calls (∞: async) */
+export function threadsCapacity(d: SystemNodeData, reachable: number, holdMs: number): number {
+  if (!d.threads || d.threads <= 0) return Infinity;
+  return (d.threads * Math.max(0, reachable)) / Math.max(1e-4, (baseLatencyOf(d) + Math.max(0, holdMs)) / 1000);
 }
 
 export function baseLatencyOf(d: SystemNodeData): number {

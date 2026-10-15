@@ -151,6 +151,13 @@ pub fn explain(d: &NodeData, st: Option<&NodeStats>, v: &View) -> Option<String>
         format!("Rate limit reached: {}/s rejected with HTTP 429 to protect what is behind it.", fmt(st.drop_rps))
     } else if d.kind == "function" && st.cold_frac > 0.05 {
         format!("{}% of invocations hit a cold start while new instances spin up.", pct(st.cold_frac))
+    } else if let Some(t) = d.threads.filter(|_| st.drop_rps > 1.0 && super::engine::threads_capacity(d, st.reachable, st.hold_ms) < cap * 0.95) {
+        format!(
+            "Out of threads: {} threads, one per request in flight, each held {} — mostly waiting on its calls — so only {} req/s get one. A slow dependency is holding them: a timeout gives them back sooner; a bulkhead stops one dependency from taking them all.",
+            js_num(t * st.reachable.max(1.0)),
+            fmt_ms(base_latency_of(d) + st.hold_ms),
+            fmt(super::engine::threads_capacity(d, st.reachable, st.hold_ms))
+        )
     } else if v.health == "hot" && st.drop_rps > 1.0 {
         format!("Overloaded: {} req/s offered vs {} req/s capacity. The excess queues, then gets dropped.", fmt(st.in_rps), fmt(cap))
     } else if v.health == "hot" {

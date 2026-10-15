@@ -234,6 +234,8 @@ pub struct NodeState {
     pub dead_for: f64,
     /// a stream: each subscriber's backlog, by its link
     pub sub_backlog: Vec<(usize, f64)>,
+    /// how long a request waits on this component's calls, ms (what a thread is held for beyond the work)
+    pub hold_ms: f64,
 }
 
 /// how much faster than real time a replica catches up once it can reach its primary again
@@ -281,6 +283,7 @@ fn fresh() -> NodeState {
         cold_util: 0.0,
         dead_for: 0.0,
         sub_backlog: vec![],
+        hold_ms: 0.0,
     }
 }
 
@@ -548,8 +551,31 @@ fn process_through(c: &Ctx, st: &mut NodeState) -> ProcessResult {
     if spec(&c.d.kind).scalable {
         st.reachable = reachable(c);
     }
-    let (processed, failed, util) = queue_stage(st, c.arrivals, capacity_of(c.d, Some(st.reachable)), c.dt, queue_seconds(c.d, c.cfg));
+    let cap = threads_capacity(c.d, st.reachable, st.hold_ms).min(capacity_of(c.d, Some(st.reachable)));
+    let (processed, failed, util) = queue_stage(st, c.arrivals, cap, c.dt, queue_seconds(c.d, c.cfg));
     res(processed, failed, processed, util, true)
+}
+
+/// a bulkhead's admitted share of the calls over one link: at most `bulkhead` calls per instance wait
+/// on it at once (calls in flight = rate × latency)
+pub fn bulkhead_admit(d: &NodeData, reachable: f64, rps: f64, latency_ms: f64) -> f64 {
+    match d.bulkhead.filter(|b| *b > 0.0) {
+        Some(b) => {
+            let inflight = rps * latency_ms.max(0.0) / 1000.0;
+            let allowed = b * reachable.max(1.0);
+            if inflight > allowed { allowed / inflight } else { 1.0 }
+        }
+        None => 1.0,
+    }
+}
+
+/// thread-per-request: a thread is held for the work and every call it waits on, so the instances'
+/// threads finish at most threads ÷ hold time requests a second (Little's law). Unlimited when async
+pub fn threads_capacity(d: &NodeData, reachable: f64, hold_ms: f64) -> f64 {
+    match d.threads.filter(|t| *t > 0.0) {
+        Some(t) => t * reachable.max(0.0) / ((base_latency_of(d) + hold_ms.max(0.0)) / 1000.0).max(1e-4),
+        None => f64::INFINITY,
+    }
 }
 
 fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
@@ -890,6 +916,13 @@ pub struct NodeStats {
     pub history: Vec<f64>,
     pub scaling: Option<Scaling>,
     pub warmth: f64,
+    /// thread-per-request: how long a request waits on this component's calls, ms (a thread is held for it)
+    #[serde(skip_serializing_if = "is_zero_f")]
+    pub hold_ms: f64,
+}
+
+fn is_zero_f(x: &f64) -> bool {
+    *x == 0.0
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -1380,6 +1413,7 @@ impl Engine {
             if has_kids {
                 // a link that makes N calls per request: all must succeed, the caller waits for the slowest
                 let timeout_ms = cfg.timeout_s * 1000.0;
+                let bulk_reach = self.nodes[sidx[i]].reachable;
                 let kid = |k: &Route| {
                     let s = &self.nodes[sidx[k.t]];
                     let f = l.flows.iter().find(|x| x.0 == k.e).map(|x| x.1).unwrap_or(0.0);
@@ -1388,11 +1422,10 @@ impl Engine {
                         // across a partition: no answer, until the connection times out
                         return (0.0, timeout_ms, f, 0.0);
                     }
-                    if n > 1.0 {
-                        (s.success.js_pow(n), s.latency_ms * fanout_tail(n) + edge_lat[k.e], f, s.tail_ms * fanout_tail(n))
-                    } else {
-                        (s.success, s.latency_ms + edge_lat[k.e], f, s.tail_ms)
-                    }
+                    let (ks, kl, kt) = if n > 1.0 { (s.success.js_pow(n), s.latency_ms * fanout_tail(n) + edge_lat[k.e], s.tail_ms * fanout_tail(n)) } else { (s.success, s.latency_ms + edge_lat[k.e], s.tail_ms) };
+                    // a bulkhead: past its share of waiting calls, the rest fail at once
+                    let admit = bulkhead_admit(d, bulk_reach, f / dt, kl);
+                    (ks * admit, admit * kl + (1.0 - admit) * 0.5, f, kt)
                 };
                 // a kid's answers as a mixture (its own one, or its mean and tail), the link's latency added
                 let kid_dist = |k: &Route| -> Vec<[f64; 3]> {
@@ -1416,7 +1449,9 @@ impl Engine {
                     if edge_cut[k.e] {
                         return (0.0, 0.0);
                     }
-                    (s.success_r.js_pow(n), s.success_w.js_pow(n))
+                    let f = l.flows.iter().find(|x| x.0 == k.e).map(|x| x.1).unwrap_or(0.0);
+                    let admit = bulkhead_admit(d, bulk_reach, f / dt, s.latency_ms + edge_lat[k.e]);
+                    (s.success_r.js_pow(n) * admit, s.success_w.js_pow(n) * admit)
                 };
                 // each class's own flow over a link (links that carry only reads or only writes)
                 let restricted = l.routes.iter().any(|k| edge_carries[k.e] != 0);
@@ -1540,6 +1575,7 @@ impl Engine {
                 child_w = p * child_w + (1.0 - p) * fb;
                 child_lat = p * child_lat + (1.0 - p) * 2.0;
             }
+            st.hold_ms = ema(st.hold_ms, if has_kids { child_lat } else { 0.0 }, dt, 0.3);
             let keep = 1.0 - st.drop_ratio;
             let (_, mut latency) = if l.up { fold(&FoldCtx { d, keep, local_share: l.local_share, child_succ, child_lat, has_kids, cfg }, st) } else { (0.0, 0.0) };
             // success per class: a cache answers its read hits, a database its writes; the rest waits on what is behind
@@ -1809,6 +1845,7 @@ impl Engine {
                     history: if with_history { st.history.iter().copied().collect() } else { vec![] },
                     scaling,
                     warmth: st.warmth,
+                    hold_ms: if n.data.threads.is_some() { st.hold_ms } else { 0.0 },
                 },
             );
         }

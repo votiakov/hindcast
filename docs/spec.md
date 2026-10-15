@@ -43,6 +43,8 @@ zones:                          # optional failure domains
 | `timeoutMs` | any caller (typically client) | deadline per attempt; slower responses are failures |
 | `breaker` | any caller | circuit breaker on downstream calls |
 | `fallback` | with `breaker` | serve a degraded response while open |
+| `threads` | server, worker | threads per instance: every request in flight holds one, waiting on its calls included (thread-per-request, e.g. Tomcat's 200); unset = asynchronous. A slow dependency then exhausts them, and requests that never touch it fail too |
+| `bulkhead` | any caller | calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread |
 | `routing` | any caller | `split` (default) · `fanout` (call all, wait for all) · `failover` (in order) |
 | `fanout` | any caller | scatter-gather: each call goes to N partitions of the callee in parallel and waits for the slowest (also makes the callee's instances reachable) |
 | `stallRate`, `stallMs` | any | rare hiccups: share of requests that stall, and for how long (GC pause, compaction, noisy neighbor) |

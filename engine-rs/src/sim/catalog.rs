@@ -102,6 +102,14 @@ pub struct NodeData {
     /// dns: how long the health checks take to notice a dead target, s (default 30)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub health_check_s: Option<f64>,
+    /// server/worker: threads per instance — requests in flight, waiting on calls included
+    /// (thread-per-request, e.g. Tomcat's 200). None: asynchronous, waiting holds nothing
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub threads: Option<f64>,
+    /// calls that may wait on any one dependency at once, per instance; past it a call fails fast
+    /// instead of taking another thread (a bulkhead)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bulkhead: Option<f64>,
     /// a network partition's side this component is on (set by the partition action): links between
     /// components on different sides are cut
     #[serde(skip_serializing_if = "Option::is_none")]

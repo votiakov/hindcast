@@ -295,6 +295,18 @@
            "minimum": 0,
            "maximum": 3600
           },
+          "threads": {
+           "description": "server/worker: threads per instance — every request in flight holds one, waiting on its calls included (thread-per-request, e.g. Tomcat 200). Unset: asynchronous, waiting holds nothing",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 10000
+          },
+          "bulkhead": {
+           "description": "calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 10000
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -690,6 +702,18 @@
            "type": "number",
            "minimum": 0,
            "maximum": 3600
+          },
+          "threads": {
+           "description": "server/worker: threads per instance — every request in flight holds one, waiting on its calls included (thread-per-request, e.g. Tomcat 200). Unset: asynchronous, waiting holds nothing",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 10000
+          },
+          "bulkhead": {
+           "description": "calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 10000
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -1462,6 +1486,18 @@
            "minimum": 0,
            "maximum": 3600
           },
+          "threads": {
+           "description": "server/worker: threads per instance — every request in flight holds one, waiting on its calls included (thread-per-request, e.g. Tomcat 200). Unset: asynchronous, waiting holds nothing",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 10000
+          },
+          "bulkhead": {
+           "description": "calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 10000
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -1847,6 +1883,18 @@
               "minimum": 0,
               "maximum": 3600
              },
+             "threads": {
+              "description": "server/worker: threads per instance — every request in flight holds one, waiting on its calls included (thread-per-request, e.g. Tomcat 200). Unset: asynchronous, waiting holds nothing",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000
+             },
+             "bulkhead": {
+              "description": "calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000
+             },
              "capacity": {
               "description": "override: req/s per size-S instance",
               "type": "number",
@@ -2181,6 +2229,18 @@
                 "minimum": 0,
                 "maximum": 3600
                },
+               "threads": {
+                "description": "server/worker: threads per instance — every request in flight holds one, waiting on its calls included (thread-per-request, e.g. Tomcat 200). Unset: asynchronous, waiting holds nothing",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000
+               },
+               "bulkhead": {
+                "description": "calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000
+               },
                "capacity": {
                 "description": "override: req/s per size-S instance",
                 "type": "number",
@@ -2437,6 +2497,18 @@
                 "type": "number",
                 "minimum": 0,
                 "maximum": 3600
+               },
+               "threads": {
+                "description": "server/worker: threads per instance — every request in flight holds one, waiting on its calls included (thread-per-request, e.g. Tomcat 200). Unset: asynchronous, waiting holds nothing",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000
+               },
+               "bulkhead": {
+                "description": "calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000
                },
                "capacity": {
                 "description": "override: req/s per size-S instance",
@@ -3192,6 +3264,18 @@
            "minimum": 0,
            "maximum": 3600
           },
+          "threads": {
+           "description": "server/worker: threads per instance — every request in flight holds one, waiting on its calls included (thread-per-request, e.g. Tomcat 200). Unset: asynchronous, waiting holds nothing",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 10000
+          },
+          "bulkhead": {
+           "description": "calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 10000
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -3603,6 +3687,18 @@
            "type": "number",
            "minimum": 0,
            "maximum": 3600
+          },
+          "threads": {
+           "description": "server/worker: threads per instance — every request in flight holds one, waiting on its calls included (thread-per-request, e.g. Tomcat 200). Unset: asynchronous, waiting holds nothing",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 10000
+          },
+          "bulkhead": {
+           "description": "calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 10000
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -4363,6 +4459,18 @@
            "type": "number",
            "minimum": 0,
            "maximum": 3600
+          },
+          "threads": {
+           "description": "server/worker: threads per instance — every request in flight holds one, waiting on its calls included (thread-per-request, e.g. Tomcat 200). Unset: asynchronous, waiting holds nothing",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 10000
+          },
+          "bulkhead": {
+           "description": "calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 10000
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -5133,6 +5241,18 @@
            "minimum": 0,
            "maximum": 3600
           },
+          "threads": {
+           "description": "server/worker: threads per instance — every request in flight holds one, waiting on its calls included (thread-per-request, e.g. Tomcat 200). Unset: asynchronous, waiting holds nothing",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 10000
+          },
+          "bulkhead": {
+           "description": "calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 10000
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -5613,6 +5733,18 @@
            "minimum": 0,
            "maximum": 3600
           },
+          "threads": {
+           "description": "server/worker: threads per instance — every request in flight holds one, waiting on its calls included (thread-per-request, e.g. Tomcat 200). Unset: asynchronous, waiting holds nothing",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 10000
+          },
+          "bulkhead": {
+           "description": "calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 10000
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -5995,6 +6127,18 @@
              "minimum": 0,
              "maximum": 3600
             },
+            "threads": {
+             "description": "server/worker: threads per instance — every request in flight holds one, waiting on its calls included (thread-per-request, e.g. Tomcat 200). Unset: asynchronous, waiting holds nothing",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 10000
+            },
+            "bulkhead": {
+             "description": "calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 10000
+            },
             "capacity": {
              "description": "override: req/s per size-S instance",
              "type": "number",
@@ -6329,6 +6473,18 @@
                "minimum": 0,
                "maximum": 3600
               },
+              "threads": {
+               "description": "server/worker: threads per instance — every request in flight holds one, waiting on its calls included (thread-per-request, e.g. Tomcat 200). Unset: asynchronous, waiting holds nothing",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 10000
+              },
+              "bulkhead": {
+               "description": "calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 10000
+              },
               "capacity": {
                "description": "override: req/s per size-S instance",
                "type": "number",
@@ -6585,6 +6741,18 @@
                "type": "number",
                "minimum": 0,
                "maximum": 3600
+              },
+              "threads": {
+               "description": "server/worker: threads per instance — every request in flight holds one, waiting on its calls included (thread-per-request, e.g. Tomcat 200). Unset: asynchronous, waiting holds nothing",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 10000
+              },
+              "bulkhead": {
+               "description": "calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 10000
               },
               "capacity": {
                "description": "override: req/s per size-S instance",
@@ -7338,6 +7506,18 @@
            "minimum": 0,
            "maximum": 3600
           },
+          "threads": {
+           "description": "server/worker: threads per instance — every request in flight holds one, waiting on its calls included (thread-per-request, e.g. Tomcat 200). Unset: asynchronous, waiting holds nothing",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 10000
+          },
+          "bulkhead": {
+           "description": "calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 10000
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -7720,6 +7900,18 @@
              "minimum": 0,
              "maximum": 3600
             },
+            "threads": {
+             "description": "server/worker: threads per instance — every request in flight holds one, waiting on its calls included (thread-per-request, e.g. Tomcat 200). Unset: asynchronous, waiting holds nothing",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 10000
+            },
+            "bulkhead": {
+             "description": "calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 10000
+            },
             "capacity": {
              "description": "override: req/s per size-S instance",
              "type": "number",
@@ -8054,6 +8246,18 @@
                "minimum": 0,
                "maximum": 3600
               },
+              "threads": {
+               "description": "server/worker: threads per instance — every request in flight holds one, waiting on its calls included (thread-per-request, e.g. Tomcat 200). Unset: asynchronous, waiting holds nothing",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 10000
+              },
+              "bulkhead": {
+               "description": "calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 10000
+              },
               "capacity": {
                "description": "override: req/s per size-S instance",
                "type": "number",
@@ -8310,6 +8514,18 @@
                "type": "number",
                "minimum": 0,
                "maximum": 3600
+              },
+              "threads": {
+               "description": "server/worker: threads per instance — every request in flight holds one, waiting on its calls included (thread-per-request, e.g. Tomcat 200). Unset: asynchronous, waiting holds nothing",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 10000
+              },
+              "bulkhead": {
+               "description": "calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 10000
               },
               "capacity": {
                "description": "override: req/s per size-S instance",

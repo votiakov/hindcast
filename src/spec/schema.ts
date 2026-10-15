@@ -47,6 +47,8 @@ export const ComponentSpec = z
     partitions: z.number().int().min(1).max(1024).optional().describe('stream: partitions (default 4) — 1,000 messages/s in each, and a subscriber can use at most one consumer instance per partition'),
     ttlS: z.number().min(0).max(86400).optional().describe('dns: how long clients cache an answer, s (default 60) — a dead target keeps getting traffic until it expires'),
     healthCheckS: z.number().min(0).max(3600).optional().describe('dns: how long health checks take to notice a dead target, s (default 30; 3 checks × 10 s)'),
+    threads: z.number().int().min(1).max(10000).optional().describe('server/worker: threads per instance — every request in flight holds one, waiting on its calls included (thread-per-request, e.g. Tomcat 200). Unset: asynchronous, waiting holds nothing'),
+    bulkhead: z.number().int().min(1).max(10000).optional().describe('calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread'),
     capacity: z.number().positive().optional().describe('override: req/s per size-S instance'),
     latencyMs: z.number().nonnegative().optional().describe('override: base service time'),
     costPerHour: z.number().nonnegative().optional().describe('override: $/h per size-S instance'),

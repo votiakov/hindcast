@@ -243,6 +243,8 @@ const R_BREAKER: u8 = 7;
 const R_DNS: u8 = 8;
 const R_NO_ROUTE: u8 = 9;
 const R_SYNC: u8 = 10;
+const R_BULKHEAD: u8 = 11;
+const R_THREADS: u8 = 12;
 
 fn why(n: usize, r: u8) -> Why {
     ((n as u32 + 1) << 8) | r as u32
@@ -261,6 +263,8 @@ fn reason_text(r: u8) -> &'static str {
         R_DNS => "stale DNS answer",
         R_NO_ROUTE => "no healthy target",
         R_SYNC => "synchronous replica unreachable",
+        R_BULKHEAD => "bulkhead full (call refused at once)",
+        R_THREADS => "out of threads (all waiting on calls)",
         _ => "failed",
     }
 }
@@ -281,6 +285,10 @@ enum Cont {
     SubConsumer { stream: usize, k: usize },
     /// a write-behind cache's flush to the origin settled
     Flushed,
+    /// the request held one of the component's threads until its answer (thread-per-request)
+    Hold { n: usize, done: ContId, t0: f64 },
+    /// a call through a bulkhead: its slot for that dependency is freed when it settles
+    Bulk { n: usize, k: usize, done: ContId },
     Free,
 }
 
@@ -341,10 +349,13 @@ struct Win {
     usage_reqs: f64,
     /// a sharded database: shard 0's busy worker-seconds
     hot_area: f64,
+    /// thread-per-request: seconds threads were held, and how many requests released one
+    held_s: f64,
+    held_n: f64,
 }
 
 fn new_win() -> Win {
-    Win { arrivals: 0.0, drops: 0.0, hits: 0.0, busy_area: 0.0, calls: 0.0, attempts: 0.0, late: 0.0, usage_reqs: 0.0, hot_area: 0.0 }
+    Win { arrivals: 0.0, drops: 0.0, hits: 0.0, busy_area: 0.0, calls: 0.0, attempts: 0.0, late: 0.0, usage_reqs: 0.0, hot_area: 0.0, held_s: 0.0, held_n: 0.0 }
 }
 
 struct DNode {
@@ -379,6 +390,12 @@ struct DNode {
     /// a stream: each subscriber's backlog and messages in flight, by child position
     sub_backlog: Vec<VecDeque<Job>>,
     sub_inflight: Vec<f64>,
+    /// thread-per-request: threads (∞: async) and requests holding one, waiting on calls included
+    threads_cap: f64,
+    held: f64,
+    /// a bulkhead: calls that may wait on each dependency (∞: none), and those waiting, by child position
+    bulk_cap: f64,
+    bulk_inflight: Vec<f64>,
     queue: VecDeque<Job>,
     queue_max: f64,
     last_busy_t: f64,
@@ -620,6 +637,11 @@ impl<'a> Des<'a> {
             n.svc_mean_ms = (n.workers / cap) * 1000.0;
         }
         n.tokens = n.tokens.min(n.rate);
+        n.threads_cap = match d.threads.filter(|t| *t > 0.0) {
+            Some(t) if kind == "server" || kind == "worker" => t * reach,
+            _ => f64::INFINITY,
+        };
+        n.bulk_cap = d.bulkhead.filter(|b| *b > 0.0).map(|b| b * reach.max(1.0)).unwrap_or(f64::INFINITY);
         // serverless throttles instead of queueing; unlimited pools never queue
         n.queue_max = if kind == "function" || !n.workers.is_finite() { 0.0 } else { (cap * d.queue_s.or(spec(kind).queue_s).unwrap_or(cfg_queue)).floor().max(1.0) };
         // a sharded database: a pool and a queue per shard
@@ -712,6 +734,23 @@ impl<'a> Des<'a> {
                 if !ok {
                     self.lost_writes += 1.0;
                 }
+            }
+            Cont::Hold { n, done, t0 } => {
+                self.release(id);
+                self.nodes[n].held -= 1.0;
+                self.nodes[n].win.held_s += self.now - t0;
+                self.nodes[n].win.held_n += 1.0;
+                let bound = {
+                    let d = &self.nodes[n].data;
+                    d.queue_s.or(spec(&d.kind).queue_s).unwrap_or(self.cfg.queue_s) * 1000.0
+                };
+                self.drain(n, bound);
+                self.deliver(done, why);
+            }
+            Cont::Bulk { n, k, done } => {
+                self.release(id);
+                self.nodes[n].bulk_inflight[k] -= 1.0;
+                self.deliver(done, why);
             }
             Cont::Free => {}
         }
@@ -868,6 +907,23 @@ impl<'a> Des<'a> {
                 return self.fail(None, why(i, R_PARTITION), done, 1000.0);
             }
         }
+        // a bulkhead: past the dependency's share of waiting calls, refuse at once
+        let mut done = done;
+        if let Some(f) = from {
+            if self.nodes[f].bulk_cap.is_finite() {
+                if let Some(k) = self.nodes[f].children.iter().position(|&c| c == i) {
+                    let x = &mut self.nodes[f];
+                    if x.bulk_inflight.len() < x.children.len() {
+                        x.bulk_inflight.resize(x.children.len(), 0.0);
+                    }
+                    if x.bulk_inflight[k] >= x.bulk_cap {
+                        return self.fail(Some(f), why(f, R_BULKHEAD), done, 0.5);
+                    }
+                    x.bulk_inflight[k] += 1.0;
+                    done = self.cont(Cont::Bulk { n: f, k, done });
+                }
+            }
+        }
         let link = from.and_then(|f| self.link_ms.get(&(f, i)).copied()).unwrap_or(0.0);
         let ms = self.cfg.hop_ms + link;
         // a link that makes N calls per request: N in parallel, done when all have answered
@@ -897,17 +953,26 @@ impl<'a> Des<'a> {
             self.nodes[n].sh_queue[s].push_back(Job { shard: s as u16, ..job });
             return;
         }
-        if x.busy < x.workers {
+        if x.busy < x.workers && x.held < x.threads_cap {
             return self.start(n, job);
         }
         if x.queue.len() as f64 >= x.queue_max {
-            return self.fail(Some(n), why(n, R_SHED), job.done.unwrap(), 0.5);
+            let r = if x.held >= x.threads_cap { R_THREADS } else { R_SHED };
+            return self.fail(Some(n), why(n, r), job.done.unwrap(), 0.5);
         }
         self.nodes[n].queue.push_back(job);
     }
 
-    fn start(&mut self, n: usize, job: Job) {
+    fn start(&mut self, n: usize, mut job: Job) {
         self.set_busy(n, 1.0);
+        // a thread is taken for the work and every call it makes, until the answer
+        if self.nodes[n].threads_cap.is_finite() {
+            if let Some(done) = job.done {
+                self.nodes[n].held += 1.0;
+                let t0 = self.now;
+                job.done = Some(self.cont(Cont::Hold { n, done, t0 }));
+            }
+        }
         if job.shard != NO_SHARD {
             self.shard_busy(n, job.shard as usize, 1.0);
         }
@@ -954,15 +1019,22 @@ impl<'a> Des<'a> {
                 self.start(n, next);
             }
         }
-        while !self.nodes[n].queue.is_empty() && self.nodes[n].busy < self.nodes[n].workers {
+        self.drain(n, bound);
+        self.after_service(n, job);
+    }
+
+    /// next in line while a worker (and a thread) is free; shed what waited past the queue bound
+    fn drain(&mut self, n: usize, bound: f64) {
+        while !self.nodes[n].queue.is_empty() && self.nodes[n].busy < self.nodes[n].workers && self.nodes[n].held < self.nodes[n].threads_cap {
             let next = self.nodes[n].queue.pop_front().unwrap();
             if (self.now - next.t_in) * 1000.0 > bound {
-                self.fail(Some(n), why(n, R_SHED), next.done.unwrap(), 0.5);
+                // it waited for a thread, not for the work, when workers were free
+                let r = if self.nodes[n].threads_cap.is_finite() && self.nodes[n].busy < self.nodes[n].workers { R_THREADS } else { R_SHED };
+                self.fail(Some(n), why(n, r), next.done.unwrap(), 0.5);
                 continue;
             }
             self.start(n, next);
         }
-        self.after_service(n, job);
     }
 
     fn after_service(&mut self, n: usize, job: Job) {
@@ -1328,6 +1400,8 @@ impl<'a> Des<'a> {
             let w = &n.win;
             let workers = if n.workers.is_finite() { n.workers } else { 1.0 };
             let util = if n.sh_workers > 0.0 { w.hot_area / (n.sh_workers * win_s) } else if n.data.kind == "queue" { n.backlog.len() as f64 / QUEUE_BACKLOG_MAX as f64 } else if n.data.kind == "stream" { n.sub_backlog.iter().map(|q| q.len()).max().unwrap_or(0) as f64 / QUEUE_BACKLOG_MAX as f64 } else if n.rate.is_finite() { w.arrivals / (n.rate * win_s).max(1e-9) } else { w.busy_area / (workers * win_s) };
+            // thread-per-request: the threads the offered load needs (rate × hold time, Little's law) over those there are
+            let util = if n.threads_cap.is_finite() && w.held_n > 0.0 { util.max((w.arrivals / win_s) * (w.held_s / w.held_n) / n.threads_cap.max(1e-9)) } else { util };
             let billed = if n.data.kind == "function" || n.data.kind == "llmapi" || n.data.kind == "external" || n.data.kind == "kv" { w.usage_reqs } else if n.data.kind == "client" { 0.0 } else { w.arrivals };
             let usage = billed * request_price(&n.data, &self.pricing) * 3600.0;
             let cost_h = match &n.scaler {
@@ -1363,6 +1437,8 @@ impl<'a> Des<'a> {
                 history: vec![],
                 scaling: n.scaler.as_ref().map(|s| Scaling { live: s.live, pending: s.pending.len() as f64, desired: s.desired }),
                 warmth: cache_warmth(n.cold_at, now, n.data.warmup_s),
+                // what a thread was held for beyond the work itself
+                hold_ms: if w.held_n > 0.0 { (w.held_s / w.held_n * 1000.0 - n.svc_mean_ms).max(0.0) } else { 0.0 },
             };
             let arrivals = w.arrivals;
             if (n.data.kind == "cache" || n.data.kind == "cdn") && !up(n) {
@@ -1506,6 +1582,10 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
             dead_since: None,
             sub_backlog: vec![],
             sub_inflight: vec![],
+            threads_cap: f64::INFINITY,
+            held: 0.0,
+            bulk_cap: f64::INFINITY,
+            bulk_inflight: vec![],
             queue: VecDeque::new(),
             queue_max: 0.0,
             last_busy_t: 0.0,

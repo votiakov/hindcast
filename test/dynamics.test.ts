@@ -80,3 +80,50 @@ describe('link latency', () => {
     expect(fluidFar).toBeGreaterThanOrEqual(fluidNear + 79.5);
   });
 });
+
+describe('threads and bulkheads', () => {
+  // half the requests call a payment API that has slowed to 2 s; the api has 2 × 50 threads
+  const slow = (api: Record<string, unknown>) => ({
+    components: [
+      { id: 'users', kind: 'client' },
+      { id: 'lb', kind: 'lb' },
+      { id: 'api', kind: 'server', instances: 2, threads: 50, ...api },
+      { id: 'db', kind: 'db' },
+      { id: 'pay', kind: 'external', latencyMs: 2000, limit: 5000 },
+    ],
+    connections: [['users', 'lb'], ['lb', 'api'], ['api', 'db'], ['api', 'pay']],
+  });
+  const both = (spec: unknown) => ({ fluid: simulate(spec as never, steady(400, 40)).summary.meanErrorRate, des: simulateDes(spec, steady(400, 40), { seed: 2 }) });
+
+  it('a slow dependency holds every thread, and the requests that never touch it fail too', () => {
+    const { fluid, des } = both(slow({}));
+    // only half call the slow API, yet most fail: the rest find no free thread
+    expect(fluid).toBeGreaterThan(0.6);
+    expect(des.summary.meanErrorRate).toBeGreaterThan(0.6);
+    expect(Math.abs(fluid - des.summary.meanErrorRate)).toBeLessThan(0.1);
+    expect(des.failures[0]).toMatchObject({ id: 'api', reason: 'out of threads (all waiting on calls)' });
+    expect(des.bottlenecks[0].note).toMatch(/^Out of threads/);
+  });
+
+  it('a bulkhead loses only the slow dependency’s calls, and the rest stay fast', () => {
+    const { fluid, des } = both(slow({ bulkhead: 10 }));
+    expect(fluid).toBeLessThan(0.52);
+    expect(des.summary.meanErrorRate).toBeLessThan(0.52);
+    expect(des.failures[0].reason).toMatch(/^bulkhead full/);
+    expect(des.summary.p50Ms).toBeLessThan(100);
+  });
+
+  it('a timeout gives the threads back sooner', () => {
+    const { fluid, des } = both(slow({ timeoutMs: 300 }));
+    expect(fluid).toBeLessThan(0.6);
+    expect(des.summary.meanErrorRate).toBeLessThan(0.6);
+  });
+
+  it('asynchronous servers (no threads) are unaffected by how long their calls take', () => {
+    const spec = slow({});
+    delete (spec.components[2] as Record<string, unknown>).threads;
+    const { fluid } = both(spec);
+    // the payment calls succeed, slowly; nothing else fails
+    expect(fluid).toBeLessThan(0.02);
+  });
+});

@@ -303,6 +303,34 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
               )}
             </div>
           )}
+          {(data.kind === 'server' || data.kind === 'worker') && (
+            <div className="nc-row" title="Threads per instance: every request in flight holds one, waiting on its calls included (thread-per-request, e.g. Tomcat's 200). async: waiting holds nothing">
+              <span className="nc-l">threads</span>
+              <select value={data.threads ?? 0} onChange={(e) => set({ threads: +e.target.value || undefined })}>
+                <option value={0}>async</option>
+                {[10, 25, 50, 100, 200, 500].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+              {caller && (
+                <>
+                  <span className="nc-l" title="Bulkhead: calls that may wait on any one dependency at once, per instance — past it a call fails at once instead of taking another thread">
+                    bulkhead
+                  </span>
+                  <select value={data.bulkhead ?? 0} onChange={(e) => set({ bulkhead: +e.target.value || undefined })}>
+                    <option value={0}>off</option>
+                    {[5, 10, 20, 50, 100].map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              )}
+            </div>
+          )}
           {data.kind !== 'client' && (outgoing > 1 || (data.routing ?? 'split') !== 'split' || data.kind === 'server' || data.kind === 'worker' || data.kind === 'function') && (
             <div className="nc-row" title="How calls spread over the components this one calls">
               <span className="nc-l">routing</span>

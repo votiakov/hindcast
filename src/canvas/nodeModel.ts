@@ -1,4 +1,4 @@
-import { KINDS, QUEUE_MAX_BACKLOG, capacityOf, costOf, hotShardShare, partitionsOf, instancesUp, isUp, shardsOf, skuOf, type SystemNodeData } from '../sim/catalog';
+import { KINDS, QUEUE_MAX_BACKLOG, baseLatencyOf, capacityOf, threadsCapacity, costOf, hotShardShare, partitionsOf, instancesUp, isUp, shardsOf, skuOf, type SystemNodeData } from '../sim/catalog';
 import type { NodeStats } from '../sim/engine';
 
 export type Health = 'idle' | 'ok' | 'warm' | 'hot' | 'down';
@@ -185,6 +185,11 @@ export function explain(d: SystemNodeData, st: NodeStats | undefined, v: NodeVie
   if (d.kind === 'db' && shardsOf(d) > 1 && d.hotKeyShare && (v.health === 'hot' || st.dropRps > 1)) {
     const share = hotShardShare(d);
     return { tone: 'bad', text: `Hot shard: ${Math.round(share * 100)}% of the traffic lands on one of ${shardsOf(d)} shards (${Math.round(d.hotKeyShare * 100)}% on one key), so it saturates while the others idle. More shards cannot split one key — cache it, or grow every shard.` };
+  }
+  if (d.threads && st.dropRps > 1) {
+    const tc = threadsCapacity(d, st.reachable, st.holdMs ?? 0);
+    if (tc < cap * 0.95)
+      return { tone: 'bad', text: `Out of threads: ${d.threads * Math.max(1, st.reachable)} threads, one per request in flight, each held ${fmtMs(baseLatencyOf(d) + (st.holdMs ?? 0))} — mostly waiting on its calls — so only ${fmt(tc)} req/s get one. A slow dependency is holding them: a timeout gives them back sooner; a bulkhead stops one dependency from taking them all.` };
   }
   if (v.health === 'hot' && st.dropRps > 1 && st.inRps >= cap * 0.9) return { tone: 'bad', text: `Overloaded: ${fmt(st.inRps)} req/s offered vs ${fmt(cap)} req/s capacity. The excess queues, then gets dropped.` };
   // drops while the offered load is below capacity: a surge just passed (the averages lag it)

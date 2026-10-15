@@ -65,6 +65,8 @@ export interface NodeStats {
   scaling: { live: number; pending: number; desired: number } | null;
   /** cache / cdn: 0 (cold) … 1 (warm) */
   warmth: number;
+  /** thread-per-request: how long a request waits on this component's calls, ms (a thread is held for it) */
+  holdMs?: number;
 }
 
 export interface EdgeStats {
