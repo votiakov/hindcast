@@ -328,6 +328,84 @@ The calibration's foundation, CPU from traffic, holds up on real production tele
 [../alibaba](../alibaba). When traffic moved, its forecasts were off 5.9% on 44 of Alibaba's busiest
 services, against 11–13% for naive forecasts.
 
+## Without traces, live
+
+Who-calls-whom without traces ([docs/agents.md](../../docs/agents.md#without-traces)) was tested
+here on 16 October 2026. The collector keeps the client span's peer as a span-metric dimension
+(`server.address`, `peer.service`, `net.peer.name`), and the `servicegraph` connector writes
+`traces_service_graph_*` to Prometheus, both with their default settings ([shop/gen.ts](shop/gen.ts)).
+Only the collector's ConfigMap changed. The traffic was one ordinary day (12 July, x83, compressed into
+25 minutes, peak 157 req/s at the ingress), 23:14:24–23:39:25 UTC, as built. It was not recorded as a
+run: the numbers below come from `quickstart` over that window (`--start/--end`, `--namespace shop
+--exclude jaeger,otel-collector --p99 1000 --errors 0.01`), three ways:
+
+- **span metrics**: Prometheus alone, `--calls spanmetrics`. Client spans are matched by RPC name,
+  else by the peer labels.
+- **service graph**: Prometheus alone, which reads the service graph first.
+- **traces**: `--jaeger`; 2,950 traces from the 10% sample.
+
+The **measured** column is what each service's server spans counted over the window, divided by the
+requests ingress-nginx counted (134,483). For `valkey-cart` and `flagd`, which have no spans of their
+own, it is cart's client spans.
+
+| | span metrics | service graph | traces | measured |
+|---|---|---|---|---|
+| call edges (traced graph: 15, flagd's self-call left out) | 15: 14 of the traced ones, missing shipping → quote; plus ad → flagd (a flag stream, 1 call) | 13 of 15, missing cart → valkey-cart and cart → flagd | 15 | |
+| calls per frontend request: product-catalog | 1.32 | 1.51 | 2.19 | 1.51 |
+| cart | 0.39 | 0.46 | 0.51 | 0.46 |
+| ad | 0.13 | 0.12 | 0.26 | 0.12 |
+| recommendation | 0.12 | 0.12 | 0.27 | 0.12 |
+| currency | 0.14 | 0.13 | 0.14 | 0.14 |
+| shipping | 0.084 | 0.080 | 0.079 | 0.083 |
+| checkout, payment, email, quote | 0.042–0.043 | 0.040–0.042 | 0.040 | 0.041–0.042 |
+| valkey-cart | 0.64 | — | 0.70 | 0.75 |
+| flagd | 0.036 | — | 0.079 | 0.042 |
+| capacity per replica: frontend | 120 req/s, CPU | 120 req/s, CPU | 220 req/s, 1 at a time | |
+| recommendation | 44 req/s, 6 at a time | 52 req/s, 4 at a time | 68 req/s, 1 at a time | |
+| the other nine traced services | the same in all three (CPU, from the same metrics) | | | |
+| valkey-cart, flagd | 4,100 and 461 req/s, CPU only (no latency metric) | not modelled (cost only) | 28,732 and 25,050 req/s | |
+| headroom | 362.8 req/s, frontend first (frontend's fit is poor, so the review calls it a guess) | 361 req/s, frontend first | 411.1 req/s, recommendation first | |
+| held-out p99 (the last 7 min) | 65.8 ms predicted, 56.8 measured; typical error per 30 s bucket 50% | 67.5 against 56.8; 49% | no check: the traced endpoints have no p99 series, because span names carry raw URLs | |
+
+What it says:
+
+- **Call counts.** For every service it covers, the service graph came within 4% of what the
+  servers served. Its counts come from pairs of spans the collector saw.
+  - Span metrics don't match what was served. The frontend's Node.js gRPC client spans count 15–30%
+    fewer calls than cart and product-catalog served, and about 24% more than ad and checkout
+    served. Calls into a service are scaled down where callers count more than it served (ad,
+    checkout), never up.
+  - The traces overcount the busy calls, by about 2× for ad and recommendation and 1.45× for
+    product-catalog. The traced paths are averaged over the sampled traces. Why their mix differs from
+    the ingress's was not investigated here.
+- **What each source can't see.**
+  - The service graph names an uninstrumented callee only through the connector's
+    `virtual_node_peer_attributes`, which default to `peer.service`, `db.name` and `db.system`. Cart's
+    Valkey calls became the virtual node `redis`, which names no workload. Its flagd calls (and ad's
+    and recommendation's flag streams) became `unknown`. Both are left out and the review names them.
+  - Span metrics miss shipping → quote: the Rust HTTP client's span carries no peer attribute. quote
+    is then carried by the entry traffic in proportion to its own requests, which gives the right
+    rate (0.042).
+- **The live data exposed four bugs, now fixed.**
+  - cart's .NET gRPC client traces each flagd call twice, once as the RPC and once as the HTTP/2
+    `POST` under it, so cart → flagd was counted twice. A bare POST to a callee that matches the RPC
+    count is now counted once.
+  - A peer-matched RPC span is now marked gRPC.
+  - The service graph's `unknown` is no longer taken as a callee, and `redis` is no longer reported as
+    "another namespace, or excluded".
+  - Where both sources exist, `--calls` picks one. The service graph is read first.
+
+  On this window the fixes left the service graph's numbers as they were. The flagd double count
+  would have doubled flagd's 0.042.
+- **Headroom.** Without traces it came out 12% lower, with the frontend first. With traces the
+  frontend was fitted as one-at-a-time at 220 req/s, which puts recommendation first. Neither
+  traffic level was reached on this day (busiest: 157 req/s), so all three are extrapolations.
+
+On the cluster, `kubectl apply` of the otel-collector ConfigMap from [shop/shop.yaml](shop/shop.yaml),
+then `kubectl -n shop rollout restart deploy otel-collector`. To revert: apply the ConfigMap from
+`git show e95c7ca^:reference/k8s/shop/shop.yaml` and restart the collector the same way. Nothing else in
+the shop was redeployed.
+
 ## Running it
 
 ```sh

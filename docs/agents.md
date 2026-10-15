@@ -26,7 +26,8 @@ Before giving the tools to an agent, see what they say about your system:
 hindcast quickstart --prometheus http://prometheus:9090 --jaeger http://jaeger:16686
 #   --tempo <url> in place of --jaeger, or neither (Prometheus alone; see "Without traces")
 #   --topology calls.yaml: who calls whom, where no trace or metric says
-#   --last 7d for more history (default: the last 24 h)
+#   --last 7d for more history (default: the last 24 h), or --start/--end for an exact window
+#   --calls spanmetrics: which metrics name the calls, where several do (prometheus.calls)
 #   --namespace shop, --exclude jaeger,otel-collector, --p99 500 --errors 0.01, --token-env PROM_TOKEN
 ```
 
@@ -56,8 +57,8 @@ Who calls whom comes from the first of these that names any call:
 |---|---|---|
 | Istio | `istio_requests_total` (source → destination workload, `request_protocol`), `istio_request_duration_milliseconds_*` | calls per request, per-service latency, the time each caller spends in its calls, gRPC |
 | Linkerd | `response_total` (outbound `deployment` → `dst_deployment`), `response_latency_ms_*` | the same; gRPC from `grpc_status` |
-| OpenTelemetry service graph | `traces_service_graph_request_total` (client → server) | calls per request; callers' time from `traces_service_graph_request_client_seconds` |
-| span metrics | client spans (`SPAN_KIND_CLIENT`) whose name matches a server span's elsewhere (`oteldemo.CartService/GetCart` ↔ `POST /oteldemo.CartService/GetCart`) | calls per request for RPC-named calls. HTTP and database client spans are named by method alone (`GET`, `HGET`): where the connector keeps the peer as a dimension (`peer.service`, `server.address` or `net.peer.name`, read as `peer_service`, `server_address`, `net_peer_name`), the host names the callee (port and `.ns.svc.cluster.local` stripped), including a workload with no spans of its own; without it they match nothing and are listed |
+| OpenTelemetry service graph | `traces_service_graph_request_total` (client → server) | calls per request; callers' time from `traces_service_graph_request_client_seconds`. A callee with no spans of its own is a virtual node: named by host it is matched to its workload, named by `db.system` (`redis`) or `unknown` it is left out and listed |
+| span metrics | client spans (`SPAN_KIND_CLIENT`) whose name matches a server span's elsewhere (`oteldemo.CartService/GetCart` ↔ `POST /oteldemo.CartService/GetCart`) | calls per request for RPC-named calls. HTTP and database client spans are named by method alone (`GET`, `HGET`): where the connector keeps the peer as a dimension (`peer.service`, `server.address` or `net.peer.name`, read as `peer_service`, `server_address`, `net_peer_name`), the host names the callee (port and `.ns.svc.cluster.local` stripped), including a workload with no spans of its own; without it they match nothing and are listed. A gRPC client that also traces the HTTP/2 `POST` under each call (.NET) is counted once |
 | a topology file | `--topology calls.yaml` (`topologyFile` in `connect_telemetry`) | what you write: `calls: { web: [api] }` or `{ web: { api: 2 } }` (calls per request), `entry: [web]`, `grpc: [api]` |
 
 The entries are the services ingress-nginx routes to (monitoring UIs such as Jaeger or Grafana
@@ -695,14 +696,28 @@ so in `notes`) rather than running 30 draws for 4 minutes.
   the bill for real numbers.
 - Supported trace backends: Jaeger and Tempo APIs, and OTLP/Jaeger files. Datadog, Honeycomb and
   X-Ray need an export to OTLP files first.
-- Without traces, the review rests on the estimates under [Without traces](#without-traces). On
-  the reference kind cluster, from span metrics alone, it found the 11 gRPC call edges of the 27 the
-  traces show (HTTP and Redis client spans don't name their callee). It put the headroom at 460 req/s,
-  with the frontend's CPU limit first. Traced runs put it at 500–780 req/s, varying with the trace
-  sample, with recommendation first. That run predates reading the peer's address from span
-  metrics, and the reference collector does not keep `server.address` as a dimension; the
-  peer-address matching, the CPU-only resize and the CPU-only confidence rule are tested on mock
-  Prometheus data only, not yet on a live cluster.
+- Without traces, the review rests on the estimates under [Without traces](#without-traces).
+  **Tested live** on the reference kind cluster
+  ([reference/k8s](../reference/k8s/README.md#without-traces-live), one 25-minute ordinary day,
+  against a traced run over the same window):
+  - span metrics with the peer labels found 14 of the traces' 15 call edges. They miss shipping →
+    quote, because the Rust HTTP client's span carries no peer attribute.
+  - the service graph found 13. It can't name Valkey (`redis`, from `db.system`) or flagd (`unknown`).
+  - Calls per request: the service graph came within 4% of what each service served. Span metrics
+    were 12–15% low for cart and product-catalog (the frontend's gRPC client spans undercount), and the
+    traces 2× high for ad and recommendation.
+  - Headroom: 361–363 req/s without traces, frontend first; 411 req/s with them, recommendation first.
+  - Held-out p99: a typical error of 49–50% per 30 s bucket from either source. The traced run had
+    no held-out check on this window.
+  - valkey-cart and flagd, which have no spans, were modelled from CPU alone through their peer
+    labels.
+
+  **Still mocks only**:
+  - Linkerd and Istio: there is no mesh on the reference cluster.
+  - A service-graph virtual node named by host.
+  - Peer labels in Kubernetes DNS form (`cart.shop.svc.cluster.local:8080`): the reference services
+    call each other by bare Service name.
+  - The CPU-only resize and the CPU-only confidence rule: no change was made for real.
 - A CPU-only service keeps calibration's wide queue (32 at a time), which still waits a little as
   it nears its capacity (the M/M/c wait of that width): a stand-in, not a measured latency.
 - Prometheus-compatible only (Prometheus, Thanos, Mimir, Cortex, VictoriaMetrics, Amazon Managed
