@@ -200,6 +200,9 @@ pub struct NodeState {
     pub success_r: f64,
     pub success_w: f64,
     pub latency_ms: f64,
+    /// how long this component's failed answers take, ms: a rejection comes back at once, a call that
+    /// failed downstream after the time that took, a late one at its deadline
+    pub fail_ms: f64,
     /// p99 − mean of the answers this component gives (its own tail and what it waits on)
     pub tail_ms: f64,
     /// the latency of this component's successful answers as a small mixture of (weight, mean, p99 − mean):
@@ -281,6 +284,7 @@ fn fresh() -> NodeState {
         success_r: 1.0,
         success_w: 1.0,
         latency_ms: 0.0,
+        fail_ms: FAST_FAIL_MS,
         tail_ms: 0.0,
         dist: vec![],
         drop_ratio: 0.0,
@@ -567,6 +571,9 @@ fn mix_then(dist: &[[f64; 3]], mean: f64, tail: f64, weight: f64) -> Vec<[f64; 3
     let w: f64 = dist.iter().map(|c| c[0]).sum::<f64>().max(1e-12);
     dist.iter().map(|c| [c[0] / w * weight, c[1] + mean, (c[2] * c[2] + tail * tail).sqrt()]).collect()
 }
+
+/// a request shed, refused or throttled is answered at once, ms (as the discrete-event engine fails it)
+const FAST_FAIL_MS: f64 = 0.5;
 
 /// how long an idle execution environment is kept before it is reclaimed, s (Lambda keeps them for minutes)
 const FN_IDLE_S: f64 = 300.0;
@@ -1684,6 +1691,9 @@ impl Engine {
             let tmo = d.timeout_ms.filter(|t| *t != 0.0 && !t.is_nan());
             let mut late: Option<f64> = None;
             let mut kids_mix: Vec<[f64; 3]> = vec![];
+            // how long a failed call to the kids takes (late ones aside): each kid's failures' time, by
+            // how many of the calls fail there; across a partition, the connection's timeout
+            let mut kid_fail = FAST_FAIL_MS;
             if has_kids {
                 // a link that makes N calls per request: all must succeed, the caller waits for the slowest
                 let timeout_ms = cfg.timeout_s * 1000.0;
@@ -1701,6 +1711,16 @@ impl Engine {
                     let admit = bulkhead_admit(d, bulk_reach, f / dt, kl);
                     (ks * admit, admit * kl + (1.0 - admit) * 0.5, f, kt)
                 };
+                {
+                    let (mut w, mut ms) = (0.0, 0.0);
+                    for k in &l.routes {
+                        let (ks, _, f, _) = kid(k);
+                        let wk = f.max(1e-9) * (1.0 - ks).max(1e-9);
+                        w += wk;
+                        ms += wk * if edge_cut[k.e] { timeout_ms } else { self.nodes[sidx[k.t]].fail_ms + edge_lat[k.e] };
+                    }
+                    kid_fail = ms / w;
+                }
                 // a kid's answers as a mixture (its own one, or its mean and tail), the link's latency added
                 let kid_dist = |k: &Route| -> Vec<[f64; 3]> {
                     let s = &self.nodes[sidx[k.t]];
@@ -1839,13 +1859,25 @@ impl Engine {
             let mut child_succ = attempt;
             let (mut child_r, mut child_w) = (attempt_r, attempt_w);
             let mut child_lat = lat;
+            // a failed attempt costs the time it took to fail: the deadline for a late one, the kids'
+            // failures' time for the rest (a rejected call comes back at once, not after an answer's time)
+            let (late_w, kid_w) = (succ * st.late_frac, 1.0 - succ);
+            let attempt_fail_ms = match tmo {
+                Some(t) if late_w + kid_w > 1e-12 => (late_w * t + kid_w * kid_fail) / (late_w + kid_w),
+                _ => kid_fail,
+            };
             let retries = d.retries.unwrap_or(0.0);
+            let mut call_fail_ms = attempt_fail_ms;
             if retries > 0.0 && has_kids {
                 let policy = d.retry_policy.as_deref().unwrap_or("immediate");
                 child_succ = retry_success(attempt, retries, policy, st.retry_amp);
                 child_r = retry_success(attempt_r, retries, policy, st.retry_amp);
                 child_w = retry_success(attempt_w, retries, policy, st.retry_amp);
-                child_lat = lat * st.retry_amp + if policy == "backoff" { (st.retry_amp - 1.0) * BACKOFF_DELAY_MS * 4.0 } else { 0.0 };
+                let backoff = if policy == "backoff" { BACKOFF_DELAY_MS * 4.0 } else { 0.0 };
+                child_lat = lat + (st.retry_amp - 1.0) * (attempt_fail_ms + backoff);
+                // a call that fails in the end failed every attempt it was allowed
+                let tries = if policy == "budget" { st.retry_amp } else { retries + 1.0 };
+                call_fail_ms = tries * attempt_fail_ms + (tries - 1.0) * backoff;
             }
             if st.breaker_pass < 1.0 {
                 let p = st.breaker_pass;
@@ -1854,6 +1886,7 @@ impl Engine {
                 child_r = p * child_r + (1.0 - p) * fb;
                 child_w = p * child_w + (1.0 - p) * fb;
                 child_lat = p * child_lat + (1.0 - p) * 2.0;
+                call_fail_ms = p * call_fail_ms + (1.0 - p) * 2.0;
             }
             st.hold_ms = ema(st.hold_ms, if has_kids { child_lat } else { 0.0 }, dt, 0.3);
             // a queue with a redrive policy: of what its consumers failed, the messages with receives
@@ -2013,6 +2046,19 @@ impl Engine {
             st.latency_ms = ema(st.latency_ms, latency, dt, 0.3);
             let own_now = if l.up && d.kind != "client" { fold(&FoldCtx { d, keep, local_share: 1.0, child_succ: 1.0, child_lat: 0.0, has_kids: false, cfg }, st).1 + d.fault_latency_ms.filter(|x| !x.is_nan()).unwrap_or(0.0) } else { 0.0 };
             st.own_ms = ema(st.own_ms, own_now, dt, 0.3);
+            // its failures: what it sheds itself comes back at once; a call that failed downstream
+            // after its own work and the time the failed calls took
+            let fail_now = {
+                let shed = 1.0 - keep;
+                let downstream = if matches!(d.kind.as_str(), "cache" | "cdn" | "edge" | "db") { 1.0 - l.local_share } else { 1.0 };
+                let calls = if has_kids && l.up { keep * (1.0 - child_succ).max(0.0) * downstream } else { 0.0 };
+                if calls > 1e-12 {
+                    (shed * FAST_FAIL_MS + calls * (own_now + call_fail_ms)) / (shed + calls)
+                } else {
+                    FAST_FAIL_MS
+                }
+            };
+            st.fail_ms = ema(st.fail_ms, fail_now, dt, 0.3);
             st.tail_ms = ema(st.tail_ms, tail_total, dt, 0.3);
             let usage = usage_cost(d, st, profile);
             let fixed = match billed {

@@ -159,6 +159,14 @@ describe('latency of the successful answers, in both engines', () => {
     near(a.f.p99Ms, a.d.p99Ms, 0.15);
   });
 
+  it('a retry after a shed call costs the time the shed took, not an answer', () => {
+    // api (retries 2) splits 600/s between a 100/s worker and storage: the worker sheds two thirds of
+    // its calls at once (0.5 ms) and they are retried; its answers wait its 1 s queue. The p99 is
+    // one of those, ~1.2 s, in both (the fluid engine used to charge each retry a whole answer's time)
+    const a = both({ components: [{ id: 'users', kind: 'client' }, { id: 'api', kind: 'server', capacity: 1e5, retries: 2 }, { id: 'w', kind: 'worker' }, { id: 's', kind: 'storage' }], connections: [['users', 'api'], ['api', 'w'], ['api', 's']] }, 600);
+    for (const e of [a.f, a.d]) near(e.p99Ms, 1200, 0.1);
+  });
+
   it("an overloaded pool: its answers wait out the queue's bound, no longer", () => {
     // a 100/s worker offered 300/s: two thirds shed; the rest wait ~1 s (the queue's bound) and are
     // served in 80 ms (p99 3.1 × 80): p50 ≈ 1.05 s, p99 ≈ 1.2 s. The fluid engine used to add the

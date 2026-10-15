@@ -91,6 +91,10 @@ const describe = (spec: ReturnType<typeof generate>) =>
 //    plus a service time's spread). Fixed: the wait is capped at the bound, its spread at what is left.
 //    (Below the bound the two still add: near a load of 1 the queue's random walk sits on top of the
 //    drift, and the breaking point stays under capacity.)
+//  - Retries after rejections: a retry cost a whole answer's time (latency × attempts), so behind a
+//    worker shedding two thirds of its calls a 1.2 s p99 read 1.5 s. A shed call fails in 0.5 ms (the
+//    DES's); fixed: each component carries how long its failures take (at once when shed, the deadline
+//    when late, the failed calls' time when downstream failed), and a retry costs that.
 
 const SEEDS = 5;
 const TOLERANCE = 0.25;
