@@ -466,7 +466,23 @@ pub fn apply_strategy(model: &Model, base: &Plan, spec: &StrategySpec) -> Result
             if let (Some(_), Some(c0)) = (ch.cpu, c0t) {
                 let c1 = c1.unwrap();
                 let scale = c1 / c0;
-                if m.capacity.limit == "cpu" {
+                let cpu_alone = m.cpu.as_ref().filter(|c| c.per_req > 0.0 && m.capacity.cpu_alone);
+                if let Some(c) = cpu_alone {
+                    // no latency metric: capacity is the CPU limit to its throttling knee, and the queue
+                    // stays as wide as calibration made it — with no service time known, a width
+                    // from the core count would invent queueing latency
+                    let knee = m.capacity.throttle.as_ref().map(|t| t.knee).unwrap_or(1.0);
+                    let k = (c1 * knee - c.base).max(0.0) / c.per_req;
+                    s.per_replica_rps = k;
+                    notes.push(format!(
+                        "{}: {} → {} cores per replica; capacity read from CPU alone (no latency metric), so it scales to {} req/s per replica at {} of the new limit, with no queueing latency modelled",
+                        id,
+                        js_num(c0),
+                        js_num(c1),
+                        js_to_fixed(k, 1),
+                        if m.capacity.throttle.is_some() { "the throttling knee" } else { "all" }
+                    ));
+                } else if m.capacity.limit == "cpu" {
                     let base = m.cpu.as_ref().map(|c| c.base).unwrap_or(0.0);
                     let f = if c0 > base { (c1 - base).max(0.0) / (c0 - base) } else { scale };
                     s.per_replica_rps *= f;
@@ -677,4 +693,50 @@ pub fn normalize_strategy(v: &Value) -> Result<Value, String> {
         .collect();
     out.insert("changes".into(), Value::Array(changes));
     Ok(Value::Object(out))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// the shop's frontend as if it had no latency metric: capacity from CPU alone, to a knee at 80%
+    fn shop(cpu_alone: bool) -> Model {
+        let mut v: Value = serde_json::from_str(include_str!("../../reference/shop/model.json")).unwrap();
+        let f = &mut v["services"]["frontend"];
+        let (base, per_req, limit) = (f["cpu"]["base"].as_f64().unwrap(), f["cpu"]["perReq"].as_f64().unwrap(), f["cpuLimit"].as_f64().unwrap());
+        f["capacity"] = json!({ "limit": "cpu", "servers": 32, "perReplicaRps": (limit * 0.8 - base) / per_req, "throttle": { "knee": 0.8, "atZero": 0.01, "growth": 4, "r2": 0.9, "seenTo": 0.7 }, "cpuAlone": cpu_alone });
+        serde_json::from_value(v).unwrap()
+    }
+
+    fn resize(m: &Model, cores: f64) -> Applied {
+        let base = crate::backtest::base_plan(m, None);
+        let spec = parse_strategy(&json!({ "name": "resize", "changes": [{ "service": "frontend", "cpu": cores }] })).unwrap();
+        apply_strategy(m, &base, &spec).unwrap()
+    }
+
+    #[test]
+    fn a_cpu_alone_resize_moves_capacity_and_keeps_the_queue() {
+        let m = shop(true);
+        let c = m.services["frontend"].cpu.clone().unwrap();
+        let k0 = m.services["frontend"].capacity.per_replica_rps;
+        // the wait at 70% of capacity, in units of 1/capacity: the same at any capacity for one width
+        let wait = |k: f64, servers: f64| crate::math::mmc_wait(0.7 * k, servers, k).mean_ms * k;
+        for cores in [0.25, 1.0, 2.0] {
+            let a = resize(&m, cores);
+            let s = &a.plan.services["frontend"];
+            // capacity to the knee of the new limit
+            assert!((s.per_replica_rps - (cores * 0.8 - c.base).max(0.0) / c.per_req).abs() < 1e-9, "{} cores: {}", cores, s.per_replica_rps);
+            // the queue as wide as calibration made it: no service time invented from the core count
+            assert_eq!(s.servers, 32.0);
+            assert!(a.notes.iter().any(|n| n.contains("CPU alone") && n.contains("no queueing latency")), "{:?}", a.notes);
+            if s.per_replica_rps > 0.0 {
+                assert!((wait(k0, 32.0) - wait(s.per_replica_rps, s.servers)).abs() < 1e-6);
+            }
+        }
+        // a width from the core count would have queued far more at the same load share
+        assert!(wait(k0, 1.0) > 10.0 * wait(k0, 32.0));
+        // a CPU-bound service with a latency fit still takes its width from the cores
+        let a = resize(&shop(false), 2.0);
+        assert_eq!(a.plan.services["frontend"].servers, 2.0);
+    }
 }

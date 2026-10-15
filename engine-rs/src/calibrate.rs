@@ -861,7 +861,7 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
         let max_lam = js_max(0.0, per_rep.iter().copied());
         let _ = &mut with_data;
 
-        let mut capacity = Capacity { limit: "none".into(), servers: 1.0, per_replica_rps: f64::INFINITY, band: None, samples: None, overloaded_rps: None, throttle: None };
+        let mut capacity = Capacity { limit: "none".into(), servers: 1.0, per_replica_rps: f64::INFINITY, band: None, samples: None, overloaded_rps: None, throttle: None, cpu_alone: false };
         let mut tail = 1.0;
         let mut variability = 1.0;
         let mut self_mean = s_low;
@@ -1034,14 +1034,14 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
                 }
             }
             if let Some(rps) = ov_rps {
-                capacity = Capacity { limit: "concurrency".into(), servers: ov.and_then(|o| o.servers).unwrap_or(1.0), per_replica_rps: rps, band: None, samples: None, overloaded_rps: None, throttle: None };
+                capacity = Capacity { limit: "concurrency".into(), servers: ov.and_then(|o| o.servers).unwrap_or(1.0), per_replica_rps: rps, band: None, samples: None, overloaded_rps: None, throttle: None, cpu_alone: false };
             } else if knee.as_ref().map(|k| !(cpu_peak >= 0.9 && !(k.collapse != 0.0 && !k.collapse.is_nan()))).unwrap_or(false) {
                 let kn = knee.as_ref().unwrap();
                 // seen breaking: the limit lies between what it handled and where it broke
                 let k = (kn.healthy + kn.broke) / 2.0;
                 let lim = if (cpu_k.is_finite() && (cpu_k - k).abs() / k < 0.25) || kn.pinned { "cpu" } else { "concurrency" };
                 let shape_fit = if queue.err <= cpu_fit.err { queue } else { cpu_fit };
-                capacity = Capacity { limit: lim.into(), servers: shape_fit.c.max(1.0), per_replica_rps: k, band: Some([kn.healthy, kn.broke]), samples: None, overloaded_rps: None, throttle: None };
+                capacity = Capacity { limit: lim.into(), servers: shape_fit.c.max(1.0), per_replica_rps: k, band: Some([kn.healthy, kn.broke]), samples: None, overloaded_rps: None, throttle: None, cpu_alone: false };
                 // its queue showed in its own spans: keep the latency fit's shape
                 chosen = Some(Fitted { k, ..shape_fit });
                 cpu_saturated = true;
@@ -1075,7 +1075,7 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
                 let collapsed = seen_while_overloaded();
                 let or = |a: f64, b: f64| if a != 0.0 && !a.is_nan() { a } else { b };
                 let k = or(collapsed, or(js_max(seen, [at_limit]), cpu_k));
-                capacity = Capacity { limit: "cpu".into(), servers: cpu_c, per_replica_rps: k, band: None, samples: None, overloaded_rps: None, throttle: None };
+                capacity = Capacity { limit: "cpu".into(), servers: cpu_c, per_replica_rps: k, band: None, samples: None, overloaded_rps: None, throttle: None, cpu_alone: false };
                 chosen = Some(Fitted { k, v: cpu_fit.v.max(1.0), ..cpu_fit });
                 cpu_saturated = true;
                 hidden_queue.insert(id.clone());
@@ -1097,18 +1097,18 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
                 });
             } else if queue.err < simple * 0.85 && queue.k.is_finite() && queue.k < max_lam * 40.0 {
                 let limited_by_cpu = cpu_k.is_finite() && (queue.k - cpu_k).abs() / cpu_k < 0.25;
-                capacity = Capacity { limit: if limited_by_cpu { "cpu" } else { "concurrency" }.into(), servers: queue.c, per_replica_rps: queue.k, band: None, samples: None, overloaded_rps: None, throttle: None };
+                capacity = Capacity { limit: if limited_by_cpu { "cpu" } else { "concurrency" }.into(), servers: queue.c, per_replica_rps: queue.k, band: None, samples: None, overloaded_rps: None, throttle: None, cpu_alone: false };
                 chosen = Some(queue);
                 if queue.tied == Some(true) {
                     notes.push(format!("{} at a time, each holding it {} ms (a lock or pool)", js_num(queue.c), js_to_fixed(queue.s, if queue.s < 10.0 { 1 } else { 0 })));
                 }
             } else if cpu_fit.err.is_finite() && cpu_fit.err <= none * 1.1 {
-                capacity = Capacity { limit: "cpu".into(), servers: cpu_c, per_replica_rps: cpu_k, band: None, samples: None, overloaded_rps: None, throttle: None };
+                capacity = Capacity { limit: "cpu".into(), servers: cpu_c, per_replica_rps: cpu_k, band: None, samples: None, overloaded_rps: None, throttle: None, cpu_alone: false };
                 chosen = Some(cpu_fit);
                 chosen_is_cpu_fit = true;
             } else if cpu_k.is_finite() {
                 // load never came close: the CPU limit is the only limit we know of
-                capacity = Capacity { limit: "cpu".into(), servers: cpu_c, per_replica_rps: cpu_k, band: None, samples: None, overloaded_rps: None, throttle: None };
+                capacity = Capacity { limit: "cpu".into(), servers: cpu_c, per_replica_rps: cpu_k, band: None, samples: None, overloaded_rps: None, throttle: None, cpu_alone: false };
                 chosen = Some(cpu_fit);
                 chosen_is_cpu_fit = true;
                 notes.push("load never approached capacity; the CPU limit is extrapolated".into());
@@ -1116,7 +1116,7 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
             // where the history shows it breaking while throttled, the quota is the ceiling
             if throttle.is_some() && throttle_bound && cpu_k.is_finite() && capacity.per_replica_rps > cpu_k * 1.05 && ov_rps.is_none() {
                 notes.push(format!("the latency history reads {} req/s per replica, but the CPU quota throttles it at {}: capped there", js_to_fixed(capacity.per_replica_rps, 0), js_to_fixed(cpu_k, 0)));
-                capacity = Capacity { limit: "cpu".into(), servers: cpu_c, per_replica_rps: cpu_k, band: None, samples: None, overloaded_rps: None, throttle: None };
+                capacity = Capacity { limit: "cpu".into(), servers: cpu_c, per_replica_rps: cpu_k, band: None, samples: None, overloaded_rps: None, throttle: None, cpu_alone: false };
                 let obs: Vec<Num> = f.obs.iter().enumerate().map(|(i, x)| if f.lam[i] > cpu_k { None } else { *x }).collect();
                 cpu_fit = Fitted { c: cpu_c, k: cpu_k, s: s_low, v: 1.0, err: f64::INFINITY, tied: None };
                 let w = queue_waits(&f.lam, cpu_c, cpu_k);
@@ -1267,7 +1267,7 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
             // with no service time known, a wide queue: no wait to speak of until the limit, then backlog
             let usable = cl * throttle.as_ref().map(|t| t.knee).unwrap_or(1.0);
             let k = (usable - c.base).max(0.0) / c.per_req;
-            capacity = Capacity { limit: "cpu".into(), servers: 32.0, per_replica_rps: k, band: None, samples: None, overloaded_rps: None, throttle: throttle.clone() };
+            capacity = Capacity { limit: "cpu".into(), servers: 32.0, per_replica_rps: k, band: None, samples: None, overloaded_rps: None, throttle: throttle.clone(), cpu_alone: true };
             notes.push(format!("no latency metric: capacity read from CPU alone, {} req/s per replica at {} of its {}-core limit", js_to_fixed(k, 1), if throttle.is_some() { "the throttling knee" } else { "all" }, js_num(cl)));
         } else if shape.is_some() {
             notes.push("too little load data to fit capacity; using trace averages".into());

@@ -38,6 +38,8 @@ export interface Capacity {
   /** CFS quota throttling fitted from the history: ln(share of periods throttled) = ln(atZero) +
    *  growth × (CPU / limit); knee is the share of the limit where throttling stops it keeping up */
   throttle?: { knee: number; atZero: number; growth: number; r2: number; seenTo: number };
+  /** read from CPU alone (no latency metric): a wide queue with no service time known */
+  cpuAlone?: boolean;
 }
 
 export interface ServiceModel {

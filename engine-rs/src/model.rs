@@ -105,6 +105,10 @@ pub struct Capacity {
     pub overloaded_rps: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub throttle: Option<Throttle>,
+    /// read from CPU alone (no latency metric): a wide queue with no service time known, so a resize
+    /// moves the capacity and nothing else
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub cpu_alone: bool,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
