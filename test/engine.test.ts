@@ -65,6 +65,21 @@ describe('fluid engine', () => {
 
 import { simulateDes } from '../src/sim/des/des';
 
+describe("a component's peak and mean utilisation", () => {
+  // both engines report the load offered over capacity: the shop's 4 × 250/s API offered 2000 req/s is
+  // at 200%, and 500 req/s at 50%. (The discrete-event engine reported its pool's busy share, which
+  // stops at 100% however far it is overloaded: 131.6% where the fluid engine said 320% on Black Friday)
+  it('is the same quantity in both engines', () => {
+    for (const [rps, load] of [[2000, 2], [500, 0.5]]) {
+      const f = simulate(shop, steady(rps)).components.api;
+      const d = simulateDes(shop, steady(rps), { seed: 1 }).components.api;
+      expect(f.meanUtil).toBeCloseTo(load, 1);
+      expect(Math.abs(d.meanUtil - load)).toBeLessThan(load * 0.05);
+      expect(Math.abs(d.peakUtil - f.peakUtil)).toBeLessThan(load * 0.15);
+    }
+  });
+});
+
 describe('a deadline over a fast branch and a slow, failing one', () => {
   // api splits its calls between `fast` and `slow`, with a 200 ms deadline. slow takes 500/s against
   // 100/s: it sheds 400/s and the 100/s it serves wait ~1 s in its queue, past the deadline. So every
