@@ -502,14 +502,6 @@ pub fn apply(d: &mut Value, c: &Calls) -> Applied {
     // where no call is named, the services without request metrics carry the entry traffic
     let mut against: Vec<String> = vec![];
     if c.from == "none" {
-        for id in &svcs {
-            if entry.contains(id) || has_rps(d, id) {
-                continue;
-            }
-            if series(d, id, "cpuCores").map(|v| v.iter().any(|x| x.is_some())).unwrap_or(false) {
-                against.push(id.clone());
-            }
-        }
         // a service with request metrics nothing names a caller of is its own entry
         for id in &svcs {
             if !entry.contains(id) && has_rps(d, id) {
@@ -517,6 +509,14 @@ pub fn apply(d: &mut Value, c: &Calls) -> Applied {
             }
         }
         entry.sort();
+        for id in &svcs {
+            if entry.is_empty() || entry.contains(id) || has_rps(d, id) {
+                continue;
+            }
+            if series(d, id, "cpuCores").map(|v| v.iter().any(|x| x.is_some())).unwrap_or(false) {
+                against.push(id.clone());
+            }
+        }
     }
 
     // one path per entry service, shared by its endpoints: calls per request, followed down the graph
@@ -713,7 +713,9 @@ pub fn apply(d: &mut Value, c: &Calls) -> Applied {
         }
         l
     };
-    let topology = if c.from == "none" {
+    let topology = if entry.is_empty() {
+        "no request metrics for any service, so no traffic to replay — ingress-nginx, a service mesh or HTTP server metrics would give it".to_string()
+    } else if c.from == "none" {
         if against.is_empty() {
             "no calls named in the metrics — each service with request metrics is its own entry".to_string()
         } else {
@@ -743,7 +745,10 @@ pub fn apply(d: &mut Value, c: &Calls) -> Applied {
         prov["topology"]["notes"] = json!(c.notes);
     }
     // what the review says before anything else: what is missing, and what stands in for it
-    prov["said"] = json!(format!("no traces: {}; {}", topology, latency));
+    prov["said"] = json!(if entry.is_empty() { format!("no traces: {}", topology) } else { format!("no traces: {}; {}", topology, latency) });
+    if entry.is_empty() {
+        prov["noTraffic"] = json!(true);
+    }
     if !against.is_empty() {
         warnings.push(format!("{}: no request metrics and no calls named — their CPU and memory are read against the entry traffic ({}), as if every request passed through them. If one serves no requests (a batch job, a client), connect_telemetry with system.exclude", list(&against), list(&entry)));
     }

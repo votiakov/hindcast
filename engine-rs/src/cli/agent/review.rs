@@ -86,6 +86,10 @@ pub fn review_capacity(ws: &Workspace, o: &Value) -> Result<Value, String> {
     }
     let mut out = JMap::new();
     out.insert("system".into(), g(&mv, &["name"]).clone());
+    // nothing carries load: no endpoint, so the replays below have no traffic in them
+    if m.endpoints.is_empty() {
+        out.insert("noTraffic".into(), json!(true));
+    }
     out.insert("history".into(), json!({ "from": iso(n(&dv, &["start"])), "to": iso(n(&dv, &["start"]) + n(&dv, &["n"]) * n(&dv, &["stepS"])), "peakRps": num(r1(peak)) }));
     out.insert("slo".into(), g(&mv, &["slo"]).clone());
     // a headroom set by a service the model doesn't explain is a guess: say so where it is read
@@ -156,33 +160,39 @@ pub fn review_markdown(r: &Value) -> String {
         l.extend(summary_lines(r));
         l.push(String::new());
     }
-    l.push("## Headroom".into());
-    l.push(String::new());
-    let over = g(r, &["headroom", "overPeak"]);
-    match g(r, &["headroom", "atAnyLoad"]).as_str() {
-        Some(why) => l.push(format!("**Out of SLO at any load** — {}. That is no capacity limit: the model misses the SLO with almost no traffic, so fix or explain that first.", why)),
-        None => l.push(format!("Within SLO up to **{} req/s**{}; {}.", js_num(n(r, &["headroom", "rps"])), if truthy(over) { format!(" — {}× the busiest moment", js_num(n(r, &["headroom", "overPeak"]))) } else { String::new() }, match g(r, &["headroom", "limitedBy"]) { Value::Null => "nothing saturates in the range searched".to_string(), x => format!("{} saturates first", s(x, &[])) })),
-    }
-    l.push(String::new());
-    let st = g(r, &["stability"]);
-    if !arr(st, &["windows"]).is_empty() {
-        let ws: Vec<String> = arr(st, &["windows"]).iter().map(|w| format!("{} – {}: {}", when(&s(w, &["from"])), when(&s(w, &["to"])), if w.get("atAnyLoad").is_some() { "out of SLO at any load".to_string() } else { match g(w, &["limitedBy"]) { Value::Null => format!("more than {} req/s", js_num(n(w, &["rps"]))), x => format!("{} req/s, {} first", js_num(n(w, &["rps"])), s(x, &[])) } })).collect();
-        l.push(match uncertain(r) {
-            Some(u) => format!("**Uncertain:** {} Each third of the history's traffic, calibrated alone: {}.", u, ws.join("; ")),
-            None => format!("Each third of the history's traffic, calibrated alone, agrees: {}.", ws.join("; ")),
-        });
+    let no_traffic = g(r, &["noTraffic"]).as_bool().unwrap_or(false);
+    if no_traffic {
+        l.push("No service has request metrics, so there is no traffic to replay: headroom, busier days and losing a node can't be read; cost still can.".into());
+        l.push(String::new());
+    } else {
+        l.push("## Headroom".into());
+        l.push(String::new());
+        let over = g(r, &["headroom", "overPeak"]);
+        match g(r, &["headroom", "atAnyLoad"]).as_str() {
+            Some(why) => l.push(format!("**Out of SLO at any load** — {}. That is no capacity limit: the model misses the SLO with almost no traffic, so fix or explain that first.", why)),
+            None => l.push(format!("Within SLO up to **{} req/s**{}; {}.", js_num(n(r, &["headroom", "rps"])), if truthy(over) { format!(" — {}× the busiest moment", js_num(n(r, &["headroom", "overPeak"]))) } else { String::new() }, match g(r, &["headroom", "limitedBy"]) { Value::Null => "nothing saturates in the range searched".to_string(), x => format!("{} saturates first", s(x, &[])) })),
+        }
+        l.push(String::new());
+        let st = g(r, &["stability"]);
+        if !arr(st, &["windows"]).is_empty() {
+            let ws: Vec<String> = arr(st, &["windows"]).iter().map(|w| format!("{} – {}: {}", when(&s(w, &["from"])), when(&s(w, &["to"])), if w.get("atAnyLoad").is_some() { "out of SLO at any load".to_string() } else { match g(w, &["limitedBy"]) { Value::Null => format!("more than {} req/s", js_num(n(w, &["rps"]))), x => format!("{} req/s, {} first", js_num(n(w, &["rps"])), s(x, &[])) } })).collect();
+            l.push(match uncertain(r) {
+                Some(u) => format!("**Uncertain:** {} Each third of the history's traffic, calibrated alone: {}.", u, ws.join("; ")),
+                None => format!("Each third of the history's traffic, calibrated alone, agrees: {}.", ws.join("; ")),
+            });
+            l.push(String::new());
+        }
+        let t = g(r, &["today"]);
+        if !t.is_null() {
+            l.push(format!("- **The recorded day, replayed:** {}", if g(t, &["holds"]).as_bool().unwrap_or(false) { "holds".to_string() } else { format!("{} min out of SLO, {} failed requests — {}", js_num(n(t, &["minutesOutOfSlo"])), js_locale(n(t, &["failedRequests"])), s(t, &["worst"])) }));
+        }
+        for b in arr(r, &["busier"]) {
+            l.push(format!("- **{}× today's traffic:** {}", js_num(n(b, &["scale"])), if g(b, &["holds"]).as_bool().unwrap_or(false) { "holds".to_string() } else { format!("{} min out of SLO, {} failed requests — {}", js_num(n(b, &["minutesOutOfSlo"])), js_locale(n(b, &["failedRequests"])), s(b, &["worst"])) }));
+        }
         l.push(String::new());
     }
-    let t = g(r, &["today"]);
-    if !t.is_null() {
-        l.push(format!("- **The recorded day, replayed:** {}", if g(t, &["holds"]).as_bool().unwrap_or(false) { "holds".to_string() } else { format!("{} min out of SLO, {} failed requests — {}", js_num(n(t, &["minutesOutOfSlo"])), js_locale(n(t, &["failedRequests"])), s(t, &["worst"])) }));
-    }
-    for b in arr(r, &["busier"]) {
-        l.push(format!("- **{}× today's traffic:** {}", js_num(n(b, &["scale"])), if g(b, &["holds"]).as_bool().unwrap_or(false) { "holds".to_string() } else { format!("{} min out of SLO, {} failed requests — {}", js_num(n(b, &["minutesOutOfSlo"])), js_locale(n(b, &["failedRequests"])), s(b, &["worst"])) }));
-    }
-    l.push(String::new());
     let nl = g(r, &["nodeLoss"]);
-    if !nl.is_null() {
+    if !nl.is_null() && !no_traffic {
         l.push("## Losing a node at the busiest moment".into());
         l.push(String::new());
         let w = g(nl, &["worst"]);
@@ -425,6 +435,19 @@ fn when(iso: &str) -> String {
 /// five lines a CTO reads first: risk, headroom, cost, the one change, how far to trust it
 fn summary_lines(r: &Value) -> Vec<String> {
     let mut l = vec![];
+    if g(r, &["noTraffic"]).as_bool().unwrap_or(false) {
+        // no load to replay: what can still be read is cost and where the pods run
+        l.push("- **Risk:** unknown — no service has request metrics, so there is no traffic to replay (ingress-nginx, a service mesh or HTTP server metrics would give it).".into());
+        l.push("- **Headroom:** unknown, for the same reason.".into());
+        let p = g(r, &["nodePool"]);
+        let fixed = !p.is_null() && !g(p, &["autoscaled"]).as_bool().unwrap_or(false);
+        let monthly = if fixed { n(p, &["nodes"]) * n(p, &["monthlyPerNode"]) } else { n(r, &["today", "monthly"]) };
+        l.push(format!("- **Cost:** {}.", if monthly > 0.0 { format!("about **{}/month** as run", usd_plain(monthly)) } else { "no price".to_string() }));
+        if let Some(w) = g(r, &["trust", "withoutTraces"]).as_str() {
+            l.push(format!("- **Trust:** {}.", cap(w)));
+        }
+        return l;
+    }
     let today = g(r, &["today"]);
     let busier = arr(r, &["busier"]);
     let nl = g(r, &["nodeLoss"]);
