@@ -229,6 +229,8 @@ pub struct NodeState {
     /// a sharded database: the busiest shard's backlog (`queue` and `util` are the busiest shard's
     /// utilisation and the rest's backlog), and the other shards' utilisation
     pub hot_queue: f64,
+    /// a database: writes waiting for the hot row's lock
+    pub lock_queue: f64,
     pub cold_util: f64,
     /// how long this component has been down, s (DNS answers lag it)
     pub dead_for: f64,
@@ -282,6 +284,7 @@ fn fresh() -> NodeState {
         wb_flushed: 0.0,
         repl_lag: 0.0,
         hot_queue: 0.0,
+        lock_queue: 0.0,
         cold_util: 0.0,
         dead_for: 0.0,
         sub_backlog: vec![],
@@ -696,8 +699,18 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
             let to_replicas = c.arrivals * (1.0 - local_share);
             let cap = if st.failover == Failover::Electing { 0.0 } else { capacity_of(d, None) };
             let n = shards_of(d);
-            let own = c.arrivals - to_replicas;
+            let mut own = c.arrivals - to_replicas;
             let mut cold_util = None;
+            // writes to the hot row take its lock one at a time, apart from the pool
+            let h = if electing { 0.0 } else { d.hot_row_share.unwrap_or(0.0).clamp(0.0, 1.0) };
+            let (lp, lf, lu) = if h > 0.0 {
+                let hot_w = c.arrivals * write_ratio * h;
+                own -= hot_w;
+                queue_on(&mut st.lock_queue, hot_w, row_lock_rps(d), c.dt, queue_seconds(d, c.cfg))
+            } else {
+                st.lock_queue = 0.0;
+                (0.0, 0.0, 0.0)
+            };
             let (processed, failed, util) = if n > 1.0 {
                 // the busiest shard (the hot key's) and the rest, each with its own queue
                 let s = hot_shard_share(d);
@@ -709,7 +722,7 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
             } else {
                 queue_stage(st, own, cap, c.dt, queue_seconds(d, c.cfg))
             };
-            let mut r = res(processed, failed, to_replicas, util, true);
+            let mut r = res(processed + lp, failed + lf, to_replicas, util.max(lu), true);
             r.cold_util = cold_util;
             r.routes = Some(replicas);
             r.local_share = Some(local_share);

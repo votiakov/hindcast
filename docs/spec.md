@@ -47,6 +47,7 @@ zones:                          # optional failure domains
 | `bulkhead` | any caller | calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread |
 | `provisioned` | function | provisioned concurrency: executions kept warm, so no cold start up to it; billed by the hour whether used or not ($0.0000041667 per GB-s, AWS) |
 | `prefixes` | storage | key prefixes the objects are spread over (default 10): each takes 5,500 reads or 3,500 writes a second (S3), past it 503 SlowDown; `hotKeyShare` puts that share on one prefix |
+| `hotRowShare` | db | share of the writes that update one row (a stock counter, a balance): its lock takes them one at a time, each for a write's time — at most 1,000 ÷ latency a second, however big the database |
 | `routing` | any caller | `split` (default) · `fanout` (call all, wait for all) · `failover` (in order) |
 | `fanout` | any caller | scatter-gather: each call goes to N partitions of the callee in parallel and waits for the slowest (also makes the callee's instances reachable) |
 | `stallRate`, `stallMs` | any | rare hiccups: share of requests that stall, and for how long (GC pause, compaction, noisy neighbor) |

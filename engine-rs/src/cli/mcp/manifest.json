@@ -319,6 +319,12 @@
            "minimum": 1,
            "maximum": 100000
           },
+          "hotRowShare": {
+           "description": "db: share of the writes that update one row (a stock counter, a balance): its lock takes them one at a time, each for a write's time — at most 1,000 ÷ latency a second, however big the database",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -766,6 +772,12 @@
            "type": "integer",
            "minimum": 1,
            "maximum": 100000
+          },
+          "hotRowShare": {
+           "description": "db: share of the writes that update one row (a stock counter, a balance): its lock takes them one at a time, each for a write's time — at most 1,000 ÷ latency a second, however big the database",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -1633,6 +1645,12 @@
            "minimum": 1,
            "maximum": 100000
           },
+          "hotRowShare": {
+           "description": "db: share of the writes that update one row (a stock counter, a balance): its lock takes them one at a time, each for a write's time — at most 1,000 ÷ latency a second, however big the database",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -2070,6 +2088,12 @@
               "minimum": 1,
               "maximum": 100000
              },
+             "hotRowShare": {
+              "description": "db: share of the writes that update one row (a stock counter, a balance): its lock takes them one at a time, each for a write's time — at most 1,000 ÷ latency a second, however big the database",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+             },
              "capacity": {
               "description": "override: req/s per size-S instance",
               "type": "number",
@@ -2456,6 +2480,12 @@
                 "minimum": 1,
                 "maximum": 100000
                },
+               "hotRowShare": {
+                "description": "db: share of the writes that update one row (a stock counter, a balance): its lock takes them one at a time, each for a write's time — at most 1,000 ÷ latency a second, however big the database",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+               },
                "capacity": {
                 "description": "override: req/s per size-S instance",
                 "type": "number",
@@ -2736,6 +2766,12 @@
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 100000
+               },
+               "hotRowShare": {
+                "description": "db: share of the writes that update one row (a stock counter, a balance): its lock takes them one at a time, each for a write's time — at most 1,000 ÷ latency a second, however big the database",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
                },
                "capacity": {
                 "description": "override: req/s per size-S instance",
@@ -3558,6 +3594,12 @@
            "minimum": 1,
            "maximum": 100000
           },
+          "hotRowShare": {
+           "description": "db: share of the writes that update one row (a stock counter, a balance): its lock takes them one at a time, each for a write's time — at most 1,000 ÷ latency a second, however big the database",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -4021,6 +4063,12 @@
            "type": "integer",
            "minimum": 1,
            "maximum": 100000
+          },
+          "hotRowShare": {
+           "description": "db: share of the writes that update one row (a stock counter, a balance): its lock takes them one at a time, each for a write's time — at most 1,000 ÷ latency a second, however big the database",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -4876,6 +4924,12 @@
            "type": "integer",
            "minimum": 1,
            "maximum": 100000
+          },
+          "hotRowShare": {
+           "description": "db: share of the writes that update one row (a stock counter, a balance): its lock takes them one at a time, each for a write's time — at most 1,000 ÷ latency a second, however big the database",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
           },
           "capacity": {
            "description": "override: req/s per size-S instance",
@@ -5741,6 +5795,12 @@
            "minimum": 1,
            "maximum": 100000
           },
+          "hotRowShare": {
+           "description": "db: share of the writes that update one row (a stock counter, a balance): its lock takes them one at a time, each for a write's time — at most 1,000 ÷ latency a second, however big the database",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -6273,6 +6333,12 @@
            "minimum": 1,
            "maximum": 100000
           },
+          "hotRowShare": {
+           "description": "db: share of the writes that update one row (a stock counter, a balance): its lock takes them one at a time, each for a write's time — at most 1,000 ÷ latency a second, however big the database",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -6707,6 +6773,12 @@
              "minimum": 1,
              "maximum": 100000
             },
+            "hotRowShare": {
+             "description": "db: share of the writes that update one row (a stock counter, a balance): its lock takes them one at a time, each for a write's time — at most 1,000 ÷ latency a second, however big the database",
+             "type": "number",
+             "minimum": 0,
+             "maximum": 1
+            },
             "capacity": {
              "description": "override: req/s per size-S instance",
              "type": "number",
@@ -7093,6 +7165,12 @@
                "minimum": 1,
                "maximum": 100000
               },
+              "hotRowShare": {
+               "description": "db: share of the writes that update one row (a stock counter, a balance): its lock takes them one at a time, each for a write's time — at most 1,000 ÷ latency a second, however big the database",
+               "type": "number",
+               "minimum": 0,
+               "maximum": 1
+              },
               "capacity": {
                "description": "override: req/s per size-S instance",
                "type": "number",
@@ -7373,6 +7451,12 @@
                "type": "integer",
                "minimum": 1,
                "maximum": 100000
+              },
+              "hotRowShare": {
+               "description": "db: share of the writes that update one row (a stock counter, a balance): its lock takes them one at a time, each for a write's time — at most 1,000 ÷ latency a second, however big the database",
+               "type": "number",
+               "minimum": 0,
+               "maximum": 1
               },
               "capacity": {
                "description": "override: req/s per size-S instance",
@@ -8193,6 +8277,12 @@
            "minimum": 1,
            "maximum": 100000
           },
+          "hotRowShare": {
+           "description": "db: share of the writes that update one row (a stock counter, a balance): its lock takes them one at a time, each for a write's time — at most 1,000 ÷ latency a second, however big the database",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
           "capacity": {
            "description": "override: req/s per size-S instance",
            "type": "number",
@@ -8627,6 +8717,12 @@
              "minimum": 1,
              "maximum": 100000
             },
+            "hotRowShare": {
+             "description": "db: share of the writes that update one row (a stock counter, a balance): its lock takes them one at a time, each for a write's time — at most 1,000 ÷ latency a second, however big the database",
+             "type": "number",
+             "minimum": 0,
+             "maximum": 1
+            },
             "capacity": {
              "description": "override: req/s per size-S instance",
              "type": "number",
@@ -9013,6 +9109,12 @@
                "minimum": 1,
                "maximum": 100000
               },
+              "hotRowShare": {
+               "description": "db: share of the writes that update one row (a stock counter, a balance): its lock takes them one at a time, each for a write's time — at most 1,000 ÷ latency a second, however big the database",
+               "type": "number",
+               "minimum": 0,
+               "maximum": 1
+              },
               "capacity": {
                "description": "override: req/s per size-S instance",
                "type": "number",
@@ -9293,6 +9395,12 @@
                "type": "integer",
                "minimum": 1,
                "maximum": 100000
+              },
+              "hotRowShare": {
+               "description": "db: share of the writes that update one row (a stock counter, a balance): its lock takes them one at a time, each for a write's time — at most 1,000 ÷ latency a second, however big the database",
+               "type": "number",
+               "minimum": 0,
+               "maximum": 1
               },
               "capacity": {
                "description": "override: req/s per size-S instance",

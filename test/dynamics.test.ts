@@ -212,3 +212,23 @@ describe('object storage prefixes', () => {
     expect(spread.fluid).toBeLessThan(0.01);
   });
 });
+
+describe('a hot row', () => {
+  // every order updates one stock counter: 30% of the writes on one key
+  const spec = (h: number) => ({ components: [{ id: 'u', kind: 'client' }, { id: 'db', kind: 'db', tier: 'L', ...(h ? { hotRowShare: h } : {}) }], connections: [['u', 'db']] });
+  const run = (h: number) => {
+    const sc = { duration: 30, rps: 1000, readRatio: 0.5 };
+    return { fluid: simulate(spec(h) as never, sc as never).summary.meanErrorRate, des: simulateDes(spec(h), sc, { seed: 8 }) };
+  };
+
+  it('serialises its writes: one at a time, however big the database', () => {
+    expect(run(0).fluid).toBeLessThan(0.01);
+    // 500 writes/s, 30% on one row = 150/s against a lock that passes ~100/s
+    const hot = run(0.3);
+    for (const e of [hot.fluid, hot.des.summary.meanErrorRate]) {
+      expect(e).toBeGreaterThan(0.02);
+      expect(e).toBeLessThan(0.1);
+    }
+    expect(hot.des.bottlenecks[0].note).toMatch(/^Hot row/);
+  });
+});

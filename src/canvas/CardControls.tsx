@@ -411,6 +411,7 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
               const v = e.target.value;
               if (v === 'restore') apply(b, { type: 'restore', id });
               else if (v === 'flush') apply(b, { type: 'flush-cache', id });
+              else if (v.startsWith('row')) set({ hotRowShare: +v.slice(3) || undefined });
               else if (v.startsWith('hot')) apply(b, { type: 'hot-key', id, share: +v.slice(3) });
               else if (v.startsWith('err')) apply(b, { type: 'inject-errors', id, rate: +v.slice(3) });
               else if (v.startsWith('lat')) apply(b, { type: 'inject-latency', id, ms: +v.slice(3) });
@@ -427,6 +428,7 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
             <option value="lat2000">+2 s</option>
             <option value="deg0.5">50% capacity</option>
             {(data.kind === 'cache' || data.kind === 'cdn') && <option value="flush">flush cache</option>}
+            {data.kind === 'db' && <option value={data.hotRowShare ? 'row0' : 'row0.3'}>{data.hotRowShare ? 'cool the hot row' : 'hot row (30% of writes on one row)'}</option>}
             {(data.kind === 'db' || data.kind === 'kv' || data.kind === 'storage') && <option value={data.hotKeyShare ? 'hot0' : 'hot0.3'}>{data.hotKeyShare ? 'cool the hot key' : data.kind === 'storage' ? 'hot prefix (30% on one)' : 'hot key (30% on one key)'}</option>}
             {(data.faultRate || data.faultLatencyMs || data.degraded !== undefined) && <option value="restore">restore</option>}
           </select>

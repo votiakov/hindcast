@@ -118,6 +118,10 @@ pub struct NodeData {
     /// 3,500 writes a second (S3)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prefixes: Option<f64>,
+    /// db: share of the writes that update one row (a stock counter, a balance) — they take its lock
+    /// one at a time
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hot_row_share: Option<f64>,
     /// a network partition's side this component is on (set by the partition action): links between
     /// components on different sides are cut
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -476,6 +480,12 @@ pub fn hot_prefix_share(d: &NodeData) -> f64 {
     h + (1.0 - h) / p
 }
 
+
+/// a hot row: writes to one key take its lock one at a time, each for a write's time, so at most
+/// this many a second however big the database (reads don't lock: MVCC)
+pub fn row_lock_rps(d: &NodeData) -> f64 {
+    1000.0 / base_latency_of(d).max(0.1)
+}
 
 /// the share of a database's traffic on its busiest shard: the hot key, plus an even share of the rest
 pub fn hot_shard_share(d: &NodeData) -> f64 {

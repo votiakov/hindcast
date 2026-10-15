@@ -298,6 +298,8 @@ enum Ev {
     Arrive { i: usize, read: bool, done: ContId },
     Deliver { done: ContId, why: Why },
     Finish { n: usize, job: Job },
+    /// a write to the hot row has held its lock for a write's time
+    LockDone { n: usize, job: Job },
     /// fault: the node's fault rate when the request arrived
     LlmDone { n: usize, done: ContId, fault: f64 },
     Attempt { call: usize, k: f64 },
@@ -385,6 +387,9 @@ struct DNode {
     /// a key-value store: the hot key's partition, in partition-seconds of work available
     kv_bucket: f64,
     kv_t: f64,
+    /// a database: the hot row's lock (held or not) and the writes waiting for it
+    lock_busy: bool,
+    lock_q: VecDeque<Job>,
     /// an object store: each prefix's bucket of prefix-seconds, and when it was last topped up
     px_bucket: Vec<f64>,
     px_t: Vec<f64>,
@@ -902,6 +907,16 @@ impl<'a> Des<'a> {
                 }
             }
             let now = self.now;
+            // a write to the hot row: its lock, one write at a time, apart from the pool
+            let h = self.nodes[i].data.hot_row_share.unwrap_or(0.0);
+            if !read && h > 0.0 && self.rng.next() < h {
+                let qmax = (super::catalog::row_lock_rps(&self.nodes[i].data) * self.nodes[i].data.queue_s.or(spec("db").queue_s).unwrap_or(self.cfg.queue_s)).floor().max(1.0);
+                if self.nodes[i].lock_q.len() as f64 >= qmax {
+                    return self.fail(Some(i), why(i, R_SHED), done, 0.5);
+                }
+                self.nodes[i].lock_q.push_back(Job { read, t_in: now, done: Some(done), shard: NO_SHARD });
+                return self.next_lock(i);
+            }
             // a sharded database: the hot key's shard, or one picked by the key's hash
             let shard = {
                 let x = &self.nodes[i];
@@ -993,6 +1008,28 @@ impl<'a> Des<'a> {
             return self.fail(Some(n), why(n, r), job.done.unwrap(), 0.5);
         }
         self.nodes[n].queue.push_back(job);
+    }
+
+    /// the hot row's lock is free: the next write waiting for it takes it (one that waited past the
+    /// queue bound has timed out)
+    fn next_lock(&mut self, n: usize) {
+        if self.nodes[n].lock_busy {
+            return;
+        }
+        let bound = {
+            let d = &self.nodes[n].data;
+            d.queue_s.or(spec(&d.kind).queue_s).unwrap_or(self.cfg.queue_s) * 1000.0
+        };
+        while let Some(job) = self.nodes[n].lock_q.pop_front() {
+            if (self.now - job.t_in) * 1000.0 > bound {
+                self.fail(Some(n), why(n, R_SHED), job.done.unwrap(), 0.5);
+                continue;
+            }
+            self.nodes[n].lock_busy = true;
+            let svc = self.rng.lognormal(1000.0 / super::catalog::row_lock_rps(&self.nodes[n].data), self.cfg.service_cv);
+            self.at(svc, Ev::LockDone { n, job });
+            return;
+        }
     }
 
     fn start(&mut self, n: usize, mut job: Job) {
@@ -1557,6 +1594,11 @@ impl<'a> Des<'a> {
             Ev::Arrive { i, read, done } => self.arrive(i, read, done),
             Ev::Deliver { done, why } => self.deliver(done, why),
             Ev::Finish { n, job } => self.finish(n, job),
+            Ev::LockDone { n, job } => {
+                self.nodes[n].lock_busy = false;
+                self.next_lock(n);
+                self.after_service(n, job);
+            }
             Ev::LlmDone { n, done, fault } => {
                 self.nodes[n].win.usage_reqs += 1.0;
                 if fault != 0.0 && !fault.is_nan() && self.rng.next() < fault {
@@ -1614,6 +1656,8 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
             kv_t: 0.0,
             px_bucket: vec![],
             px_t: vec![],
+            lock_busy: false,
+            lock_q: VecDeque::new(),
             dead_since: None,
             sub_backlog: vec![],
             sub_inflight: vec![],

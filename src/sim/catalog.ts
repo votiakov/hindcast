@@ -113,6 +113,8 @@ export interface SystemNodeData extends Record<string, unknown> {
   provisioned?: number;
   /** storage: key prefixes (default 10) — each takes 5,500 reads or 3,500 writes a second */
   prefixes?: number;
+  /** db: share of the writes that update one row — they take its lock one at a time */
+  hotRowShare?: number;
   /** db: horizontal partitions (capacity and cost × shards) */
   shards?: number;
   /** db: share of its traffic on one key — all of it on one shard */

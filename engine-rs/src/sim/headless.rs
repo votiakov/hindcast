@@ -147,6 +147,13 @@ pub fn explain(d: &NodeData, st: Option<&NodeStats>, v: &View) -> Option<String>
         format!("Backlog of {} messages: consumers are {} behind. Producers are unaffected — work completes later.", fmt(st.queue), if st.lag_s.is_finite() { format!("{}s", js_to_fixed(st.lag_s, 0)) } else { "indefinitely".into() })
     } else if d.kind == "dns" && st.drop_rps > 0.5 {
         format!("{}/s of clients still hold an answer pointing at a dead target and time out: they keep going there until the health checks notice ({} s) and their cached answer expires (TTL {} s).", fmt(st.drop_rps), js_num(d.health_check_s.unwrap_or(30.0)), js_num(d.ttl_s.unwrap_or(60.0)))
+    } else if d.kind == "db" && d.hot_row_share.unwrap_or(0.0) > 0.0 && st.drop_rps > 1.0 {
+        format!(
+            "Hot row: {}% of the writes update one key, and its row lock takes them one at a time ({} each) — at most {}/s however big the database. The rest wait, then time out. Batch the updates, split the counter over several rows, or keep it in a cache.",
+            pct(d.hot_row_share.unwrap_or(0.0)),
+            fmt_ms(base_latency_of(d)),
+            fmt(row_lock_rps(d))
+        )
     } else if d.kind == "storage" && st.drop_rps > 1.0 {
         format!(
             "Prefix limit: an object store takes 5,500 reads or 3,500 writes a second per key prefix, however big the bucket. {}% of requests land on the busiest of {} prefixes, and {}/s get 503 SlowDown. Spread keys over more prefixes, or cache the hot objects.",
