@@ -335,7 +335,7 @@ function Coach() {
           nodeId="api-1"
           tone={global.errorRate < 0.01 ? 'good' : 'info'}
           title={global.errorRate < 0.01 ? 'healthy · 4 instances behind a load balancer' : 'scaling out…'}
-          lines={[`${pct(global.errorRate)} errors · p99 ${Math.round(global.p99)} ms · ${money(global.cost)}`, 'Same traffic. Spread across four instances, each below 70% busy.']}
+          lines={[`${pct(global.errorRate)} errors · p99 ${Math.round(global.p99)} ms · ${money(global.cost)}`, global.errorRate < 0.01 ? 'Same traffic. Spread across four instances, each below 70% busy.' : 'Same traffic, four instances: the backlog built up while it was melting is draining, and the errors clear as it does.']}
           next={next('triple the traffic')}
           actions={[
             { label: 'triple the traffic', run: triple },
