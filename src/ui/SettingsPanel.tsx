@@ -34,8 +34,14 @@ export function SettingsButton() {
   useEffect(() => {
     if (!open) return;
     const close = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
-    window.addEventListener('pointerdown', close);
-    return () => window.removeEventListener('pointerdown', close);
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    // capture: the board stops the bubbling of the presses it handles
+    window.addEventListener('pointerdown', close, true);
+    window.addEventListener('keydown', esc);
+    return () => {
+      window.removeEventListener('pointerdown', close, true);
+      window.removeEventListener('keydown', esc);
+    };
   }, [open]);
 
   return (
@@ -47,7 +53,7 @@ export function SettingsButton() {
         <div className="settings-pop panel">
           <div className="settings-sec">
             <div className="panel-title">Pricing</div>
-            <div className="seg">
+            <div className="seg seg-grid">
               {(Object.keys(PRICING) as PricingId[]).map((p) => (
                 <button key={p} className={settings.pricing === p ? 'on' : ''} onClick={() => setSetting('pricing', p)} title={PRICING[p].label}>
                   {PRICING[p].short}

@@ -331,6 +331,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .lesson-recap b { display: block; font-weight: 600; }
 .lesson-recap span { color: var(--muted); }
 .lesson-done-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+.tk-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .lesson-done h2 { margin: 10px 0 6px; }
 .lesson-done p { color: #b6c2d6; line-height: 1.5; }
 .lesson-done .muted { color: var(--dim); font-size: 11px; }
@@ -434,14 +435,15 @@ select { background: #0a1122; color: var(--text); border: 1px solid var(--border
 }
 .pane .pane-header { left: 12px; }
 .compare .pane:first-child .pane-header { left: 86px; }
-.pane-tag { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; font-weight: 800; font-size: 12px; color: #04101c; }
+.pane-tag { flex: none; display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; font-weight: 800; font-size: 12px; color: #04101c; }
 .side-A .pane-tag { background: #22d3ee; box-shadow: 0 0 12px rgba(34, 211, 238, 0.5); }
 .side-B .pane-tag { background: #c084fc; box-shadow: 0 0 12px rgba(192, 132, 252, 0.5); }
-.pane-title { font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pane-title { flex: 1 1 auto; min-width: 48px; font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pane-stats { display: flex; gap: 10px; margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
 .pane-stats .good { color: var(--green); }
 .pane-stats .bad { color: var(--red); }
-.pane-template { padding: 3px 6px; font-size: 11px; }
+/* the select sizes itself to its longest option; keep it from squeezing the design's name out */
+.pane-template { flex: 0 1 auto; width: 92px; min-width: 0; padding: 3px 6px; font-size: 11px; }
 
 .scenario-strip {
   display: flex; gap: 6px; padding: 8px 14px; overflow-x: auto; scrollbar-width: none;
@@ -494,6 +496,10 @@ select { background: #0a1122; color: var(--text); border: 1px solid var(--border
 .takeaway .btn { margin-top: 14px; }
 
 .board:has(.compare-wrap) .toasts { left: 88px; top: 108px; bottom: auto; }
+/* the sandbox's control bar spans the bottom: its toasts drop in at the top, clear of the bar and the palette */
+.mode-sandbox .toasts { left: 50%; transform: translateX(-50%); top: 16px; bottom: auto; align-items: center; }
+.mode-sandbox:has(.replica-toggle) .toasts { top: 56px; }
+.mode-sandbox .toasts .toast:nth-last-child(n + 4) { display: none; }
 /* the scenario's caption sits at the bottom; keep only the latest few events above the boards */
 .board:has(.compare-wrap) .toast:nth-last-child(n + 4) { display: none; }
 .node-down.failed-over { color: #a7f3d0; font-size: 14px; letter-spacing: 2px; background: repeating-linear-gradient(45deg, rgba(52, 211, 153, 0.1) 0 10px, rgba(2, 6, 23, 0.5) 10px 20px); }
@@ -502,7 +508,7 @@ select { background: #0a1122; color: var(--text); border: 1px solid var(--border
 /* settings */
 .topbar .settings { position: relative; }
 .icon-btn.on { color: var(--text); border-color: var(--border-strong); background: #17213a; }
-.settings-pop { position: absolute; top: 44px; right: 0; width: 320px; padding: 12px 14px; z-index: 50; }
+.settings-pop { position: absolute; top: 44px; right: 0; width: 320px; padding: 12px 14px; z-index: 50; max-height: calc(100vh - 64px); overflow-y: auto; scrollbar-width: thin; }
 .settings-sec + .settings-sec { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
 .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 2px; cursor: pointer; }
 .toggle-label { font-weight: 600; font-size: 12.5px; }
@@ -540,6 +546,8 @@ select { background: #0a1122; color: var(--text); border: 1px solid var(--border
 .ep-series { color: var(--dim); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; }
 .ep-hook { font-size: 12.5px; font-weight: 600; line-height: 1.35; }
 .seg { display: flex; flex-wrap: wrap; gap: 4px; background: #0a1122; border: 1px solid var(--border); border-radius: 9px; padding: 3px; }
+/* four pricing profiles: two by two rather than three and a straggler */
+.seg.seg-grid { display: grid; grid-template-columns: 1fr 1fr; }
 .seg button { flex: 1; background: none; border: 0; padding: 6px 8px; border-radius: 6px; color: var(--muted); font-weight: 600; font-size: 11.5px; white-space: nowrap; }
 .seg button.on { background: #1b2640; color: var(--text); box-shadow: inset 0 0 0 1px var(--border-strong); }
 .studio-play { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
@@ -748,7 +756,10 @@ select { background: #0a1122; color: var(--text); border: 1px solid var(--border
 .tk-score td.win { color: var(--green); font-weight: 600; }
 
 /* a right-hand panel covers the minimap's corner: hide it rather than leave a sliver showing */
-.app:has(.spec.panel, .audit.panel, .analysis.panel) .react-flow__minimap { display: none; }
+.app:has(.spec.panel, .audit.panel, .analysis.panel, .lesson.panel) .react-flow__minimap { display: none; }
+/* the sandbox's run timeline makes the control bar taller: the palette and minimap stay clear of it */
+.app:has(.controlbar .tl) .palette { max-height: calc(100% - 180px); }
+.app:has(.controlbar .tl) .minimap.react-flow__minimap { bottom: 128px; }
 
 /* drawing the board as an image: the floating panels stay out of it */
 .board-canvas.exporting .react-flow__minimap,
@@ -765,3 +776,10 @@ select { background: #0a1122; color: var(--text); border: 1px solid var(--border
 
 /* a glossary term: hover for its definition */
 abbr.term { text-decoration: underline dotted; text-decoration-color: color-mix(in srgb, currentColor 55%, transparent); text-underline-offset: 2px; cursor: help; }
+
+/* a view that threw while rendering */
+.crashed { max-width: 640px; margin: 12vh auto 0; padding: 0 16px; font-family: var(--mono); color: var(--text, #c8d0d8); }
+.crashed-title { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--red, #f87171); }
+.crashed-msg { margin: 12px 0; padding: 10px 12px; white-space: pre-wrap; font-size: 12px; border-left: 2px solid var(--red, #f87171); background: rgba(248, 113, 113, 0.06); }
+.crashed p { font-family: var(--sans, system-ui); font-size: 14px; line-height: 1.5; color: var(--muted, #8b98a5); }
+.crashed-actions { display: flex; gap: 8px; }

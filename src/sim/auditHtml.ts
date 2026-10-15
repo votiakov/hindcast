@@ -33,7 +33,7 @@ function curveSvg(r: AuditResult): string {
   <path d="${lat}" class="lat"/>
   <line x1="${x(r.load.rps)}" x2="${x(r.load.rps)}" y1="${P.t}" y2="${H - P.b}" class="now"/>
   <text x="${x(r.load.rps) + 4}" y="${P.t + 10}" class="t">expected ${r.load.rps.toLocaleString('en-US')} req/s</text>
-  ${r.headroom.maxRps < maxX ? `<line x1="${x(r.headroom.maxRps)}" x2="${x(r.headroom.maxRps)}" y1="${P.t}" y2="${H - P.b}" class="lim"/><text x="${x(r.headroom.maxRps) + 4}" y="${P.t + 24}" class="t bad">breaks at ${Math.round(r.headroom.maxRps).toLocaleString('en-US')}</text>` : ''}
+  ${r.headroom.maxRps >= 1 && r.headroom.maxRps < maxX ? `<line x1="${x(r.headroom.maxRps)}" x2="${x(r.headroom.maxRps)}" y1="${P.t}" y2="${H - P.b}" class="lim"/><text x="${x(r.headroom.maxRps) + 4}" y="${P.t + 24}" class="t bad">breaks at ${Math.round(r.headroom.maxRps).toLocaleString('en-US')}</text>` : ''}
   <line x1="${P.l}" x2="${W - P.r}" y1="${H - P.b}" y2="${H - P.b}" class="axis"/>
   ${ticks.map((t) => `<text x="${x(t)}" y="${H - 10}" text-anchor="middle" class="t">${t.toLocaleString('en-US')}</text>`).join('')}
   <text x="${P.l - 6}" y="${yl(yMax) + 4}" text-anchor="end" class="t">${ms(Math.round(yMax))}</text>
@@ -104,7 +104,7 @@ footer { margin-top: 40px; color: var(--mut); font-size: 12px; border-top: 1px s
 <div class="kpis">
   <div class="kpi"><b class="${r.score >= 80 ? 'good' : r.score >= 50 ? 'warn' : 'bad'}">${r.score}<small style="font-size:14px;letter-spacing:0">/100</small></b><span>resilience — survives ${r.survived} of ${r.total} incidents</span></div>
   <div class="kpi"><b>${availPct(r.availability.estimate)}</b><span>availability by design — ${downtimeText(r.availability.downtimeHoursPerYear)} of downtime a year</span></div>
-  <div class="kpi"><b>${r.headroom.ratio.toFixed(1)}×</b><span>headroom — ${Math.round(r.headroom.maxRps).toLocaleString('en-US')} req/s, then ${esc(r.headroom.limitedBy ?? '—')}</span></div>
+  <div class="kpi"><b>${r.headroom.ratio.toFixed(1)}×</b><span>headroom — ${r.headroom.maxRps >= 1 ? `${Math.round(r.headroom.maxRps).toLocaleString('en-US')} req/s${r.headroom.limitedBy ? `, then ${esc(r.headroom.limitedBy)}` : ''}` : 'misses the SLO at any load'}</span></div>
   <div class="kpi"><b>$${r.baseline.monthly.toLocaleString('en-US')}</b><span>per month at this load${r.baseline.meetsSlo ? '' : ' — <span class="bad">already outside the SLO</span>'}</span></div>
 </div>
 <h2>Load curve</h2>

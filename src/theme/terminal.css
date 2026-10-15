@@ -213,8 +213,9 @@
 [data-theme='terminal'] .btn.primary:hover { background: rgba(242, 169, 59, 0.18); filter: none; }
 
 /* the bar stays one row at 1280 px: long design names truncate */
-[data-theme='terminal'] .dm-title { max-width: 190px; padding: 3px 6px; font-size: 13px; }
-@media (max-width: 1440px) { [data-theme='terminal'] .dm-title { max-width: 150px; } }
+[data-theme='terminal'] .dm-title { max-width: 320px; padding: 3px 6px; font-size: 13px; }
+@media (max-width: 1440px) { [data-theme='terminal'] .dm-title { max-width: 240px; } }
+@media (max-width: 1280px) { [data-theme='terminal'] .dm-title { max-width: 170px; } }
 
 /* ---- the board's motion (after the Neon board): only what is in trouble moves at rest ---- */
 [data-theme='terminal'] .ref-glyph { width: 22px; height: 22px; flex: none; display: flex; align-items: center; justify-content: center; border: 1px solid var(--kind); color: var(--kind); }

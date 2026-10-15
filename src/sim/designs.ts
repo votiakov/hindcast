@@ -54,3 +54,17 @@ export const deleteDesign = (id: string) => write(LIB, listDesigns().filter((x) 
 
 export const readAutosave = (): { name: string; designId?: string; graph: Graph } | null => read(CUR, null);
 export const writeAutosave = (name: string, graph: Graph, designId?: string) => write(CUR, { name, designId, graph: cleanGraph(graph) });
+
+/** the settings popover (pricing, commitment, SLO, display) survives a reload; renders and embeds
+ *  always start from the defaults so a clip or an embedded board looks the same in every browser */
+const SETTINGS = 'hindcast.settings.v1';
+const pristine = () => {
+  try {
+    const q = new URLSearchParams(location.search);
+    return q.get('render') === '1' || q.get('embed') === '1';
+  } catch {
+    return true;
+  }
+};
+export const readSettings = <T extends object>(defaults: T): T => (pristine() ? defaults : { ...defaults, ...read<Partial<T>>(SETTINGS, {}) });
+export const writeSettings = (s: object) => !pristine() && write(SETTINGS, s);

@@ -212,7 +212,7 @@ export default function App() {
     );
 
   return (
-    <div className={`app ${present ? 'presenting' : ''}`}>
+    <div className={`app mode-${mode} ${present ? 'presenting' : ''}`}>
       <TopBar />
       <div
         className="board"

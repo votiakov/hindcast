@@ -37,7 +37,7 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
   const edges = useSim((s) => s.boards[id].edges);
   const version = useSim((s) => s.boards[id].version);
   const { onNodesChange, onEdgesChange, onConnect, addNode, addZone, moveNodes, setFocus } = useSim.getState();
-  const { screenToFlowPosition, fitView } = useReactFlow();
+  const { screenToFlowPosition, flowToScreenPosition, fitView } = useReactFlow();
   const wrapper = useRef<HTMLDivElement>(null);
   const zoneDrag = useRef<{ start: XYPosition; members: Record<string, XYPosition> } | null>(null);
 
@@ -58,9 +58,9 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
   }, [camera?.seq]);
 
   const add = useCallback(
-    (kind: Kind | typeof ZONE_KIND, p: XYPosition) => {
+    (kind: Kind | typeof ZONE_KIND, p: XYPosition, from?: string) => {
       if (kind === ZONE_KIND) addZone(id, { x: p.x - 280, y: p.y - 190 });
-      else addNode(id, kind, { x: p.x - 115, y: p.y - 60 });
+      else addNode(id, kind, { x: p.x - 115, y: p.y - 60 }, from);
     },
     [id, addNode, addZone],
   );
@@ -80,12 +80,18 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
         const a = (k % 8) * (Math.PI / 4);
         p = { x: start.x + Math.round(Math.cos(a)) * 300 * ring, y: start.y + Math.round(Math.sin(a)) * 220 * ring };
       }
-      add(kind, p);
+      // a click next to the selected component grows the chain: the new one is linked from it (⌘Z undoes both)
+      add(kind, p, sel && kind !== 'client' && kind !== ZONE_KIND ? sel.id : undefined);
+      // the board does not follow a card placed off screen by itself
+      const tl = flowToScreenPosition({ x: p.x - 115, y: p.y - 60 });
+      const br = flowToScreenPosition({ x: p.x + 115, y: p.y + 90 });
+      if (tl.x < r.left || tl.y < r.top || br.x > r.right || br.y > r.bottom) setTimeout(() => fitView({ padding, duration: 300, maxZoom: 1.1 }), 30);
     };
     return () => {
       delete adders[id];
     };
-  }, [id, add, screenToFlowPosition]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, add, screenToFlowPosition, flowToScreenPosition, fitView]);
 
   const onDrop = useCallback(
     (e: React.DragEvent) => {
@@ -191,7 +197,7 @@ function ReplicaToggle({ id }: { id: BoardId }) {
   const fleet = useSim((s) => s.boards[id].nodes.some((n) => n.type === 'system' && KINDS[(n.data as SystemNodeData).kind].scalable && ((n.data as SystemNodeData).instances ?? 1) > 1));
   if (!fleet) return null;
   return (
-    <Panel position="top-right" className="replica-toggle">
+    <Panel position="top-center" className="replica-toggle">
       <span>replicas</span>
       <div className="seg">
         <button className={view === 'grouped' ? 'on' : ''} onClick={() => setSetting('replicaView', 'grouped')} title="One block per component, a pip per instance">

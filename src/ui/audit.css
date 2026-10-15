@@ -23,6 +23,8 @@
 
 .au-empty { padding: 14px; font-size: 12.5px; line-height: 1.55; color: var(--muted); }
 .au-stale { padding: 7px 14px; font-size: 11.5px; color: var(--amber); border-bottom: 1px solid var(--border); }
+.au-overloaded { line-height: 1.5; }
+.au-overloaded .linkish { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }
 
 .au-summary { display: flex; align-items: center; gap: 16px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
 .au-score { font-family: var(--mono); font-size: 40px; line-height: 1; font-weight: 600; letter-spacing: -2px; font-variant-numeric: tabular-nums; }
