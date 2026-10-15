@@ -1,0 +1,94 @@
+{
+ "madeAt": "2026-10-15T12:02:11.686Z",
+ "commit": "636aeb8",
+ "models": {
+  "calm": {
+   "normal-x1.5": {
+    "verdict": "pass",
+    "confidence": null,
+    "leans": null,
+    "minutesOutOfSlo": 0.5,
+    "peakP99Ms": null,
+    "monthlyDelta": null,
+    "reasons": [],
+    "warnings": [],
+    "ooms": {
+     "email": [
+      29.5
+     ]
+    }
+   },
+   "launch-email300": {
+    "verdict": "inconclusive",
+    "confidence": "low",
+    "leans": "pass",
+    "minutesOutOfSlo": 0,
+    "peakP99Ms": 230,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same and removes 1 minute out of SLO from the history",
+     "the backtest passes, but confidence is low (frontend would run at 91% of a capacity the history never tested (peak 41%): the outcome rests on an extrapolated limit) — load-test before trusting it",
+     "cuts 283 failed requests (−100% of 283)"
+    ],
+    "warnings": [
+     "frontend would run at 91% of a capacity the history never tested (peak 41%): the outcome rests on an extrapolated limit",
+     "email: fair fit (latency reproduced within 30%)",
+     "product-catalog would run at 51% of capacity, past the history's 23%: its capacity there is extrapolated",
+     "recommendation: the model fits it poorly, and this change pushes it harder than the history did",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ],
+    "ooms": {}
+   }
+  },
+  "load-tested": {
+   "normal-x1.5": {
+    "verdict": "pass",
+    "confidence": null,
+    "leans": null,
+    "minutesOutOfSlo": 0.5,
+    "peakP99Ms": null,
+    "monthlyDelta": null,
+    "reasons": [],
+    "warnings": [],
+    "ooms": {
+     "email": [
+      30.7,
+      278.9
+     ]
+    }
+   },
+   "launch-email300": {
+    "verdict": "pass",
+    "confidence": "medium",
+    "leans": null,
+    "minutesOutOfSlo": 0,
+    "peakP99Ms": 190,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same, with no change in time out of SLO",
+     "cuts 257 failed requests (−100% of 257), though the minutes out of SLO stay the same: something else breaks the SLO in those minutes"
+    ],
+    "warnings": [
+     "frontend fits poorly and runs near its limit; the change leaves it as it was, so the comparison holds better than the absolute numbers",
+     "email: fair fit (latency reproduced within 30%)",
+     "recommendation fits poorly and runs near its limit; the change leaves it as it was, so the comparison holds better than the absolute numbers",
+     "the model's accuracy was never measured",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ],
+    "ooms": {
+     "email": [
+      279.9
+     ]
+    }
+   }
+  }
+ }
+}
