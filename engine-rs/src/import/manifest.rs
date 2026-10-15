@@ -152,6 +152,8 @@ pub fn import_bundle(m: &Value, fs: &mut dyn FileAccess) -> Result<(Dataset, Vec
             ignore_services: src.get("ignore").and_then(|x| serde_json::from_value(x.clone()).ok()).unwrap_or_default(),
             rename: rename.clone(),
             series: Some(series),
+            // calibration's default where the manifest gives none
+            timeout_ms: Some(m.get("model").and_then(|x| x.get("timeoutMs")).and_then(|x| x.as_f64()).filter(|t| *t > 0.0).unwrap_or(5000.0)),
         };
         let t = build_topology(&mut spans, Some(&mut b), &o);
         for id in t.services.keys() {

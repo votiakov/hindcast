@@ -1011,6 +1011,8 @@ pub struct TraceImportOptions {
     pub ignore_services: Vec<String>,
     pub rename: Map<String>,
     pub series: Option<(bool, bool, bool)>,
+    /// the clients' timeout: a request that lasted 80% of it ran into it
+    pub timeout_ms: Option<f64>,
 }
 
 fn mean(xs: &[f64]) -> f64 {
@@ -1141,8 +1143,9 @@ pub fn build_topology(spans: &mut [Span], b: Option<&mut DatasetBuilder>, o: &Tr
                 *ep.cp.entry(k).or_insert(0.0) += ms;
             }
             // a call that outlasted the request it served was abandoned: the request was cut off at a
-            // timeout while a dependency hung, which is a failure, not how long it takes
-            let cut = abandoned(root, dur, &arena);
+            // timeout while a dependency hung, which is a failure, not how long it takes. So is one
+            // that ran into the timeout with the hung call's spans never reported
+            let cut = abandoned(root, dur, &arena) || o.timeout_ms.map(|t| dur >= 0.8 * t).unwrap_or(false);
             let bucket = (arena.v[root].start / 1000.0 / step).floor() * step;
             let cell = eb.entry(id).or_default().entry(bucket.to_bits()).or_insert_with(|| ECell { n: 0.0, err: 0.0, dur: vec![], whole: vec![] });
             cell.n += 1.0;
@@ -1301,14 +1304,16 @@ mod tests {
 
     #[test]
     fn requests_cut_off_while_a_call_hung_are_not_the_quiet_time_latency() {
-        // 5 requests cut off at a 5 s timeout while checkout hung for 18 s, then 40 ordinary ones
+        // 5 requests cut off at a 5 s timeout while checkout hung for 18 s, 3 at the timeout whose
+        // hung call never reported, then 40 ordinary ones
         let mut lines: Vec<String> = (0..5).map(|k| trace(k, 5000.0, 18000.0)).collect();
-        lines.extend((5..45).map(|k| trace(k, 15.0, 10.0)));
+        lines.extend((5..8).map(|k| trace(k, 5001.0, 3.0)));
+        lines.extend((8..48).map(|k| trace(k, 15.0, 10.0)));
         let mut spans = vec![];
         parse_trace_lines(lines.iter(), &mut spans).unwrap();
-        let t = build_topology(&mut spans, None, &TraceImportOptions { step_s: 30.0, ..Default::default() });
+        let t = build_topology(&mut spans, None, &TraceImportOptions { step_s: 30.0, timeout_ms: Some(5000.0), ..Default::default() });
         let e = t.endpoints.values().next().unwrap();
-        assert_eq!(e.traces, 45.0);
+        assert_eq!(e.traces, 48.0);
         // what users saw still counts in the whole history
         assert!(e.p99_ms >= 4999.0);
         // the quiet-time baseline is what a completed request takes

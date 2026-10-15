@@ -336,8 +336,8 @@ fn stability(ws: &Workspace, mv: &Value, d: &crate::dataset::Dataset, m: &crate:
     rs.push((r1(whole.rps), whole.limited_by.is_none() && whole.at_any_load.is_none()));
     let (lo, hi) = (rs.iter().map(|x| x.0).fold(f64::INFINITY, f64::min), rs.iter().map(|x| x.0).fold(0.0, f64::max));
     let open = rs.iter().any(|x| x.0 == hi && x.1);
-    // half again from the lowest to the highest, or a window with no headroom at all
-    let uncertain = lo <= 0.0 || hi > lo * UNCERTAIN_SPREAD;
+    // half again from the lowest to the highest, or some windows with no headroom at all and some with
+    let uncertain = hi > 0.0 && (lo <= 0.0 || hi > lo * UNCERTAIN_SPREAD);
     Ok(json!({ "windows": windows, "low": num(lo), "high": num(hi), "highOpen": open, "uncertain": uncertain, "configurations": configurations }))
 }
 
