@@ -49,6 +49,9 @@ one change worth making, and how far to trust it.
 hindcast quickstart --prometheus http://localhost:9090 --jaeger http://localhost:16686 --last 24h
 ```
 
+(`hindcast` is `bin/hindcast` in a clone; see [install](#install) below. No Prometheus to point it
+at? [Backtest the recorded reference systems](#no-cluster-backtest-the-recorded-reference-systems).)
+
 Traces are optional. With Prometheus alone, who calls whom comes from Istio or Linkerd metrics, the
 OpenTelemetry service graph, or span metrics' client spans; failing those, from a topology file
 (`--topology`), or each service stands on its own. Without traces you lose each endpoint's own path
@@ -76,18 +79,24 @@ agent tools on both, and a VS Code extension that draws the spec you are editing
 How it differs from the system-design simulators you may have seen, and what it can't do:
 [Why Hindcast](docs-site/pages/why.html) (`/docs/why.html` in the app).
 
+## Install
+
 Needs Node 20+. The CLI, the MCP server and the agent tools are one native binary: `bin/hindcast`
-builds it on first use, which needs a Rust toolchain ([rustup](https://rustup.rs)). The app
-doesn't: the engine is committed as WebAssembly (rebuilding it with `npm run engine:build` needs the
-`wasm32-unknown-unknown` target and `wasm-bindgen-cli`).
+builds it on first use (about two minutes, once), which needs a Rust toolchain
+([rustup](https://rustup.rs)). The app doesn't: the engine is committed as WebAssembly (rebuilding
+it with `npm run engine:build` needs the `wasm32-unknown-unknown` target and `wasm-bindgen-cli`).
+A clone is about 470 MB, most of it the recorded reference runs that the accuracy tables are
+regenerated from.
 
 ```
 npm install
 npm run dev            # app on http://localhost:5173
-npm run sim -- …       # CLI (headless engine)
+npm run sim -- …       # CLI (headless engine); same as bin/hindcast …
 npm run mcp            # MCP server (stdio); Claude Code picks it up from .mcp.json
-npm test               # engine, spec and audit tests
+npm test               # engine, spec and audit tests (a couple of minutes)
 ```
+
+In a checkout, `hindcast` in the examples below is `bin/hindcast` (or `npm run sim --`).
 
 User guide: the app's **Docs** button, or http://localhost:5173/docs/index.html — every view
 explained screen by screen (source: `docs-site/pages/`; `npm run docs:shots` recaptures the
@@ -96,6 +105,22 @@ screenshots from a running app, `npm run docs:build` rebuilds the pages).
 Documentation: [docs/](docs/README.md) — start with the [guide](docs/guide.md) (every view of the
 app), [use cases](docs/use-cases.md), the [capability list](docs/capabilities.md) and
 [calibration](docs/calibration.md) (how a model is fitted from real telemetry).
+
+### No cluster? Backtest the recorded reference systems
+
+The data the accuracy tables come from is committed, so a backtest runs without any infrastructure.
+In the app, the **Backtest** tab opens on HotROD; the system picker switches to the Astronomy Shop,
+PetClinic and the shop on Kubernetes. From the CLI:
+
+```
+bin/hindcast backtest reference/shop/model.json reference/shop/dataset.json \
+  reference/shop/strategies/1-autoscale-frontend.yaml reference/shop/strategies/3-graviton.yaml
+bin/hindcast accuracy reference/shop/model.json     # how well that model predicted runs it never saw
+bin/hindcast outage   reference/shop/model.json list # public outages to replay against it
+```
+
+The reference models were calibrated on 40-minute runs of demo systems (in Docker, or on a kind
+cluster), so treat them as a way to see what the output looks like, not as numbers about your system.
 
 ## What's in the app
 
