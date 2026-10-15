@@ -3,27 +3,13 @@ import { join } from 'node:path';
 import { parentPort } from 'node:worker_threads';
 import { initSync } from '../../src/backtest/wasm/hindcast_engine.js';
 import { validateSpec } from '../../src/spec/validate';
-import { simulate } from '../../src/sim/headless';
 import { audit } from '../../src/sim/audit';
 import { auditMarkdown } from '../../src/sim/auditReport';
-import type { AuditDone, Request, Summary } from './protocol';
+import { summary } from './summary';
+import type { AuditDone, Request } from './protocol';
 
 // The engine (WebAssembly) in a worker thread, so a long audit never blocks the editor.
 initSync({ module: readFileSync(join(__dirname, 'hindcast_engine_bg.wasm')) });
-
-export function summary(value: unknown, rps: number | undefined): Summary {
-  const r = simulate(value, rps ? { rps } : {});
-  const top = r.bottlenecks[0];
-  return {
-    scenario: r.scenario,
-    p99Ms: r.summary.peakP99Ms,
-    errorRate: r.summary.meanErrorRate,
-    monthly: r.summary.meanCostPerHour * 730,
-    sloCompliance: r.summary.sloCompliance,
-    slo: r.slo,
-    bottleneck: top && top.peakUtil >= 0.8 ? { id: top.id, note: top.note } : null,
-  };
-}
 
 function run(req: Request): unknown {
   switch (req.op) {

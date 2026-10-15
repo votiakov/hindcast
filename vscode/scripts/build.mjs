@@ -2,7 +2,7 @@
 // extension host), the engine's .wasm next to them, and the webview (vite, one HTML file).
 // Uses the repository's own node_modules; run `npm run engine:build` at the root after Rust changes.
 import { build } from 'esbuild';
-import { copyFileSync, mkdirSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -30,4 +30,7 @@ mkdirSync(join(here, 'media'), { recursive: true });
 copyFileSync(join(root, 'public/favicon.svg'), join(here, 'media/icon.svg'));
 
 execFileSync(join(root, 'node_modules/.bin/vite'), ['build', '--config', 'vite.webview.config.ts', '--logLevel', 'warn'], { cwd: here, stdio: 'inherit' });
+// nothing from the network: the Terminal theme's web fonts fall back to the system's
+const page = join(dist, 'webview/index.html');
+writeFileSync(page, readFileSync(page, 'utf8').replace(/@import\s*(url\()?["']https:\/\/fonts\.googleapis\.com[^"']*["']\)?;/g, ''));
 console.log('built vscode/dist');

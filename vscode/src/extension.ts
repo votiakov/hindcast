@@ -18,6 +18,9 @@ let diagnostics: vscode.DiagnosticCollection;
 let status: vscode.StatusBarItem;
 let output: vscode.OutputChannel;
 const panels = new Map<string, vscode.WebviewPanel>();
+/** what each board last said it shows */
+const boards = new Map<string, { title: string; components: string[]; stale: boolean }>();
+const boardErrors = new Map<string, string[]>();
 const parsed = new Map<string, { version: number; doc: SpecDoc }>();
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 const summaries = new Map<string, { version: number; summary: Summary | Error }>();
@@ -143,7 +146,17 @@ function boardHtml(ctx: vscode.ExtensionContext, panel: vscode.WebviewPanel): st
     'connect-src data:',
   ].join('; ');
   const html = readFileSync(ctx.asAbsolutePath('dist/webview/index.html'), 'utf8');
-  return html.replace('<head>', `<head><meta http-equiv="Content-Security-Policy" content="${csp}">`).replace(/<script\b/g, `<script nonce="${nonce}"`);
+  // the host API, and errors reported to the extension's output before the app has loaded (zod
+  // probes for eval and falls back without it: not an error)
+  const boot = `<script nonce="${nonce}">window.hindcastHost = acquireVsCodeApi();
+const report = (m) => window.hindcastHost.postMessage({ type: 'error', message: String(m) });
+addEventListener('error', (e) => report(e.message));
+addEventListener('unhandledrejection', (e) => report(e.reason && e.reason.message || e.reason));
+addEventListener('securitypolicyviolation', (e) => e.blockedURI !== 'eval' && report('CSP: ' + e.violatedDirective + ' ' + e.blockedURI));</script>`;
+  // the app's one module script (vite-plugin-singlefile); the bundle's own "<script>" strings stay as they are
+  return html
+    .replace('<head>', () => `<head><meta http-equiv="Content-Security-Policy" content="${csp}">${boot}`)
+    .replace('<script type="module" crossorigin>', () => `<script type="module" nonce="${nonce}">`);
 }
 
 function postSpec(d: vscode.TextDocument) {
@@ -174,12 +187,16 @@ function openBoard(ctx: vscode.ExtensionContext, d: vscode.TextDocument) {
   });
   panel.iconPath = vscode.Uri.joinPath(ctx.extensionUri, 'media', 'icon.svg');
   panel.webview.html = boardHtml(ctx, panel);
-  panel.webview.onDidReceiveMessage((m: { type: string; id?: string }) => {
+  panel.webview.onDidReceiveMessage((m: { type: string; id?: string; title?: string; components?: string[]; stale?: boolean; message?: string }) => {
     if (m.type === 'ready') postSpec(d);
+    else if (m.type === 'error') {
+      output.appendLine(`board ${basename(d.fileName)}: ${m.message}`);
+      boardErrors.set(key, [...(boardErrors.get(key) ?? []), m.message ?? '']);
+    } else if (m.type === 'board') boards.set(key, { title: m.title ?? '', components: m.components ?? [], stale: !!m.stale });
     else if (m.type === 'select' && m.id) revealComponent(d, m.id);
     else if (m.type === 'audit') void runAudit(ctx, d);
   });
-  panel.onDidDispose(() => panels.delete(key));
+  panel.onDidDispose(() => (panels.delete(key), boards.delete(key), boardErrors.delete(key)));
   panels.set(key, panel);
 }
 
@@ -260,6 +277,11 @@ export function activate(ctx: vscode.ExtensionContext) {
     }),
     // for tests and scripts: the last status bar summary of a document
     vscode.commands.registerCommand('hindcast.summary', (uri: vscode.Uri) => summaries.get(uri.toString())?.summary),
+    vscode.commands.registerCommand('hindcast.board', (uri: vscode.Uri) => {
+      const b = boards.get(uri.toString());
+      const errors = boardErrors.get(uri.toString()) ?? [];
+      return b || errors.length ? { ...b, errors } : undefined;
+    }),
     vscode.workspace.onDidOpenTextDocument((d) => {
       void validate(d);
       void summarize(d);

@@ -156,7 +156,7 @@
     "typecheck": "tsc --noEmit -p .",
     "test": "vitest run",
     "test:host": "node scripts/build.mjs && node test/host/run.mjs",
-    "package": "node scripts/build.mjs && vsce package --no-dependencies --out dist/hindcast.vsix"
+    "package": "node scripts/build.mjs && vsce package --no-dependencies --skip-license --out dist/hindcast.vsix"
   },
   "devDependencies": {
     "@types/vscode": "~1.85.0",

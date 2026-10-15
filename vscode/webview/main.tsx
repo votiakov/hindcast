@@ -18,11 +18,11 @@ import './vscode.css';
 
 /**
  * The VS Code webview: the embed board, fed by the extension. Messages in: `{ type: 'spec', value, rps? }`
- * on every (debounced) edit. Messages out: `ready`, `select` (a component clicked on the board, to
- * jump to its line) and `audit`.
+ * on every (debounced) edit. Messages out: `ready`, `board` (what it shows, after each spec), `select`
+ * (a component clicked on the board, to jump to its line) and `audit`.
  */
-declare function acquireVsCodeApi(): { postMessage(m: unknown): void };
-const host = acquireVsCodeApi();
+// acquired once, by the extension's first script (it reports errors before this module runs)
+const host = (window as unknown as { hindcastHost: { postMessage(m: unknown): void } }).hindcastHost;
 
 let stale: string | null = null;
 const listeners = new Set<() => void>();
@@ -34,19 +34,23 @@ const setStale = (s: string | null) => {
 let opened = false;
 function apply(value: unknown, rps?: number) {
   const parsed = ArchitectureSpec.safeParse(value);
-  if (!parsed.success) return setStale('the file does not parse as a spec: the board shows the last version that did');
-  setStale(null);
-  const s = useSim.getState();
-  if (!opened) {
-    opened = openPayload({ spec: value });
-    s.setSetting('alerts', false);
-    if (rps) s.setTraffic(rps);
-    s.setRunning(true);
-    return;
+  if (!parsed.success) setStale('the file does not parse as a spec: the board shows the last version that did');
+  else {
+    setStale(null);
+    const s = useSim.getState();
+    if (!opened) {
+      opened = openPayload({ spec: value });
+      s.setSetting('alerts', false);
+      if (rps) s.setTraffic(rps);
+      s.setRunning(true);
+    } else {
+      // keep the layout and the running state; only what the file changed moves
+      const merged = mergeSpecIntoGraph(parsed.data, s.boards.main);
+      s.setGraph('main', merged.nodes, merged.edges, parsed.data.name);
+    }
   }
-  // keep the layout and the running state; only what the file changed moves
-  const merged = mergeSpecIntoGraph(parsed.data, s.boards.main);
-  s.setGraph('main', merged.nodes, merged.edges, parsed.data.name);
+  const m = useSim.getState().boards.main;
+  host.postMessage({ type: 'board', title: m.title, components: m.nodes.filter(isSystem).map((n) => n.id), stale: stale !== null });
 }
 
 window.addEventListener('message', (e: MessageEvent) => {
@@ -103,5 +107,8 @@ initEngine().then(
     );
     host.postMessage({ type: 'ready' });
   },
-  (e: unknown) => root.render(engineFailed(e)),
+  (e: unknown) => {
+    host.postMessage({ type: 'error', message: `engine: ${e instanceof Error ? e.message : String(e)}` });
+    root.render(engineFailed(e));
+  },
 );
