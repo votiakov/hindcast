@@ -139,7 +139,32 @@ GB (except `archive`) are not included; 1- and 3-year commitments are a setting 
 | setting | default | where |
 |---|---|---|
 | bounded queue | 1 s of work | Settings → Request timeout; per node `queueS` |
-| failover election | 3 s | Settings → Failover time |
+| database failover | 60 s | per database `failoverS`; Settings → Automatic DB failover turns it off |
 | cold start | 400 ms (runtime-specific when set) | Settings → Serverless cold starts |
 | breaker | trip > 50 % failures, open 5 s, close < 10 % | engine constants |
 | retry budget | ≤ 10 % extra calls | engine constants |
+
+## Where the audit's numbers come from
+
+The failure audit's answers rest on these constants. **Cited** values come from the source named;
+**guess** marks a teaching default that no measurement backs: override it in the spec when you know
+better.
+
+| constant | value | source |
+|---|---|---|
+| database failover (`failoverS`) | 60 s | cited, the managed-HA middle: [RDS Multi-AZ instance](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.MultiAZ.Failover.html) "typically 60–120 seconds"; [Cloud SQL HA](https://docs.cloud.google.com/sql/docs/postgres/high-availability) "about sixty seconds"; [Azure Database for PostgreSQL, zone-redundant HA](https://learn.microsoft.com/en-us/azure/reliability/reliability-postgresql-flexible-server) "typically within 60-120 seconds". Faster: [Aurora](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Concepts.AuroraHighAvailability.html) "less than 60 seconds, and often less than 30", an [RDS Multi-AZ DB cluster](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/multi-az-db-clusters-concepts-failover.html) "typically under 35 seconds" — set `failoverS: 30` for those |
+| failover with no automatic election | 1,800 s | guess: someone is paged and promotes a replica by hand. The Kubernetes import sets it for a Postgres or MySQL StatefulSet with more than one pod and no CloudNativePG, Patroni, Zalando or Crunchy operator |
+| circuit breaker | trips past 50 % failures held for 1 s, open 5 s, closes under 10 % | 50 % and 5 s are [Hystrix's defaults](https://github.com/Netflix/Hystrix/wiki/Configuration) (`errorThresholdPercentage`, `sleepWindowInMilliseconds`); the 1 s window (Hystrix: a 10 s rolling window) and the 10 % to close are guesses |
+| retry budget (`retryPolicy: budget`) | ≤ 10 % extra calls | cited: [Google SRE book, Handling Overload](https://sre.google/sre-book/handling-overload/) (a per-client retry budget of 10 %) |
+| retry backoff | retries spread to 30 %, 200 ms base delay | guess |
+| cold start | 400 ms generic; by runtime 40 ms (Rust) to 1,800 ms (Java) | guess, in the order public Lambda cold-start measurements put them; not fitted |
+| service-time spread (DES `serviceCv`) | 0.6, lognormal | guess, between deterministic (0) and exponential (1); the fluid engine's p99 factor (3.11) and queueing scale (0.68) follow from it analytically |
+| cache hit rate on import | 85 % (cache), 60 % (CDN) | guess; the importers list it among their assumptions. Set `hitRate` from CacheHits / (CacheHits + CacheMisses) |
+| HPA pod warm-up on import | 20 s (+60–120 s if a node must be added) | guess. The 300 s scale-in delay is cited: the [Kubernetes HPA](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#stabilization-window) default stabilization window |
+| autoscaling defaults | target 60 %, warm-up 30 s, scale-in cooldown 60 s; the audit's autoscale fix uses a 15 s warm-up | guess |
+| runtime multipliers | throughput ×0.45 (Python) to ×3.5 (Rust), latency ×1.6 to ×0.35 | guess: rough orders for JSON over HTTP from public framework benchmarks, not fitted. I/O-bound services differ far less |
+| DNS health checks | `healthCheckS` 30 s, `ttlS` 60 s | guess. Route 53's default checks (30 s interval × 3 failures) take about 90 s to notice; 30 s needs fast (10 s) checks |
+| per-unit availability | one VM or single-AZ database 99.5 %, load balancer 99.99 %, DNS 100 % … | cited: each managed service's published SLA (EC2, ELB, Route 53 …). An SLA is a refund promise, not a measured uptime, and the audit labels it "SLA (published), not measured" |
+| a provider-wide DNS outage | offered as an incident, with no fix | the audit replays it ([Dyn, October 2016](https://en.wikipedia.org/wiki/2016_Dyn_cyberattack), hours) and names the remedy, a second DNS provider, without pricing it; a "standby DNS" component is not offered |
+| audit timeline | fault at 10 s, cleared at 40 s; "turns slow" adds 250 ms | guess. "Turns slow" is a gray failure of the component itself: each worker is busy 250 ms longer, so a component with 10–25 ms of work loses over 90 % of its throughput. The audit says so where that is what failed the requests |
+| fluid smoothing | τ 0.3 s per component | an engine time constant. The users see the chain of them, so a cleared fault fades over 3–4 s even when nothing lingers (the discrete-event engine recovers at once). The audit measures that fade on a bare chain of the same depth and reports recovery and self-healing net of it |
