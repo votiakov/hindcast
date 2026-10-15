@@ -61,6 +61,8 @@
 .bt-legend { position: absolute; left: 10px; top: 4px; display: flex; flex-wrap: wrap; gap: 4px 14px; font: 12px var(--bt-mono); color: var(--bt-dim); pointer-events: none; z-index: 1; max-width: calc(100% - 80px); }
 .bt-legend i { display: inline-block; width: 9px; height: 2px; margin-right: 6px; vertical-align: middle; }
 .bt-legend b { font-weight: 500; margin-left: 6px; }
+/* the legend floats over the plot: each entry masks the lines that pass under its text */
+.bt-legend span { background: var(--bt-pane); padding: 0 4px; }
 .bt-grid { stroke: var(--bt-grid); stroke-width: 1; }
 .bt-axisline { stroke: var(--bt-line); }
 .bt-tick { fill: var(--bt-dim); font: 11px var(--bt-mono); }
@@ -88,6 +90,9 @@
 .bt-row > span:nth-child(2) small { display: block; font: 11.5px var(--bt-sans); color: var(--bt-dim); margin-top: 2px; }
 .bt-row > span:nth-child(3) { font: 11.5px var(--bt-sans); max-width: 92px; white-space: normal; line-height: 1.2; }
 .bt-acc .run { color: var(--bt-mute); font-size: 11px; margin-left: 6px; }
+.bt-acc > .bt-acc-sum { grid-template-columns: 1fr auto auto; padding-bottom: 4px; margin-bottom: 2px; border-bottom: 1px solid var(--bt-line); }
+.bt-review { display: block; margin-top: 6px; font: 12px var(--bt-mono); color: var(--bt-dim); text-decoration: none; }
+.bt-review:hover { color: var(--bt-text, inherit); text-decoration: underline; }
 .bt-row > span:nth-child(n + 3) { text-align: right; }
 .bt-row.head { color: var(--bt-mute); cursor: default; font-size: 11px; }
 .bt-row.base { color: var(--bt-dim); cursor: default; }

@@ -46,6 +46,18 @@ export interface NodeLossRecord {
   measured: { minutesOutOfSlo: number; failedRequests: number };
 }
 
+const LAST_REFERENCE = 'hindcast.backtest.reference';
+/** the reference system opened last time (the Backtest tab reopens on it), else the first bundled one */
+export function lastReference(): string {
+  try {
+    const id = localStorage.getItem(LAST_REFERENCE);
+    if (id && REFERENCES.some((r) => r.id === id)) return id;
+  } catch {
+    /* storage unavailable */
+  }
+  return REFERENCES[0].id;
+}
+
 export async function loadReference(id: string) {
   const s = useBacktest.getState();
   s.setLoading(`Loading ${REFERENCES.find((r) => r.id === id)?.label ?? id}…`);
@@ -54,6 +66,11 @@ export async function loadReference(id: string) {
     if (!res.ok) throw new Error(`reference "${id}" is not bundled (${res.status})`);
     const w = (await res.json()) as WorkspaceFile;
     s.setWorkspace({ id, name: w.name, source: w.source, dataset: w.dataset, model: reviveModel(w.model), strategies: w.strategies.map((yaml) => ({ yaml, visible: true })), ...(w.nodeLosses?.length ? { nodeLosses: w.nodeLosses } : {}) });
+    try {
+      localStorage.setItem(LAST_REFERENCE, id);
+    } catch {
+      /* storage unavailable */
+    }
   } catch (e) {
     useSim.getState().toast('bad', e instanceof Error ? e.message : String(e));
   } finally {

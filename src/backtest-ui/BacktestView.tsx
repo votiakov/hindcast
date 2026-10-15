@@ -3,7 +3,7 @@ import { useBacktest, strategyName, type Tab } from './store';
 import { AXIS_W, Pane, TimeAxis, areaPath, bandPath, makeScale, path, useSize, yScale } from './chart';
 import { headline } from '../backtest/report';
 import type { StrategyResult } from '../backtest/backtest';
-import { closeOutage, loadReference, loadReferenceIndex, nodesOf, openNodeLoss, openOutage, REFERENCES, openWorkspaceFiles } from './workspace';
+import { closeOutage, lastReference, loadReference, loadReferenceIndex, nodesOf, openNodeLoss, openOutage, REFERENCES, openWorkspaceFiles } from './workspace';
 import { OUTAGES } from '../backtest/outages';
 import { openMomentOnBoard } from './bridge';
 import { cardData } from '../backtest/card';
@@ -193,7 +193,8 @@ function OutageBanner() {
         ))}
       </div>
       <div className="bt-dim small">
-        {o.ownHistory ? `Replayed over the recorded history (peak ${o.baseRps.toFixed(1)} req/s) ·` : `Replayed at ${o.baseRps.toFixed(1)} req/s normal load · roles:`} {Object.entries(o.roles).map(([role, ids]) => `${role} → ${ids.join(', ') || 'nothing'}`).join(' · ')} · assumptions: {o.outage.assumptions.join(' ')} · source:{' '}
+        {o.ownHistory ? `Replayed over the recorded history (peak ${o.baseRps.toFixed(1)} req/s) ·` : `Replayed at ${o.baseRps.toFixed(1)} req/s normal load · roles:`} {Object.entries(o.roles).map(([role, ids]) => `${role} → ${ids.join(', ') || 'nothing'}`).join(' · ')} · assumptions: {o.outage.assumptions.join(' ')}
+        {o.outage.sources.length > 0 && <> · source: </>}
         {o.outage.sources.map((x) => (
           <a key={x.url} href={x.url} target="_blank" rel="noreferrer">
             {x.label}
@@ -226,6 +227,11 @@ function Panes() {
   const s = makeScale(i0, i1, width);
   const visible = r.strategies.map((st, k) => ({ st, k, color: STRAT_COLORS[k % STRAT_COLORS.length] })).filter(({ k }) => w.strategies.filter((x) => !x.error)[k]?.visible !== false);
   const focused = r.strategies[focus] ?? r.strategies[0];
+  // past four changes a legend line per change covers the plot: name the focused one, count the rest
+  // (every line is still drawn; the list on the right names them all)
+  const crowded = visible.length > 4;
+  const inLegend = crowded ? visible.filter(({ k }) => k === focus) : visible;
+  const others = crowded ? [{ label: `+ ${visible.length - inLegend.length} more changes, listed on the right`, color: 'transparent' }] : [];
   const at = hover ?? i1 - 1;
   const pick = (i: number) => openMomentOnBoard(i, focused ? focus : -1);
 
@@ -255,10 +261,14 @@ function Panes() {
   const gridLines = Array.from({ length: 6 }, (_, k) => Math.round(i0 + ((i1 - 1 - i0) * k) / 5));
   // a replayed outage never happened to this system: there is nothing measured to show
   const real = !w.outage && !r.load;
+  // some exports carry request rates and errors but no latency (the Kubernetes reference's ingress
+  // counters): an all-zero line would read as "users saw 0 ms", so it is left out
+  const measuredP99 = real && r.actual.p99Ms.some((v) => v !== null && v > 0);
   const legendP99 = [
-    ...(real ? [{ label: 'p99 users saw (measured)', color: MEASURED, value: r.actual.p99Ms[at] !== null ? ms(r.actual.p99Ms[at]!) : '—' }] : []),
+    ...(measuredP99 ? [{ label: 'p99 users saw (measured)', color: MEASURED, value: r.actual.p99Ms[at] ? ms(r.actual.p99Ms[at]!) : '—' }] : real ? [{ label: 'p99 users saw: not in this export', color: MEASURED }] : []),
     { label: 'as built (model)', color: ASBUILT, value: ms(r.baseline.series.p99Ms.p50[at]) },
-    ...visible.map(({ st, color }) => ({ label: st.name, color, value: ms(st.series.p99Ms.p50[at]) })),
+    ...inLegend.map(({ st, color }) => ({ label: st.name, color, value: ms(st.series.p99Ms.p50[at]) })),
+    ...others,
   ];
 
   // ---- errors ----
@@ -312,8 +322,8 @@ function Panes() {
           })}
         <path d={bandPath(s, yp.y, r.baseline.series.p99Ms)} fill={ASBUILT} opacity={0.1} />
         <path d={path(s, yp.y, r.baseline.series.p99Ms.p50)} fill="none" stroke={ASBUILT} strokeDasharray="3 3" strokeWidth={1} />
-        {real && <path d={areaPath(s, yp.y, r.actual.p99Ms, p99H)} className="bt-measured-area" />}
-        {real && <path d={path(s, yp.y, r.actual.p99Ms)} fill="none" stroke={MEASURED} strokeWidth={1.3} />}
+        {measuredP99 && <path d={areaPath(s, yp.y, r.actual.p99Ms, p99H)} className="bt-measured-area" />}
+        {measuredP99 && <path d={path(s, yp.y, r.actual.p99Ms)} fill="none" stroke={MEASURED} strokeWidth={1.3} />}
         {visible.map(({ st, color, k }) => (
           <g key={st.name} opacity={k === focus ? 1 : 0.55}>
             {k === focus && <path d={bandPath(s, yp.y, st.series.p99Ms)} fill={color} opacity={0.15} />}
@@ -336,7 +346,7 @@ function Panes() {
           );
         })()}
       </Pane>
-      <Pane s={s} h={110} ys={ye} legend={[...(real ? [{ label: 'errors', color: MEASURED, value: r.actual.errorRate[at] !== null ? pct(r.actual.errorRate[at]!) : '—' }] : []), { label: 'as built', color: ASBUILT, value: pct(r.baseline.series.errorRate.p50[at]) }, ...visible.map(({ st, color }) => ({ label: st.name, color, value: pct(st.series.errorRate.p50[at]) }))]} hover={hover} onHover={setHover} onPick={pick} gridLines={gridLines}>
+      <Pane s={s} h={110} ys={ye} legend={[...(real ? [{ label: 'errors', color: MEASURED, value: r.actual.errorRate[at] !== null ? pct(r.actual.errorRate[at]!) : '—' }] : []), { label: 'as built', color: ASBUILT, value: pct(r.baseline.series.errorRate.p50[at]) }, ...inLegend.map(({ st, color }) => ({ label: st.name, color, value: pct(st.series.errorRate.p50[at]) })), ...others]} hover={hover} onHover={setHover} onPick={pick} gridLines={gridLines}>
         <line x1={0} x2={s.plotW} y1={ye.y(r.slo.errorRate)} y2={ye.y(r.slo.errorRate)} className="bt-slo" />
         {real && <path d={areaPath(s, ye.y, r.actual.errorRate.map((v) => (v === null ? null : Math.min(v, ye.ticks.at(-1)! * 1.2))), 110)} className="bt-measured-area" />}
         {real && <path d={path(s, ye.y, r.actual.errorRate.map((v) => (v === null ? null : Math.min(v, ye.ticks.at(-1)! * 1.2))))} fill="none" stroke={MEASURED} strokeWidth={1.2} />}
@@ -345,7 +355,7 @@ function Panes() {
           <path key={st.name} d={path(s, ye.y, st.series.errorRate.p50)} fill="none" stroke={color} strokeWidth={k === focus ? 1.5 : 1} opacity={k === focus ? 1 : 0.55} />
         ))}
       </Pane>
-      <Pane s={s} h={110} ys={yc} legend={[...(real ? [{ label: 'spend $/h (the bill)', color: MEASURED, value: r.actual.costPerHour[at] !== null ? usd(r.actual.costPerHour[at]!) : '—' }] : []), { label: 'as built', color: ASBUILT, value: usd(r.baseline.series.costPerHour.p50[at]) }, ...visible.map(({ st, color }) => ({ label: st.name, color, value: usd(st.series.costPerHour.p50[at]) }))]} hover={hover} onHover={setHover} onPick={pick} gridLines={gridLines}>
+      <Pane s={s} h={110} ys={yc} legend={[...(real ? [{ label: 'spend $/h (the bill)', color: MEASURED, value: r.actual.costPerHour[at] !== null ? usd(r.actual.costPerHour[at]!) : '—' }] : []), { label: 'as built', color: ASBUILT, value: usd(r.baseline.series.costPerHour.p50[at]) }, ...inLegend.map(({ st, color }) => ({ label: st.name, color, value: usd(st.series.costPerHour.p50[at]) })), ...others]} hover={hover} onHover={setHover} onPick={pick} gridLines={gridLines}>
         {real && <path d={path(s, yc.y, r.actual.costPerHour)} fill="none" stroke={MEASURED} strokeWidth={1} opacity={0.8} />}
         <path d={path(s, yc.y, r.baseline.series.costPerHour.p50)} fill="none" stroke={ASBUILT} strokeDasharray="3 3" />
         {visible.map(({ st, color, k }) => (
@@ -435,6 +445,9 @@ function Watch() {
               <div className="bt-dim small">{w.model.cluster.autoscaled ? 'autoscaled: smaller requests save whole nodes' : 'a fixed pool: smaller requests free room on these nodes but save nothing until the pool shrinks'}</div>
             )}
           </div>
+          <a className="bt-dim small bt-review" href="docs/agents.html" target="_blank" rel="noreferrer" title="Headroom, 1.5× and 2× traffic, a node lost at the peak, CPU throttling, memory limits and leaks, the node pool, what to commit to — one Markdown report from the CLI or an agent">
+            the full capacity review: <code>review_capacity</code> (CLI / agents) ↗
+          </a>
         </>
       )}
       <h4>Model accuracy</h4>
@@ -442,6 +455,23 @@ function Watch() {
         r.accuracy.map((a, k) => (
           <div key={k} className="bt-acc" title={a.label}>
             <div className="bt-dim small">{a.method === 'reference' ? 'vs recorded runs it never saw' : 'holdout: the last 30% of the requests'}</div>
+            {/* many recorded runs: one line per metric first (how many held, the median miss), every run below */}
+            {[...new Set(a.checks.filter((c) => c.metric !== 'errors').map((c) => c.metric))].map((m) => {
+              const runs = a.checks.filter((c) => c.metric === m);
+              if (runs.length < 4) return null;
+              const errs = runs.map((c) => c.error).sort((x, y) => x - y);
+              const median = errs[Math.floor(errs.length / 2)];
+              const held = runs.filter((c) => c.pass).length;
+              return (
+                <div key={`sum-${m}`} className="bt-acc-sum" title="Each run is listed below">
+                  <span>
+                    {m.replace('-', ' ')} <span className="run">{held}/{runs.length} runs held</span>
+                  </span>
+                  <span className={held * 2 >= runs.length ? 'pos' : 'neg'}>{(median * 100).toFixed(0)}%</span>
+                  <span className="bt-dim">median</span>
+                </div>
+              );
+            })}
             {a.checks
               .filter((c) => c.metric !== 'errors')
               .map((c, i, all) => (
@@ -700,7 +730,7 @@ export function BacktestView() {
   const loading = useBacktest((s) => s.loading);
   const [drag, setDrag] = useState(false);
   useEffect(() => {
-    if (!useBacktest.getState().workspace && !useBacktest.getState().loading) loadReferenceIndex().then(() => loadReference(REFERENCES[0].id));
+    if (!useBacktest.getState().workspace && !useBacktest.getState().loading) loadReferenceIndex().then(() => loadReference(lastReference()));
   }, []);
   const body = useMemo(() => (w && r ? 'ready' : 'wait'), [w, r]);
   return (
