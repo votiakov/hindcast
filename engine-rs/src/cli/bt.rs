@@ -331,7 +331,10 @@ pub fn command(cmd: &str, f: &Flags, out: &mut Out) -> Result<Option<i32>, Strin
                 Some(l) if !l.is_empty() => format!(", then {} saturates", yellow(l)),
                 _ => String::new(),
             };
-            out.log(&format!("\nSustains {} with today's endpoint mix within SLO (p99 ≤ {} ms, errors ≤ {}%){}.\n", bold(&format!("{} req/s", js_to_fixed(n(&bv, &["rps"]), 1))), js_num(n(&mv, &["slo", "p99Ms"])), js_to_fixed(n(&mv, &["slo", "errorRate"]) * 100.0, 1), lim));
+            match g(&bv, &["atAnyLoad"]).as_str() {
+                Some(why) => out.log(&format!("\n{} (p99 ≤ {} ms, errors ≤ {}%): {} — not a capacity; fix that first.\n", bold("Out of SLO at any load"), js_num(n(&mv, &["slo", "p99Ms"])), js_to_fixed(n(&mv, &["slo", "errorRate"]) * 100.0, 1), why)),
+                None => out.log(&format!("\nSustains {} with today's endpoint mix within SLO (p99 ≤ {} ms, errors ≤ {}%){}.\n", bold(&format!("{} req/s", js_to_fixed(n(&bv, &["rps"]), 1))), js_num(n(&mv, &["slo", "p99Ms"])), js_to_fixed(n(&mv, &["slo", "errorRate"]) * 100.0, 1), lim)),
+            }
             print_accuracy(&mv, out);
             out.log("");
             0

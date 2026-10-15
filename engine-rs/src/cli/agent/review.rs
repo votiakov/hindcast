@@ -90,7 +90,12 @@ pub fn review_capacity(ws: &Workspace, o: &Value) -> Result<Value, String> {
     out.insert("slo".into(), g(&mv, &["slo"]).clone());
     // a headroom set by a service the model doesn't explain is a guess: say so where it is read
     let limit_fit = head.limited_by.as_ref().map(|id| s(&mv, &["services", id, "fit", "status"])).unwrap_or_default();
-    out.insert("headroom".into(), json!({ "rps": num(r1(head.rps)), "limitedBy": head.limited_by, "overPeak": if peak > 0.0 { num(js_round((head.rps / peak) * 100.0) / 100.0) } else { Value::Null }, "limitTrusted": !matches!(limit_fit.as_str(), "poor" | "unexplained") }));
+    let mut headroom = json!({ "rps": num(r1(head.rps)), "limitedBy": head.limited_by, "overPeak": if peak > 0.0 { num(js_round((head.rps / peak) * 100.0) / 100.0) } else { Value::Null }, "limitTrusted": !matches!(limit_fit.as_str(), "poor" | "unexplained") });
+    if let Some(why) = &head.at_any_load {
+        headroom["atAnyLoad"] = json!(why);
+    }
+    out.insert("headroom".into(), headroom);
+    out.insert("stability".into(), stability(ws, &mv, &d, &m, &head)?);
     out.insert("today".into(), today);
     out.insert("trust".into(), trust(&mv));
     out.insert("busier".into(), json!(busier));
@@ -145,8 +150,20 @@ pub fn review_markdown(r: &Value) -> String {
     l.push("## Headroom".into());
     l.push(String::new());
     let over = g(r, &["headroom", "overPeak"]);
-    l.push(format!("Within SLO up to **{} req/s**{}; {}.", js_num(n(r, &["headroom", "rps"])), if truthy(over) { format!(" — {}× the busiest moment", js_num(n(r, &["headroom", "overPeak"]))) } else { String::new() }, match g(r, &["headroom", "limitedBy"]) { Value::Null => "nothing saturates in the range searched".to_string(), x => format!("{} saturates first", s(x, &[])) }));
+    match g(r, &["headroom", "atAnyLoad"]).as_str() {
+        Some(why) => l.push(format!("**Out of SLO at any load** — {}. That is no capacity limit: the model misses the SLO with almost no traffic, so fix or explain that first.", why)),
+        None => l.push(format!("Within SLO up to **{} req/s**{}; {}.", js_num(n(r, &["headroom", "rps"])), if truthy(over) { format!(" — {}× the busiest moment", js_num(n(r, &["headroom", "overPeak"]))) } else { String::new() }, match g(r, &["headroom", "limitedBy"]) { Value::Null => "nothing saturates in the range searched".to_string(), x => format!("{} saturates first", s(x, &[])) })),
+    }
     l.push(String::new());
+    let st = g(r, &["stability"]);
+    if !arr(st, &["windows"]).is_empty() {
+        let ws: Vec<String> = arr(st, &["windows"]).iter().map(|w| format!("{} – {}: {}", when(&s(w, &["from"])), when(&s(w, &["to"])), if w.get("atAnyLoad").is_some() { "out of SLO at any load".to_string() } else { match g(w, &["limitedBy"]) { Value::Null => format!("more than {} req/s", js_num(n(w, &["rps"]))), x => format!("{} req/s, {} first", js_num(n(w, &["rps"])), s(x, &[])) } })).collect();
+        l.push(match uncertain(r) {
+            Some(u) => format!("**Uncertain:** {} Each third of the history's traffic, calibrated alone: {}.", u, ws.join("; ")),
+            None => format!("Each third of the history's traffic, calibrated alone, agrees: {}.", ws.join("; ")),
+        });
+        l.push(String::new());
+    }
     let t = g(r, &["today"]);
     if !t.is_null() {
         l.push(format!("- **The recorded day, replayed:** {}", if g(t, &["holds"]).as_bool().unwrap_or(false) { "holds".to_string() } else { format!("{} min out of SLO, {} failed requests — {}", js_num(n(t, &["minutesOutOfSlo"])), js_locale(n(t, &["failedRequests"])), s(t, &["worst"])) }));
@@ -270,8 +287,62 @@ fn trust(mv: &Value) -> Value {
     let poor: Vec<&String> = modelled.iter().filter(|(_, sv)| matches!(fit(sv).as_str(), "poor" | "unexplained")).map(|(id, _)| *id).collect();
     // the p99 check on held-back history, the one number that says how the whole model predicts
     let held = arr(mv, &["accuracy"]).iter().rev().flat_map(|a| arr(a, &["checks"])).find(|c| s(c, &["metric"]) == "p99").map(|c| json!({ "error": num(js_round(n(c, &["error"]) * 100.0) / 100.0), "pass": g(c, &["pass"]) })).unwrap_or(Value::Null);
-    json!({ "services": modelled.len(), "fit": good, "untrusted": poor, "heldOutP99": held })
+    // services fitted on one of several configurations; those whose latest was too short to fit
+    let mixed: Vec<&String> = svcs.iter().filter(|(_, sv)| !g(sv, &["fit", "regime"]).is_null()).map(|(id, _)| id).collect();
+    let older: Vec<Value> = svcs.iter().filter(|(_, sv)| !g(sv, &["fit", "regime", "latest"]).is_null()).map(|(id, sv)| json!({ "service": id, "latest": g(sv, &["fit", "regime", "latest"]), "fittedHours": g(sv, &["fit", "regime", "busyHours"]) })).collect();
+    let mut t = json!({ "services": modelled.len(), "fit": good, "untrusted": poor, "heldOutP99": held });
+    if !mixed.is_empty() {
+        t["configurations"] = json!({ "mixed": mixed, "fittedOnOlder": older });
+    }
+    t
 }
+
+/// headroom recomputed on thirds of the history's traffic, each calibrated on its own: how much the
+/// answer depends on the window collected
+fn stability(ws: &Workspace, mv: &Value, d: &crate::dataset::Dataset, m: &crate::model::Model, whole: &crate::accuracy::BreakingPoint) -> Result<Value, String> {
+    let n_b = d.n.max(0.0) as usize;
+    let at = |i: usize| -> f64 {
+        let eps: f64 = d.endpoints.values().filter_map(|e| e.rps.as_ref().and_then(|v| v.get(i).copied().flatten())).sum();
+        if !d.endpoints.is_empty() {
+            eps
+        } else {
+            d.services.values().filter_map(|s| s.rps.as_ref().and_then(|v| v.get(i).copied().flatten())).fold(0.0, f64::max)
+        }
+    };
+    let busy: Vec<usize> = (0..n_b).filter(|&i| at(i) > 0.0).collect();
+    let hosted: crate::types::Map<String> = m.services.iter().filter_map(|(id, s)| s.hosted_by.clone().map(|h| (id.clone(), h))).collect();
+    let configurations = crate::regimes::system_configurations(&crate::regimes::detect_all(d, &hosted), n_b);
+    // too little traffic to split: thirds of it would not calibrate
+    if busy.len() < 3 * crate::regimes::MIN_BUSY_BUCKETS {
+        return Ok(json!({ "windows": [], "configurations": configurations }));
+    }
+    let mut opts = super::verify::calibrate_options(ws, &json!({ "slo": g(mv, &["slo"]), "timeoutMs": g(mv, &["timeoutMs"]) }))?;
+    opts.bootstrap = Some(0.0);
+    let mut windows = vec![];
+    for k in 0..3 {
+        let part = &busy[k * busy.len() / 3..(k + 1) * busy.len() / 3];
+        let (a, b) = (part[0], part[part.len() - 1] + 1);
+        let sub = crate::accuracy::slice_dataset(d, a, b);
+        let sm = crate::calibrate::calibrate(&sub, &opts);
+        let bp = crate::accuracy::model_breaking_point(&sm, Some(&crate::backtest::base_plan(&sm, None)), None, None, None);
+        let mut w = json!({ "from": iso(d.start + a as f64 * d.step_s), "to": iso(d.start + b as f64 * d.step_s), "rps": num(r1(bp.rps)), "limitedBy": bp.limited_by });
+        if let Some(why) = bp.at_any_load {
+            w["atAnyLoad"] = json!(why);
+        }
+        windows.push(w);
+    }
+    // (headroom, nothing saturated below it)
+    let mut rs: Vec<(f64, bool)> = windows.iter().map(|w| (n(w, &["rps"]), w["limitedBy"].is_null() && w.get("atAnyLoad").is_none())).collect();
+    rs.push((r1(whole.rps), whole.limited_by.is_none() && whole.at_any_load.is_none()));
+    let (lo, hi) = (rs.iter().map(|x| x.0).fold(f64::INFINITY, f64::min), rs.iter().map(|x| x.0).fold(0.0, f64::max));
+    let open = rs.iter().any(|x| x.0 == hi && x.1);
+    // half again from the lowest to the highest, or some windows with no headroom at all and some with
+    let uncertain = hi > 0.0 && (lo <= 0.0 || hi > lo * UNCERTAIN_SPREAD);
+    Ok(json!({ "windows": windows, "low": num(lo), "high": num(hi), "highOpen": open, "uncertain": uncertain, "configurations": configurations }))
+}
+
+/// the spread of sub-window headrooms above which the headroom is called uncertain
+const UNCERTAIN_SPREAD: f64 = 1.5;
 
 /// "14 Oct 2026 14:22" from an ISO time
 fn when(iso: &str) -> String {
@@ -310,6 +381,7 @@ fn summary_lines(r: &Value) -> Vec<String> {
     let over = g(r, &["headroom", "overPeak"]);
     let over_s = if truthy(over) { format!(", {}× the busiest moment ({} req/s)", js_num(n(r, &["headroom", "overPeak"])), js_num(n(r, &["history", "peakRps"]))) } else { String::new() };
     l.push(match g(r, &["headroom", "limitedBy"]) {
+        _ if g(r, &["headroom", "atAnyLoad"]).is_string() => format!("- **Headroom:** none to read — out of SLO at any load: {}. Not a capacity limit; fix or explain that first.", s(r, &["headroom", "atAnyLoad"])),
         // nothing gave out before the search's ceiling
         Value::Null => format!("- **Headroom:** more than {} req/s within SLO{} — nothing saturates in the range searched.", js_num(n(r, &["headroom", "rps"])), over_s),
         x => format!(
@@ -320,6 +392,9 @@ fn summary_lines(r: &Value) -> Vec<String> {
             if g(r, &["headroom", "limitTrusted"]).as_bool().unwrap_or(true) { String::new() } else { format!(" Treat it as a guess: the model does not explain {} well.", s(x, &[])) }
         ),
     });
+    if let Some(u) = uncertain(r) {
+        l.push(format!("- **Headroom uncertain:** {}", u));
+    }
     let p = g(r, &["nodePool"]);
     // a fixed pool is paid for whole, whatever the pods on it use
     let fixed = !p.is_null() && !g(p, &["autoscaled"]).as_bool().unwrap_or(false);
@@ -360,9 +435,44 @@ fn summary_lines(r: &Value) -> Vec<String> {
         } else {
             format!(" On history it was not fitted to, it predicts p99 within {}% ({}).", js_num(js_round(n(h, &["error"]) * 100.0)), if g(h, &["pass"]).as_bool().unwrap_or(false) { "inside the 20% tolerance" } else { "outside the 20% tolerance: read every number as directional" })
         };
-        l.push(format!("- **Trust:** {} of {} services fit the history well{}.{}", js_num(n(t, &["fit"])), js_num(n(t, &["services"])), if un.is_empty() { String::new() } else { format!("; not explained: {} — numbers that rest on them are guesses", un.join(", ")) }, held));
+        l.push(format!("- **Trust:** {} of {} services fit the history well{}.{}{}", js_num(n(t, &["fit"])), js_num(n(t, &["services"])), if un.is_empty() { String::new() } else { format!("; not explained: {} — numbers that rest on them are guesses", un.join(", ")) }, held, configurations_said(t)));
     }
     l
+}
+
+/// "25–409 req/s depending on the window; …" where the sub-windows disagree
+fn uncertain(r: &Value) -> Option<String> {
+    let st = g(r, &["stability"]);
+    if !g(st, &["uncertain"]).as_bool().unwrap_or(false) {
+        return None;
+    }
+    let (lo, hi) = (n(st, &["low"]), n(st, &["high"]));
+    let top = if g(st, &["highOpen"]).as_bool().unwrap_or(false) { format!("more than {}", js_num(hi)) } else { js_num(hi) };
+    let range = if lo <= 0.0 { format!("from none (out of SLO at any load) to {} req/s", top) } else if top.starts_with("more") { format!("from {} to {} req/s", js_num(lo), top) } else { format!("{}–{} req/s", js_num(lo), top) };
+    let k = n(st, &["configurations"]);
+    Some(format!(
+        "{} depending on the window (the whole history, and each third of its traffic calibrated alone){}.",
+        range,
+        if k > 1.0 { format!("; the window mixes {} configurations", js_num(k)) } else { String::new() }
+    ))
+}
+
+/// which configuration the fits rest on, where the history holds several
+fn configurations_said(t: &Value) -> String {
+    let c = g(t, &["configurations"]);
+    if c.is_null() {
+        return String::new();
+    }
+    let mixed: Vec<String> = arr(c, &["mixed"]).iter().map(|x| s(x, &[])).collect();
+    let older: Vec<String> = arr(c, &["fittedOnOlder"])
+        .iter()
+        .map(|o| format!("{}, whose latest ({} since {}) has {} h of traffic: fitted on the one with {} h", s(o, &["service"]), arr(o, &["latest", "differs"]).iter().map(|x| s(x, &[])).collect::<Vec<_>>().join(", "), crate::regimes::when(n(o, &["latest", "since"])), js_num(n(o, &["latest", "busyHours"])), js_num(n(o, &["fittedHours"]))))
+        .collect();
+    format!(
+        " The history holds more than one configuration of {}; each is fitted on its latest{}.",
+        mixed.join(", "),
+        if older.is_empty() { String::new() } else { format!(", except {}", older.join("; ")) }
+    )
 }
 
 /// the minutes a failure adds out of SLO; none where the history was already out of it then

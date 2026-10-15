@@ -110,6 +110,35 @@ pub fn accuracy_of(m: &Value) -> Value {
     )
 }
 
+/// services whose history holds more than one configuration: which one each is fitted on, and why
+pub fn regime_lines(m: &Value) -> Vec<String> {
+    let mut out = vec![];
+    for (id, sv) in g(m, &["services"]).as_object().cloned().unwrap_or_default() {
+        let r = g(&sv, &["fit", "regime"]);
+        if r.is_null() {
+            continue;
+        }
+        let settings: Vec<String> = g(r, &["settings"]).as_object().map(|o| o.iter().map(|(k, v)| crate::regimes::setting_label(k, v.as_f64().unwrap_or(f64::NAN))).collect()).unwrap_or_default();
+        let l = g(r, &["latest"]);
+        out.push(if l.is_null() {
+            format!("{}: {} configurations in the history; fitted on the latest ({}), {} h of traffic", id, js_num(n(r, &["configurations"])), settings.join(", "), js_num(n(r, &["busyHours"])))
+        } else {
+            format!(
+                "{}: {} configurations in the history; fitted on the one with the most traffic ({}, {} h), as the latest ({} since {}) has {} h, under the {} h needed",
+                id,
+                js_num(n(r, &["configurations"])),
+                settings.join(", "),
+                js_num(n(r, &["busyHours"])),
+                arr(l, &["differs"]).iter().map(|x| s(x, &[])).collect::<Vec<_>>().join(", "),
+                crate::regimes::when(n(l, &["since"])),
+                js_num(n(l, &["busyHours"])),
+                js_num(crate::regimes::MIN_BUSY_S / 3600.0)
+            )
+        });
+    }
+    out
+}
+
 /// the note that says why a fit is poor: capacity read two ways, the replay missing, CPU not following
 /// load — before whatever note happens to come first
 fn why_untrusted(notes: Vec<&Value>) -> String {
@@ -139,17 +168,20 @@ fn summary(m: &Value, cal: &Value, warnings: &[String]) -> Value {
         Value::Array(g(m, &["endpoints"]).as_object().map(|e| e.values().map(|e| json!({ "endpoint": g(e, &["id"]), "share": num(r2(n(e, &["share"]))), "slo": g(e, &["slo"]), "fit": g(e, &["fit", "status"]) })).collect()).unwrap_or_default()),
     );
     o.insert("accuracy".into(), accuracy_of(m));
-    o.insert("trust".into(), json!({ "trusted": trusted, "caution": caution, "untrusted": untrusted, "costOnly": cost_only }));
+    let mut t = json!({ "trusted": trusted, "caution": caution, "untrusted": untrusted, "costOnly": cost_only });
+    let regimes = regime_lines(m);
+    if !regimes.is_empty() {
+        t["regimes"] = json!(regimes);
+    }
+    o.insert("trust".into(), t);
     o.insert("warnings".into(), json!(warnings));
     o.insert("files".into(), json!({ "model": "model.json", "calibration": "calibration.json" }));
     o.insert("next".into(), json!("verify_change"));
     Value::Object(o)
 }
 
-pub fn calibrate_model(ws: &Workspace, o: &Value) -> Result<Value, String> {
-    let dv = ws.read_json("dataset.json")?;
-    let d = dataset_of(&dv)?;
-    super::progress(&format!("fitting {} services on {} buckets", d.services.len(), js_num(d.n)), 0.0, 3.0);
+/// the options calibrate_model fits with: the call's, else the workspace's system settings
+pub fn calibrate_options(ws: &Workspace, o: &Value) -> Result<crate::calibrate::CalibrateOptions, String> {
     let src = ws.sources()?;
     let slo = o.get("slo").filter(|x| !x.is_null()).or_else(|| src.get("system").and_then(|s| s.get("slo")).filter(|x| !x.is_null())).cloned();
     let timeout = o.get("timeoutMs").and_then(|x| x.as_f64()).or_else(|| src.get("system").and_then(|s| s.get("timeoutMs")).and_then(|x| x.as_f64())).filter(|t| *t != 0.0);
@@ -159,6 +191,14 @@ pub fn calibrate_model(ws: &Workspace, o: &Value) -> Result<Value, String> {
     }
     opts.timeout_ms = timeout;
     opts.list_prices = Some(o.get("listPrices").cloned().filter(|x| !x.is_null()).unwrap_or(json!(true)));
+    Ok(opts)
+}
+
+pub fn calibrate_model(ws: &Workspace, o: &Value) -> Result<Value, String> {
+    let dv = ws.read_json("dataset.json")?;
+    let d = dataset_of(&dv)?;
+    super::progress(&format!("fitting {} services on {} buckets", d.services.len(), js_num(d.n)), 0.0, 3.0);
+    let opts = calibrate_options(ws, o)?;
     let m = crate::calibrate::calibrate(&d, &opts);
     let mut mv = to_json(&m);
     let mut warnings: Vec<String> = vec![];
@@ -766,9 +806,13 @@ pub fn find_headroom(ws: &Workspace, a: &Value) -> Result<Value, String> {
     let mv = ws.read_json("model.json")?;
     let m = model_of(&mv)?;
     let base = crate::backtest::base_plan(&m, None);
-    let now = breaking(&m, &base);
+    let now = crate::accuracy::model_breaking_point(&m, Some(&base), None, None, None);
     let mut out = JMap::new();
-    out.insert("asBuilt".into(), json!({ "rps": num(r1(now.0)), "limitedBy": now.1 }));
+    let mut built = json!({ "rps": num(r1(now.rps)), "limitedBy": now.limited_by });
+    if let Some(why) = &now.at_any_load {
+        built["atAnyLoad"] = json!(why);
+    }
+    out.insert("asBuilt".into(), built);
     if let Some(p) = mv.get("traffic").and_then(|t| t.get("peak")) {
         out.insert("historyPeakRps".into(), p.clone());
     }

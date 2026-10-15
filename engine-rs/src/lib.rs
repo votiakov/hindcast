@@ -16,6 +16,7 @@ pub mod import;
 pub mod math;
 pub mod model;
 pub mod prom_export;
+pub mod regimes;
 pub mod resilience;
 pub mod sim;
 pub mod strategy;
