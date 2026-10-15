@@ -712,18 +712,55 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
                 ys.push(y);
             }
             let fit = if xs.len() >= 5 { regress(&xs, &ys) } else { None };
-            let follows = matches!(&fit, Some(f) if f.slope > 0.0 && f.r2 >= 0.3);
-            let base = if follows { fit.as_ref().unwrap().intercept.max(0.0) } else { median(&ys) };
-            let per_req = if follows { fit.as_ref().unwrap().slope } else { 0.0 };
-            let spike = js_max(0.0, ys.iter().zip(&xs).map(|(y, x)| y - (base + per_req * x)));
-            let m = MemoryModel { base, per_req, spike, peak: Some(js_max(f64::NEG_INFINITY, ys.iter().copied())), limit: mem_limit, r2: fit.as_ref().map(|f| f.r2).unwrap_or(0.0), seen_to: Some(js_max(f64::NEG_INFINITY, xs.iter().copied())) };
+            // a leak: memory that follows the requests a container has served since it started, not
+            // the load — the count restarts where the working set drops (the container did)
+            let (mut served, mut cs, mut ms) = (0.0, vec![], vec![]);
+            let mut last: Option<f64> = None;
+            for i in 0..n {
+                let (y, l) = match (mem_used[i], lam[i]) {
+                    (Some(y), Some(l)) => (y, l),
+                    _ => continue,
+                };
+                if matches!(last, Some(p) if y < p * 0.7) {
+                    served = 0.0;
+                }
+                last = Some(y);
+                let r = rep_at(i).unwrap_or(replicas).max(1.0);
+                served += l / r * d.step_s;
+                cs.push(served);
+                ms.push(y);
+            }
+            let leak_fit = if cs.len() >= 12 { regress(&cs, &ms) } else { None };
+            let leaks = match (&leak_fit, &fit) {
+                (Some(lf), f) => lf.slope > 0.0 && lf.r2 >= 0.8 && lf.r2 > f.as_ref().map(|f| f.r2).unwrap_or(0.0) + 0.2 && lf.slope * cs.iter().copied().fold(0.0, f64::max) > 0.15 * lf.intercept.max(1e-9),
+                _ => false,
+            };
+            let follows = !leaks && matches!(&fit, Some(f) if f.slope > 0.0 && f.r2 >= 0.3);
+            let (base, per_req, leak) = if leaks {
+                (leak_fit.as_ref().unwrap().intercept.max(0.0), 0.0, leak_fit.as_ref().unwrap().slope)
+            } else if follows {
+                (fit.as_ref().unwrap().intercept.max(0.0), fit.as_ref().unwrap().slope, 0.0)
+            } else {
+                (median(&ys), 0.0, 0.0)
+            };
+            let spike = if leaks { js_max(0.0, ms.iter().zip(&cs).map(|(y, c)| y - (base + leak * c))) } else { js_max(0.0, ys.iter().zip(&xs).map(|(y, x)| y - (base + per_req * x))) };
+            let m = MemoryModel { base, per_req, spike, peak: Some(js_max(f64::NEG_INFINITY, ys.iter().copied())), limit: mem_limit, r2: if leaks { leak_fit.as_ref().unwrap().r2 } else { fit.as_ref().map(|f| f.r2).unwrap_or(0.0) }, seen_to: Some(js_max(f64::NEG_INFINITY, xs.iter().copied())), leak };
+            if leaks {
+                let to_limit = truthy(mem_limit).map(|ml| ((ml - base - spike) / leak).max(0.0));
+                notes.push(format!(
+                    "memory grows with the requests a container has served, not with load: +{} MiB per 1,000 requests (R² {}) — a leak{}",
+                    js_to_fixed(leak * 1024.0 * 1000.0, 1),
+                    js_to_fixed(m.r2, 2),
+                    to_limit.map(|k| format!("; it reaches the limit after about {} requests per container, then is OOM-killed", crate::math::js_locale(js_round(k)))).unwrap_or_default()
+                ));
+            }
             if let Some(ml) = truthy(mem_limit) {
                 notes.push(format!(
                     "memory: peaks at {} MiB per container against a {} MiB limit ({}%){}",
                     js_num(js_round(m.peak.unwrap() * 1024.0)),
                     js_num(js_round(ml * 1024.0)),
                     js_num(js_round((m.peak.unwrap() / ml) * 100.0)),
-                    if follows { format!(", +{} MiB per 100 req/s per replica", js_to_fixed(per_req * 1024.0 * 100.0, 1)) } else { ", flat with load".into() }
+                    if follows { format!(", +{} MiB per 100 req/s per replica", js_to_fixed(per_req * 1024.0 * 100.0, 1)) } else if leak > 0.0 { ", rising with the requests served".into() } else { ", flat with load".into() }
                 ));
             }
             memory = Some(m);

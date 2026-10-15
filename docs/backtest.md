@@ -106,6 +106,12 @@ A summary; every rule, and the recording that taught it, is in [calibration.md](
   history. A strategy that lowers a memory limit below it gets its pods OOM-killed in the replay. They
   restart with CrashLoopBackOff (10 s doubling to 5 min, plus a start), failing every request routed
   to them meanwhile. The explanation names the kill. Cost uses the limit per replica, not the usage.
+  A **leak** is told apart from load: memory fitted against the requests a container has served
+  since it started (the count restarting where memory drops) — when that explains it far better
+  than load does (R² ≥ 0.8, at least 0.2 above), the service gets a leak per request, the note says
+  after how many requests it reaches its limit, and the replay counts each container's requests
+  and OOM-kills it there. A busier day reaches the limit sooner: the reference shop's `email` leaks
+  ~10 KB a request and is killed at minute ~22 of every launch day, never on an ordinary one.
 - **Nodes** (Kubernetes, from kube-state-metrics): node size, node count, every pod's requests. On a
   cluster compute is what the nodes cost, priced from their allocatable size at EC2 m6i on-demand
   rates unless `hints.cluster.nodePriceHour` says otherwise. The services pay that less the share

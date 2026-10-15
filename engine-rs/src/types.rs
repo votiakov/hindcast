@@ -82,6 +82,9 @@ pub struct Memory {
     pub limit: f64,
     pub peak: Option<f64>,
     pub seen_to: Option<f64>,
+    /// GB a container gains per request it serves until it restarts (a leak)
+    #[serde(default, deserialize_with = "num")]
+    pub leak: f64,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]

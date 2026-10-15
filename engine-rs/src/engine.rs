@@ -121,6 +121,8 @@ struct SvcState {
     oom_until: f64,
     ooms: f64,
     pending_said: bool,
+    /// requests each container has served since it last started (a leak grows with them)
+    served: f64,
 }
 
 #[derive(Clone, Copy)]
@@ -158,7 +160,7 @@ pub fn run_plan(plan: &Plan, traffic: &Traffic, opts: &Opts) -> RunResult {
                 Some(a) => a.min.max(a.max.min(live)),
                 None => live,
             };
-            SvcState { backlog: 0.0, live, pending: vec![], last_scale: f64::NEG_INFINITY, next_eval: 0.0, blocked_said: false, util: 0.0, collapsed: false, oom_until: f64::NEG_INFINITY, ooms: 0.0, pending_said: false }
+            SvcState { backlog: 0.0, live, pending: vec![], last_scale: f64::NEG_INFINITY, next_eval: 0.0, blocked_said: false, util: 0.0, collapsed: false, oom_until: f64::NEG_INFINITY, ooms: 0.0, pending_said: false, served: 0.0 }
         })
         .collect();
     let mut ep_fail = vec![0.0; ne];
@@ -391,19 +393,25 @@ pub fn run_plan(plan: &Plan, traffic: &Traffic, opts: &Opts) -> RunResult {
                         let load = per_rep.min(if k_cap.is_finite() { k_cap * 1.5 } else { per_rep });
                         let line = m.base + m.per_req * load + m.spike;
                         let ws = match (m.peak, m.seen_to) {
-                            (Some(peak), Some(seen)) if load <= seen => line.min(peak),
+                            (Some(peak), Some(seen)) if load <= seen && m.leak == 0.0 => line.min(peak),
                             _ => line,
-                        };
+                        } + m.leak * ss.served;
                         if ws > m.limit {
                             ss.ooms += 1.0;
                             ss.oom_until = now + 300.0_f64.min(10.0 * 2.0_f64.js_pow(ss.ooms - 1.0)) + OOM_RESTART_S;
+                            let why = if m.leak > 0.0 {
+                                format!("after {} requests per container — memory grows with requests served (a leak)", crate::math::js_locale(js_round(ss.served)))
+                            } else {
+                                format!("at {} req/s per replica", js_num(js_round(per_rep)))
+                            };
+                            ss.served = 0.0;
                             say(
                                 traffic.start + now,
                                 format!(
-                                    "{}: OOM-killed — working set {} MiB per container at {} req/s per replica, limit {} MiB",
+                                    "{}: OOM-killed — working set {} MiB per container {}, limit {} MiB",
                                     svc_ids[id],
                                     js_num(js_round(ws * 1024.0)),
-                                    js_num(js_round(per_rep)),
+                                    why,
                                     js_num(js_round(m.limit * 1024.0))
                                 ),
                             );
@@ -413,6 +421,9 @@ pub fn run_plan(plan: &Plan, traffic: &Traffic, opts: &Opts) -> RunResult {
                     }
                 }
                 let down = f.down || now < ss.oom_until;
+                if !down && per_rep.is_finite() {
+                    ss.served += per_rep * dt;
+                }
                 let mut wait_mean = 0.0;
                 let mut wait_p99 = 0.0;
                 if down {

@@ -85,6 +85,9 @@ pub struct MemoryModel {
     pub r2: f64,
     #[serde(default)]
     pub seen_to: Option<f64>,
+    /// a leak: GB a container gains per request it serves, kept until it restarts (0: none)
+    #[serde(deserialize_with = "num", default, skip_serializing_if = "is_zero")]
+    pub leak: f64,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -355,4 +358,8 @@ pub struct Model {
 }
 fn one() -> f64 {
     1.0
+}
+
+fn is_zero(x: &f64) -> bool {
+    *x == 0.0
 }

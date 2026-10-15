@@ -34,3 +34,26 @@ describe.each(bundles)('reference workspace %s', (file) => {
     for (const o of OUTAGES) expect(() => replayOutage(model, o, [], { draws: 1 })).not.toThrow();
   });
 });
+
+describe('a memory leak, read from the ordinary day', () => {
+  // the k8s reference: email gains ~10 KB per request it serves and is OOM-killed on every launch day
+  const bundle = JSON.parse(readFileSync('public/reference/k8s-shop.json', 'utf8')) as { model: Model; dataset: Dataset };
+  const m = reviveModel(bundle.model);
+
+  it('calibration tells a leak (memory following requests served) from memory following load', () => {
+    const mem = m.services.email.memory as { leak?: number; limit: number | null; base: number };
+    expect(mem.leak).toBeGreaterThan(0);
+    // ~9.6 MiB per 1,000 requests, from a base of ~64 MiB to a 150 MiB limit: OOM after ~8,000 requests
+    expect((mem.leak ?? 0) * 1024 * 1000).toBeGreaterThan(5);
+    expect((mem.leak ?? 0) * 1024 * 1000).toBeLessThan(15);
+    expect(m.services.email.fit.notes.join(' ')).toMatch(/a leak/);
+    // a service whose memory doesn't grow with what it served has none
+    expect((m.services.frontend.memory as { leak?: number }).leak ?? 0).toBe(0);
+  });
+
+  it('the replay OOM-kills it at launch-day traffic, not on the ordinary day', () => {
+    const ooms = (scale: number) => backtest(m, bundle.dataset, [], { load: { scale }, draws: 1 }).baseline.events.filter((e) => /email: OOM-killed/.test(e.what)).length;
+    expect(ooms(1)).toBe(0);
+    expect(ooms(2.22)).toBeGreaterThan(0);
+  });
+});

@@ -505,7 +505,7 @@ pub fn apply_strategy(model: &Model, base: &Plan, spec: &StrategySpec) -> Result
             }
             if let Some(mem_gb) = ch.memory_gb {
                 if let Some(mm) = &m.memory {
-                    s.memory = Some(Memory { base: mm.base, per_req: mm.per_req, spike: mm.spike, limit: mem_gb, peak: mm.peak, seen_to: mm.seen_to });
+                    s.memory = Some(Memory { base: mm.base, per_req: mm.per_req, spike: mm.spike, limit: mem_gb, peak: mm.peak, seen_to: mm.seen_to, leak: mm.leak });
                     let peak = mm.peak.unwrap_or(0.0);
                     let head = mem_gb - peak;
                     notes.push(format!(
