@@ -23,7 +23,7 @@
 <p>The result, plainly: 3 right, 1 wrong, 5 inconclusive. A plain CPU-ratio rule got 6 right and 3 wrong. The model is wrong less often because it says when a change goes past anything the history showed, not because it is right more often. Its p99 on each day's own traffic is within 20% in 3 of 14 runs, and it underestimates busy days. Two committed predictions about a memory leak, one kill and one non-kill, both came true. The leak was found in an ordinary day after earlier runs had shown the kills, so the rest of the leak table is a retrodiction with today's code. What it gets wrong is listed in the same tables.</p>
 
 <h2>What it touches in your systems</h2>
-<p>Nothing, beyond reading. It queries Prometheus and Jaeger or Tempo, reads exported files and the bill, and runs <code>kubectl get</code> only when asked. Every answer is computed on your machine or in your browser. There is no analytics or telemetry. When an AI agent runs the tools, their output goes to that agent's model provider, as with any tool it uses.</p>
+<p>Nothing, beyond reading. It queries Prometheus, and Jaeger or Tempo if you have them (traces are optional), reads exported files and the bill, and runs <code>kubectl get</code> only when asked. Every answer is computed on your machine or in your browser. There is no analytics or telemetry. When an AI agent runs the tools, their output goes to that agent's model provider, as with any tool it uses.</p>
 
 <h2>What it doesn't do</h2>
 <ul>
