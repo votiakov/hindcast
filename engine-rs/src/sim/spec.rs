@@ -673,6 +673,9 @@ pub enum Action {
     /// cut every link between two zones; both sides keep running
     Partition(String, String),
     HealPartition,
+    /// one link cut: calls from → to get no answer until the connection times out
+    CutLink(String, String),
+    HealLink(String, String),
 }
 
 impl Action {
@@ -692,6 +695,8 @@ impl Action {
             Action::HotKey(..) => "hot-key",
             Action::Partition(..) => "partition",
             Action::HealPartition => "heal-partition",
+            Action::CutLink(..) => "cut-link",
+            Action::HealLink(..) => "heal-link",
         }
     }
     pub fn id(&self) -> Option<&str> {
@@ -780,10 +785,27 @@ pub fn parse_action(v: &Value, path: Vec<Value>, issues: &mut Vec<Issue>) -> Opt
             Action::Partition(a?, b?)
         }
         "heal-partition" => Action::HealPartition,
+        "cut-link" | "heal-link" => {
+            let end = |k: &str, issues: &mut Vec<Issue>| -> Option<String> {
+                let r = o.get(k).and_then(|x| x.as_str()).map(String::from);
+                if r.is_none() {
+                    let mut p = path.clone();
+                    p.push(json!(k));
+                    issues.push(Issue { path: p, message: "Invalid input: expected string, received undefined".into(), ..Default::default() });
+                }
+                r
+            };
+            let (from, to) = (end("from", issues), end("to", issues));
+            if ty == "cut-link" {
+                Action::CutLink(from?, to?)
+            } else {
+                Action::HealLink(from?, to?)
+            }
+        }
         x => {
             let mut p = path.clone();
             p.push(json!("type"));
-            issues.push(Issue { path: p, message: format!("unknown action \"{}\" (kill-id, revive-id, kill, revive-all, fail-zone, restore-zone, degrade, restore, inject-errors, inject-latency, flush-cache, hot-key, partition, heal-partition)", x), ..Default::default() });
+            issues.push(Issue { path: p, message: format!("unknown action \"{}\" (kill-id, revive-id, kill, revive-all, fail-zone, restore-zone, degrade, restore, inject-errors, inject-latency, flush-cache, hot-key, partition, heal-partition, cut-link, heal-link)", x), ..Default::default() });
             return None;
         }
     })

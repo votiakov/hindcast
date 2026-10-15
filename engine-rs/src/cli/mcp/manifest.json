@@ -1180,6 +1180,49 @@
              "required": [
               "type"
              ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "cut-link"
+              },
+              "from": {
+               "type": "string",
+               "description": "component id"
+              },
+              "to": {
+               "type": "string",
+               "description": "component id"
+              }
+             },
+             "required": [
+              "type",
+              "from",
+              "to"
+             ],
+             "description": "cut one link: calls over it get no answer until the connection times out"
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "heal-link"
+              },
+              "from": {
+               "type": "string"
+              },
+              "to": {
+               "type": "string"
+              }
+             },
+             "required": [
+              "type",
+              "from",
+              "to"
+             ]
             }
            ]
           },
@@ -2998,6 +3041,49 @@
              "required": [
               "type"
              ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "cut-link"
+              },
+              "from": {
+               "type": "string",
+               "description": "component id"
+              },
+              "to": {
+               "type": "string",
+               "description": "component id"
+              }
+             },
+             "required": [
+              "type",
+              "from",
+              "to"
+             ],
+             "description": "cut one link: calls over it get no answer until the connection times out"
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "heal-link"
+              },
+              "from": {
+               "type": "string"
+              },
+              "to": {
+               "type": "string"
+              }
+             },
+             "required": [
+              "type",
+              "from",
+              "to"
+             ]
             }
            ]
           },
@@ -4201,6 +4287,49 @@
              "required": [
               "type"
              ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "cut-link"
+              },
+              "from": {
+               "type": "string",
+               "description": "component id"
+              },
+              "to": {
+               "type": "string",
+               "description": "component id"
+              }
+             },
+             "required": [
+              "type",
+              "from",
+              "to"
+             ],
+             "description": "cut one link: calls over it get no answer until the connection times out"
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "heal-link"
+              },
+              "from": {
+               "type": "string"
+              },
+              "to": {
+               "type": "string"
+              }
+             },
+             "required": [
+              "type",
+              "from",
+              "to"
+             ]
             }
            ]
           },
@@ -4978,6 +5107,49 @@
              },
              "required": [
               "type"
+             ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "cut-link"
+              },
+              "from": {
+               "type": "string",
+               "description": "component id"
+              },
+              "to": {
+               "type": "string",
+               "description": "component id"
+              }
+             },
+             "required": [
+              "type",
+              "from",
+              "to"
+             ],
+             "description": "cut one link: calls over it get no answer until the connection times out"
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "heal-link"
+              },
+              "from": {
+               "type": "string"
+              },
+              "to": {
+               "type": "string"
+              }
+             },
+             "required": [
+              "type",
+              "from",
+              "to"
              ]
             }
            ]
@@ -7289,6 +7461,49 @@
              "required": [
               "type"
              ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "cut-link"
+              },
+              "from": {
+               "type": "string",
+               "description": "component id"
+              },
+              "to": {
+               "type": "string",
+               "description": "component id"
+              }
+             },
+             "required": [
+              "type",
+              "from",
+              "to"
+             ],
+             "description": "cut one link: calls over it get no answer until the connection times out"
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "heal-link"
+              },
+              "from": {
+               "type": "string"
+              },
+              "to": {
+               "type": "string"
+              }
+             },
+             "required": [
+              "type",
+              "from",
+              "to"
+             ]
             }
            ]
           },
@@ -9085,6 +9300,49 @@
              },
              "required": [
               "type"
+             ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "cut-link"
+              },
+              "from": {
+               "type": "string",
+               "description": "component id"
+              },
+              "to": {
+               "type": "string",
+               "description": "component id"
+              }
+             },
+             "required": [
+              "type",
+              "from",
+              "to"
+             ],
+             "description": "cut one link: calls over it get no answer until the connection times out"
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "heal-link"
+              },
+              "from": {
+               "type": "string"
+              },
+              "to": {
+               "type": "string"
+              }
+             },
+             "required": [
+              "type",
+              "from",
+              "to"
              ]
             }
            ]

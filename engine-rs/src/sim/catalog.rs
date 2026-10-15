@@ -118,6 +118,9 @@ pub struct NodeData {
     /// components on different sides are cut
     #[serde(skip_serializing_if = "Option::is_none")]
     pub side: Option<String>,
+    /// links from this component that are cut (by a cut-link action): the targets' ids
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cut_to: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fault_rate: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]

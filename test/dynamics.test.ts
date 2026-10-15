@@ -154,3 +154,30 @@ describe('provisioned concurrency', () => {
     expect(f.summary.meanCostPerHour - simulate(fn({}) as never, burst as never).summary.meanCostPerHour).toBeCloseTo(0.75, 1);
   });
 });
+
+describe('a cut link', () => {
+  const spec = {
+    components: [
+      { id: 'u', kind: 'client' },
+      { id: 'lb', kind: 'lb' },
+      { id: 'a', kind: 'server' },
+      { id: 'b', kind: 'server' },
+      { id: 'db', kind: 'db' },
+    ],
+    connections: [['u', 'lb'], ['lb', 'a'], ['lb', 'b'], ['a', 'db'], ['b', 'db']],
+  };
+  // a loses its way to the database for 10 s; b still reaches it
+  const sc = { duration: 30, rps: 200, events: [{ at: 10, action: { type: 'cut-link', from: 'a', to: 'db' } }, { at: 20, action: { type: 'heal-link', from: 'a', to: 'db' } }] };
+
+  it('fails only the calls over it, in both engines, and heals', () => {
+    const des = simulateDes(spec, sc, { seed: 5 });
+    const fluid = simulate(spec as never, sc as never).summary.meanErrorRate;
+    // half the traffic goes through a, for a third of the run
+    for (const e of [des.summary.meanErrorRate, fluid]) {
+      expect(e).toBeGreaterThan(0.08);
+      expect(e).toBeLessThan(0.3);
+    }
+    expect(des.failures[0]).toMatchObject({ id: 'db', reason: 'unreachable (network partition)' });
+    expect(des.timeline.at(-1)!.errorRate).toBe(0);
+  });
+});

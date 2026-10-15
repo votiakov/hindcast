@@ -1112,7 +1112,7 @@ impl Engine {
                 pooled[ti] = true;
             }
             // a dead primary's links to its replicas are not the network's: failover is decided around it
-            edge_cut[ei] = cut(&data[si], &data[ti]) && !(sd.kind == "db" && !sd.alive);
+            edge_cut[ei] = (cut(&data[si], &data[ti]) || data[si].cut_to.as_ref().map_or(false, |v| v.iter().any(|x| *x == nodes_in[ti].id))) && !(sd.kind == "db" && !sd.alive);
             if sd.kind == "db" && data[ti].kind == "replica" {
                 primary_of[ti] = Some((ei, si));
             }

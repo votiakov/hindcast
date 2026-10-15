@@ -117,6 +117,8 @@ export interface SystemNodeData extends Record<string, unknown> {
   hotKeyShare?: number;
   /** set by a network partition: links between components on different sides are cut */
   side?: string;
+  /** links from this component that are cut (a cut-link action): the targets' ids */
+  cutTo?: string[];
   /** cache / cdn: bumped by the flush action — the engine empties the cache when it changes */
   flushes?: number;
 

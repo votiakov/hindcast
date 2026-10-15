@@ -22,7 +22,10 @@ export type SimAction =
   | { type: 'restore'; id: string }
   /** network partition: every link between the two zones is cut; both sides keep running */
   | { type: 'partition'; a: string; b: string }
-  | { type: 'heal-partition' };
+  | { type: 'heal-partition' }
+  /** one link cut: calls from → to get no answer until the connection times out */
+  | { type: 'cut-link'; from: string; to: string }
+  | { type: 'heal-link'; from: string; to: string };
 
 import { KINDS, instancesUp, isSystem, type AppNode, type SystemNodeData } from './catalog';
 
@@ -106,7 +109,19 @@ export function applyAction(nodes: AppNode[], a: SimAction, ctx: ActionContext):
       };
     }
     case 'heal-partition':
-      return { nodes: nodes.map((n) => (isSystem(n) && n.data.side ? { ...n, data: { ...n.data, side: undefined } } : n)), notes: [{ tone: 'good', text: '✅ partition healed' }], target: 'all' };
+      return { nodes: nodes.map((n) => (isSystem(n) && (n.data.side || n.data.cutTo) ? { ...n, data: { ...n.data, side: undefined, cutTo: undefined } } : n)), notes: [{ tone: 'good', text: '✅ partition healed' }], target: 'all' };
+    case 'cut-link':
+    case 'heal-link': {
+      const n = nodes.find((x) => x.id === a.from);
+      if (!n || !isSystem(n)) return { nodes, notes: [], target: null };
+      const rest = (n.data.cutTo ?? []).filter((x) => x !== a.to);
+      const cutTo = a.type === 'cut-link' ? [...rest, a.to] : rest;
+      return {
+        nodes: setData(nodes, a.from, { cutTo: cutTo.length ? cutTo : undefined }),
+        notes: [a.type === 'cut-link' ? { tone: 'bad', text: `✂ link ${a.from} → ${a.to} cut` } : { tone: 'good', text: `✅ link ${a.from} → ${a.to} restored` }],
+        target: a.from,
+      };
+    }
     case 'kill': {
       const candidates = nodes.filter((n): n is AppNode & { type: 'system' } => isSystem(n) && n.data.kind === a.kind && n.data.alive && instancesUp(n.data) > 0);
       if (!candidates.length) return { nodes, notes: [], target: null };

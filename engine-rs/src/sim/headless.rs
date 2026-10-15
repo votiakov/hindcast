@@ -247,9 +247,28 @@ pub fn apply_action(nodes: &mut [SimNode], zones: &IndexMap<String, Vec<String>>
             }
             Some(format!("{} | {}", a, b))
         }
+        Action::CutLink(from, to) => {
+            let n = nodes.iter_mut().find(|n| n.id == *from)?;
+            let v = n.data.cut_to.get_or_insert_with(Vec::new);
+            if !v.contains(to) {
+                v.push(to.clone());
+            }
+            Some(format!("{} → {}", from, to))
+        }
+        Action::HealLink(from, to) => {
+            let n = nodes.iter_mut().find(|n| n.id == *from)?;
+            if let Some(v) = n.data.cut_to.as_mut() {
+                v.retain(|x| x != to);
+            }
+            if n.data.cut_to.as_ref().map(|v| v.is_empty()).unwrap_or(false) {
+                n.data.cut_to = None;
+            }
+            Some(format!("{} → {}", from, to))
+        }
         Action::HealPartition => {
             for n in nodes.iter_mut() {
                 n.data.side = None;
+                n.data.cut_to = None;
             }
             Some("all".into())
         }

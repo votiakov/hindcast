@@ -106,6 +106,8 @@ export const ActionSpec = z.discriminatedUnion('type', [
   z.object({ type: z.literal('hot-key'), id: z.string(), share: z.number().min(0).max(1) }).describe('database: this share of its traffic goes to one key — a celebrity, a hot counter — all on one shard (0 ends it)'),
   z.object({ type: z.literal('partition'), a: z.string().describe('zone id'), b: z.string().describe('zone id') }).describe('cut every link between two zones; both keep running'),
   z.object({ type: z.literal('heal-partition') }),
+  z.object({ type: z.literal('cut-link'), from: z.string().describe('component id'), to: z.string().describe('component id') }).describe('cut one link: calls over it get no answer until the connection times out'),
+  z.object({ type: z.literal('heal-link'), from: z.string(), to: z.string() }),
 ]);
 
 export const ScenarioSpec = z.object({

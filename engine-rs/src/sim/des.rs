@@ -565,7 +565,7 @@ struct Des<'a> {
 impl<'a> Des<'a> {
     /// b is up and a network partition does not cut it off from a
     fn reach(&self, a: usize, b: usize) -> bool {
-        up(&self.nodes[b]) && !cut(&self.nodes[a].data, &self.nodes[b].data)
+        up(&self.nodes[b]) && !self.link_cut(a, b)
     }
 
     fn cont(&mut self, c: Cont) -> ContId {
@@ -580,6 +580,11 @@ impl<'a> Des<'a> {
 
     fn at(&mut self, dt_ms: f64, ev: Ev) {
         self.q.push(self.now + dt_ms / 1000.0, ev);
+    }
+
+    /// the link a → b is cut: the two are on different sides of a partition, or the link itself is
+    fn link_cut(&self, a: usize, b: usize) -> bool {
+        cut(&self.nodes[a].data, &self.nodes[b].data) || self.nodes[a].data.cut_to.as_ref().map_or(false, |v| v.iter().any(|x| *x == self.nodes[b].id))
     }
 
     fn set_busy(&mut self, n: usize, delta: f64) {
@@ -903,7 +908,7 @@ impl<'a> Des<'a> {
     fn hop(&mut self, i: usize, read: bool, done: ContId, from: Option<usize>) {
         // across a partition: no answer until the connection times out
         if let Some(f) = from {
-            if cut(&self.nodes[f].data, &self.nodes[i].data) && !(self.nodes[f].data.kind == "db" && !up(&self.nodes[f])) {
+            if self.link_cut(f, i) && !(self.nodes[f].data.kind == "db" && !up(&self.nodes[f])) {
                 return self.fail(None, why(i, R_PARTITION), done, 1000.0);
             }
         }
@@ -1372,7 +1377,7 @@ impl<'a> Des<'a> {
             }
             if let Some(&p) = self.primary_of.get(&i) {
                 let primary_up = up(&self.nodes[p]);
-                let reachable = primary_up && !cut(&self.nodes[p].data, &self.nodes[i].data);
+                let reachable = primary_up && !self.link_cut(p, i);
                 let base = self.link_ms.get(&(p, i)).copied().unwrap_or(0.0) / 1000.0;
                 let primary_promoted = !primary_up && matches!((fo, self.nodes[p].down_since), (Some(f), Some(t)) if now - t >= f);
                 let sync = self.link_sync.contains(&(p, i));
