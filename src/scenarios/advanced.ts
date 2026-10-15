@@ -489,4 +489,53 @@ const warmup: Scenario = {
   },
 };
 
-export const ADVANCED: Scenario[] = [recovery, retryLayers, cells, shed, tail, llmFailover, elasticity, regions, readScale, warmup];
+// 11 ─ one slow dependency takes the whole service down: thread pools, and bulkheads
+// (Nygard, "Release It!", Stability Patterns: bulkheads; Hystrix's thread-pool isolation)
+const bulkhead: Scenario = {
+  id: 'slow-dependency-bulkhead',
+  title: 'One Slow Dependency: Shared Threads vs a Bulkhead',
+  tagline: 'Payments slow to 2 seconds. Browsing never calls payments. Does browsing survive?',
+  watch: 'Both APIs hold a thread while they wait on a call. A lets payments take every thread, so browsing has none; B lets payments have twenty per instance.',
+  readRatio: 0.8,
+  a: {
+    title: 'Shared thread pool (50 per instance)',
+    graph: graph(
+      [
+        ['users', 'client', X[0], 200],
+        ['lb', 'lb', X[1], 200],
+        ['api', 'server', X[2], 200, { instances: 2, threads: 50 }],
+        ['catalog', 'db', X[3], 110, { name: 'catalog' }],
+        ['payments', 'external', X[3], 290, { name: 'payments', latencyMs: 120, limit: 5000 }],
+      ],
+      [['users', 'lb'], ['lb', 'api'], ['api', 'catalog'], ['api', 'payments']],
+    ),
+  },
+  b: {
+    title: 'A bulkhead: 20 threads per dependency',
+    graph: graph(
+      [
+        ['users', 'client', X[0], 200],
+        ['lb', 'lb', X[1], 200],
+        ['api', 'server', X[2], 200, { instances: 2, threads: 50, bulkhead: 20 }],
+        ['catalog', 'db', X[3], 110, { name: 'catalog' }],
+        ['payments', 'external', X[3], 290, { name: 'payments', latencyMs: 120, limit: 5000 }],
+      ],
+      [['users', 'lb'], ['lb', 'api'], ['api', 'catalog'], ['api', 'payments']],
+    ),
+  },
+  timeline: [
+    { at: 0, rps: 300, caption: '300 req/s: half browse the catalog, half pay. Payments answer in 120 ms.' },
+    { at: 50, rps: 300 },
+  ],
+  events: [
+    { at: 10, message: '🐢 The payment provider slows down: +2 s on every call', a: { type: 'inject-latency', id: 'payments', ms: 2000 }, b: { type: 'inject-latency', id: 'payments', ms: 2000 } },
+    { at: 34, message: '🛠 Payments are fast again', a: { type: 'restore', id: 'payments' }, b: { type: 'restore', id: 'payments' } },
+  ],
+  takeaway: {
+    a: 'Every thread ended up waiting on payments. Browsing, which never calls payments, found no thread free and failed with it: the whole shop was down for a slow dependency.',
+    b: 'Payments could hold twenty threads per instance and no more; past that their calls failed at once. Checkout failed while the provider was slow, and browsing never noticed.',
+    lesson: 'A thread waiting on a slow call is a thread nothing else can use. Give each dependency its own share (a bulkhead) and a timeout, so one slow call can only take down what needs it.',
+  },
+};
+
+export const ADVANCED: Scenario[] = [recovery, retryLayers, cells, shed, tail, llmFailover, elasticity, regions, readScale, warmup, bulkhead];

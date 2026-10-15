@@ -80,7 +80,7 @@ app), [use cases](docs/use-cases.md), the [capability list](docs/capabilities.md
   on the board; apply a verified fix with one click (undoable); copy the report as Markdown.
 - **Architecture as code** – a YAML editor that stays in sync with the board in both directions.
 - **Compare** – two designs, same traffic and failures, side by side, with a measured scoreboard and a
-  takeaway computed by the engine. Twenty-five built-in comparisons, each proven to show a difference.
+  takeaway computed by the engine. Twenty-six built-in comparisons, each proven to show a difference.
 - **Present** – press P: no chrome, large numbers, captions; ←/→ walks through the audit's incidents live.
 - **Studio** – scripted episodes rendered in the browser to MP4, GIF and a PDF carousel for posts
   (or frame-perfect from the command line with `npm run record`).
