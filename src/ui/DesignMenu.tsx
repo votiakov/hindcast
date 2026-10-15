@@ -7,6 +7,7 @@ import { currentSpecYaml } from '../spec/links';
 import { encodePayload, graphToSpec } from '../spec/convert';
 import { openFile } from '../spec/openFile';
 import './designMenu.css';
+import { exportBoardImage } from './exportImage';
 
 const ago = (t: number) => {
   const s = (Date.now() - t) / 1000;
@@ -104,6 +105,22 @@ export function DesignMenu() {
               Open file… <span>spec, k8s, terraform, traffic csv</span>
             </button>
             <button onClick={act(() => download(`${slug(title)}.yaml`, currentSpecYaml(), 'text/yaml'))}>Download .yaml</button>
+            <button
+              onClick={act(() => {
+                const root = document.querySelector<HTMLElement>('.board-canvas');
+                if (root) exportBoardImage(root, slug(title), 'png').catch(() => s.toast('bad', 'Could not draw the board as an image'));
+              })}
+            >
+              Download image <span>PNG, as the board looks now</span>
+            </button>
+            <button
+              onClick={act(() => {
+                const root = document.querySelector<HTMLElement>('.board-canvas');
+                if (root) exportBoardImage(root, slug(title), 'svg').catch(() => s.toast('bad', 'Could not draw the board as an image'));
+              })}
+            >
+              Download SVG
+            </button>
             <button
               onClick={act(() => {
                 navigator.clipboard?.writeText(currentSpecYaml());

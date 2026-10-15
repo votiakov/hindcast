@@ -749,3 +749,9 @@ select { background: #0a1122; color: var(--text); border: 1px solid var(--border
 
 /* a right-hand panel covers the minimap's corner: hide it rather than leave a sliver showing */
 .app:has(.spec.panel, .audit.panel, .analysis.panel) .react-flow__minimap { display: none; }
+
+/* drawing the board as an image: the floating panels stay out of it */
+.board-canvas.exporting .react-flow__minimap,
+.board-canvas.exporting .react-flow__panel,
+.board-canvas.exporting .react-flow__controls { display: none !important; }
+.board-canvas.exporting { background: var(--bg); }

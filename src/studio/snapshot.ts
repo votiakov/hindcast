@@ -55,7 +55,8 @@ function styleOf(cs: CSSStyleDeclaration, parent: Record<string, string> | null,
     const base = INHERITED.has(p) && parent ? parent[p] : def[p];
     // the empty document's defaults were read on a zero-size element: anything that resolves
     // against the element's own box (a centred transform-origin) has to be written out
-    if (v === base && !(p === 'transform-origin' && cs.getPropertyValue('transform') !== 'none')) continue;
+    // and a box's own size: the empty document's 0px would make a 0% bar take its parent's width
+    if (v === base && !(p === 'transform-origin' && cs.getPropertyValue('transform') !== 'none') && !((p === 'width' || p === 'height') && tag !== 'svg')) continue;
     // as html-to-image does: a hair smaller, so text never wraps differently in the copy
     if (p === 'font-size' && v.endsWith('px')) v = `${Math.floor(parseFloat(v)) - 0.1}px`;
     s += `${p}:${v};`;
