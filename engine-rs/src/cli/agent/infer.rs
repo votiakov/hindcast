@@ -96,6 +96,52 @@ impl Prom {
     fn name(&self, raw: &str) -> String {
         self.rename.get(raw).and_then(|x| x.as_str()).unwrap_or(raw).to_string()
     }
+    /// whether any series of `series` (a metric with matchers) carries `label` over the windows
+    fn has_label(&self, label: &str, series: &str, parts: &[(f64, f64)]) -> bool {
+        let (a, b) = (parts.first().map(|p| p.0).unwrap_or(0.0), parts.last().map(|p| p.1).unwrap_or(0.0));
+        get_json(&api(&self.url, &format!("api/v1/label/{}/values", label), &[("match[]", series.to_string()), ("start", js_num(a)), ("end", js_num(b))]), &self.h, 30_000)
+            .ok()
+            .and_then(|r| r.get("data").and_then(|d| d.as_array()).map(|a| a.iter().any(|x| x.as_str().map(|s| !s.is_empty()).unwrap_or(false))))
+            .unwrap_or(false)
+    }
+}
+
+/// the dimensions the spanmetrics connector can keep that name a client span's peer (sanitised), the
+/// service name first
+pub const PEER_LABELS: [&str; 3] = ["peer_service", "server_address", "net_peer_name"];
+
+const HTTP_METHODS: [&str; 9] = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "CONNECT", "TRACE"];
+
+/// the service a host name points at, most specific first: "cart.shop.svc.cluster.local:8080" →
+/// [cart.shop.svc.cluster.local, cart]; "cart:8080" → [cart]; "cart.shop" → [cart.shop, cart] where shop
+/// is one of `namespaces`. An IP address, or a dotted name outside the cluster, is only itself
+pub fn host_services(host: &str, namespaces: &[String]) -> Vec<String> {
+    let h = host.trim().to_lowercase();
+    let h = h.split_once("://").map(|x| x.1.to_string()).unwrap_or(h);
+    let h = h.split('/').next().unwrap_or("").to_string();
+    // a port, where what precedes it is not an IPv6 address
+    let h = match h.rsplit_once(':') {
+        Some((a, p)) if !a.contains(':') && !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()) => a.to_string(),
+        _ => h,
+    };
+    let h = h.trim_end_matches('.').to_string();
+    if h.is_empty() || h.contains(':') || h.parse::<std::net::IpAddr>().is_ok() {
+        return vec![];
+    }
+    let mut out = vec![h.clone()];
+    let inner = [".svc.cluster.local", ".svc"].iter().find_map(|s| h.strip_suffix(s)).map(String::from);
+    let short = match inner {
+        // name.namespace.svc…: the name
+        Some(x) => x.split('.').next().map(String::from),
+        None => match h.split_once('.') {
+            Some((name, ns)) if !ns.contains('.') && namespaces.iter().any(|n| n == ns) => Some(name.to_string()),
+            _ => None,
+        },
+    };
+    if let Some(s) = short.filter(|s| !s.is_empty() && *s != h) {
+        out.push(s);
+    }
+    out
 }
 
 fn label(m: &JMap<String, Value>, k: &str) -> String {
@@ -168,7 +214,7 @@ fn read_file(path: &str, p: &Prom) -> Result<Calls, String> {
 }
 
 /// who calls whom over the windows, from the first source that names any call
-pub fn read_calls(p: &Prom, presets: &[String], sources: &[String], parts: &[(f64, f64)], file: Option<&str>, known: &[String]) -> Result<Calls, String> {
+pub fn read_calls(p: &Prom, presets: &[String], sources: &[String], parts: &[(f64, f64)], file: Option<&str>, known: &[String], workloads: &[String]) -> Result<Calls, String> {
     let has = |x: &str| sources.iter().any(|s| s == x);
     let mut c = match file {
         Some(f) => read_file(f, p)?,
@@ -235,25 +281,64 @@ pub fn read_calls(p: &Prom, presets: &[String], sources: &[String], parts: &[(f6
                 }
             }
             let mut unmatched: IndexMap<String, IndexSet<String>> = IndexMap::new();
-            let mut acc: IndexMap<(String, String), f64> = IndexMap::new();
-            for (m, v) in p.increase("traces_span_metrics_calls_total", &p.matchers(&["span_kind=\"SPAN_KIND_CLIENT\""], None), "service_name, span_name", None, parts) {
+            let mut acc: IndexMap<(String, String), (f64, bool)> = IndexMap::new();
+            let client = p.matchers(&["span_kind=\"SPAN_KIND_CLIENT\""], None);
+            // an HTTP client span is named by its method alone ("GET"): where the connector keeps the
+            // peer's address as a dimension, that names the callee
+            let peer: Vec<&str> = PEER_LABELS.iter().copied().filter(|l| p.has_label(l, &format!("traces_span_metrics_calls_total{}", client), parts)).collect();
+            let by = std::iter::once("service_name, span_name").chain(peer.iter().copied()).collect::<Vec<_>>().join(", ");
+            // who a peer can be: a service answering spans, one with request metrics, or a workload
+            let mut callee: IndexSet<String> = servers.clone();
+            callee.extend(known.iter().cloned());
+            callee.extend(workloads.iter().cloned());
+            let mut by_peer = 0usize;
+            for (m, v) in p.increase("traces_span_metrics_calls_total", &client, &by, None, parts) {
                 let (from, name) = (p.name(&label(&m, "service_name")), label(&m, "span_name"));
                 let to = rpc_key(&name).and_then(|k| answers.get(&k)).map(|s| s.iter().filter(|x| **x != from).cloned().collect::<Vec<_>>()).unwrap_or_default();
                 if to.len() == 1 {
-                    *acc.entry((from, to[0].clone())).or_insert(0.0) += v;
-                } else {
-                    unmatched.entry(from).or_default().insert(name);
+                    let e = acc.entry((from, to[0].clone())).or_insert((0.0, true));
+                    e.0 += v;
+                    continue;
+                }
+                let host = peer.iter().map(|l| label(&m, l)).find(|x| !x.is_empty());
+                let named = peer.iter().find_map(|l| {
+                    let x = label(&m, l);
+                    let cands = if *l == "peer_service" { vec![x] } else { host_services(&x, &p.ns) };
+                    cands.into_iter().filter(|c| !c.is_empty()).map(|c| p.name(&c)).find(|c| callee.contains(c) && *c != from)
+                });
+                match named {
+                    Some(to) => {
+                        by_peer += 1;
+                        let e = acc.entry((from, to)).or_insert((0.0, false));
+                        e.0 += v;
+                    }
+                    None => {
+                        unmatched.entry(from).or_default().insert(match host {
+                            Some(h) => format!("{} → {}", name, h),
+                            None => name,
+                        });
+                    }
                 }
             }
-            for ((from, to), v) in acc {
-                c.edges.push(Edge { from, to, calls: v, per_request: None, grpc: true });
+            for ((from, to), (v, grpc)) in acc {
+                c.edges.push(Edge { from, to, calls: v, per_request: None, grpc });
             }
             if !c.edges.is_empty() {
                 c.from = "spanmetrics".into();
+                if by_peer > 0 {
+                    c.notes.push(format!("client spans named by method alone matched to their callee by {}", peer.iter().map(|l| l.replace('_', ".")).collect::<Vec<_>>().join(", else ")));
+                }
                 for (svc, names) in unmatched {
                     let mut l: Vec<String> = names.into_iter().collect();
                     l.sort();
-                    c.notes.push(format!("{} makes calls no server's span names answer ({}): they are not in the topology", svc, l.iter().take(4).map(|x| format!("\"{}\"", x)).collect::<Vec<_>>().join(", ")));
+                    let bare = peer.is_empty() && l.iter().any(|x| HTTP_METHODS.contains(&x.as_str()));
+                    c.notes.push(format!(
+                        "{} makes calls no server's span names{} answer ({}): they are not in the topology{}",
+                        svc,
+                        if peer.is_empty() { "" } else { " or peer addresses" },
+                        l.iter().take(4).map(|x| format!("\"{}\"", x)).collect::<Vec<_>>().join(", "),
+                        if bare { ". HTTP client spans are named by method alone: adding server.address to the spanmetrics connector's dimensions names their callee" } else { "" }
+                    ));
                 }
             }
         }
@@ -818,11 +903,29 @@ mod tests {
     }
 
     #[test]
+    fn hosts_name_services() {
+        let ns = vec!["shop".to_string()];
+        let v = |h: &str| host_services(h, &ns);
+        assert_eq!(v("cart.shop.svc.cluster.local:8080"), vec!["cart.shop.svc.cluster.local", "cart"]);
+        assert_eq!(v("cart.shop.svc"), vec!["cart.shop.svc", "cart"]);
+        assert_eq!(v("Cart:8080"), vec!["cart"]);
+        assert_eq!(v("cart.shop"), vec!["cart.shop", "cart"]);
+        assert_eq!(v("http://redis:6379/0"), vec!["redis"]);
+        // outside the cluster: only itself, never its first label
+        assert_eq!(v("api.stripe.com:443"), vec!["api.stripe.com"]);
+        assert_eq!(v("cart.other"), vec!["cart.other"]);
+        // addresses name no service
+        assert!(v("10.0.3.7:8080").is_empty());
+        assert!(v("[::1]:8080").is_empty());
+        assert!(v("").is_empty());
+    }
+
+    #[test]
     fn a_file_without_entries_starts_where_nothing_calls() {
         let f = std::env::temp_dir().join(format!("hindcast-topology-{}.yaml", std::process::id()));
         std::fs::write(&f, "calls:\n  web: [api]\n  api: { db: 2 }\ngrpc: [api]\n").unwrap();
         let p = Prom::new(&json!({ "url": "http://127.0.0.1:9" }), &JMap::new()).unwrap();
-        let c = read_calls(&p, &[], &[], &[(0.0, 3600.0)], f.to_str(), &[]).unwrap();
+        let c = read_calls(&p, &[], &[], &[(0.0, 3600.0)], f.to_str(), &[], &[]).unwrap();
         let _ = std::fs::remove_file(&f);
         assert_eq!(c.from, "file");
         assert_eq!(c.entry, vec!["web".to_string()]);

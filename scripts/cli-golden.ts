@@ -135,6 +135,9 @@ export const CASES: string[][] = [
   ['quickstart', '--prometheus', `${TEL}/kps`, '--topology', `${fx}/topology.yaml`, '--last', '6h', '--workspace', ws('qt')],
   ['quickstart', '--prometheus', `${TEL}/istio`, '--last', '6h', '--workspace', ws('qi')],
   ['quickstart', '--prometheus', `${TEL}/linkerd`, '--last', '6h', '--workspace', ws('ql')],
+  // span metrics: HTTP client spans named by method alone, matched by the peer's address — and without it
+  ['quickstart', '--prometheus', `${TEL}/spanmetrics`, '--last', '6h', '--workspace', ws('qs')],
+  ['quickstart', '--prometheus', `${TEL}/spanmetrics-bare`, '--last', '6h', '--workspace', ws('qsb')],
   // no request metrics left at all: nothing to replay, and the review says so
   ['quickstart', '--prometheus', `${TEL}/kps`, '--exclude', 'web', '--last', '6h', '--workspace', ws('qx')],
   agent('connect_telemetry', { workspace: ws('qn'), prometheus: { url: `${TEL}/kps` }, topologyFile: 'nowhere.yaml' }),

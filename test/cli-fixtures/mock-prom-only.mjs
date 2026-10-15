@@ -1,7 +1,8 @@
 // Prometheus servers with no traces behind them, for the quickstart-without-traces cases (served by
 // mock-telemetry.mjs): /kps holds what kube-prometheus-stack and ingress-nginx export — no app metrics,
-// no mesh; /istio and /linkerd hold the same cluster metrics plus a mesh's proxy metrics. Every series
-// is a function of time alone, so two runs see the same history.
+// no mesh; /istio and /linkerd hold the same cluster metrics plus a mesh's proxy metrics; /spanmetrics
+// holds OpenTelemetry span metrics with the peer's address as a dimension, /spanmetrics-bare the same
+// spans without it. Every series is a function of time alone, so two runs see the same history.
 const NOW = 1_791_500_000;
 const DAY = 86400;
 const MI = 1024 * 1024;
@@ -62,11 +63,46 @@ const WORLDS = {
       web: { rps: (L) => L, mean: (L) => 25 + 0.1 * L + (5 + 0.04 * L + 3 * (2 + 0.02 * L)) },
     },
   },
+  // OpenTelemetry span metrics, no traces: frontend calls catalog over gRPC (client and server spans
+  // share the RPC name) and cart over HTTP (a client span named "GET" alone); cart calls redis, which
+  // has no spans of its own; frontend calls Stripe. Where the connector keeps the peer's address as a
+  // dimension (server.address, net.peer.name, peer.service) it names the callee
+  spanmetrics: {
+    names: ['kube_pod_info', 'traces_span_metrics_calls_total', 'container_spec_cpu_quota'],
+    peer: true,
+    workloads: {
+      frontend: { ns: 'shop', pods: ['frontend-6f7d8c9b5d-a1b2c', 'frontend-6f7d8c9b5d-d3f4g'], nodes: ['node-a', 'node-b'], cpu: (L) => 0.08 + 0.003 * L, limit: 1, mem: (L) => 2 * (220 + 0.4 * L) * MI, memLimit: 512 * MI, throttled: () => 0.005 },
+      cart: { ns: 'shop', pods: ['cart-58b9c7d6f4-h5j6k'], nodes: ['node-a'], cpu: (L) => 0.02 + 0.005 * L, limit: 0.5, mem: (L) => (140 + 0.3 * L) * MI, memLimit: 256 * MI, throttled: () => 0.003 },
+      catalog: { ns: 'shop', pods: ['catalog-7c8d9f6b5c-m7n8p'], nodes: ['node-b'], cpu: (L) => 0.02 + 0.004 * L, limit: 1, mem: () => 180 * MI, memLimit: 512 * MI, throttled: () => 0.002 },
+      redis: { ns: 'shop', pods: ['redis-0'], nodes: ['node-b'], cpu: (L) => 0.01 + 0.002 * L, limit: 0.5, mem: () => 60 * MI, memLimit: 256 * MI, throttled: () => 0.001 },
+    },
+    // server spans: what each service answered, by span name (latency in ms)
+    servers: {
+      frontend: { span: 'GET /', rps: (L) => L, mean: (L) => 20 + 0.1 * L + (6 + 0.05 * L + 2 * (0.5 + 0.005 * L)) + 2 * (4 + 0.04 * L) + 0.1 * 80 },
+      cart: { span: 'GET /cart', rps: (L) => L, mean: (L) => 6 + 0.05 * L + 2 * (0.5 + 0.005 * L) },
+      catalog: { span: 'oteldemo.CatalogService/ListProducts', rps: (L) => 2 * L, mean: (L) => 4 + 0.04 * L },
+    },
+    // client spans: caller, span name, the peer dimensions it carries, calls per second and ms per call
+    clients: [
+      { from: 'frontend', span: 'oteldemo.CatalogService/ListProducts', peer: {}, rate: (L) => 2 * L, ms: (L) => 4 + 0.04 * L },
+      { from: 'frontend', span: 'GET', peer: { server_address: 'cart.shop.svc.cluster.local:8080' }, rate: (L) => L, ms: (L) => 6 + 0.05 * L + 2 * (0.5 + 0.005 * L) },
+      { from: 'frontend', span: 'POST', peer: { peer_service: 'stripe', server_address: 'api.stripe.com:443' }, rate: (L) => 0.1 * L, ms: () => 80 },
+      { from: 'cart', span: 'HGET', peer: { net_peer_name: 'redis' }, rate: (L) => 2 * L, ms: (L) => 0.5 + 0.005 * L },
+    ],
+  },
 };
+// the same spans with the connector's default dimensions: no peer address on any of them
+WORLDS['spanmetrics-bare'] = { ...WORLDS.spanmetrics, peer: false };
+/** a client span's labels, keeping the peer dimensions the query groups by and the world exports */
+const clientLabels = (w, c, q) => ({ service_name: c.from, span_name: c.span, ...Object.fromEntries(Object.entries(w.peer ? c.peer : {}).filter(([k]) => by(q, true).includes(k))) });
 /** Linkerd's labels for a workload, by its kind, on either end of a call */
 const lk = (w, id, pre = '') => ({ [`${pre}${w.workloads[id]?.kind ?? 'deployment'}`]: id });
 
-const by = (q) => /by \(([^)]*)\)/.exec(q)?.[1]?.split(',')[0]?.trim() ?? '';
+/** the first label a query groups by, or all of them */
+const by = (q, all = false) => {
+  const l = (/by \(([^)]*)\)/.exec(q)?.[1] ?? '').split(',').map((x) => x.trim());
+  return all ? l : l[0] ?? '';
+};
 const workloads = (w) => Object.entries(w.workloads);
 const app = (w) => workloads(w).filter(([, x]) => x.ns === 'shop');
 
@@ -81,6 +117,23 @@ function at(w, q, t) {
     if (q.includes('_sum')) return v('mean');
     if (q.includes('status=~')) return v('errors');
     return v('rps');
+  }
+  if (q.includes('traces_span_metrics')) {
+    // per endpoint: none here, so each service is one endpoint
+    if (q.includes('span_name')) return [];
+    if (q.includes('SPAN_KIND_CLIENT')) {
+      // what each caller's client spans took: ms per second
+      const out = new Map();
+      for (const c of w.clients) out.set(c.from, (out.get(c.from) ?? 0) + c.rate(L) * c.ms(L));
+      return [...out].map(([id, v]) => [{ service_name: id }, v]);
+    }
+    const s = Object.entries(w.servers);
+    const v = (f) => s.map(([id, x]) => [{ service_name: id }, f(x)]);
+    if (q.includes('STATUS_CODE_ERROR')) return v(() => 0.001);
+    if (q.includes('histogram_quantile(0.99')) return v((x) => x.mean(L) * 2.5);
+    if (q.includes('histogram_quantile(0.5')) return v((x) => x.mean(L) * 0.8);
+    if (q.includes('_sum')) return v((x) => x.mean(L));
+    return v((x) => x.rps(L));
   }
   if (q.includes('response_total') || q.includes('response_latency_ms')) {
     if (q.includes('direction="outbound"')) {
@@ -143,6 +196,9 @@ export function promOnly(kind, path, params, send) {
   if (lv === 'exported_service') return send({ status: 'success', data: Object.keys(w.ingress ?? {}) });
   if (lv === 'destination_workload' && kind === 'istio') return send({ status: 'success', data: Object.keys(w.served ?? {}).sort() });
   if (lv === 'deployment' && kind === 'linkerd') return send({ status: 'success', data: workloads(w).filter(([, x]) => x.kind === 'deployment').map(([id]) => id).sort() });
+  if (lv === 'service_name' && w.servers) return send({ status: 'success', data: Object.keys(w.servers).sort() });
+  // the peer dimensions client spans carry, where the connector keeps them
+  if (lv && w.clients && w.peer) return send({ status: 'success', data: [...new Set(w.clients.map((c) => c.peer[lv]).filter(Boolean))].sort() });
   if (lv) return send({ status: 'success', data: [] });
   const q = params.get('query') ?? '';
   const vector = (rows, t) => send({ status: 'success', data: { resultType: 'vector', result: rows.map(([metric, v]) => ({ metric, value: [t, String(v)] })) } });
@@ -152,6 +208,9 @@ export function promOnly(kind, path, params, send) {
     if (q.startsWith('group by (namespace, workload)')) return vector(workloads(w).map(([id, x]) => [{ namespace: x.ns, workload: id }, 1]), t);
     // the probe: is there traffic at t
     if (q.startsWith('sum(increase(')) return vector(busy(t) ? [[{}, load(t) * 600]] : [], t);
+    if (q.includes('increase(traces_span_metrics_calls_total') && q.includes('SPAN_KIND_CLIENT')) return vector(w.clients.map((c) => [clientLabels(w, c, q), area(c.rate, t, win)]), t);
+    if (q.includes('increase(traces_span_metrics_calls_total')) return vector(Object.entries(w.servers).map(([id, x]) => [{ service_name: id, span_name: x.span }, area(x.rps, t, win)]), t);
+    if (q.includes('last_over_time(traces_span_metrics_calls_total')) return vector(Object.entries(w.servers).map(([id, x]) => [{ service_name: id, span_name: x.span }, 1]), t);
     if (q.includes('increase(istio_requests_total')) return vector((w.edges ?? []).map((e) => [{ source_workload: e.from, destination_workload: e.to, request_protocol: e.protocol }, area(e.rate, t, win)]), t);
     if (q.includes('increase(response_total') && q.includes('direction="outbound"'))
       return vector((w.edges ?? []).map((e) => [{ ...lk(w, e.from), ...lk(w, e.to, 'dst_'), ...(e.protocol === 'grpc' ? { grpc_status: '0' } : {}) }, area(e.rate, t, win)]), t);

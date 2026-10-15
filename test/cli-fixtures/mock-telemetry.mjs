@@ -1,6 +1,6 @@
 // Stand-in telemetry for the agent parity cases (the routes of test/agent.test.ts): Prometheus under
 // /prom (and /gappy: two busy stretches), Jaeger under /jaeger, Tempo under /tempo; and two with no
-// traces at all, /kps, /istio and /linkerd (mock-prom-only.mjs). NOW = 1_791_500_000.
+// traces at all, /kps, /istio, /linkerd, /spanmetrics and /spanmetrics-bare (mock-prom-only.mjs). NOW = 1_791_500_000.
 import { createServer } from 'node:http';
 import { promOnly } from './mock-prom-only.mjs';
 
@@ -8,7 +8,7 @@ const NOW = 1_791_500_000;
 const server = createServer((req, res) => {
   const u = new URL(req.url, 'http://x');
   const send = (v) => res.end(JSON.stringify(v));
-  const only = /^\/(kps|istio|linkerd)(\/.*)$/.exec(u.pathname);
+  const only = /^\/(kps|istio|linkerd|spanmetrics|spanmetrics-bare)(\/.*)$/.exec(u.pathname);
   if (only && promOnly(only[1], only[2], u.searchParams, send) !== null) return;
   if (u.pathname.startsWith('/gappy/')) u.pathname = u.pathname.replace('/gappy/', '/prom/');
   const gappy = req.url.startsWith('/gappy/');
