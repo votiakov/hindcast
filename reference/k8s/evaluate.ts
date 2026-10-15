@@ -410,7 +410,7 @@ async function main() {
   const evalDir = join(SYS, 'validation');
   // models are rebuilt every time; collected telemetry is kept (refreshed when the cluster is up)
   mkdirSync(evalDir, { recursive: true });
-  for (const f of readdirSync(evalDir)) if (!['collected', 'runs', 'predictions-oos.json'].includes(f)) rmSync(join(evalDir, f), { recursive: true, force: true });
+  for (const f of readdirSync(evalDir)) if (!['collected', 'runs'].includes(f) && !/^predictions-oos.*\.json$/.test(f)) rmSync(join(evalDir, f), { recursive: true, force: true });
   const base = resolve(SYS, 'shop.yaml');
 
   const calm = await calibrated('calm', ['history'], evalDir, cfg.slo);

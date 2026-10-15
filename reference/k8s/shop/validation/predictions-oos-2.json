@@ -1,0 +1,147 @@
+{
+ "madeAt": "2026-10-15T07:56:41.060Z",
+ "commit": "04cf174",
+ "models": {
+  "calm": {
+   "launch-x1.3-4": {
+    "verdict": "inconclusive",
+    "confidence": "low",
+    "minutesOutOfSlo": 0,
+    "peakP99Ms": 485,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same and removes 6 minutes out of SLO from the history",
+     "the backtest passes, but confidence is low (frontend would run at 89% of a capacity the history never tested (peak 41%): the outcome rests on an extrapolated limit) — load-test before trusting it",
+     "cuts 59,253 failed requests (−81% of 73,423)",
+     "losing bnk8s-worker at the busiest moment: 7.3 → 6.5 min out of SLO"
+    ],
+    "warnings": [
+     "frontend would run at 89% of a capacity the history never tested (peak 41%): the outcome rests on an extrapolated limit",
+     "email would run at 36% of capacity, past the history's 13%: its capacity there is extrapolated",
+     "product-catalog would run at 67% of capacity, past the history's 23%: its capacity there is extrapolated",
+     "recommendation: the model fits it poorly, and this change pushes it harder than the history did",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ]
+   },
+   "launch-x1.3-hpa": {
+    "verdict": "inconclusive",
+    "confidence": "low",
+    "minutesOutOfSlo": 0,
+    "peakP99Ms": 396,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same and removes 6 minutes out of SLO from the history",
+     "the backtest passes, but confidence is low (frontend would run at 84% of a capacity the history never tested (peak 41%): the outcome rests on an extrapolated limit) — load-test before trusting it",
+     "cuts 59,253 failed requests (−81% of 73,423)",
+     "losing bnk8s-worker at the busiest moment: 7.3 → 6.5 min out of SLO"
+    ],
+    "warnings": [
+     "frontend would run at 84% of a capacity the history never tested (peak 41%): the outcome rests on an extrapolated limit",
+     "email would run at 36% of capacity, past the history's 13%: its capacity there is extrapolated",
+     "product-catalog would run at 67% of capacity, past the history's 23%: its capacity there is extrapolated",
+     "recommendation: the model fits it poorly, and this change pushes it harder than the history did",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ]
+   },
+   "launch-2-750": {
+    "verdict": "inconclusive",
+    "confidence": "low",
+    "minutesOutOfSlo": 0,
+    "peakP99Ms": 133,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same, with no change in time out of SLO",
+     "the backtest passes, but confidence is low (frontend would run at 88% of a capacity the history never tested (peak 41%): the outcome rests on an extrapolated limit) — load-test before trusting it",
+     "frees 0 cores and 512 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 27% of it (30% before)",
+     "losing bnk8s-worker at the busiest moment: 7.3 → 6.5 min out of SLO"
+    ],
+    "warnings": [
+     "frontend would run at 88% of a capacity the history never tested (peak 41%): the outcome rests on an extrapolated limit",
+     "product-catalog would run at 51% of capacity, past the history's 23%: its capacity there is extrapolated",
+     "recommendation: the model fits it poorly, and this change pushes it harder than the history did",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ]
+   }
+  },
+  "load-tested": {
+   "launch-x1.3-4": {
+    "verdict": "inconclusive",
+    "confidence": "low",
+    "minutesOutOfSlo": 0,
+    "peakP99Ms": 223,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same, with no change in time out of SLO",
+     "the backtest passes, but confidence is low (frontend: the model fits it poorly, and this change changes it) — load-test before trusting it",
+     "cuts 0 failed requests (−30% of 0), though the minutes out of SLO stay the same: something else breaks the SLO in those minutes"
+    ],
+    "warnings": [
+     "frontend: the model fits it poorly, and this change changes it",
+     "recommendation fits poorly and runs near its limit; the change leaves it as it was, so the comparison holds better than the absolute numbers",
+     "the model's accuracy was never measured",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ]
+   },
+   "launch-x1.3-hpa": {
+    "verdict": "inconclusive",
+    "confidence": "low",
+    "minutesOutOfSlo": 0,
+    "peakP99Ms": 223,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same, with no change in time out of SLO",
+     "the backtest passes, but confidence is low (frontend: the model fits it poorly, and this change changes it) — load-test before trusting it",
+     "cuts 0 failed requests (−30% of 0), though the minutes out of SLO stay the same: something else breaks the SLO in those minutes"
+    ],
+    "warnings": [
+     "frontend: the model fits it poorly, and this change changes it",
+     "recommendation fits poorly and runs near its limit; the change leaves it as it was, so the comparison holds better than the absolute numbers",
+     "the model's accuracy was never measured",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ]
+   },
+   "launch-2-750": {
+    "verdict": "inconclusive",
+    "confidence": "low",
+    "minutesOutOfSlo": 0,
+    "peakP99Ms": 153,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same, with no change in time out of SLO",
+     "the backtest passes, but confidence is low (frontend: the model fits it poorly, and this change changes it) — load-test before trusting it",
+     "frees 0 cores and 512 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 26% of it (28% before)"
+    ],
+    "warnings": [
+     "frontend: the model fits it poorly, and this change changes it",
+     "recommendation fits poorly and runs near its limit; the change leaves it as it was, so the comparison holds better than the absolute numbers",
+     "the model's accuracy was never measured",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ]
+   }
+  }
+ }
+}
