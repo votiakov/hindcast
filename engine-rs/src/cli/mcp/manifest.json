@@ -57,12 +57,13 @@
         "type": "string"
        },
        "pricing": {
-        "description": "cost model: illustrative teaching defaults, or cited AWS us-east-1 / Google Cloud us-central1 on-demand prices",
+        "description": "cost model: illustrative teaching defaults, or cited AWS us-east-1 / Google Cloud us-central1 / Azure East US on-demand prices",
         "type": "string",
         "enum": [
          "illustrative",
          "aws-us-east-1",
-         "gcp-us-central1"
+         "gcp-us-central1",
+         "azure-eastus"
         ]
        },
        "components": {
@@ -452,12 +453,13 @@
         "type": "string"
        },
        "pricing": {
-        "description": "cost model: illustrative teaching defaults, or cited AWS us-east-1 / Google Cloud us-central1 on-demand prices",
+        "description": "cost model: illustrative teaching defaults, or cited AWS us-east-1 / Google Cloud us-central1 / Azure East US on-demand prices",
         "type": "string",
         "enum": [
          "illustrative",
          "aws-us-east-1",
-         "gcp-us-central1"
+         "gcp-us-central1",
+         "azure-eastus"
         ]
        },
        "components": {
@@ -1222,12 +1224,13 @@
         "type": "string"
        },
        "pricing": {
-        "description": "cost model: illustrative teaching defaults, or cited AWS us-east-1 / Google Cloud us-central1 on-demand prices",
+        "description": "cost model: illustrative teaching defaults, or cited AWS us-east-1 / Google Cloud us-central1 / Azure East US on-demand prices",
         "type": "string",
         "enum": [
          "illustrative",
          "aws-us-east-1",
-         "gcp-us-central1"
+         "gcp-us-central1",
+         "azure-eastus"
         ]
        },
        "components": {
@@ -1606,12 +1609,13 @@
            "type": "string"
           },
           "pricing": {
-           "description": "cost model: illustrative teaching defaults, or cited AWS us-east-1 / Google Cloud us-central1 on-demand prices",
+           "description": "cost model: illustrative teaching defaults, or cited AWS us-east-1 / Google Cloud us-central1 / Azure East US on-demand prices",
            "type": "string",
            "enum": [
             "illustrative",
             "aws-us-east-1",
-            "gcp-us-central1"
+            "gcp-us-central1",
+            "azure-eastus"
            ]
           },
           "components": {
@@ -2950,12 +2954,13 @@
         "type": "string"
        },
        "pricing": {
-        "description": "cost model: illustrative teaching defaults, or cited AWS us-east-1 / Google Cloud us-central1 on-demand prices",
+        "description": "cost model: illustrative teaching defaults, or cited AWS us-east-1 / Google Cloud us-central1 / Azure East US on-demand prices",
         "type": "string",
         "enum": [
          "illustrative",
          "aws-us-east-1",
-         "gcp-us-central1"
+         "gcp-us-central1",
+         "azure-eastus"
         ]
        },
        "components": {
@@ -3361,12 +3366,13 @@
         "type": "string"
        },
        "pricing": {
-        "description": "cost model: illustrative teaching defaults, or cited AWS us-east-1 / Google Cloud us-central1 on-demand prices",
+        "description": "cost model: illustrative teaching defaults, or cited AWS us-east-1 / Google Cloud us-central1 / Azure East US on-demand prices",
         "type": "string",
         "enum": [
          "illustrative",
          "aws-us-east-1",
-         "gcp-us-central1"
+         "gcp-us-central1",
+         "azure-eastus"
         ]
        },
        "components": {
@@ -4120,12 +4126,13 @@
         "type": "string"
        },
        "pricing": {
-        "description": "cost model: illustrative teaching defaults, or cited AWS us-east-1 / Google Cloud us-central1 on-demand prices",
+        "description": "cost model: illustrative teaching defaults, or cited AWS us-east-1 / Google Cloud us-central1 / Azure East US on-demand prices",
         "type": "string",
         "enum": [
          "illustrative",
          "aws-us-east-1",
-         "gcp-us-central1"
+         "gcp-us-central1",
+         "azure-eastus"
         ]
        },
        "components": {
@@ -4888,12 +4895,13 @@
         "type": "string"
        },
        "pricing": {
-        "description": "cost model: illustrative teaching defaults, or cited AWS us-east-1 / Google Cloud us-central1 on-demand prices",
+        "description": "cost model: illustrative teaching defaults, or cited AWS us-east-1 / Google Cloud us-central1 / Azure East US on-demand prices",
         "type": "string",
         "enum": [
          "illustrative",
          "aws-us-east-1",
-         "gcp-us-central1"
+         "gcp-us-central1",
+         "azure-eastus"
         ]
        },
        "components": {
@@ -5367,12 +5375,13 @@
         "type": "string"
        },
        "pricing": {
-        "description": "cost model: illustrative teaching defaults, or cited AWS us-east-1 / Google Cloud us-central1 on-demand prices",
+        "description": "cost model: illustrative teaching defaults, or cited AWS us-east-1 / Google Cloud us-central1 / Azure East US on-demand prices",
         "type": "string",
         "enum": [
          "illustrative",
          "aws-us-east-1",
-         "gcp-us-central1"
+         "gcp-us-central1",
+         "azure-eastus"
         ]
        },
        "components": {
@@ -5748,12 +5757,13 @@
           "type": "string"
          },
          "pricing": {
-          "description": "cost model: illustrative teaching defaults, or cited AWS us-east-1 / Google Cloud us-central1 on-demand prices",
+          "description": "cost model: illustrative teaching defaults, or cited AWS us-east-1 / Google Cloud us-central1 / Azure East US on-demand prices",
           "type": "string",
           "enum": [
            "illustrative",
            "aws-us-east-1",
-           "gcp-us-central1"
+           "gcp-us-central1",
+           "azure-eastus"
           ]
          },
          "components": {
@@ -7090,12 +7100,13 @@
         "type": "string"
        },
        "pricing": {
-        "description": "cost model: illustrative teaching defaults, or cited AWS us-east-1 / Google Cloud us-central1 on-demand prices",
+        "description": "cost model: illustrative teaching defaults, or cited AWS us-east-1 / Google Cloud us-central1 / Azure East US on-demand prices",
         "type": "string",
         "enum": [
          "illustrative",
          "aws-us-east-1",
-         "gcp-us-central1"
+         "gcp-us-central1",
+         "azure-eastus"
         ]
        },
        "components": {
@@ -7471,12 +7482,13 @@
           "type": "string"
          },
          "pricing": {
-          "description": "cost model: illustrative teaching defaults, or cited AWS us-east-1 / Google Cloud us-central1 on-demand prices",
+          "description": "cost model: illustrative teaching defaults, or cited AWS us-east-1 / Google Cloud us-central1 / Azure East US on-demand prices",
           "type": "string",
           "enum": [
            "illustrative",
            "aws-us-east-1",
-           "gcp-us-central1"
+           "gcp-us-central1",
+           "azure-eastus"
           ]
          },
          "components": {

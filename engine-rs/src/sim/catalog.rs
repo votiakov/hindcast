@@ -194,6 +194,10 @@ pub struct KindPricing {
     pub per_request: Option<f64>,
 }
 
+/// a hosted DNS zone, $0.50 a month (Route 53, Azure DNS). Queries aren't priced: resolvers cache
+/// answers for the TTL, so they scale with clients, not requests
+const DNS_ZONE_HOURLY: f64 = 0.5 / 730.0;
+
 pub fn kind_pricing(profile: &str, kind: &str) -> Option<KindPricing> {
     let tiers = |s: f64, m: f64, l: f64| Some(KindPricing { tiers: Some([s, m, l]), ..Default::default() });
     let per = |p: f64| Some(KindPricing { per_request: Some(p), ..Default::default() });
@@ -212,6 +216,9 @@ pub fn kind_pricing(profile: &str, kind: &str) -> Option<KindPricing> {
             "llmapi" => per(0.15 / 1_000_000.0 * 1000.0 + 0.6 / 1_000_000.0 * 300.0),
             // DynamoDB on demand: $0.25 per million reads, $1.25 per million writes, 80/20
             "kv" => per(0.45 / 1_000_000.0),
+            // Kinesis provisioned: $0.015 per shard-hour + $0.014 per million PUT payload units
+            "stream" => Some(KindPricing { fixed: Some(0.015), per_request: Some(0.014 / 1_000_000.0), ..Default::default() }),
+            "dns" => Some(KindPricing { fixed: Some(DNS_ZONE_HOURLY), ..Default::default() }),
             _ => None,
         },
         "gcp-us-central1" => match kind {
@@ -228,6 +235,31 @@ pub fn kind_pricing(profile: &str, kind: &str) -> Option<KindPricing> {
             "llmapi" => per(0.15 / 1_000_000.0 * 1000.0 + 0.6 / 1_000_000.0 * 300.0),
             // Firestore: $0.06 per 100k reads, $0.18 per 100k writes, 80/20
             "kv" => per(0.84 / 1_000_000.0),
+            // Pub/Sub topic with subscriptions: billed by throughput, not partitions
+            "stream" => per(0.11 / 1_000_000.0),
+            "dns" => Some(KindPricing { fixed: Some(0.2 / 730.0), ..Default::default() }),
+            _ => None,
+        },
+        // Azure Retail Prices API (prices.azure.com), East US, pay as you go, 2026-10-15
+        "azure-eastus" => match kind {
+            "server" | "worker" => tiers(0.0702, 0.14, 0.281),
+            "db" | "replica" => tiers(0.25, 0.5, 1.0),
+            "cache" => tiers(0.45, 0.525, 1.05),
+            "llm" => Some(KindPricing { fixed: Some(0.526), ..Default::default() }),
+            // Application Gateway Standard_v2: $0.20/h + $0.008 per capacity unit-hour (≈ 1 GB/h)
+            "lb" => Some(KindPricing { fixed: Some(0.2), per_request: Some(0.008 / 100_000.0), ..Default::default() }),
+            "gateway" => per(3.5 / 1_000_000.0),
+            "cdn" => per(0.9 / 1_000_000.0 + 0.0825 * (10.0 / 1_048_576.0)),
+            "storage" => per(0.4 / 1_000_000.0),
+            // Service Bus Standard: $0.80 per million operations × send, receive, complete
+            "queue" => per(2.4 / 1_000_000.0),
+            "function" => per(0.2 / 1_000_000.0),
+            "llmapi" => per(0.15 / 1_000_000.0 * 1000.0 + 0.6 / 1_000_000.0 * 300.0),
+            // Cosmos DB serverless: $0.25 per million RUs; 1 RU a 1 KB read, ~5 a write, 80/20
+            "kv" => per(0.45 / 1_000_000.0),
+            // Event Hubs Standard: $0.03 per throughput unit-hour (1,000 events/s in) + $0.028 per million events
+            "stream" => Some(KindPricing { fixed: Some(0.03), per_request: Some(0.028 / 1_000_000.0), ..Default::default() }),
+            "dns" => Some(KindPricing { fixed: Some(DNS_ZONE_HOURLY), ..Default::default() }),
             _ => None,
         },
         _ => None,

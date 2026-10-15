@@ -379,7 +379,7 @@ pub fn check_architecture(v: &Value) -> (Option<Architecture>, Vec<Issue>) {
         let mut top = V { o, path: vec![], issues: &mut issues };
         top.string("name", false, 0);
         top.string("description", false, 0);
-        top.one_of("pricing", &["illustrative", "aws-us-east-1", "gcp-us-central1"], false);
+        top.one_of("pricing", &["illustrative", "aws-us-east-1", "gcp-us-central1", "azure-eastus"], false);
     }
     let mut components = vec![];
     match o.get("components") {

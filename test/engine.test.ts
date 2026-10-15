@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { simulate, breakingPoint, compare } from '../src/sim/headless';
 import { retryAmp } from '../src/sim/engine';
 import { shop, shopWithReplica, steady } from './fixtures';
+import { PRICING, type PricingId } from '../src/sim/pricing';
+import type { Kind } from '../src/sim/catalog';
 
 describe('fluid engine', () => {
   it('serves light load within SLO', () => {
@@ -86,5 +88,20 @@ describe('pricing profiles', () => {
     expect(gcp).toBeGreaterThan(0);
     expect(Math.abs(aws - gcp) / aws).toBeLessThan(0.5); // same ballpark, not identical
     expect(aws).not.toBe(gcp);
+    const azure = cost('azure-eastus');
+    expect(Math.abs(aws - azure) / aws).toBeLessThan(0.5);
+  });
+
+  it('the engine charges every fixed price the app shows with its source', () => {
+    // one idle component of each kind, size S: the engine's hourly cost is the profile's S (or fixed) price
+    for (const id of Object.keys(PRICING) as PricingId[]) {
+      for (const [kind, p] of Object.entries(PRICING[id].kinds) as [Kind, NonNullable<(typeof PRICING)[PricingId]['kinds'][Kind]>][]) {
+        const hourly = p.tiers?.S.hourly ?? p.fixed?.hourly;
+        if (hourly === undefined) continue;
+        const design = { pricing: id, components: [{ id: 'u', kind: 'client' }, { id: 'x', kind, tier: 'S', ...(kind === 'stream' ? { partitions: 1 } : {}) }], connections: [['u', 'x']] };
+        const got = simulate(design as never, steady(0, 2)).summary.meanCostPerHour;
+        expect([id, kind, got]).toEqual([id, kind, expect.closeTo(hourly, 2)]);
+      }
+    }
   });
 });

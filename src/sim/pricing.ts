@@ -6,7 +6,7 @@ import type { Kind, Tier } from './catalog';
  * so a cost claim can be traced and challenged.
  */
 
-export type PricingId = 'illustrative' | 'aws-us-east-1' | 'gcp-us-central1';
+export type PricingId = 'illustrative' | 'aws-us-east-1' | 'gcp-us-central1' | 'azure-eastus';
 
 export interface SkuPrice {
   sku: string;
@@ -36,6 +36,8 @@ export interface PricingProfile {
 }
 
 const VANTAGE = (path: string) => `https://instances.vantage.sh/aws/${path}`;
+/** every Azure price below is read from Microsoft's public Retail Prices API for East US */
+const AZURE = 'https://prices.azure.com/api/retail/prices';
 
 export const PRICING: Record<PricingId, PricingProfile> = {
   illustrative: { id: 'illustrative', label: 'Illustrative (teaching defaults)', short: 'Illustrative', kinds: {} },
@@ -108,6 +110,17 @@ export const PRICING: Record<PricingId, PricingProfile> = {
         perRequest: { price: 0.45 / 1_000_000, basis: 'DynamoDB on demand: $0.25 per million reads, $1.25 per million writes, at 80% reads' },
         source: 'https://aws.amazon.com/dynamodb/pricing/on-demand/',
       },
+      stream: {
+        fixed: { sku: 'Kinesis Data Streams shard', hourly: 0.015 },
+        perRequest: { price: 0.014 / 1_000_000, basis: '$0.014 per million PUT payload units (25 KB each)' },
+        source: 'https://aws.amazon.com/kinesis/data-streams/pricing/',
+        note: 'provisioned mode: one shard per partition (1,000 records/s in)',
+      },
+      dns: {
+        fixed: { sku: 'Route 53 hosted zone', hourly: 0.5 / 730 },
+        source: 'https://aws.amazon.com/route53/pricing/',
+        note: 'queries ($0.40 per million) are not priced: resolvers cache answers for the TTL, so they scale with clients, not requests',
+      },
     },
   },
   'gcp-us-central1': {
@@ -177,6 +190,97 @@ export const PRICING: Record<PricingId, PricingProfile> = {
       kv: {
         perRequest: { price: 0.84 / 1_000_000, basis: 'Firestore: $0.06 per 100k reads, $0.18 per 100k writes, at 80% reads' },
         source: 'https://cloud.google.com/firestore/pricing',
+      },
+      stream: {
+        perRequest: { price: 0.11 / 1_000_000, basis: 'Pub/Sub topic + subscriptions, $40 per TiB (1 KB minimum per operation)' },
+        source: 'https://cloud.google.com/pubsub/pricing',
+        note: 'billed by throughput, not partitions',
+      },
+      dns: {
+        fixed: { sku: 'Cloud DNS managed zone', hourly: 0.2 / 730 },
+        source: 'https://cloud.google.com/dns/pricing',
+        note: 'queries are not priced: resolvers cache answers for the TTL',
+      },
+    },
+  },
+  'azure-eastus': {
+    id: 'azure-eastus',
+    label: 'Azure East US, pay as you go',
+    short: 'Azure East US',
+    region: 'eastus',
+    asOf: '2026-10-15',
+    kinds: {
+      server: {
+        tiers: { S: { sku: 'D2ps v6', hourly: 0.0702 }, M: { sku: 'D4ps v6', hourly: 0.14 }, L: { sku: 'D8ps v6', hourly: 0.281 } },
+        source: AZURE,
+        note: 'Cobalt 100 (Arm), Linux pay as you go',
+      },
+      worker: {
+        tiers: { S: { sku: 'D2ps v6', hourly: 0.0702 }, M: { sku: 'D4ps v6', hourly: 0.14 }, L: { sku: 'D8ps v6', hourly: 0.281 } },
+        source: AZURE,
+      },
+      db: {
+        tiers: { S: { sku: 'PostgreSQL Flexible E2ds v5', hourly: 0.25 }, M: { sku: 'PostgreSQL Flexible E4ds v5', hourly: 0.5 }, L: { sku: 'PostgreSQL Flexible E8ds v5', hourly: 1.0 } },
+        source: AZURE,
+        note: 'Memory Optimized, 16 / 32 / 64 GB; zone-redundant HA doubles it',
+      },
+      replica: {
+        tiers: { S: { sku: 'PostgreSQL read replica E2ds v5', hourly: 0.25 }, M: { sku: 'PostgreSQL read replica E4ds v5', hourly: 0.5 }, L: { sku: 'PostgreSQL read replica E8ds v5', hourly: 1.0 } },
+        source: AZURE,
+      },
+      cache: {
+        tiers: { S: { sku: 'Azure Cache for Redis Standard C3 (6 GB)', hourly: 0.45 }, M: { sku: 'Standard C4 (13 GB)', hourly: 0.525 }, L: { sku: 'Standard C5 (26 GB)', hourly: 1.05 } },
+        source: AZURE,
+        note: 'Standard tier: a primary and a replica',
+      },
+      llm: {
+        fixed: { sku: 'NC4as T4 v3 (1× NVIDIA T4)', hourly: 0.526 },
+        source: AZURE,
+        note: 'one GPU instance; a T4, slower than the L4 the AWS and GCP profiles price',
+      },
+      lb: {
+        fixed: { sku: 'Application Gateway Standard_v2', hourly: 0.2 },
+        perRequest: { price: 0.008 / 100_000, basis: '$0.008 per capacity unit-hour, 1 CU ≈ 1 GB/h ≈ 100k × 10 KB requests' },
+        source: AZURE,
+      },
+      gateway: {
+        perRequest: { price: 3.5 / 1_000_000, basis: 'API Management Consumption, $0.035 per 10k calls after the first million' },
+        source: AZURE,
+      },
+      cdn: {
+        perRequest: { price: 0.9 / 1_000_000 + 0.0825 * (10 / 1_048_576), basis: 'Front Door Standard: $0.009 per 10k requests + $0.0825/GB, ~10 KB per response ($35/month base not included)' },
+        source: 'https://egresscost.com/azure/front-door-pricing',
+      },
+      storage: {
+        perRequest: { price: 0.4 / 1_000_000, basis: 'Blob Storage Hot LRS read operations, $0.004 per 10k' },
+        source: AZURE,
+      },
+      queue: {
+        perRequest: { price: 2.4 / 1_000_000, basis: 'Service Bus Standard, $0.80 per million operations × send + receive + complete' },
+        source: AZURE,
+      },
+      function: {
+        perRequest: { price: 0.2 / 1_000_000, basis: 'Functions Consumption $0.20 per million executions + $0.000016 per GB-s' },
+        source: AZURE,
+      },
+      llmapi: {
+        perRequest: { price: 0.15 / 1_000_000 * 1000 + 0.6 / 1_000_000 * 300, basis: 'same hosted model as the AWS profile (GPT-4o-mini, ~1,000 in + 300 out tokens)' },
+        source: 'https://pricepertoken.com/pricing-page/model/openai-gpt-4o-mini',
+      },
+      kv: {
+        perRequest: { price: 0.45 / 1_000_000, basis: 'Cosmos DB serverless, $0.25 per million RUs: 1 RU per 1 KB read, ~5 per write, at 80% reads' },
+        source: AZURE,
+      },
+      stream: {
+        fixed: { sku: 'Event Hubs Standard throughput unit', hourly: 0.03 },
+        perRequest: { price: 0.028 / 1_000_000, basis: '$0.028 per million ingress events' },
+        source: AZURE,
+        note: 'one throughput unit per partition (1,000 events/s in)',
+      },
+      dns: {
+        fixed: { sku: 'Azure DNS zone', hourly: 0.5 / 730 },
+        source: AZURE,
+        note: 'queries are not priced: resolvers cache answers for the TTL',
       },
     },
   },

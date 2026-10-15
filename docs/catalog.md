@@ -54,8 +54,8 @@ With a runtime set, serverless price = $0.20 / 1M requests + $0.0000166667 per G
 ## Pricing profiles
 
 Costs follow the active **pricing profile** (Settings → Pricing in the app, `pricing:` at the root of
-a spec for the CLI/MCP). `illustrative` is the teaching default above; `aws-us-east-1` and
-`gcp-us-central1` are cited real-cloud profiles. `aws-us-east-1` prices every
+a spec for the CLI/MCP). `illustrative` is the teaching default above; `aws-us-east-1`,
+`gcp-us-central1` and `azure-eastus` are cited real-cloud profiles. `aws-us-east-1` prices every
 component as a concrete SKU or usage line, on-demand, checked 2026-10-02:
 
 | component | S / M / L (or unit) | price | source / assumption |
@@ -87,6 +87,28 @@ component as a concrete SKU or usage line, on-demand, checked 2026-10-02:
 | queue | Pub/Sub | ≈ $0.11 per million messages | [Pub/Sub pricing](https://cloud.google.com/pubsub/pricing): $40/TiB, 1 KB minimum × publish/pull/ack |
 | function | Cloud Run | $0.40/M requests (+ compute, approximated Lambda-like) | [Cloud Run pricing](https://cloud.google.com/run/pricing) |
 | llmapi | same hosted model as AWS | ≈ $0.00033 per request | provider prices don't depend on your cloud |
+
+`azure-eastus` (checked 2026-10-15; every line read from Microsoft's
+[Retail Prices API](https://prices.azure.com/api/retail/prices) for East US, pay as you go, unless noted):
+
+| component | S / M / L (or unit) | price | source / assumption |
+|---|---|---|---|
+| server, worker | D2ps v6 / D4ps v6 / D8ps v6 | $0.0702 / $0.14 / $0.281 per hour | Cobalt 100 (Arm), Linux |
+| db, replica | PostgreSQL Flexible E2ds / E4ds / E8ds v5 | $0.25 / $0.50 / $1.00 per hour | Memory Optimized, 16 / 32 / 64 GB; zone-redundant HA ×2 |
+| cache | Redis Standard C3 / C4 / C5 (6 / 13 / 26 GB) | $0.45 / $0.525 / $1.05 per hour | Standard tier: a primary and a replica |
+| llm | NC4as T4 v3 (1× NVIDIA T4) | $0.526 per GPU-hour | a T4, slower than the L4 the other profiles price |
+| lb | Application Gateway Standard_v2 | $0.20/h + $0.008 per capacity unit-hour | 1 CU ≈ 1 GB/h ≈ 100k × 10 KB requests |
+| gateway | API Management Consumption | $3.50 per million | after the first million a month |
+| cdn | Front Door Standard | ≈ $1.69 per million | $0.009/10k requests + $0.0825/GB, ~10 KB/response ([egresscost](https://egresscost.com/azure/front-door-pricing)); $35/month base not included |
+| storage | Blob Hot LRS reads | $0.40 per million | $0.004 per 10k |
+| queue | Service Bus Standard | $2.40 per million messages | $0.80/M operations × send + receive + complete |
+| function | Functions Consumption | $0.20/M + $0.000016 per GB-s | |
+| kv | Cosmos DB serverless | $0.45 per million | $0.25/M RUs; 1 RU a 1 KB read, ~5 a write, 80% reads |
+| stream | Event Hubs Standard | $0.03 per throughput unit-hour + $0.028/M events | one TU (1,000 events/s in) per partition |
+| dns | Azure DNS zone | $0.50 per month | queries not priced: resolvers cache answers for the TTL |
+
+Streams and DNS in the other clouds: Kinesis at $0.015 per shard-hour + $0.014 per million records
+(AWS), Pub/Sub by throughput (GCP); a hosted zone at $0.50 (Route 53) or $0.20 (Cloud DNS) a month.
 
 Under a real profile, size tiers are priced as the actual SKUs (cloud instance prices are linear, so
 the illustrative vertical-scaling premium disappears), and nodes show their SKU next to the price.
