@@ -134,9 +134,15 @@ export interface ZoneData extends Record<string, unknown> {
   failed?: boolean;
 }
 
+/** a note on the board: free text, for explaining a design; the engines ignore it */
+export interface NoteData extends Record<string, unknown> {
+  text: string;
+}
+
 export type SystemNode = Node<SystemNodeData, 'system'>;
 export type ZoneNode = Node<ZoneData, 'zone'>;
-export type AppNode = SystemNode | ZoneNode;
+export type NoteNode = Node<NoteData, 'note'>;
+export type AppNode = SystemNode | ZoneNode | NoteNode;
 export type SystemEdge = Edge;
 
 export const isSystem = (n: AppNode): n is SystemNode => n.type === 'system';

@@ -1,4 +1,4 @@
-import type { SystemEdge, SystemNode } from '../sim/catalog';
+import type { SystemEdge } from '../sim/catalog';
 import type { SimAction } from '../sim/actions';
 import type { ChangeSpec } from '../spec/schema';
 
@@ -53,7 +53,7 @@ export interface Lesson {
   id: string;
   title: string;
   subtitle: string;
-  initial: { nodes: (SystemNode | import('../sim/catalog').ZoneNode)[]; edges: SystemEdge[] };
+  initial: { nodes: import('../sim/catalog').AppNode[]; edges: SystemEdge[] };
   /** share of reads (default 0.8) */
   readRatio?: number;
   /** shown on the completion card */

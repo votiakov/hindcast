@@ -89,6 +89,10 @@ export const ArchitectureSpec = z.object({
     )
     .describe('caller → callee pairs, e.g. "lb -> api", ["lb","api"] or { from, to, latencyMs }; order matters for failover routing'),
   zones: z.array(ZoneSpec).optional(),
+  notes: z
+    .array(z.object({ text: z.string().max(2000), x: z.number(), y: z.number(), width: z.number().positive().optional() }))
+    .optional()
+    .describe('notes on the board: free text at a position, for explaining the design; the engines ignore them'),
 });
 
 export const ActionSpec = z.discriminatedUnion('type', [

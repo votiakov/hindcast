@@ -429,6 +429,34 @@
           "members"
          ]
         }
+       },
+       "notes": {
+        "description": "notes on the board: free text at a position, for explaining the design; the engines ignore them",
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "text": {
+           "type": "string",
+           "maxLength": 2000
+          },
+          "x": {
+           "type": "number"
+          },
+          "y": {
+           "type": "number"
+          },
+          "width": {
+           "type": "number",
+           "exclusiveMinimum": 0
+          }
+         },
+         "required": [
+          "text",
+          "x",
+          "y"
+         ]
+        }
        }
       },
       "required": [
@@ -841,6 +869,34 @@
          "required": [
           "id",
           "members"
+         ]
+        }
+       },
+       "notes": {
+        "description": "notes on the board: free text at a position, for explaining the design; the engines ignore them",
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "text": {
+           "type": "string",
+           "maxLength": 2000
+          },
+          "x": {
+           "type": "number"
+          },
+          "y": {
+           "type": "number"
+          },
+          "width": {
+           "type": "number",
+           "exclusiveMinimum": 0
+          }
+         },
+         "required": [
+          "text",
+          "x",
+          "y"
          ]
         }
        }
@@ -1675,6 +1731,34 @@
           "members"
          ]
         }
+       },
+       "notes": {
+        "description": "notes on the board: free text at a position, for explaining the design; the engines ignore them",
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "text": {
+           "type": "string",
+           "maxLength": 2000
+          },
+          "x": {
+           "type": "number"
+          },
+          "y": {
+           "type": "number"
+          },
+          "width": {
+           "type": "number",
+           "exclusiveMinimum": 0
+          }
+         },
+         "required": [
+          "text",
+          "x",
+          "y"
+         ]
+        }
        }
       },
       "required": [
@@ -2076,6 +2160,34 @@
             "required": [
              "id",
              "members"
+            ]
+           }
+          },
+          "notes": {
+           "description": "notes on the board: free text at a position, for explaining the design; the engines ignore them",
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "text": {
+              "type": "string",
+              "maxLength": 2000
+             },
+             "x": {
+              "type": "number"
+             },
+             "y": {
+              "type": "number"
+             },
+             "width": {
+              "type": "number",
+              "exclusiveMinimum": 0
+             }
+            },
+            "required": [
+             "text",
+             "x",
+             "y"
             ]
            }
           }
@@ -3520,6 +3632,34 @@
           "members"
          ]
         }
+       },
+       "notes": {
+        "description": "notes on the board: free text at a position, for explaining the design; the engines ignore them",
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "text": {
+           "type": "string",
+           "maxLength": 2000
+          },
+          "x": {
+           "type": "number"
+          },
+          "y": {
+           "type": "number"
+          },
+          "width": {
+           "type": "number",
+           "exclusiveMinimum": 0
+          }
+         },
+         "required": [
+          "text",
+          "x",
+          "y"
+         ]
+        }
        }
       },
       "required": [
@@ -3948,6 +4088,34 @@
          "required": [
           "id",
           "members"
+         ]
+        }
+       },
+       "notes": {
+        "description": "notes on the board: free text at a position, for explaining the design; the engines ignore them",
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "text": {
+           "type": "string",
+           "maxLength": 2000
+          },
+          "x": {
+           "type": "number"
+          },
+          "y": {
+           "type": "number"
+          },
+          "width": {
+           "type": "number",
+           "exclusiveMinimum": 0
+          }
+         },
+         "required": [
+          "text",
+          "x",
+          "y"
          ]
         }
        }
@@ -4769,6 +4937,34 @@
          "required": [
           "id",
           "members"
+         ]
+        }
+       },
+       "notes": {
+        "description": "notes on the board: free text at a position, for explaining the design; the engines ignore them",
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "text": {
+           "type": "string",
+           "maxLength": 2000
+          },
+          "x": {
+           "type": "number"
+          },
+          "y": {
+           "type": "number"
+          },
+          "width": {
+           "type": "number",
+           "exclusiveMinimum": 0
+          }
+         },
+         "required": [
+          "text",
+          "x",
+          "y"
          ]
         }
        }
@@ -5601,6 +5797,34 @@
           "members"
          ]
         }
+       },
+       "notes": {
+        "description": "notes on the board: free text at a position, for explaining the design; the engines ignore them",
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "text": {
+           "type": "string",
+           "maxLength": 2000
+          },
+          "x": {
+           "type": "number"
+          },
+          "y": {
+           "type": "number"
+          },
+          "width": {
+           "type": "number",
+           "exclusiveMinimum": 0
+          }
+         },
+         "required": [
+          "text",
+          "x",
+          "y"
+         ]
+        }
        }
       },
       "required": [
@@ -6099,6 +6323,34 @@
           "members"
          ]
         }
+       },
+       "notes": {
+        "description": "notes on the board: free text at a position, for explaining the design; the engines ignore them",
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "text": {
+           "type": "string",
+           "maxLength": 2000
+          },
+          "x": {
+           "type": "number"
+          },
+          "y": {
+           "type": "number"
+          },
+          "width": {
+           "type": "number",
+           "exclusiveMinimum": 0
+          }
+         },
+         "required": [
+          "text",
+          "x",
+          "y"
+         ]
+        }
        }
       },
       "required": [
@@ -6497,6 +6749,34 @@
            "required": [
             "id",
             "members"
+           ]
+          }
+         },
+         "notes": {
+          "description": "notes on the board: free text at a position, for explaining the design; the engines ignore them",
+          "type": "array",
+          "items": {
+           "type": "object",
+           "properties": {
+            "text": {
+             "type": "string",
+             "maxLength": 2000
+            },
+            "x": {
+             "type": "number"
+            },
+            "y": {
+             "type": "number"
+            },
+            "width": {
+             "type": "number",
+             "exclusiveMinimum": 0
+            }
+           },
+           "required": [
+            "text",
+            "x",
+            "y"
            ]
           }
          }
@@ -7939,6 +8219,34 @@
           "members"
          ]
         }
+       },
+       "notes": {
+        "description": "notes on the board: free text at a position, for explaining the design; the engines ignore them",
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "text": {
+           "type": "string",
+           "maxLength": 2000
+          },
+          "x": {
+           "type": "number"
+          },
+          "y": {
+           "type": "number"
+          },
+          "width": {
+           "type": "number",
+           "exclusiveMinimum": 0
+          }
+         },
+         "required": [
+          "text",
+          "x",
+          "y"
+         ]
+        }
        }
       },
       "required": [
@@ -8337,6 +8645,34 @@
            "required": [
             "id",
             "members"
+           ]
+          }
+         },
+         "notes": {
+          "description": "notes on the board: free text at a position, for explaining the design; the engines ignore them",
+          "type": "array",
+          "items": {
+           "type": "object",
+           "properties": {
+            "text": {
+             "type": "string",
+             "maxLength": 2000
+            },
+            "x": {
+             "type": "number"
+            },
+            "y": {
+             "type": "number"
+            },
+            "width": {
+             "type": "number",
+             "exclusiveMinimum": 0
+            }
+           },
+           "required": [
+            "text",
+            "x",
+            "y"
            ]
           }
          }

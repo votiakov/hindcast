@@ -361,6 +361,10 @@ pub fn canonical_spec(v: &Value) -> Value {
             .collect();
         s.insert("zones".into(), Value::Array(zones));
     }
+    // notes on the board: kept for the app, ignored by the engines
+    if let Some(Value::Array(ns)) = o.get("notes") {
+        s.insert("notes".into(), Value::Array(ns.clone()));
+    }
     Value::Object(s)
 }
 

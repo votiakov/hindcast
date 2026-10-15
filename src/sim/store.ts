@@ -228,6 +228,9 @@ interface State {
   paste: (b: BoardId, clip: Clip, times?: number) => void;
   selectAll: (b: BoardId) => void;
   addZone: (b: BoardId, pos: XYPosition) => void;
+  /** a note on the board (empty: it opens for typing); no position: above the design */
+  addNote: (b: BoardId, pos?: XYPosition, text?: string) => void;
+  updateNote: (b: BoardId, id: string, text: string) => void;
   updateNode: (b: BoardId, id: string, patch: Partial<SystemNodeData>) => void;
   updateZone: (b: BoardId, id: string, patch: Partial<ZoneData>) => void;
   moveNodes: (b: BoardId, positions: Record<string, XYPosition>) => void;
@@ -562,6 +565,19 @@ export const useSim = create<State>()((set, get) => {
     },
     selectAll: (b) => {
       patch(b, { nodes: board(b).nodes.map((n) => ({ ...n, selected: isSystem(n) })), edges: board(b).edges.map((e) => ({ ...e, selected: true })) });
+    },
+    addNote: (b, at, text = '') => {
+      remember(b);
+      const nodes = board(b).nodes;
+      const xs = nodes.map((n) => n.position.x);
+      const ys = nodes.map((n) => n.position.y);
+      const position = at ?? (nodes.length ? { x: Math.min(...xs), y: Math.min(...ys) - 120 } : { x: 0, y: 0 });
+      const note: AppNode = { id: `note-${Date.now().toString(36)}`, type: 'note', position, width: 220, data: { text }, selected: true };
+      patch(b, { nodes: [...nodes.map((n) => ({ ...n, selected: false }) as AppNode), note] });
+    },
+    updateNote: (b, id, text) => {
+      remember(b, `note:${id}`);
+      setNodes(b, (nodes) => nodes.map((n) => (n.id === id && n.type === 'note' ? { ...n, data: { ...n.data, text } } : n)));
     },
     addZone: (b, position) => {
       remember(b);

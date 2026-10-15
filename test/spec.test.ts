@@ -85,3 +85,16 @@ describe('traffic csv', () => {
     expect(t.peak).toBe(250);
   });
 });
+
+describe('notes on the board', () => {
+  it('travel through the spec and back, and the engines ignore them', async () => {
+    const { graphToSpec, specToGraph } = await import('../src/spec/convert');
+    const { simulate } = await import('../src/sim/headless');
+    const spec = { version: 1, components: [{ id: 'u', kind: 'client' }, { id: 'api', kind: 'server' }], connections: [['u', 'api']], notes: [{ text: 'one server, for now', x: 10, y: -120 }] };
+    const g = specToGraph(spec);
+    const note = g.nodes.find((n) => n.type === 'note')!;
+    expect(note.data).toEqual({ text: 'one server, for now' });
+    expect(graphToSpec(g.nodes, g.edges).notes).toEqual([{ text: 'one server, for now', x: 10, y: -120 }]);
+    expect(simulate(spec as never, { duration: 5, rps: 50 } as never).summary.meanErrorRate).toBe(0);
+  });
+});

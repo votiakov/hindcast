@@ -14,6 +14,7 @@ const KEYS: [string, string][] = [
   ['⇧ drag  ⌘ click', 'select several'],
   ['⌘C  ⌘X  ⌘V', 'copy, cut, paste components (with the links between them)'],
   ['⌘D  ⌘A', 'duplicate the selection / select everything'],
+  ['N', 'add a note to the board (double-click a note to edit it)'],
   ['?', 'this sheet'],
 ];
 

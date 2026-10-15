@@ -118,6 +118,11 @@ function useSimLoop() {
         saveCurrent();
         return;
       }
+      if (!mod && !e.altKey && (e.key === 'n' || e.key === 'N') && (s.mode === 'sandbox' || s.mode === 'compare')) {
+        e.preventDefault();
+        s.addNote(s.focus);
+        return;
+      }
       if (!mod && !e.altKey && (e.key === 'p' || e.key === 'P') && s.mode !== 'studio') {
         s.setPresent(!s.present);
         return;

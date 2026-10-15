@@ -80,6 +80,7 @@ export function specToGraph(input: unknown): Graph {
     nodes.push({ id: z.id, type: 'zone', position: { x: x0, y: y0 }, width: x1 - x0, height: y1 - y0, zIndex: -1, data: { label: z.label ?? z.id } });
   }
   for (const c of spec.components) nodes.push({ id: c.id, type: 'system', position: pos.get(c.id)!, data: componentData(c) });
+  (spec.notes ?? []).forEach((n, i) => nodes.push({ id: `note-${i + 1}`, type: 'note', position: { x: n.x, y: n.y }, ...(n.width ? { width: n.width } : {}), data: { text: n.text } }));
   const edges: SystemEdge[] = links(spec).map(({ from: source, to: target, latencyMs, calls, carries, replication }) => {
     const sync = replication === 'sync';
     const has = latencyMs || (calls ?? 1) > 1 || carries || sync;
@@ -116,6 +117,7 @@ export function graphToSpec(nodes: AppNode[], edges: SystemEdge[], name?: string
       return { id: z.id, label: String(z.data.label ?? z.id), members };
     });
   const ids = new Set(sys.map((n) => n.id));
+  const notes = nodes.filter((n) => n.type === 'note').map((n) => ({ text: String(n.data.text ?? ''), x: Math.round(n.position.x), y: Math.round(n.position.y), ...(n.width ? { width: Math.round(n.width) } : {}) }));
   return {
     version: 1,
     ...(name ? { name } : {}),
@@ -128,6 +130,7 @@ export function graphToSpec(nodes: AppNode[], edges: SystemEdge[], name?: string
           : ([e.source, e.target] as [string, string]),
       ),
     ...(zones.length ? { zones } : {}),
+    ...(notes.length ? { notes } : {}),
   };
 }
 

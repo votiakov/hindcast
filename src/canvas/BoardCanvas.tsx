@@ -7,13 +7,14 @@ import { ZoneNode } from './ZoneNode';
 import { FlowEdge } from './FlowEdge';
 import { BoardContext } from './BoardContext';
 import { RefMarkers } from '../theme/reference/RefEdge';
+import { NoteNode } from './NoteNode';
 
 export const DND_TYPE = 'application/x-bottleneck-kind';
 export const ZONE_KIND = 'zone';
 
 const TERMINAL_MAP_HEALTH = { idle: '#33475a', ok: '#6e8191', warm: '#e3c55a', hot: '#ef5b5b', down: '#22303c' } as const;
 
-const nodeTypes: NodeTypes = { system: SystemNode, zone: ZoneNode };
+const nodeTypes: NodeTypes = { system: SystemNode, zone: ZoneNode, note: NoteNode };
 const edgeTypes: EdgeTypes = { flow: FlowEdge };
 
 /** palette click-to-add goes to the focused board; each canvas registers how to add at its centre */
@@ -169,6 +170,7 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
               maskColor="rgba(2,6,23,0.7)"
               nodeColor={(n) => {
                 if (n.type === 'zone') return 'rgba(56, 189, 248, 0.08)';
+                if (n.type === 'note') return 'rgba(250, 204, 21, 0.25)';
                 const st = useSim.getState().boards[id].nodeStats[n.id];
                 const d = (n as AppNode & { type: 'system' }).data;
                 const h = healthOf(st?.util ?? 0, st?.dropRps ?? 0, st?.inRps ?? 1, isUp(d));
