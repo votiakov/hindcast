@@ -50,10 +50,10 @@ export function DesignMenu() {
     setDesigns(listDesigns());
     const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
-    window.addEventListener('mousedown', close);
+    window.addEventListener('mousedown', close, true);
     window.addEventListener('keydown', esc);
     return () => {
-      window.removeEventListener('mousedown', close);
+      window.removeEventListener('mousedown', close, true);
       window.removeEventListener('keydown', esc);
     };
   }, [open]);

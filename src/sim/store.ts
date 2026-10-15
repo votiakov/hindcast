@@ -15,7 +15,7 @@ import { setCommitment, setPricing, type Commitment, type PricingId } from './pr
 import type { AuditResult } from './audit';
 import type { SimAction } from './actions';
 import { applyChangesToGraph } from '../spec/convert';
-import { readAutosave } from './designs';
+import { readAutosave, readSettings, writeSettings } from './designs';
 import { Recorder, lean } from './recorder';
 import { EPISODES, OUTRO_SECONDS, episodeById, episodeDuration, episodeTraffic, type BeatAction, type StageBoard } from '../studio/episodes';
 
@@ -65,6 +65,11 @@ export const DEFAULT_SETTINGS: Settings = {
   sloErrorRate: 0.01,
   sloP99Ms: 300,
 };
+
+// what was chosen last time (pricing, commitment, SLO, display); the engine's module-level pricing follows
+const INITIAL_SETTINGS: Settings = readSettings(DEFAULT_SETTINGS);
+setPricing(INITIAL_SETTINGS.pricing);
+setCommitment(INITIAL_SETTINGS.commitment);
 
 export interface Toast {
   id: number;
@@ -223,7 +228,8 @@ interface State {
   onNodesChange: (b: BoardId, c: NodeChange<AppNode>[]) => void;
   onEdgesChange: (b: BoardId, c: EdgeChange<SystemEdge>[]) => void;
   onConnect: (b: BoardId, c: Connection) => void;
-  addNode: (b: BoardId, kind: Kind, pos: XYPosition) => void;
+  /** from: a component to link to the new one, in the same undo step (a chain grown by clicks) */
+  addNode: (b: BoardId, kind: Kind, pos: XYPosition, from?: string) => void;
   /** the selected components and the links between them, for pasting */
   copySelection: (b: BoardId) => Clip | null;
   /** paste a copy below the original (the nth paste n steps down): new names, the links between the
@@ -399,7 +405,7 @@ export const useSim = create<State>()((set, get) => {
     toasts: [],
     lesson: freshLesson(lesson1),
     compare: init.compare,
-    settings: DEFAULT_SETTINGS,
+    settings: INITIAL_SETTINGS,
     analysisOpen: false,
     setAnalysisOpen: (analysisOpen) => set(analysisOpen ? { analysisOpen, auditOpen: false, specOpen: false, envelopeOpen: false } : { analysisOpen }),
     auditOpen: false,
@@ -501,6 +507,7 @@ export const useSim = create<State>()((set, get) => {
       if (k === 'pricing') setPricing(v as PricingId);
       if (k === 'commitment') setCommitment(v as Commitment);
       set({ settings: { ...get().settings, [k]: v } });
+      writeSettings(get().settings);
     },
 
     onNodesChange: (b, c) => {
@@ -528,14 +535,15 @@ export const useSim = create<State>()((set, get) => {
       remember(b);
       patch(b, { edges: addEdge({ ...c, type: 'flow', id: `e-${c.source}-${c.target}-${Date.now()}` }, edges) });
     },
-    addNode: (b, kind, position) => {
+    addNode: (b, kind, position, from) => {
       remember(b);
-      const nodes = board(b).nodes;
+      const { nodes, edges } = board(b);
       const name = nextName(nodes, kind);
       // readable ids (they show up in specs, the YAML editor and audit reports)
       const id = nodes.some((n) => n.id === name) ? `${name}-${Date.now().toString(36)}` : name;
       const node: SystemNode = { id, type: 'system', position, data: defaultData(kind, name), selected: true };
-      patch(b, { nodes: [...nodes.map((n) => ({ ...n, selected: false })), node] });
+      const link = from && nodes.some((n) => n.id === from && isSystem(n)) ? [{ id: `e-${from}-${id}-${Date.now()}`, source: from, target: id, type: 'flow' } as SystemEdge] : [];
+      patch(b, { nodes: [...nodes.map((n) => ({ ...n, selected: false })), node], ...(link.length ? { edges: [...edges, ...link] } : {}) });
     },
     copySelection: (b) => {
       const { nodes, edges } = board(b);
@@ -681,6 +689,8 @@ export const useSim = create<State>()((set, get) => {
     setMode: (mode) => {
       if (get().scrub) get().setScrub(null);
       if (get().playback) set({ playback: null });
+      // a toast about the board being left ("api-1 overloaded") would read as news about the next one
+      if (mode !== get().mode && get().toasts.length) set({ toasts: [] });
       if (mode !== 'sandbox' && (get().auditOpen || get().specOpen || get().envelopeOpen)) set({ auditOpen: false, specOpen: false, envelopeOpen: false });
       const focus = mode === 'compare' ? 'A' : 'main';
       if (mode === 'backtest') {

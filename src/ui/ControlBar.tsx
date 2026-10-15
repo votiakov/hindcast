@@ -20,7 +20,7 @@ export function ControlBar() {
     <div className="controlbar panel">
       {mode === 'sandbox' && <Timeline />}
       <div className="cb-row">
-      <button className={`play ${running ? 'on' : ''}`} onClick={() => setRunning(!running)} title="Space">
+      <button className={`play ${running ? 'on' : ''}`} onClick={() => setRunning(!running)} title={running ? 'Pause (Space)' : 'Play (Space)'} aria-label={running ? 'Pause' : 'Play'}>
         {running ? <Pause size={18} /> : <Play size={18} />}
       </button>
       <div className="speeds">

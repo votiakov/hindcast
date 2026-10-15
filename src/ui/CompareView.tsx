@@ -1,6 +1,6 @@
 import { ReactFlowProvider } from '@xyflow/react';
-import { Eye, Lightbulb, RotateCcw, ShieldAlert, Shuffle, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { ChevronRight, Eye, Lightbulb, RotateCcw, ShieldAlert, Shuffle, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { auditInBrowser } from '../sim/des/browserPool';
 import { graphToSpec } from '../spec/convert';
 import type { AuditResult } from '../sim/audit';
@@ -136,8 +136,13 @@ function Pane({ b }: { b: BoardId }) {
 function ScenarioStrip() {
   const current = useSim((s) => s.compare.scenarioId);
   const pick = useSim((s) => s.pickScenario);
+  const strip = useRef<HTMLDivElement>(null);
+  // twenty-eight chips scroll sideways: keep the current one in view (e.g. after "Next")
+  useEffect(() => {
+    strip.current?.querySelector('.sc-chip.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [current]);
   return (
-    <div className="scenario-strip">
+    <div className="scenario-strip" ref={strip}>
       {SCENARIOS.map((s) => (
         <button key={s.id} className={`sc-chip ${current === s.id ? 'on' : ''}`} onClick={() => pick(s.id)} title={s.tagline}>
           {s.title}
@@ -244,9 +249,11 @@ function Takeaway() {
   const titleA = useSim((s) => s.boards.A.title);
   const titleB = useSim((s) => s.boards.B.title);
   const reset = useSim((s) => s.reset);
+  const pick = useSim((s) => s.pickScenario);
   const [hidden, setHidden] = useState<string | null>(null);
   const sc = scenarioById(cmp.scenarioId);
   if (!sc || !cmp.finished || hidden === `${sc.id}-${cmp.t}`) return null;
+  const next = SCENARIOS[(SCENARIOS.findIndex((x) => x.id === sc.id) + 1) % SCENARIOS.length];
   return (
     <div className="takeaway-backdrop">
       <div className="takeaway panel">
@@ -273,9 +280,14 @@ function Takeaway() {
           <Lightbulb size={14} />
           <span>{sc.takeaway.lesson}</span>
         </div>
-        <button className="btn primary" onClick={reset}>
-          <RotateCcw size={14} /> Replay
-        </button>
+        <div className="tk-actions">
+          <button className="btn primary" onClick={() => pick(next.id)} title={next.tagline}>
+            Next: {next.title} <ChevronRight size={14} />
+          </button>
+          <button className="btn" onClick={reset}>
+            <RotateCcw size={14} /> Replay
+          </button>
+        </div>
       </div>
     </div>
   );

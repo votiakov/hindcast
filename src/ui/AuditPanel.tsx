@@ -8,7 +8,7 @@ import { graphToSpec } from '../spec/convert';
 import { auditInBrowser } from '../sim/des/browserPool';
 import { auditMarkdown } from '../sim/auditReport';
 import { auditHtml } from '../sim/auditHtml';
-import { availPct, downtimeText, type Finding, type Severity } from '../sim/audit';
+import { availPct, downtimeText, type AuditResult, type Finding, type Severity } from '../sim/audit';
 import type { SimAction } from '../sim/actions';
 import { isSystem } from '../sim/catalog';
 import './audit.css';
@@ -25,7 +25,7 @@ const SEV_LABEL: Record<Severity, string> = { critical: 'CRIT', major: 'MAJOR', 
 function currentSpec() {
   const { boards, settings } = useSim.getState();
   const { nodes, edges } = boards.main;
-  return { ...graphToSpec(nodes, edges, 'Sandbox'), pricing: settings.pricing, ...(settings.commitment !== 'none' ? { commitment: settings.commitment } : {}) };
+  return { ...graphToSpec(nodes, edges, boards.main.title || 'Sandbox'), pricing: settings.pricing, ...(settings.commitment !== 'none' ? { commitment: settings.commitment } : {}) };
 }
 
 export async function runAudit() {
@@ -174,6 +174,47 @@ function FindingRow({ f, open, names }: { f: Finding; open: boolean; names: Map<
   );
 }
 
+/** the design misses the SLO before anything goes wrong: every incident would be graded from an
+ *  outage, so say why — too little capacity, or a latency the SLO never allows — and offer the way out */
+function OutOfSlo({ r, names }: { r: AuditResult; names: Map<string, string> }) {
+  const latencyBound = r.baseline.errorRate <= r.slo.maxErrorRate && r.baseline.p99Ms > r.slo.maxP99Ms;
+  if (latencyBound) {
+    const suggest = Math.min(3000, Math.ceil((r.baseline.p99Ms * 1.25) / 50) * 50);
+    return (
+      <div className="au-stale au-overloaded">
+        Nothing is overloaded, but p99 is {ms(r.baseline.p99Ms)} against the {ms(r.slo.maxP99Ms)} SLO: this design&rsquo;s normal latency (a slow dependency, a long chain of calls) already misses it, so every incident below is graded from an outage. Shorten the slow path, or{' '}
+        <button
+          className="linkish"
+          onClick={() => {
+            useSim.getState().setSetting('sloP99Ms', suggest);
+            void runAudit();
+          }}
+        >
+          audit against a {ms(suggest)} p99 SLO
+        </button>
+        .
+      </div>
+    );
+  }
+  if (r.headroom.maxRps <= 0) return null;
+  const half = Math.max(10, Math.round(r.headroom.maxRps / 2));
+  return (
+    <div className="au-stale au-overloaded">
+      At {r.load.rps.toLocaleString('en-US')} req/s this design misses the SLO with nothing broken: {names.get(r.headroom.limitedBy ?? '') ?? r.headroom.limitedBy ?? 'it'} tops out near {Math.round(r.headroom.maxRps).toLocaleString('en-US')} req/s, so every incident below starts from an outage. Fix the capacity first (the last row has verified fixes), or{' '}
+      <button
+        className="linkish"
+        onClick={() => {
+          useSim.getState().setTraffic(half);
+          void runAudit();
+        }}
+      >
+        audit at {half.toLocaleString('en-US')} req/s
+      </button>
+      .
+    </div>
+  );
+}
+
 export function AuditPanel() {
   const audit = useSim((s) => s.audit);
   const traffic = useSim((s) => s.traffic);
@@ -254,6 +295,7 @@ export function AuditPanel() {
               </div>
             </div>
           </div>
+          {!r.baseline.meetsSlo && <OutOfSlo r={r} names={names} />}
           {r.curve?.length > 1 && <LoadCurve curve={r.curve} now={r.load.rps} limit={r.headroom.maxRps} sloP99={r.slo.maxP99Ms} />}
           <div className="au-list">
             {r.findings.map((f) => (
@@ -276,7 +318,7 @@ export function AuditPanel() {
               onClick={() => {
                 const a = document.createElement('a');
                 a.href = URL.createObjectURL(new Blob([auditHtml(r)], { type: 'text/html' }));
-                a.download = `failure-audit-${useSim.getState().boards.main.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.html`;
+                a.download = `failure-audit-${useSim.getState().boards.main.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'design'}.html`;
                 a.click();
               }}
             >

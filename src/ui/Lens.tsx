@@ -43,8 +43,13 @@ export function Lens({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && !(e.target as HTMLElement).closest('.metrics') && onClose();
-    window.addEventListener('mousedown', close);
-    return () => window.removeEventListener('mousedown', close);
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('mousedown', close, true);
+    window.addEventListener('keydown', esc);
+    return () => {
+      window.removeEventListener('mousedown', close, true);
+      window.removeEventListener('keydown', esc);
+    };
   }, [onClose]);
 
   const rows = nodes
@@ -99,10 +104,10 @@ export function Lens({ onClose }: { onClose: () => void }) {
           <small>/month</small>
         </div>
         <div className="lens-sub">
-          {money(total)}/h · {perMillion !== null ? <>{money(perMillion)} per million requests</> : 'no traffic'} · {PRICING[pricing].label}
+          {money(total)}/h · {perMillion !== null ? <>{money(perMillion)} per million requests</> : 'no traffic'} · {pricing !== 'illustrative' && commitment !== 'none' ? `${PRICING[pricing].label.replace(/, on-demand$/, '')}, ${commitment === '1y' ? '1' : '3'}-year commitment` : PRICING[pricing].label}
         </div>
         {perCloud.length > 1 && (
-          <div className="lens-clouds">
+          <div className="lens-clouds" title={`The same design at a steady ${rpsKey.toLocaleString('en-US')} req/s under each profile${commitment !== 'none' ? `, the clouds with a ${commitment === '1y' ? '1' : '3'}-year commitment` : ''}; the figure above is the live run`}>
             {perCloud.map((c) => (
               <button key={c.id} className={c.id === pricing ? 'on' : ''} onClick={() => useSim.getState().setSetting('pricing', c.id)} title={`${PRICING[c.id].label} — click to switch`}>
                 <span>{PRICING[c.id].short}</span>
@@ -111,6 +116,7 @@ export function Lens({ onClose }: { onClose: () => void }) {
             ))}
           </div>
         )}
+        {perCloud.length > 1 && <div className="lens-sub">per profile: the same design at a steady {rpsKey.toLocaleString('en-US')} req/s</div>}
         <table className="lens-table">
           <tbody>
             {rows.map((r) => (
