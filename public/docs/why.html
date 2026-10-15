@@ -41,7 +41,7 @@
 <tr><td>failure</td><td>inject a fault and watch</td><td>an audit that kills every component, slows every dependency, chills every cache and darkens every zone, then re-tests each fix on the same incident and prices it per month</td></tr>
 <tr><td>Kubernetes</td><td>usually not modelled</td><td>CPU-quota throttling, OOM kills and leaks, node pools, losing a node at the peak, manifest diffs, PR checks</td></tr>
 </table></div>
-<p>Hindcast's two engines, a fluid model and a discrete-event one, are its own, written in Rust and checked against each other in CI; on 200 generated boards their error rates agree within 5 points on 199 (<code>docs/engines.md</code>). Where the boards look alike, it's because load balancers, caches and queues look alike.</p>
+<p>Hindcast's two engines, a fluid model and a discrete-event one, are its own, written in Rust and checked against each other in CI; on 200 generated boards their error rates agree within 5 points on 199, and on the 98 that both serve healthily their p50 and p99 agree within the discrete-event engine's seed-to-seed range ±25% on 97 (<code>docs/engines.md</code>). Where the boards look alike, it's because load balancers, caches and queues look alike.</p>
 
 <h2>Why you can check the numbers</h2>
 <p>Every accuracy figure comes from reference systems in the repository, and the committed data regenerates the tables from a clone. The main one is the OpenTelemetry Astronomy Shop on a kind cluster on one laptop, with k6 replaying the arrival curve of NASA's July 1995 web log (<a href="accuracy.html">accuracy</a>, <code>reference/k8s</code>). Before each of nine out-of-sample runs, the model's verdict was committed; then the run was recorded and scored.</p>

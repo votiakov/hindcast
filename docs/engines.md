@@ -166,7 +166,12 @@ icon in `canvas/icons.tsx`, colours in `theme/themes.ts`, and (if it has new kno
   98 ms; at 1,200 req/s both give 14.8 % errors. Across 200 generated boards the two engines' error
   rates agree within 5 points on 199 (`scripts/engine-crosscheck.ts`; test/sandbox.test.ts checks the
   core cases on every change). The one left is a worker loaded to exactly its capacity, where the DES
-  itself has no steady state (29–45% failed depending on the seed) and the fluid engine holds 16.5%.
+  itself has no steady state (29–45% failed depending on the seed) and the fluid engine holds 14.3%.
+  Latency is compared too: on the 98 boards both engines serve healthily (under 5% errors, no
+  component at ≥ 97% load), the fluid p50 and p99 of answers fall inside the DES's five-seed range
+  ±25% + 5 ms on 97. The one outside is a cold-start cascade the per-tick fluid model can't stagger.
+  The summary p99s are not the same quantity: the fluid one counts failures as timeouts once they pass
+  1%, the DES's is of successful answers only.
 - **Metastable failure emerges.** 700 req/s with a 6 s spike to 1,600, client timeout 1 s, API queue 3 s:
 
   | client | errors during spike | errors 20–30 s | errors 50–60 s |
