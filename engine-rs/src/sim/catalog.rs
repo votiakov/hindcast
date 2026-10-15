@@ -137,6 +137,9 @@ pub fn spec(kind: &str) -> KindSpec {
         "llmapi" => KindSpec { cost_per_request: Some(0.002), ..k(100.0, 1500.0, 0.0, false) },
         // someone else's service: a payment API, the websites a crawler fetches
         "external" => k(1000.0, 200.0, 0.0, false),
+        // a managed key-value store (DynamoDB on demand): no box to size — a throughput limit for the
+        // table, a per-partition one for any single key, and a price per request (80/20 reads/writes)
+        "kv" => KindSpec { cost_per_request: Some(0.45 / 1_000_000.0), ..k(40000.0, 5.0, 0.0, false) },
         _ => k(250.0, 25.0, 0.1, true),
     }
 }
@@ -192,6 +195,8 @@ pub fn kind_pricing(profile: &str, kind: &str) -> Option<KindPricing> {
             "queue" => per(1.2 / 1_000_000.0),
             "function" => per(0.2 / 1_000_000.0),
             "llmapi" => per(0.15 / 1_000_000.0 * 1000.0 + 0.6 / 1_000_000.0 * 300.0),
+            // DynamoDB on demand: $0.25 per million reads, $1.25 per million writes, 80/20
+            "kv" => per(0.45 / 1_000_000.0),
             _ => None,
         },
         "gcp-us-central1" => match kind {
@@ -206,6 +211,8 @@ pub fn kind_pricing(profile: &str, kind: &str) -> Option<KindPricing> {
             "queue" => per(0.11 / 1_000_000.0),
             "function" => per(0.4 / 1_000_000.0),
             "llmapi" => per(0.15 / 1_000_000.0 * 1000.0 + 0.6 / 1_000_000.0 * 300.0),
+            // Firestore: $0.06 per 100k reads, $0.18 per 100k writes, 80/20
+            "kv" => per(0.84 / 1_000_000.0),
             _ => None,
         },
         _ => None,
@@ -281,7 +288,7 @@ pub fn is_up(d: &NodeData) -> bool {
 pub fn capacity_of(d: &NodeData, reachable: Option<f64>) -> f64 {
     let sp = spec(&d.kind);
     let reachable = reachable.unwrap_or_else(|| instances_up(d));
-    let cap = if d.kind == "function" || d.kind == "llmapi" || d.kind == "external" || d.kind == "gateway" {
+    let cap = if d.kind == "function" || d.kind == "llmapi" || d.kind == "external" || d.kind == "kv" || d.kind == "gateway" {
         d.limit.unwrap_or(sp.capacity)
     } else {
         let t = if sp.tiered { tier(&d.tier).0 } else { 1.0 };
@@ -300,6 +307,12 @@ pub fn shards_of(d: &NodeData) -> f64 {
         1.0
     }
 }
+
+/// a key-value store's partition: 3,000 reads or 1,000 writes a second (DynamoDB), whatever the table
+/// may do — so one hot key throttles however much the table is provisioned for
+pub const KV_PARTITION_READS: f64 = 3000.0;
+pub const KV_PARTITION_WRITES: f64 = 1000.0;
+
 
 /// the share of a database's traffic on its busiest shard: the hot key, plus an even share of the rest
 pub fn hot_shard_share(d: &NodeData) -> f64 {
@@ -373,6 +386,7 @@ pub fn default_data(kind: &str, name: &str) -> NodeData {
         "function" => d.limit = Some(3000.0),
         "llmapi" => d.limit = Some(100.0),
         "external" => d.limit = Some(1000.0),
+        "kv" => d.limit = Some(40000.0),
         _ => {}
     }
     d

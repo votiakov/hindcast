@@ -24,8 +24,8 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
   const instances = data.instances ?? 1;
   const set = (patch: Partial<SystemNodeData>) => updateNode(b, id, patch);
   const caller = CALLERS.has(data.kind);
-  const bounded = data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'external' && data.kind !== 'function' && data.kind !== 'queue';
-  const calibratable = data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'external' && data.kind !== 'function' && data.kind !== 'queue';
+  const bounded = data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'external' && data.kind !== 'kv' && data.kind !== 'function' && data.kind !== 'queue';
+  const calibratable = data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'external' && data.kind !== 'kv' && data.kind !== 'function' && data.kind !== 'queue';
   const tuned = (data.retries ?? 0) > 0 || !!data.breaker || !!data.timeoutMs || (data.routing && data.routing !== 'split') || (data.fanout ?? 1) > 1 || data.queueS !== undefined;
   const [more, setMore] = useState(tuned);
   const [cal, setCal] = useState(false);
@@ -214,10 +214,10 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
           </select>
         </div>
       )}
-      {(data.kind === 'gateway' || data.kind === 'function' || data.kind === 'llmapi' || data.kind === 'external') && (
+      {(data.kind === 'gateway' || data.kind === 'function' || data.kind === 'llmapi' || data.kind === 'external' || data.kind === 'kv') && (
         <div className="nc-row">
           <span className="nc-l">{data.kind === 'function' ? 'max conc.' : 'rate limit'}</span>
-          <input type="range" min={data.kind === 'llmapi' ? 10 : 100} max={data.kind === 'llmapi' ? 1000 : 10000} step={data.kind === 'llmapi' ? 10 : 100} value={data.limit ?? 1000} onChange={(e) => set({ limit: +e.target.value })} />
+          <input type="range" min={data.kind === 'llmapi' ? 10 : data.kind === 'kv' ? 1000 : 100} max={data.kind === 'llmapi' ? 1000 : data.kind === 'kv' ? 100000 : 10000} step={data.kind === 'llmapi' ? 10 : data.kind === 'kv' ? 1000 : 100} value={data.limit ?? 1000} onChange={(e) => set({ limit: +e.target.value })} />
           <b className="nc-v">{fmt(data.limit ?? 1000)}/s</b>
         </div>
       )}
@@ -353,7 +353,7 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
             <option value="lat2000">+2 s</option>
             <option value="deg0.5">50% capacity</option>
             {(data.kind === 'cache' || data.kind === 'cdn') && <option value="flush">flush cache</option>}
-            {data.kind === 'db' && <option value={data.hotKeyShare ? 'hot0' : 'hot0.3'}>{data.hotKeyShare ? 'cool the hot key' : 'hot key (30% on one key)'}</option>}
+            {(data.kind === 'db' || data.kind === 'kv') && <option value={data.hotKeyShare ? 'hot0' : 'hot0.3'}>{data.hotKeyShare ? 'cool the hot key' : 'hot key (30% on one key)'}</option>}
             {(data.faultRate || data.faultLatencyMs || data.degraded !== undefined) && <option value="restore">restore</option>}
           </select>
         )}

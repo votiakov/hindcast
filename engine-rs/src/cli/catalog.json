@@ -155,6 +155,17 @@
       "scalesHorizontally": false
     },
     {
+      "kind": "kv",
+      "label": "Key-Value Store",
+      "description": "Managed NoSQL (DynamoDB on demand): no box to size and billed per request — but one partition takes 3,000 reads or 1,000 writes a second, so a hot key throttles whatever the table allows.",
+      "capacityPerInstanceRps": 40000,
+      "baseLatencyMs": 5,
+      "costPerHour": 0,
+      "costPerRequest": 4.5000000000000003e-7,
+      "sizable": false,
+      "scalesHorizontally": false
+    },
+    {
       "kind": "external",
       "label": "External API",
       "description": "Someone else's service: a payment provider, a partner API, the websites a crawler fetches. You cannot size it — only respect its rate limit and live with its latency and errors.",
@@ -390,6 +401,13 @@
               "basis": "GPT-4o-mini: $0.15 / $0.60 per million input / output tokens, ~1,000 in + 300 out per request"
             },
             "source": "https://pricepertoken.com/pricing-page/model/openai-gpt-4o-mini"
+          },
+          "kv": {
+            "perRequest": {
+              "price": 4.5000000000000003e-7,
+              "basis": "DynamoDB on demand: $0.25 per million reads, $1.25 per million writes, at 80% reads"
+            },
+            "source": "https://aws.amazon.com/dynamodb/pricing/on-demand/"
           }
         }
       },
@@ -548,6 +566,13 @@
               "basis": "same hosted model as the AWS profile (GPT-4o-mini, ~1,000 in + 300 out tokens)"
             },
             "source": "https://pricepertoken.com/pricing-page/model/openai-gpt-4o-mini"
+          },
+          "kv": {
+            "perRequest": {
+              "price": 8.4e-7,
+              "basis": "Firestore: $0.06 per 100k reads, $0.18 per 100k writes, at 80% reads"
+            },
+            "source": "https://cloud.google.com/firestore/pricing"
           }
         }
       }

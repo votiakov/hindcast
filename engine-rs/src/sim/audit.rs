@@ -48,6 +48,7 @@ fn label_of(kind: &str) -> &'static str {
         "llm" => "GPU Inference",
         "llmapi" => "LLM Provider API",
         "external" => "External API",
+        "kv" => "Key-Value Store",
         _ => "Component",
     }
 }
@@ -327,7 +328,7 @@ fn capacity_fixes(c: Option<&JMap<String, Value>>, nm: &dyn Fn(&str) -> String) 
             out.push(Cand { title: format!("Size {} up to {}", nm(id), TIERS[i + 1]), why: "Bigger instance class: about twice the throughput.".into(), changes: vec![set(id, json!({ "tier": TIERS[i + 1] }))] });
         }
     }
-    if kind == "gateway" || kind == "function" || kind == "llmapi" {
+    if kind == "gateway" || kind == "function" || kind == "llmapi" || kind == "kv" {
         let lim = js_round(get_num(c, "limit").unwrap_or(kind_spec(kind).capacity) * 2.0);
         out.push(Cand { title: format!("Raise {} limit to {}/s", nm(id), js_num(lim)), why: "The limit, not the hardware, is what fails first.".into(), changes: vec![set(id, json!({ "limit": lim }))] });
     }
@@ -559,7 +560,7 @@ pub fn audit(input: &Architecture, o: &AuditOptions, progress: &mut dyn FnMut(f6
         if kind == "cache" || kind == "cdn" {
             incidents.push(Incident { id: format!("cold:{}", id), kind: "cold-cache", target: id.clone(), title: format!("{} restarts cold", nm(&id)), events: vec![json!({ "at": FAULT_AT, "action": { "type": "flush-cache", "id": id } })], traffic: None });
         }
-        if kind == "db" && get_num(c, "shards").unwrap_or(1.0) > 1.0 {
+        if kind == "kv" || (kind == "db" && get_num(c, "shards").unwrap_or(1.0) > 1.0) {
             incidents.push(Incident { id: format!("hot:{}", id), kind: "hot-key", target: id.clone(), title: format!("{}: 30% of traffic on one key", nm(&id)), events: fault(json!({ "type": "hot-key", "id": id, "share": 0.3 }), json!({ "type": "hot-key", "id": id, "share": 0 })), traffic: None });
         }
         if kind != "lb" && kind != "queue" {

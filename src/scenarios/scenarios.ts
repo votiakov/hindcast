@@ -670,4 +670,40 @@ BASIC_SCENARIOS.push({
   },
 });
 
+/** a database you size vs a key-value store you pay per request (the primer's SQL or NoSQL) */
+const storeBoard = (store: 'db' | 'kv') =>
+  graph(
+    [
+      ['users', 'client', X[0], 200],
+      ['lb', 'lb', X[1], 200],
+      ['api', 'server', X[2], 200, { instances: 40, name: 'api' }],
+      store === 'db' ? ['store', 'db', X[3], 200, { tier: 'L', name: 'postgres (L)' }] : ['store', 'kv', X[3], 200, { name: 'dynamodb' }],
+    ],
+    [['users', 'lb'], ['lb', 'api'], ['api', 'store']],
+  );
+
+BASIC_SCENARIOS.push({
+  id: 'sql-box-vs-kv-on-demand',
+  title: 'A Database Box vs a Key-Value Store on Demand',
+  tagline: 'Size a database for the peak, or pay for every request?',
+  watch: 'The cost strip: the box costs the same all night; the key-value store costs nothing at rest — and the most at the peak.',
+  readRatio: 0.8,
+  a: { title: 'Postgres, size L', graph: storeBoard('db') },
+  b: { title: 'Key-value, on demand', graph: storeBoard('kv') },
+  timeline: [
+    { at: 0, rps: 300, caption: 'A quiet night: 300 req/s. The box idles at its full price.' },
+    { at: 10, rps: 300 },
+    { at: 13, rps: 8000, caption: 'A launch: 8,000 req/s, twice what the biggest box serves.' },
+    { at: 26, rps: 8000 },
+    { at: 28, rps: 300, caption: 'Back to quiet.' },
+    { at: 36, rps: 300 },
+  ],
+  events: [],
+  takeaway: {
+    a: 'The box was paid for all night and still could not serve the launch: half of it failed at the largest size there is.',
+    b: 'Pay-per-request cost almost nothing at rest and absorbed the launch — at several times the box’s hourly price while it lasted.',
+    lesson: 'Managed key-value stores trade a fixed bill for a per-request one: cheap when quiet, elastic at a spike, dearer at sustained high load — and one hot key still throttles. Pick by the shape of your traffic and your access pattern, not by fashion.',
+  },
+});
+
 export const SCENARIOS: Scenario[] = [...BASIC_SCENARIOS, ...ADVANCED];

@@ -175,10 +175,12 @@ describe('one component at a time, against queueing arithmetic', () => {
 
   it('cost on the board is what the catalogue prices it at', () => {
     for (const kind of Object.keys(KINDS) as Kind[]) {
-      if (kind === 'client' || kind === 'function' || kind === 'llmapi') continue;
+      if (kind === 'client' || kind === 'function') continue;
       const b = board([{ id: 'users', kind: 'client' }, { id: 'x', kind }], [['users', 'x']]);
       const s = run(b, 1, { seconds: 5 });
-      expect(s.nodeStats.x.costPerHour, kind).toBeCloseTo(costOf(data(b, 'x')), 4);
+      // the fixed price, plus what usage-billed kinds charge for the requests they served
+      const usage = (KINDS[kind].costPerRequest ?? 0) * s.nodeStats.x.inRps * 3600;
+      expect(s.nodeStats.x.costPerHour, kind).toBeCloseTo(costOf(data(b, 'x')) + usage, 4);
     }
   });
 });
@@ -187,7 +189,7 @@ describe('one component at a time, against queueing arithmetic', () => {
 let seed = 7;
 const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
 const pick = <T,>(a: readonly T[]): T => a[Math.floor(rnd() * a.length)];
-const KINDS_FOR_GEN: Kind[] = ['lb', 'gateway', 'server', 'worker', 'cache', 'db', 'replica', 'queue', 'storage', 'function', 'cdn'];
+const KINDS_FOR_GEN: Kind[] = ['lb', 'gateway', 'server', 'worker', 'cache', 'db', 'replica', 'queue', 'storage', 'function', 'cdn', 'kv', 'external'];
 
 /** a random layered board: users → … with knobs */
 function generate(): { components: Comp[]; connections: [string, string][] } {

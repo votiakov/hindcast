@@ -5,7 +5,7 @@ import { z } from 'zod';
  * (app, CLI, MCP server, future engines). Plain data, JSON or YAML.
  */
 
-export const KIND_VALUES = ['client', 'cdn', 'lb', 'gateway', 'server', 'worker', 'function', 'cache', 'db', 'replica', 'storage', 'queue', 'llm', 'llmapi', 'external'] as const;
+export const KIND_VALUES = ['client', 'cdn', 'lb', 'gateway', 'server', 'worker', 'function', 'cache', 'db', 'replica', 'storage', 'queue', 'llm', 'llmapi', 'external', 'kv'] as const;
 
 export const ComponentSpec = z
   .object({
@@ -16,7 +16,7 @@ export const ComponentSpec = z
     instances: z.number().int().min(1).max(500).optional().describe('server/worker/llm: horizontal instances (reachable only behind lb/gateway/queue)'),
     runtime: z.enum(['node', 'python', 'java', 'go', 'rust']).optional().describe('server/worker/function language runtime'),
     hitRate: z.number().min(0).max(0.999).optional().describe('cache/cdn hit ratio'),
-    limit: z.number().positive().optional().describe('gateway/llmapi/external rate limit or function max concurrency, req/s'),
+    limit: z.number().positive().optional().describe('gateway/llmapi/external/kv rate limit or function max concurrency, req/s'),
     batching: z.boolean().optional().describe('llm: continuous batching (×4 throughput, +400ms)'),
     retries: z.number().int().min(0).max(10).optional().describe('retries per failed downstream call'),
     retryPolicy: z.enum(['immediate', 'backoff', 'budget']).optional(),
@@ -43,7 +43,7 @@ export const ComponentSpec = z
     workingSetGb: z.number().positive().optional().describe('cache: the data it fronts, GB — with it the hit rate follows from the cache size (S 6.4, M 13, L 26 GB) and `skew`'),
     skew: z.number().min(0.1).max(3).optional().describe('cache: how concentrated reads are on popular keys (Zipf exponent, default 1)'),
     shards: z.number().int().min(1).max(256).optional().describe('db/replica: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash (give a sharded database\'s replica the same count)'),
-    hotKeyShare: z.number().min(0).max(1).optional().describe('db: share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which saturates first'),
+    hotKeyShare: z.number().min(0).max(1).optional().describe('db/kv: share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which saturates first'),
     capacity: z.number().positive().optional().describe('override: req/s per size-S instance'),
     latencyMs: z.number().nonnegative().optional().describe('override: base service time'),
     costPerHour: z.number().nonnegative().optional().describe('override: $/h per size-S instance'),

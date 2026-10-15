@@ -90,6 +90,7 @@ export function nodeView(d0: SystemNodeData, st: NodeStats | undefined, running:
     case 'gateway':
     case 'llmapi':
     case 'external':
+    case 'kv':
       stats = [
         { label: 'in', value: `${fmt(inRps)}/s` },
         { label: '429s', value: `${fmt(dropRps)}/s`, bad: dropRps > 1 },
@@ -172,7 +173,8 @@ export function explain(d: SystemNodeData, st: NodeStats | undefined, v: NodeVie
   if (st.retryAmp > 1.5) return { tone: 'bad', text: `Retry amplification ×${st.retryAmp.toFixed(1)}: failed calls are retried, multiplying the load on an already struggling dependency.` };
   if (st.lateFrac > 0.05) return { tone: 'bad', text: `${Math.round(st.lateFrac * 100)}% of responses arrive after the ${fmtMs(d.timeoutMs ?? 0)} timeout — the work was done, but the caller had already given up.` };
   if (d.kind === 'queue' && st.lagS > 5) return { tone: 'warn', text: `Backlog of ${fmt(st.queue)} messages: consumers are ${isFinite(st.lagS) ? `${st.lagS.toFixed(0)}s` : 'indefinitely'} behind. Producers are unaffected — work completes later.` };
-  if ((d.kind === 'gateway' || d.kind === 'llmapi' || d.kind === 'external') && st.dropRps > 1) return { tone: 'warn', text: `Rate limit reached: ${fmt(st.dropRps)}/s rejected with HTTP 429 to protect what is behind it.` };
+  if (d.kind === 'kv' && d.hotKeyShare && st.dropRps > 1 && st.inRps < capacityOf(d) * 0.98) return { tone: 'bad', text: `Hot partition: ${Math.round(d.hotKeyShare * 100)}% of requests are for one key, and one partition takes 3,000 reads or 1,000 writes a second however much the table allows (reads take it first; writes to that key starve) — ${fmt(st.dropRps)}/s are throttled. Cache that key, or spread it over several (write sharding).` };
+  if ((d.kind === 'gateway' || d.kind === 'llmapi' || d.kind === 'external' || d.kind === 'kv') && st.dropRps > 1) return { tone: 'warn', text: `Rate limit reached: ${fmt(st.dropRps)}/s rejected with HTTP 429 to protect what is behind it.` };
   if (d.kind === 'function' && st.coldFrac > 0.05) return { tone: 'warn', text: `${Math.round(st.coldFrac * 100)}% of invocations hit a cold start while new instances spin up.` };
   if (d.kind === 'replica' && (st.replLagS ?? 0) > 1) return { tone: 'warn', text: `${(st.replLagS ?? 0) >= 60 ? `${Math.round((st.replLagS ?? 0) / 60)} min` : `${Math.round(st.replLagS ?? 0)} s`} behind its primary: reads here miss the latest writes, and a failover now would lose them.` };
   if (v.noTargets && st.inRps > 0.01) return { tone: 'bad', text: `Nothing behind this ${d.kind === 'lb' ? 'load balancer' : 'gateway'}: the ${fmt(st.inRps)} req/s it receives have nowhere to go and fail. Connect it to what it fronts.` };

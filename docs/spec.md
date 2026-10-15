@@ -30,13 +30,13 @@ zones:                          # optional failure domains
 | field | applies to | meaning |
 |---|---|---|
 | `id` | all | unique id |
-| `kind` | all | `client cdn lb gateway server worker function cache db replica storage queue llm llmapi external` |
+| `kind` | all | `client cdn lb gateway server worker function cache db replica storage queue llm llmapi external kv` |
 | `name` | all | display name |
 | `tier` | sizable kinds | `S` (×1 capacity, ×1 cost), `M` (×2, ×2.2), `L` (×4, ×4.8) |
 | `instances` | server, worker, llm | horizontal instances (1–500); reachable only behind lb/gateway/queue |
 | `runtime` | server, worker, function | `node python java go rust` (see catalog.md) |
 | `hitRate` | cache, cdn | 0–0.999 |
-| `limit` | gateway, llmapi, external, function | rate limit (req/s) or max concurrency |
+| `limit` | gateway, llmapi, external, kv, function | rate limit (req/s) or max concurrency |
 | `batching` | llm | continuous batching: ×4 throughput, +400 ms |
 | `retries` | any caller | retries per failed downstream call (0–10) |
 | `retryPolicy` | any caller | `immediate` · `backoff` (exponential + jitter) · `budget` (≤ 10 % extra) |
@@ -52,7 +52,7 @@ zones:                          # optional failure domains
 | `writePolicy` | cache, cdn | `through` (default): writes go on to the origin. `behind`: acknowledged at the cache and flushed ~5 s later — writes are fast and the origin sees them smoothed, but the buffered ones are lost if the cache dies (`lostWrites`) |
 | `workingSetGb`, `skew` | cache | the data the cache fronts (GB) and how concentrated reads are on popular keys (Zipf exponent, default 1): with them the hit rate follows from the cache's memory (S 6.4, M 13, L 26 GB) instead of `hitRate` |
 | `shards` | db, replica | horizontal partitions (1–256), each a full database holding part of the keys: capacity and cost × shards. Writes split with the data, which replicas and caches cannot do. Give a sharded database's replica the same count (a replica per shard) |
-| `hotKeyShare` | db | share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which takes `hotKeyShare + (1 − hotKeyShare) / shards` of the load and saturates first |
+| `hotKeyShare` | db, kv | share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which takes `hotKeyShare + (1 − hotKeyShare) / shards` of the load and saturates first |
 | `capacity` | any | override: req/s per size-S instance |
 | `latencyMs` | any | override: base service time |
 | `costPerHour` | any | override: $/h per size-S instance |
@@ -116,7 +116,7 @@ slo: { maxErrorRate: 0.01, maxP99Ms: 300 }      # defaults
 | `{ type: inject-latency, id, ms }` | gray failure: every request takes `ms` longer (and each worker is busy longer, so throughput drops too) |
 | `{ type: flush-cache, id }` | a cache/cdn loses every key — hit rate restarts from zero and re-warms over `warmupS` |
 | `{ type: restore, id }` | end a brownout and clear injected faults |
-| `{ type: hot-key, id, share }` | a database: `share` of its traffic goes to one key, all on one shard (0 ends it) |
+| `{ type: hot-key, id, share }` | a database or key-value store: `share` of its traffic goes to one key — one shard, or one partition (0 ends it) |
 | `{ type: partition, a, b }` | cut the network between zones `a` and `b`: every link between their members fails (both sides keep running) |
 | `{ type: heal-partition }` | restore the network between every zone |
 

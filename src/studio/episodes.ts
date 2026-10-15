@@ -138,6 +138,7 @@ const COMPARE_HOOKS: Record<string, { hook: string; series?: string; metrics?: E
   'fanout-write-vs-read': { hook: 'One tweet.\nTwenty timelines — now, or later?', series: 'Failure modes at scale', metrics: ['errors', 'p99', 'cost'] },
   'hot-key-shards-vs-cache': { hook: 'One post went viral.\nTwice the shards didn’t help.', series: 'Failure modes at scale', metrics: ['errors', 'p99', 'cost'] },
   'async-vs-sync-replication': { hook: 'The network splits.\nLose writes, or refuse them?', series: 'Failure modes at scale', metrics: ['errors', 'p99'] },
+  'sql-box-vs-kv-on-demand': { hook: 'Size a database for the peak,\nor pay for every request?', series: 'Cloud cost, made visible', metrics: ['errors', 'p99', 'cost'] },
   'cache-on-writes': { hook: 'You added a cache.\nYour database is still on fire.', series: 'Cloud cost, made visible', metrics: ['errors', 'p99', 'cost'] },
   'region-failover': { hook: 'A whole AWS region goes dark.\nWhat does staying up cost?', series: 'Failure modes at scale', metrics: ['errors', 'p99', 'cost'] },
   'replicas-vs-bigger-db': { hook: 'Scale up or scale out?\nThen the primary dies.', series: 'Cloud cost, made visible', metrics: ['errors', 'p99', 'cost'] },

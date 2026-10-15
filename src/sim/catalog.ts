@@ -15,7 +15,8 @@ export type Kind =
   | 'cache' | 'db' | 'replica' | 'storage'
   | 'queue'
   | 'llm' | 'llmapi'
-  | 'external';
+  | 'external'
+  | 'kv';
 export type Tier = 'S' | 'M' | 'L';
 
 /** how a node spreads its outgoing calls across children */
@@ -217,6 +218,11 @@ export const KINDS: Record<Kind, KindSpec> = {
     capacity: 100, baseLatencyMs: 1500, costPerHour: 0, costPerRequest: 0.002, tiered: false,
     description: 'Hosted model API. Scales for you, but enforces a rate limit (429s) and bills per request (~$0.002).',
   },
+  kv: {
+    kind: 'kv', label: 'Key-Value Store', prefix: 'kv', color: '#2dd4bf',
+    capacity: 40000, baseLatencyMs: 5, costPerHour: 0, costPerRequest: 0.45 / 1_000_000, tiered: false,
+    description: 'Managed NoSQL (DynamoDB on demand): no box to size and billed per request — but one partition takes 3,000 reads or 1,000 writes a second, so a hot key throttles whatever the table allows.',
+  },
   external: {
     kind: 'external', label: 'External API', prefix: 'ext', color: '#38bdf8',
     capacity: 1000, baseLatencyMs: 200, costPerHour: 0, tiered: false,
@@ -234,7 +240,7 @@ export const CATEGORIES: { id: string; label: string; kinds: Kind[] }[] = [
   { id: 'traffic', label: 'Traffic', kinds: ['client'] },
   { id: 'edge', label: 'Edge & Network', kinds: ['cdn', 'lb', 'gateway'] },
   { id: 'compute', label: 'Compute', kinds: ['server', 'worker', 'function'] },
-  { id: 'data', label: 'Data', kinds: ['cache', 'db', 'replica', 'storage'] },
+  { id: 'data', label: 'Data', kinds: ['cache', 'db', 'replica', 'kv', 'storage'] },
   { id: 'async', label: 'Messaging', kinds: ['queue'] },
   { id: 'ai', label: 'AI', kinds: ['llm', 'llmapi'] },
   { id: 'outside', label: 'Third party', kinds: ['external'] },
@@ -256,6 +262,7 @@ export function defaultData(kind: Kind, name: string): SystemNodeData {
   if (kind === 'function') d.limit = 3000;
   if (kind === 'llmapi') d.limit = 100;
   if (kind === 'external') d.limit = 1000;
+  if (kind === 'kv') d.limit = 40000;
   return d;
 }
 
@@ -274,7 +281,7 @@ export const cacheHitRate = (d: SystemNodeData): number => (d.kind === 'cache' &
 export function capacityOf(d: SystemNodeData, reachable = instancesUp(d)): number {
   const spec = KINDS[d.kind];
   let cap: number;
-  if (d.kind === 'function' || d.kind === 'llmapi' || d.kind === 'external' || d.kind === 'gateway') cap = d.limit ?? spec.capacity;
+  if (d.kind === 'function' || d.kind === 'llmapi' || d.kind === 'external' || d.kind === 'kv' || d.kind === 'gateway') cap = d.limit ?? spec.capacity;
   else {
     const tier = spec.tiered ? TIERS[d.tier].capacity : 1;
     const batch = d.kind === 'llm' && d.batching ? BATCHING.capacity : 1;

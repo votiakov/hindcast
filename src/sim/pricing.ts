@@ -104,6 +104,10 @@ export const PRICING: Record<PricingId, PricingProfile> = {
         perRequest: { price: 0.15 / 1_000_000 * 1000 + 0.6 / 1_000_000 * 300, basis: 'GPT-4o-mini: $0.15 / $0.60 per million input / output tokens, ~1,000 in + 300 out per request' },
         source: 'https://pricepertoken.com/pricing-page/model/openai-gpt-4o-mini',
       },
+      kv: {
+        perRequest: { price: 0.45 / 1_000_000, basis: 'DynamoDB on demand: $0.25 per million reads, $1.25 per million writes, at 80% reads' },
+        source: 'https://aws.amazon.com/dynamodb/pricing/on-demand/',
+      },
     },
   },
   'gcp-us-central1': {
@@ -169,6 +173,10 @@ export const PRICING: Record<PricingId, PricingProfile> = {
       llmapi: {
         perRequest: { price: 0.15 / 1_000_000 * 1000 + 0.6 / 1_000_000 * 300, basis: 'same hosted model as the AWS profile (GPT-4o-mini, ~1,000 in + 300 out tokens)' },
         source: 'https://pricepertoken.com/pricing-page/model/openai-gpt-4o-mini',
+      },
+      kv: {
+        perRequest: { price: 0.84 / 1_000_000, basis: 'Firestore: $0.06 per 100k reads, $0.18 per 100k writes, at 80% reads' },
+        source: 'https://cloud.google.com/firestore/pricing',
       },
     },
   },

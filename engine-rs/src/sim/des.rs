@@ -332,6 +332,9 @@ struct DNode {
     sh_queue: Vec<VecDeque<Job>>,
     hot: f64,
     hot_last_t: f64,
+    /// a key-value store: the hot key's partition, in partition-seconds of work available
+    kv_bucket: f64,
+    kv_t: f64,
     queue: VecDeque<Job>,
     queue_max: f64,
     last_busy_t: f64,
@@ -542,10 +545,10 @@ impl<'a> Des<'a> {
         let cap = capacity_of(d, Some(reach)).max(1e-6);
         let lat = base_latency_of(d).max(0.05);
         let kind = d.kind.as_str();
-        if kind == "gateway" || kind == "llmapi" || kind == "external" {
+        if kind == "gateway" || kind == "llmapi" || kind == "external" || kind == "kv" {
             n.rate = d.limit.unwrap_or(spec(kind).capacity);
             n.workers = f64::INFINITY;
-            n.svc_mean_ms = if kind == "llmapi" || kind == "external" { d.latency_ms.unwrap_or(spec(kind).base_latency_ms) } else { lat };
+            n.svc_mean_ms = if kind == "llmapi" || kind == "external" || kind == "kv" { d.latency_ms.unwrap_or(spec(kind).base_latency_ms) } else { lat };
         } else if kind == "function" {
             n.rate = f64::INFINITY;
             n.workers = js_round(d.limit.unwrap_or(3000.0) * (lat / 1000.0)).max(1.0);
@@ -688,7 +691,21 @@ impl<'a> Des<'a> {
             self.pump(i);
             return;
         }
-        if kind == "llmapi" || kind == "external" {
+        if kind == "kv" {
+            // the hot key's partition: a bucket of partition-seconds, a read costing 1/3,000, a write 1/1,000
+            let h = self.nodes[i].data.hot_key_share.unwrap_or(0.0);
+            if h > 0.0 && self.rng.next() < h {
+                let n = &mut self.nodes[i];
+                n.kv_bucket = (n.kv_bucket + (now - n.kv_t)).min(1.0);
+                n.kv_t = now;
+                let cost = if read { 1.0 / super::catalog::KV_PARTITION_READS } else { 1.0 / super::catalog::KV_PARTITION_WRITES };
+                if n.kv_bucket < cost {
+                    return self.fail(Some(i), done, 1.0); // throttled
+                }
+                n.kv_bucket -= cost;
+            }
+        }
+        if kind == "llmapi" || kind == "external" || kind == "kv" {
             // provider capacity is not your problem — only its rate limit and latency are
             let n = &self.nodes[i];
             let (mean, fl) = (n.svc_mean_ms, n.data.fault_latency_ms.unwrap_or(0.0));
@@ -1196,7 +1213,7 @@ impl<'a> Des<'a> {
             let w = &n.win;
             let workers = if n.workers.is_finite() { n.workers } else { 1.0 };
             let util = if n.sh_workers > 0.0 { w.hot_area / (n.sh_workers * win_s) } else if n.data.kind == "queue" { n.backlog.len() as f64 / QUEUE_BACKLOG_MAX as f64 } else if n.rate.is_finite() { w.arrivals / (n.rate * win_s).max(1e-9) } else { w.busy_area / (workers * win_s) };
-            let billed = if n.data.kind == "function" || n.data.kind == "llmapi" || n.data.kind == "external" { w.usage_reqs } else if n.data.kind == "client" { 0.0 } else { w.arrivals };
+            let billed = if n.data.kind == "function" || n.data.kind == "llmapi" || n.data.kind == "external" || n.data.kind == "kv" { w.usage_reqs } else if n.data.kind == "client" { 0.0 } else { w.arrivals };
             let usage = billed * request_price(&n.data, &self.pricing) * 3600.0;
             let cost_h = match &n.scaler {
                 Some(s) => cost_of(&NodeData { instances: Some(s.live + s.pending.len() as f64), ..n.data.clone() }, &self.pricing),
@@ -1369,6 +1386,8 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
             sh_queue: vec![],
             hot: 0.0,
             hot_last_t: 0.0,
+            kv_bucket: 1.0,
+            kv_t: 0.0,
             queue: VecDeque::new(),
             queue_max: 0.0,
             last_busy_t: 0.0,
@@ -1591,6 +1610,7 @@ fn static_kind(k: &str) -> &'static str {
         "llm" => "llm",
         "llmapi" => "llmapi",
         "external" => "external",
+        "kv" => "kv",
         _ => "server",
     }
 }

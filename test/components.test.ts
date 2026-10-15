@@ -43,6 +43,7 @@ const HARNESS: Record<Exclude<Kind, 'client'>, Harness> = {
   function: alone('function'),
   llmapi: alone('llmapi'),
   external: alone('external'),
+  kv: alone('kv'),
   lb: { comps: [U, { id: 'x', kind: 'lb' }, sink('app')], conns: [['users', 'x'], ['x', 'app']], cap: KINDS.lb.capacity, over: 'shed' },
   gateway: { comps: [U, { id: 'x', kind: 'gateway' }, sink('app')], conns: [['users', 'x'], ['x', 'app']], cap: 1500, over: 'shed' },
   cache: { comps: [U, { id: 'x', kind: 'cache' }, sink('origin', 'db')], conns: [['users', 'x'], ['x', 'origin']], cap: KINDS.cache.capacity, readRatio: 1, over: 'shed' },
@@ -117,3 +118,21 @@ for (const [kind, h] of Object.entries(HARNESS) as [Exclude<Kind, 'client'>, Har
     });
   });
 }
+
+describe('a key-value store: the table scales, a partition does not', () => {
+  const kvSpec = (limit: number, hotKeyShare?: number) => ({ components: [U, { id: 'x', kind: 'kv' as Kind, limit, ...(hotKeyShare ? { hotKeyShare } : {}) }], connections: [['users', 'x'] as [string, string]] });
+  const h = (limit: number, hot?: number): Harness => ({ ...spec({ comps: [], conns: [], cap: 0, over: 'shed' }), comps: kvSpec(limit, hot).components, conns: kvSpec(limit, hot).connections, cap: limit, over: 'shed' });
+
+  it('a hot key is throttled at one partition’s 3,000 reads / 1,000 writes a second — reads first — in both engines', () => {
+    // 20,000 req/s, 80% reads, 30% for one key: 4,800 reads and 1,200 writes a second for one partition.
+    // Reads cost a third of a write and take the tokens first: 3,000 reads fill the partition, writes starve
+    const want = (20000 * 0.3 - 3000) / 20000;
+    expect(Math.abs(fluid(h(40000, 0.3), 20000).global.errorRate - want)).toBeLessThan(0.02);
+    expect(Math.abs(des(h(40000, 0.3), 20000).meanErrorRate - want)).toBeLessThan(0.03);
+  });
+
+  it('raising the table’s limit does not help the hot key; without one, the same load is served', () => {
+    expect(fluid(h(100000, 0.3), 20000).global.errorRate).toBeGreaterThan(0.12);
+    expect(fluid(h(40000), 20000).global.errorRate).toBeLessThan(0.001);
+  });
+});

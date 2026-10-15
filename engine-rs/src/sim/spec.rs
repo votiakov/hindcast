@@ -6,7 +6,7 @@ use super::engine::{EdgeData, SimEdge, SimNode};
 use crate::math::js_num;
 use serde_json::{json, Map as JMap, Value};
 
-const KINDS: [&str; 15] = ["client", "cdn", "lb", "gateway", "server", "worker", "function", "cache", "db", "replica", "storage", "queue", "llm", "llmapi", "external"];
+const KINDS: [&str; 16] = ["client", "cdn", "lb", "gateway", "server", "worker", "function", "cache", "db", "replica", "storage", "queue", "llm", "llmapi", "external", "kv"];
 const DATA_KEYS: [&str; 26] = ["tier", "instances", "runtime", "hitRate", "limit", "batching", "retries", "retryPolicy", "timeoutMs", "breaker", "fallback", "routing", "fanout", "stallRate", "stallMs", "queueS", "capacity", "latencyMs", "costPerHour", "autoscale", "warmupS", "writePolicy", "workingSetGb", "skew", "shards", "hotKeyShare"];
 
 #[derive(Clone, Debug, Default)]
