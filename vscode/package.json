@@ -1,0 +1,165 @@
+{
+  "name": "hindcast",
+  "displayName": "Hindcast",
+  "description": "A system design you can run: the live board beside your YAML spec, the engine's checks as you type, p99, errors and $/month in the status bar, and the failure audit as a report.",
+  "version": "0.1.0",
+  "publisher": "hindcast",
+  "private": true,
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/votiakov/hindcast"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Visualization",
+    "Linters",
+    "Other"
+  ],
+  "keywords": [
+    "system design",
+    "architecture",
+    "simulation",
+    "capacity",
+    "yaml"
+  ],
+  "main": "./dist/extension.cjs",
+  "activationEvents": [
+    "onLanguage:yaml",
+    "onLanguage:json",
+    "workspaceContains:**/*.hindcast.{yaml,yml,json}"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "hindcast.open",
+        "title": "Open design",
+        "category": "Hindcast",
+        "icon": "$(play-circle)"
+      },
+      {
+        "command": "hindcast.audit",
+        "title": "Audit design",
+        "category": "Hindcast",
+        "icon": "$(shield)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "hindcast.open",
+          "when": "hindcast.isSpec",
+          "group": "navigation@1"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "hindcast.open",
+          "when": "hindcast.isSpec",
+          "group": "hindcast@1"
+        },
+        {
+          "command": "hindcast.audit",
+          "when": "hindcast.isSpec",
+          "group": "hindcast@2"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "hindcast.open",
+          "when": "resourceFilename =~ /\\.hindcast\\.(ya?ml|json)$/",
+          "group": "navigation@9"
+        },
+        {
+          "command": "hindcast.audit",
+          "when": "resourceFilename =~ /\\.hindcast\\.(ya?ml|json)$/",
+          "group": "navigation@9"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "hindcast.open",
+          "when": "editorLangId == yaml || editorLangId == json"
+        },
+        {
+          "command": "hindcast.audit",
+          "when": "editorLangId == yaml || editorLangId == json"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Hindcast",
+      "properties": {
+        "hindcast.path": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to the native `hindcast` CLI. Used when the bundled WebAssembly engine is missing, or always when `#hindcast.engine#` is `cli`."
+        },
+        "hindcast.engine": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "cli"
+          ],
+          "enumDescriptions": [
+            "The bundled WebAssembly engine; the CLI only if it is missing",
+            "The CLI at hindcast.path"
+          ],
+          "default": "auto",
+          "description": "Which build of the engine runs checks, the status bar run and the audit."
+        },
+        "hindcast.rps": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "markdownDescription": "Traffic for the status bar run, the board and the audit, in req/s. `0`: the engine's default (500 req/s for a run, half the breaking point for the audit)."
+        },
+        "hindcast.costPerMinute": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "description": "What a minute of full outage costs the business, for the audit's $ at risk."
+        },
+        "hindcast.validateOnType": {
+          "type": "boolean",
+          "default": true,
+          "description": "Check the spec as you type (debounced), not only on save."
+        },
+        "hindcast.statusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show p99, error rate and $/month for the open spec in the status bar."
+        }
+      }
+    },
+    "yamlValidation": [
+      {
+        "fileMatch": [
+          "*.hindcast.yaml",
+          "*.hindcast.yml"
+        ],
+        "url": "./schemas/hindcast.schema.json"
+      }
+    ],
+    "jsonValidation": [
+      {
+        "fileMatch": "*.hindcast.json",
+        "url": "./schemas/hindcast.schema.json"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "schema": "tsx scripts/schema.ts",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run",
+    "test:host": "node scripts/build.mjs && node test/host/run.mjs",
+    "package": "node scripts/build.mjs && vsce package --no-dependencies --out dist/hindcast.vsix"
+  },
+  "devDependencies": {
+    "@types/vscode": "~1.85.0",
+    "@vscode/vsce": "^3.0.0"
+  }
+}

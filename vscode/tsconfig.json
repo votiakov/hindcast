@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "types": ["node", "vscode"],
+    "typeRoots": ["./node_modules/@types", "../node_modules/@types"]
+  },
+  "include": ["src", "webview", "scripts", "test", "vite.webview.config.ts", "vitest.config.ts"]
+}
