@@ -110,7 +110,7 @@ pub fn handle(m: &Value, msg: &Value, allow: &dyn Fn(&str) -> bool, sink: &mut V
         "resources/read" => {
             let uri = s(&params, &["uri"]);
             if uri == CANVAS_URI {
-                result(&id, json!({ "contents": [{ "uri": CANVAS_URI, "mimeType": "text/html;profile=mcp-app", "text": canvas_html(), "_meta": { "ui": { "csp": { "resourceDomains": ["https://fonts.googleapis.com", "https://fonts.gstatic.com"] } } } }] }))
+                result(&id, json!({ "contents": [{ "uri": CANVAS_URI, "mimeType": "text/html;profile=mcp-app", "text": canvas_html(), "_meta": { "ui": { "csp": { "resourceDomains": [] } } } }] }))
             } else {
                 error(&id, -32602, &format!("MCP error -32602: Resource {} not found", uri))
             }

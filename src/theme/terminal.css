@@ -6,7 +6,7 @@
    read the --r-* palette); this file sets the dark palette and the terminal chrome.
    Scoped to [data-theme='terminal'].
    ===================================================================================== */
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap');
+@import './fonts.css';
 
 :root[data-theme='terminal'] {
   /* the backtest palette (--bt-*) */

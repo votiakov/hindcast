@@ -13,8 +13,8 @@
   --red: #f43f5e;
   --green: #34d399;
   --violet: #a78bfa;
-  --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  --sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: 'IBM Plex Sans Condensed', system-ui, -apple-system, sans-serif;
   color-scheme: dark;
 }
 

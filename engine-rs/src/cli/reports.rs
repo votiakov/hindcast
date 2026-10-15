@@ -541,19 +541,19 @@ pub fn backtest_html(r: &Value, model: &Value) -> String {
     )
 }
 
-const HTML_STYLE: &str = r#"<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
-<style>
+// self-contained: no font service; IBM Plex where it is installed, the system's fonts otherwise
+const HTML_STYLE: &str = r#"<style>
 :root{--bg:#10161d;--pane:#121a22;--line:#22303c;--grid:#18232d;--text:#c9d4de;--dim:#6e8191;--hi:#e6edf3;--amber:#f2a93b;--red:#ef5b5b;--green:#58c48a;color-scheme:dark}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 "IBM Plex Sans Condensed","Arial Narrow",sans-serif}
-main{max-width:1040px;margin:0 auto;padding:28px 16px 64px}h1{font:600 20px "IBM Plex Mono",monospace;color:var(--hi);margin:0 0 4px}h1 span{color:var(--amber);font-size:12px;letter-spacing:.14em;text-transform:uppercase;display:block;margin-bottom:6px}
-h2{font:600 12px "IBM Plex Mono",monospace;margin:32px 0 8px;text-transform:uppercase;letter-spacing:.1em;color:var(--dim)}
-.sub{color:var(--dim);font-family:"IBM Plex Mono",monospace;font-size:12px}figure{margin:12px 0;background:var(--pane);border:1px solid var(--line);padding:8px 8px 6px}figcaption{font:500 12px "IBM Plex Mono",monospace;color:var(--dim);margin-bottom:4px}svg{width:100%;height:auto;display:block}
-.grid{stroke:var(--grid)}.slo{stroke:var(--red);stroke-dasharray:3 3}.ax{fill:var(--dim);font:10px "IBM Plex Mono",monospace}
-.legend{display:flex;gap:16px;flex-wrap:wrap;color:var(--dim);font:11px "IBM Plex Mono",monospace}.legend i{display:inline-block;width:10px;height:2px;margin-right:6px;vertical-align:middle}
-table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}th{font:500 11px "IBM Plex Mono",monospace;color:var(--dim)}
-.num{font-family:"IBM Plex Mono",monospace;white-space:nowrap}.pass{color:var(--green)}.miss{color:var(--red)}
+main{max-width:1040px;margin:0 auto;padding:28px 16px 64px}h1{font:600 20px "IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;color:var(--hi);margin:0 0 4px}h1 span{color:var(--amber);font-size:12px;letter-spacing:.14em;text-transform:uppercase;display:block;margin-bottom:6px}
+h2{font:600 12px "IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;margin:32px 0 8px;text-transform:uppercase;letter-spacing:.1em;color:var(--dim)}
+.sub{color:var(--dim);font-family:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;font-size:12px}figure{margin:12px 0;background:var(--pane);border:1px solid var(--line);padding:8px 8px 6px}figcaption{font:500 12px "IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;color:var(--dim);margin-bottom:4px}svg{width:100%;height:auto;display:block}
+.grid{stroke:var(--grid)}.slo{stroke:var(--red);stroke-dasharray:3 3}.ax{fill:var(--dim);font:10px "IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace}
+.legend{display:flex;gap:16px;flex-wrap:wrap;color:var(--dim);font:11px "IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace}.legend i{display:inline-block;width:10px;height:2px;margin-right:6px;vertical-align:middle}
+table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}th{font:500 11px "IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;color:var(--dim)}
+.num{font-family:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;white-space:nowrap}.pass{color:var(--green)}.miss{color:var(--red)}
 .verdict{font-size:17px;margin:12px 0;color:var(--hi);border-left:2px solid var(--amber);padding-left:12px}
-details{margin-top:24px}pre{white-space:pre-wrap;font:12px "IBM Plex Mono",monospace;color:var(--text)}a{color:var(--amber)}
+details{margin-top:24px}pre{white-space:pre-wrap;font:12px "IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;color:var(--text)}a{color:var(--amber)}
 </style></head><body><main>"#;
 
 // ---- the Studio card ----

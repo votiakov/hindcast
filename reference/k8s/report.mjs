@@ -17,8 +17,6 @@ const models = v.models.map((m) => ({ id: m.id, label: m.label, rows: m.rows.map
 const data = { slo: v.slo, settleS: v.settleS, models, ali, evaluatedAt: v.evaluatedAt };
 
 const html = `<title>Hindcast vs Reality</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
 <style>
 /* layout: one reading column; the scorecard and the per-run charts are the page, prose frames them */
 :root {

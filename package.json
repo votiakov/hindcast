@@ -27,6 +27,8 @@
     "mcp:golden": "npm run cli:build && tsx scripts/mcp-golden.ts"
   },
   "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/ibm-plex-sans-condensed": "^5.3.0",
     "@modelcontextprotocol/ext-apps": "^1.7.5",
     "@modelcontextprotocol/sdk": "^1.31.0",
     "@xyflow/react": "^12.3.0",
