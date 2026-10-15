@@ -32,15 +32,22 @@ const board = (components: Comp[], connections: [string, string][]): Board => {
 };
 
 /** run the board at a constant load until it settles; the snapshot the UI would show */
-function run(b: Board, rps: number, o: { seconds?: number; readRatio?: number; edit?: (t: number, b: Board) => void } = {}): Snapshot & { engine: Engine } {
+function run(b: Board, rps: number, o: { seconds?: number; readRatio?: number; edit?: (t: number, b: Board) => void } = {}): Snapshot & { engine: Engine; lastErr: number } {
   const e = new Engine();
   const dt = 0.05;
   const steps = Math.round((o.seconds ?? 60) / dt);
+  // the error rate over the last 10 s: a breaker that opens and half-opens cycles, and one instant is a phase of it
+  let errSum = 0;
+  let errN = 0;
   for (let i = 0; i < steps; i++) {
     o.edit?.(i * dt, b);
     e.step(b.nodes as never, b.edges as never, rps, o.readRatio ?? 0.8, dt, DEFAULT_ENGINE_CONFIG);
+    if (i >= steps - 10 / dt) {
+      errSum += e.snapshot([], []).global.errorRate;
+      errN++;
+    }
   }
-  return { ...e.snapshot(b.nodes as never, b.edges as never), engine: e };
+  return { ...e.snapshot(b.nodes as never, b.edges as never), engine: e, lastErr: errSum / Math.max(1, errN) };
 }
 /** what the board's actions change (kill, inject errors…): node data, not spec fields */
 const patch = (b: Board, id: string, p: Partial<SystemNodeData>) => {
@@ -189,7 +196,7 @@ describe('one component at a time, against queueing arithmetic', () => {
 let seed = 7;
 const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
 const pick = <T,>(a: readonly T[]): T => a[Math.floor(rnd() * a.length)];
-const KINDS_FOR_GEN: Kind[] = ['lb', 'gateway', 'server', 'worker', 'cache', 'db', 'replica', 'queue', 'storage', 'function', 'cdn', 'kv', 'external'];
+const KINDS_FOR_GEN: Kind[] = ['lb', 'gateway', 'server', 'worker', 'cache', 'db', 'replica', 'queue', 'storage', 'function', 'cdn', 'kv', 'external', 'search', 'vector', 'archive', 'edge'];
 
 /** a random layered board: users → … with knobs */
 function generate(): { components: Comp[]; connections: [string, string][] } {
@@ -212,6 +219,13 @@ function generate(): { components: Comp[]; connections: [string, string][] } {
       if (rnd() < 0.1) c.breaker = true;
       if (rnd() < 0.1) c.faultRate = pick([0.05, 0.3]); // applied as the inject-errors action does
       if ((kind === 'cache' || kind === 'cdn') && rnd() < 0.5) c.hitRate = pick([0.3, 0.9]);
+      if (kind === 'search' && rnd() < 0.5) c.refreshS = pick([1, 30]);
+      if (kind === 'search' || kind === 'vector') c.instances = 1 + Math.floor(rnd() * 3);
+      if (kind === 'vector' && rnd() < 0.5) c.recall = pick([0.9, 0.99]);
+      if (kind === 'vector' && rnd() < 0.5) c.vectorsM = pick([1, 10]);
+      if (kind === 'archive' && rnd() < 0.3) c.retrieval = pick(['expedited', 'standard'] as const);
+      if (kind === 'edge' && rnd() < 0.5) c.edgeShare = pick([0.2, 0.8]);
+      if (kind === 'edge' && rnd() < 0.5) c.cpuMs = pick([0.5, 4]);
       components.push(c);
       cur.push(id);
       for (const p of prev) if (rnd() < 0.7 || p === prev[prev.length - 1]) connections.push([p, id]);
@@ -267,10 +281,10 @@ describe('generated boards', () => {
     const bad: string[] = [];
     boards.forEach((spec, k) => {
       const rps = pick([50, 500, 5000]);
-      const base = run(board(spec.components, spec.connections), rps, { seconds: 40 }).global.errorRate;
-      const bigger = spec.components.map((c) => (['server', 'worker', 'llm'].includes(c.kind) ? { ...c, instances: (c.instances ?? 1) * 3 } : { ...c, tier: 'L' as const }));
-      const more = run(board(bigger, spec.connections), rps, { seconds: 40 }).global.errorRate;
-      const heavier = run(board(spec.components, spec.connections), rps * 3, { seconds: 40 }).global.errorRate;
+      const base = run(board(spec.components, spec.connections), rps, { seconds: 40 }).lastErr;
+      const bigger = spec.components.map((c) => (['server', 'worker', 'llm', 'search', 'vector'].includes(c.kind) ? { ...c, instances: (c.instances ?? 1) * 3 } : { ...c, tier: 'L' as const }));
+      const more = run(board(bigger, spec.connections), rps, { seconds: 40 }).lastErr;
+      const heavier = run(board(spec.components, spec.connections), rps * 3, { seconds: 40 }).lastErr;
       if (more > base + 0.02) bad.push(`#${k} at ${rps}/s: ${(base * 100).toFixed(1)}% errors, with 3× capacity ${(more * 100).toFixed(1)}%`);
       if (heavier < base - 0.02) bad.push(`#${k}: ${(base * 100).toFixed(1)}% errors at ${rps}/s, ${(heavier * 100).toFixed(1)}% at 3× the load`);
     });

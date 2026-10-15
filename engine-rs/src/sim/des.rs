@@ -334,6 +334,10 @@ struct Job {
 
 const NO_SHARD: u16 = u16::MAX;
 
+/// how long past the end of a run the users' requests still in flight are followed to their answers, s
+/// (a standard archive restore takes 3–5 h)
+const DRAIN_S: f64 = 6.0 * 3600.0;
+
 /// a call to the children, with what the caller's data said when it began (retries see the same)
 struct Call {
     n: usize,
@@ -582,6 +586,8 @@ struct Des<'a> {
     fail_by: HashMap<Why, f64>,
     total_reqs: f64,
     total_fail: f64,
+    /// users' requests not yet answered
+    live_users: f64,
     lost_writes: f64,
     dead_letters: f64,
     traffic: Vec<(f64, f64)>,
@@ -734,6 +740,7 @@ impl<'a> Des<'a> {
             }
             Cont::User { t0, .. } => {
                 self.release(id);
+                self.live_users -= 1.0;
                 let ms = (self.now - t0) * 1000.0;
                 self.win_reqs += 1.0;
                 self.total_reqs += 1.0;
@@ -1465,6 +1472,9 @@ impl<'a> Des<'a> {
             let read = self.rng.next() < self.sc.read_ratio;
             self.nodes[c].win.arrivals += 1.0;
             let finish = self.cont(Cont::User { t0, job: job.is_some() });
+            if job.is_none() {
+                self.live_users += 1.0;
+            }
             if self.nodes[c].children.is_empty() {
                 self.deliver(finish, why(c, R_NO_ROUTE));
             } else {
@@ -1886,6 +1896,7 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
         fail_by: HashMap::new(),
         total_reqs: 0.0,
         total_fail: 0.0,
+        live_users: 0.0,
         lost_writes: 0.0,
         dead_letters: 0.0,
         traffic: tl,
@@ -1919,6 +1930,25 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
             let t = r3(des.now);
             des.ev_log.push(super::headless::Event { t, what: format!("stopped: event budget ({}) exhausted", locale_int(cfg.max_events)) });
             break;
+        }
+    }
+
+    // follow the users' requests still in flight to their answers, with no new arrivals: otherwise an
+    // answer slower than the run (an archive restore) is never seen, and only what failed fast is
+    while des.live_users > 0.0 && des.q.len() > 0 && des.q.peek_time() <= sc.duration + DRAIN_S && processed <= cfg.max_events {
+        des.now = des.q.peek_time();
+        match des.q.pop() {
+            Ev::Generate { .. } | Ev::Sample | Ev::Scenario { .. } => {}
+            ev => des.run(ev),
+        }
+        processed += 1.0;
+    }
+    // any still waiting count with what they have waited so far (a lower bound)
+    let end = des.now.max(sc.duration);
+    for c in &des.conts {
+        if let Cont::User { t0, job: false } = c {
+            des.total_reqs += 1.0;
+            des.user_hist.record((end - t0) * 1000.0);
         }
     }
 

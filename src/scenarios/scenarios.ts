@@ -746,4 +746,139 @@ BASIC_SCENARIOS.push({
   },
 });
 
+/** listings written to a database and indexed for search: how long until a new one can be found */
+const listingsBoard = (refreshS: number) =>
+  link(
+    graph(
+      [
+        ['users', 'client', X[0], 200],
+        ['lb', 'lb', X[1], 200],
+        ['api', 'server', X[2], 200, { instances: 4, routing: 'fanout', name: 'listings api' }],
+        ['search', 'search', X[3], 80, { instances: 3, refreshS, name: 'listings search' }],
+        ['db', 'db', X[3], 360, { name: 'listings db' }],
+      ],
+      [['users', 'lb'], ['lb', 'api'], ['api', 'search'], ['api', 'db']],
+    ),
+    'api',
+    'db',
+    { carries: 'writes' },
+  );
+
+BASIC_SCENARIOS.push({
+  id: 'search-refresh',
+  title: 'Search Freshness: Refresh Every 30 s vs 1 s',
+  tagline: 'A seller posts a listing and searches for it. Is it there?',
+  watch: 'Stale reads: searches that cannot see a listing written before them. Errors, latency and the bill are the same on both sides.',
+  readRatio: 0.9,
+  a: { title: 'Refresh every 30 s', graph: listingsBoard(30) },
+  b: { title: 'Refresh every 1 s', graph: listingsBoard(1) },
+  timeline: [
+    { at: 0, rps: 300, caption: '300 req/s: searches, and one in ten a new or edited listing, written to the database and to the index.' },
+    { at: 8, rps: 300, caption: 'A was set to refresh every 30 s for a bulk import, and nobody set it back.' },
+    { at: 30, rps: 300 },
+  ],
+  events: [],
+  takeaway: {
+    a: 'A write becomes searchable at the next refresh: up to 30 s later. With 30 writes a second, nearly every search missed something just written — the seller’s own listing included.',
+    b: 'A one-second refresh: a listing is findable about a second after it is saved. Same nodes, same bill, no stale reads counted.',
+    lesson: 'A search index is eventually consistent: a write is searchable after the next refresh, later when indexing queues behind busy nodes. Raise the interval for bulk loads and set it back. When a user must see their own write at once, read it from the database, or wait for the refresh on that one write — not a shorter refresh for everyone.',
+  },
+});
+
+/** a retrieval service over a vector index (OpenSearch k-NN, pgvector) */
+const vectorBoard = (v: { recall?: number; instances: number; tier?: 'S' | 'M' | 'L'; vectorsM?: number; name: string }) =>
+  graph(
+    [
+      ['users', 'client', X[0], 200],
+      ['lb', 'lb', X[1], 200],
+      ['api', 'server', X[2], 200, { instances: 8, name: 'retrieval api' }],
+      ['vectors', 'vector', X[3], 200, { instances: v.instances, tier: v.tier ?? 'M', recall: v.recall, vectorsM: v.vectorsM, name: v.name }],
+    ],
+    [['users', 'lb'], ['lb', 'api'], ['api', 'vectors']],
+  );
+
+BASIC_SCENARIOS.push({
+  id: 'vector-recall',
+  title: 'Vector Search: Recall 0.99 vs 0.95',
+  tagline: 'Same index, same nodes. One setting asks for 4% better recall.',
+  watch: 'The vector database on the left: every query walks five times as much of the graph.',
+  readRatio: 0.95,
+  a: { title: 'Recall 0.99', graph: vectorBoard({ recall: 0.99, instances: 2, name: 'docs (k-NN)' }) },
+  b: { title: 'Recall 0.95', graph: vectorBoard({ recall: 0.95, instances: 2, name: 'docs (k-NN)' }) },
+  timeline: [
+    { at: 0, rps: 150, caption: '150 queries/s against a million documents on two medium nodes. Both keep up — A is already five times as busy.' },
+    { at: 8, rps: 150 },
+    { at: 12, rps: 500, caption: 'A product launch: 500 queries/s.' },
+    { at: 32, rps: 500 },
+  ],
+  events: [],
+  takeaway: {
+    a: 'Recall 0.99 made each query five times the work of 0.95: 240 queries/s from the two nodes instead of 1,200, at 50 ms a query instead of 10. The launch took it past its capacity.',
+    b: 'Recall 0.95 served the launch at under half its capacity. To give A the same headroom would take about ten nodes instead of two.',
+    lesson: 'Approximate search trades recall for work: each halving of what a query may miss doubles the graph it walks. Measure what recall your answers need — a reranker over the top 50 rarely needs 0.99 — and pay for that, not for the last point.',
+  },
+});
+
+BASIC_SCENARIOS.push({
+  id: 'vector-memory',
+  title: 'Vector Search: When the Index Outgrows Memory',
+  tagline: 'Ten million vectors, 35 GB of graph. Four nodes hold 32 GB of it. Does 9% matter?',
+  watch: 'The vector database on the left: lookups that miss memory read the disk at ten times the cost.',
+  readRatio: 0.95,
+  a: { title: 'Four medium nodes (32 GB)', graph: vectorBoard({ instances: 4, vectorsM: 10, name: 'embeddings (10M)' }) },
+  b: { title: 'Five medium nodes (40 GB)', graph: vectorBoard({ instances: 5, vectorsM: 10, name: 'embeddings (10M)' }) },
+  timeline: [
+    { at: 0, rps: 800, caption: '800 queries/s. A was sized for its CPU, and the index has grown past its memory.' },
+    { at: 8, rps: 800 },
+    { at: 12, rps: 1600, caption: 'Peak: 1,600 queries/s.' },
+    { at: 32, rps: 1600 },
+  ],
+  events: [],
+  takeaway: {
+    a: '9% of the HNSW graph did not fit in memory, and lookups there read the disk: each query cost 1.8× the work. Four nodes served about 1,300 queries/s instead of 2,400, and the peak broke it.',
+    b: 'One more node put the whole graph in memory: 3,000 queries/s, more than twice A’s capacity, for one node’s price ($0.36/h).',
+    lesson: 'Size a vector database by memory first: the graph (about 3.5 GB per million 768-dimension vectors) must fit in what its nodes keep for it. A little over the line costs far more than its share — plan for the index the data will grow into.',
+  },
+});
+
+/** an origin far from its users, with or without code at the edge in front of it */
+const edgeBoard = (edge: boolean) =>
+  link(
+    graph(
+      [
+        ['users', 'client', X[0], 200],
+        ...(edge ? [['edge', 'edge', X[1], 200, { edgeShare: 0.7, cpuMs: 2, cpuLimitMs: 10, name: 'edge function' }] as const] : []),
+        ['lb', 'lb', X[edge ? 2 : 1], 200],
+        ['api', 'server', X[edge ? 3 : 2], 200, { instances: 4, name: 'origin api' }],
+        ['db', 'db', X[edge ? 4 : 3], 200, { tier: 'M' }],
+      ] as Parameters<typeof graph>[0],
+      edge ? [['users', 'edge'], ['edge', 'lb'], ['lb', 'api'], ['api', 'db']] : [['users', 'lb'], ['lb', 'api'], ['api', 'db']],
+    ),
+    edge ? 'edge' : 'users',
+    'lb',
+    { latencyMs: 80 },
+  );
+
+BASIC_SCENARIOS.push({
+  id: 'edge-vs-origin',
+  title: 'An Edge Function vs the Origin Round Trip',
+  tagline: 'Redirects, geo, A/B buckets, auth checks: answer them near the user, or 80 ms away?',
+  watch: 'The origin API: on the right it sees three requests in ten. And the edge function’s errors: work past its CPU limit is killed.',
+  readRatio: 0.8,
+  a: { title: 'Everything at the origin', graph: edgeBoard(false) },
+  b: { title: 'An edge function in front', graph: edgeBoard(true) },
+  timeline: [
+    { at: 0, rps: 600, caption: '600 req/s from users 80 ms from the origin. 70% of them only need a redirect, a header or a yes/no.' },
+    { at: 8, rps: 600 },
+    { at: 12, rps: 2000, caption: 'A campaign: 2,000 req/s.' },
+    { at: 32, rps: 2000 },
+  ],
+  events: [],
+  takeaway: {
+    a: 'Every request crossed the ocean and back for an answer the edge could have given in a few milliseconds, and the origin had to serve all 2,000 a second: it could not.',
+    b: 'The edge function answered 70% near the users; the origin saw 600 a second at the peak. The price: every request is billed at the edge (about $2.40/h at 2,000 a second), and 2 ms of CPU on average against a 10 ms limit still runs one request in 150 past it — those are killed.',
+    lesson: 'An edge function takes the cheap, frequent decisions off the origin and out of the round trip. Keep it small: CPU time has a long tail, and the platform kills what runs past the limit (about 1 ms on CloudFront Functions, 10 ms on Workers Free). Heavy work belongs at the origin.',
+  },
+});
+
 export const SCENARIOS: Scenario[] = [...BASIC_SCENARIOS, ...ADVANCED];

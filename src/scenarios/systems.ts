@@ -171,13 +171,13 @@ const timelines: RealSystem = {
 };
 timelines.graph = link(timelines.graph, 'api', 'timelines', { carries: 'reads' });
 
-// an LLM product: a cache for repeated prompts, the main provider, and a second one (or your own
-// GPUs) to fail over to
+// an LLM product: a cache for repeated prompts, retrieval from a vector index for the context, the
+// main provider, and a second one (or your own GPUs) to fail over to
 const assistant: RealSystem = {
   id: 'assistant',
-  title: 'AI assistant with a fallback provider',
-  note: 'The provider is a dependency you don’t run: a semantic cache takes repeats, and a second provider takes over when the first rate-limits or goes down.',
-  source: 'common practice in LLM gateway write-ups (multi-provider routing with fallback)',
+  title: 'AI assistant with retrieval and a fallback provider',
+  note: 'A semantic cache takes repeats; a miss fetches context from a vector index (five million chunks, 17.6 GB of graph, sized so it fits in its nodes’ memory) and goes to the model; a second provider takes over when the first rate-limits or goes down.',
+  source: 'common practice in RAG and LLM gateway write-ups (retrieval-augmented generation, multi-provider routing with fallback)',
   rps: 10,
   readRatio: 1,
   graph: graph(
@@ -185,12 +185,48 @@ const assistant: RealSystem = {
       ['users', 'client', X[0], Y[1]],
       ['api', 'server', X[1], Y[1], { instances: 2, name: 'assistant api', timeoutMs: 20000 }],
       ['semantic', 'cache', X[2], Y[1], { name: 'semantic cache', hitRate: 0.3 }],
-      ['router', 'gateway', X[3], Y[1], { name: 'model router', routing: 'failover', limit: 2000 }],
-      ['primary', 'llmapi', X[4], Y[0], { name: 'provider A', limit: 100 }],
-      ['secondary', 'llmapi', X[4], Y[2], { name: 'provider B', limit: 60 }],
+      ['rag', 'server', X[3], Y[1], { name: 'retrieval + prompt', routing: 'fanout' }],
+      ['docs', 'vector', X[4], Y[0] - 60, { name: 'docs index (k-NN)', tier: 'M', instances: 3, vectorsM: 5 }],
+      ['router', 'gateway', X[4], Y[2] - 60, { name: 'model router', routing: 'failover', limit: 2000 }],
+      ['primary', 'llmapi', X[5], Y[1], { name: 'provider A', limit: 100 }],
+      ['secondary', 'llmapi', X[5], Y[3] - 60, { name: 'provider B', limit: 60 }],
     ],
-    [['users', 'api'], ['api', 'semantic'], ['semantic', 'router'], ['router', 'primary'], ['router', 'secondary']],
+    [['users', 'api'], ['api', 'semantic'], ['semantic', 'rag'], ['rag', 'docs'], ['rag', 'router'], ['router', 'primary'], ['router', 'secondary']],
   ),
 };
 
-export const REAL_SYSTEMS: RealSystem[] = [chat, video, rides, payments, timelines, assistant];
+// a shop: an edge function answers geo, currency and bot checks; a search returns product ids and the
+// pages are filled from a cache in front of the catalogue; a price or stock change is written to the
+// database and re-indexed
+const shop: RealSystem = {
+  id: 'shop',
+  title: 'E-commerce search (edge, search index, cache, database)',
+  note: 'A third of the requests never leave the edge; every search query goes to the index and is filled in from the cache, and every price or stock change is written to the database and to the index — findable after the next one-second refresh.',
+  source: 'common e-commerce practice: search returns ids and pages are hydrated from a cache (Elasticsearch e-commerce guides); geo, currency and bot checks at the edge (Cloudflare Workers, CloudFront Functions use cases)',
+  rps: 2000,
+  readRatio: 0.95,
+  graph: link(
+    link(
+      graph(
+        [
+          ['shoppers', 'client', X[0], Y[1]],
+          ['edge', 'edge', X[1], Y[1], { name: 'edge: geo, currency, bots', edgeShare: 0.3, cpuMs: 1 }],
+          ['lb', 'lb', X[2], Y[1]],
+          ['api', 'server', X[3], Y[1], { instances: 8, name: 'storefront api', routing: 'fanout' }],
+          ['search', 'search', X[4], Y[0], { name: 'product search', tier: 'M', instances: 5, refreshS: 1 }],
+          ['cache', 'cache', X[4], Y[2], { name: 'product cache', hitRate: 0.95 }],
+          ['catalog', 'db', X[5], Y[2], { name: 'catalogue + orders' }],
+        ],
+        [['shoppers', 'edge'], ['edge', 'lb'], ['lb', 'api'], ['api', 'search'], ['api', 'cache'], ['cache', 'catalog'], ['api', 'catalog']],
+      ),
+      'api',
+      'cache',
+      { carries: 'reads' },
+    ),
+    'api',
+    'catalog',
+    { carries: 'writes' },
+  ),
+};
+
+export const REAL_SYSTEMS: RealSystem[] = [chat, video, rides, payments, timelines, assistant, shop];

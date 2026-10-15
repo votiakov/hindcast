@@ -117,9 +117,11 @@ export interface SideScore {
   /** $/h summed per tick, and ticks, for the average */
   costSum: number;
   n: number;
+  /** reads that could miss a write made before them, so far */
+  stale: number;
 }
 
-export const emptyScore = (): SideScore => ({ requests: 0, failed: 0, outS: 0, peakP99: 0, costSum: 0, n: 0 });
+export const emptyScore = (): SideScore => ({ requests: 0, failed: 0, outS: 0, peakP99: 0, costSum: 0, n: 0, stale: 0 });
 
 export interface StudioState {
   episodeId: string;
@@ -863,6 +865,7 @@ export const useSim = create<State>()((set, get) => {
             x.peakP99 = Math.max(x.peakP99, g.p99);
             x.costSum += g.cost;
             x.n += 1;
+            x.stale = g.staleReads;
             score[b] = x;
           }
           cmp = { ...cmp, score };

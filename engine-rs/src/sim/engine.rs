@@ -842,7 +842,13 @@ fn process(c: &Ctx, st: &mut NodeState) -> ProcessResult {
         "llmapi" | "external" | "archive" => {
             let cap = capacity_of(c.d, None) * c.dt;
             let processed = c.arrivals.min(cap);
-            res(processed, c.arrivals - processed, processed, c.arrivals / cap, true)
+            let mut r = res(processed, c.arrivals - processed, processed, c.arrivals / cap, true);
+            // an archive is storage: it answers, it does not call on (its answer never waited for them)
+            if c.d.kind == "archive" {
+                r.forward = 0.0;
+                r.routes = Some(vec![]);
+            }
+            r
         }
         // a managed key-value store: the table's limit, then the hot key's partition; it answers itself
         "kv" => {

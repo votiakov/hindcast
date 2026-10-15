@@ -95,10 +95,10 @@ app), [use cases](docs/use-cases.md), the [capability list](docs/capabilities.md
 - **Backtest** – real history as a chart, strategies drawn over it, ranked; open any
   moment on the board; Studio card of the result.
 - **Live** – a running system that fails on arrival, with the next move pinned to the component under stress.
-- **Lessons** – a study path of 16 lessons, 48 levels, in four tracks: scaling a web service (Scale
+- **Lessons** – a study path of 17 lessons, 51 levels, in four tracks: scaling a web service (Scale
   101/201, Pastebin, Mint, sizing a cache), asynchrony and failure (queues, event streams, retry storms, thread pools and
   bulkheads, elasticity, zones), data at scale (CAP with sync/async replication and partitions, sharding and hot keys, a web
-  crawler), and AI serving and runtimes. Every level has a reference solution ("show me"), a debrief
+  crawler), and AI serving (a vector index sized by memory and recall) and runtimes. Every level has a reference solution ("show me"), a debrief
   and saved progress; each is proven solvable in the tests.
 - **Sandbox** – build anything. Autoscaling, retries, timeouts, breakers, failover, fan-out, gray
   failures, cross-region links. Every run is recorded; drag the timeline to rewind the whole board.
@@ -106,7 +106,7 @@ app), [use cases](docs/use-cases.md), the [capability list](docs/capabilities.md
   on the board; apply a verified fix with one click (undoable); copy the report as Markdown.
 - **Architecture as code** – a YAML editor that stays in sync with the board in both directions.
 - **Compare** – two designs, same traffic and failures, side by side, with a measured scoreboard and a
-  takeaway computed by the engine. Twenty-eight built-in comparisons, each proven to show a difference, and six real systems (chat, video, ride dispatch, payments, timelines, an AI assistant) rebuilt from their engineers’ public write-ups as starting boards.
+  takeaway computed by the engine. Thirty-two built-in comparisons, each proven to show a difference, and seven real systems (chat, video, ride dispatch, payments, timelines, an AI assistant with retrieval, e-commerce search) rebuilt from their engineers’ public write-ups as starting boards.
 - **Present** – press P: no chrome, large numbers, captions; ←/→ walks through the audit's incidents live.
 - **Studio** – scripted episodes rendered in the browser to MP4, GIF and a PDF carousel for posts
   (or frame-perfect from the command line with `npm run record`).

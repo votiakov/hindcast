@@ -34,7 +34,7 @@ export interface Episode {
   timeline: { at: number; rps: number }[];
   beats: Beat[];
   /** which numbers the metrics strip shows */
-  metrics: ('rps' | 'errors' | 'p99' | 'cost')[];
+  metrics: ('rps' | 'errors' | 'p99' | 'cost' | 'stale')[];
   outro: { title: string; lines: string[]; cta?: string };
 }
 
@@ -148,6 +148,10 @@ const COMPARE_HOOKS: Record<string, { hook: string; series?: string; metrics?: E
   'hot-row-counter': { hook: 'The database was 20% busy.\nOrders still timed out.', series: 'Failure modes at scale', metrics: ['errors', 'p99'] },
   'export-on-replica': { hook: 'Nothing broke.\nThe nightly export took the shop down anyway.', series: 'Failure modes at scale', metrics: ['errors', 'p99'] },
   'node-vs-go': { hook: 'We rewrote it in Go.\nHow much did we save?', series: 'Cloud cost, made visible', metrics: ['errors', 'p99', 'cost'] },
+  'search-refresh': { hook: 'You saved it.\nSearch says it doesn’t exist.', series: 'Failure modes at scale', metrics: ['errors', 'p99', 'stale'] },
+  'vector-recall': { hook: '4% better recall.\nFive times the work.', series: 'Cloud cost, made visible', metrics: ['errors', 'p99', 'cost'] },
+  'vector-memory': { hook: 'The index grew 9% past memory.\nCapacity fell by half.', series: 'Failure modes at scale', metrics: ['errors', 'p99', 'cost'] },
+  'edge-vs-origin': { hook: 'Most requests only need a redirect.\nWhy do they cross the ocean?', series: 'Cloud cost, made visible', metrics: ['errors', 'p99', 'cost'] },
 };
 
 const sentences = (text: string) => text.split(/(?<=[.!?])\s+(?=[A-Z“"])/);

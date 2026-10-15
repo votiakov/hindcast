@@ -27,6 +27,8 @@ function metricCells(ep: Episode, g: GlobalStats) {
         return { k: m, label: 'p99 latency', value: fmtMs(g.p99), tone: !live ? '' : g.p99 > 500 ? 'bad' : g.p99 > 250 ? 'warn' : 'good' };
       case 'cost':
         return { k: m, label: 'cost / hour', value: `$${g.cost.toFixed(2)}`, tone: '' };
+      case 'stale':
+        return { k: m, label: 'stale reads', value: fmtRps(g.staleReads), tone: !live ? '' : g.staleReads >= 1 ? 'warn' : 'good' };
     }
   });
 }
