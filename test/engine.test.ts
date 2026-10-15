@@ -158,6 +158,17 @@ describe('latency of the successful answers, in both engines', () => {
     for (const e of [a.f, a.d]) expect(e.p50Ms).toBeLessThan(15);
     near(a.f.p99Ms, a.d.p99Ms, 0.15);
   });
+
+  it("an overloaded pool: its answers wait out the queue's bound, no longer", () => {
+    // a 100/s worker offered 300/s: two thirds shed; the rest wait ~1 s (the queue's bound) and are
+    // served in 80 ms (p99 3.1 × 80): p50 ≈ 1.05 s, p99 ≈ 1.2 s. The fluid engine used to add the
+    // M/M/c wait at 98% load on top of the full backlog: p50 1.3 s, p99 2.6 s
+    const a = both({ components: [{ id: 'users', kind: 'client' }, { id: 'w', kind: 'worker' }], connections: [['users', 'w']] }, 300);
+    for (const e of [a.f, a.d]) {
+      near(e.p50Ms, 1040, 0.06);
+      near(e.p99Ms, 1220, 0.06);
+    }
+  });
 });
 
 describe('retry amplification', () => {

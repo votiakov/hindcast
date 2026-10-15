@@ -460,37 +460,43 @@ fn queue_on(queue: &mut f64, arrivals: f64, cap_per_s: f64, dt: f64, queue_s: f6
 
 /// service time plus the wait in front of it: a component is a pool of workers (capacity × service
 /// time of them, as the discrete-event engine runs it), waiting as M/M/c; past saturation, the backlog
-fn service_latency(d: &NodeData, st: &NodeState) -> f64 {
-    shard_parts(d, st).iter().map(|p| p.0 * p.1).sum()
+fn service_latency(d: &NodeData, st: &NodeState, cfg: &EngineConfig) -> f64 {
+    shard_parts(d, st, cfg).iter().map(|p| p.0 * p.1).sum()
 }
 
 /// a component's own answer time as (weight, mean, p99 − mean) parts: one for most, and for a sharded
 /// database the busiest shard and the rest, each a pool of workers of its own
-fn shard_parts(d: &NodeData, st: &NodeState) -> Vec<(f64, f64, f64)> {
+fn shard_parts(d: &NodeData, st: &NodeState, cfg: &EngineConfig) -> Vec<(f64, f64, f64)> {
+    let bound = queue_seconds(d, cfg) * 1000.0;
     let n = shards_of(d);
     let total = capacity_of(d, Some(st.reachable)).max(1e-6);
     // a replica's shards share its reads evenly: one pool
     if n <= 1.0 || d.kind != "db" {
-        let (m, t) = pool_latency(d, total, st.util * (1.0 - st.pulled_share), st.queue);
+        let (m, t) = pool_latency(d, total, st.util * (1.0 - st.pulled_share), st.queue, bound);
         return vec![(1.0, m, t)];
     }
     let s = hot_shard_share(d);
     let one = total / n;
-    let (hm, ht) = pool_latency(d, one, st.util, st.hot_queue);
-    let (cm, ct) = pool_latency(d, one * (n - 1.0), st.cold_util, st.queue);
+    let (hm, ht) = pool_latency(d, one, st.util, st.hot_queue, bound);
+    let (cm, ct) = pool_latency(d, one * (n - 1.0), st.cold_util, st.queue, bound);
     vec![(s, hm, ht), (1.0 - s, cm, ct)]
 }
 
 /// mean and p99 − mean of an answer from a pool of workers at a utilisation, with a backlog
-fn pool_latency(d: &NodeData, cap: f64, util: f64, queue: f64) -> (f64, f64) {
+fn pool_latency(d: &NodeData, cap: f64, util: f64, queue: f64, bound_ms: f64) -> (f64, f64) {
     let base = base_latency_of(d);
     let cap = cap.max(1e-6);
     let workers = js_round(cap * (base.max(0.05) / 1000.0)).max(1.0);
     let w = crate::math::mmc_wait(util.min(0.98) * cap, workers, cap);
-    let mean = base + w.mean_ms * WAIT_SCALE + (queue / cap.max(1.0)) * 1000.0 + d.stall_rate.unwrap_or(0.0) * d.stall_ms.unwrap_or(0.0);
+    // the wait: the M/M/c one, plus past saturation the backlog in front; no longer than the queue's
+    // bound (a request that would wait longer is shed), and with no more spread than is left under it:
+    // a backlog at its bound is waited out in about the same time by every request
+    let (mmc, backlog) = (w.mean_ms * WAIT_SCALE, (queue / cap.max(1.0)) * 1000.0);
+    let wait_mean = (mmc + backlog).min(bound_ms.max(mmc));
+    let mean = base + wait_mean + d.stall_rate.unwrap_or(0.0) * d.stall_ms.unwrap_or(0.0);
     let stall = if d.stall_rate.unwrap_or(0.0) >= 0.01 { d.stall_ms.unwrap_or(0.0) } else { 0.0 };
     // service time and wait are independent: their spreads add in quadrature
-    let (svc, wait) = ((SERVICE_P99 - 1.0) * base, (w.p99_ms - w.mean_ms).max(0.0) * WAIT_SCALE);
+    let (svc, wait) = ((SERVICE_P99 - 1.0) * base, ((w.p99_ms - w.mean_ms).max(0.0) * WAIT_SCALE).min((bound_ms - wait_mean).max(0.0)));
     (mean, (svc * svc + wait * wait).sqrt() + stall)
 }
 
@@ -584,8 +590,8 @@ const WAIT_SCALE: f64 = 0.68;
 
 /// p99 − mean of a component's own part of an answer: service-time spread, the M/M/c wait's tail,
 /// and stalls once they reach 1% of requests
-fn service_tail(d: &NodeData, st: &NodeState) -> f64 {
-    let parts = shard_parts(d, st);
+fn service_tail(d: &NodeData, st: &NodeState, cfg: &EngineConfig) -> f64 {
+    let parts = shard_parts(d, st, cfg);
     if parts.len() == 1 {
         return parts[0].2;
     }
@@ -1015,16 +1021,16 @@ fn fold(c: &FoldCtx, st: &NodeState) -> (f64, f64) {
     let kids_lat = if c.has_kids { c.child_lat } else { 0.0 };
     match c.d.kind.as_str() {
         "client" => (if c.has_kids { c.child_succ } else { 0.0 }, c.child_lat),
-        "lb" | "dns" => (if c.has_kids { c.keep * c.child_succ } else { 0.0 }, service_latency(c.d, st) + c.child_lat),
+        "lb" | "dns" => (if c.has_kids { c.keep * c.child_succ } else { 0.0 }, service_latency(c.d, st, c.cfg) + c.child_lat),
         "gateway" => (if c.has_kids { c.keep * c.child_succ } else { 0.0 }, spec("gateway").base_latency_ms + c.child_lat),
-        "cache" | "cdn" | "edge" => (c.keep * (c.local_share + (1.0 - c.local_share) * kids_succ), service_latency(c.d, st) + (1.0 - c.local_share) * c.child_lat),
-        "db" => (c.local_share * c.keep + (1.0 - c.local_share) * kids_succ, c.local_share * service_latency(c.d, st) + (1.0 - c.local_share) * c.child_lat),
+        "cache" | "cdn" | "edge" => (c.keep * (c.local_share + (1.0 - c.local_share) * kids_succ), service_latency(c.d, st, c.cfg) + (1.0 - c.local_share) * c.child_lat),
+        "db" => (c.local_share * c.keep + (1.0 - c.local_share) * kids_succ, c.local_share * service_latency(c.d, st, c.cfg) + (1.0 - c.local_share) * c.child_lat),
         "queue" | "stream" => (c.keep, spec(&c.d.kind).base_latency_ms),
         "function" => (c.keep * kids_succ, base_latency_of(c.d) + st.cold_frac * cold_start_of(c.d, c.cfg) + kids_lat),
         // leaves: they answer themselves (their routes are empty, so they have no kids)
         "llmapi" | "external" | "kv" => (c.keep, c.d.latency_ms.unwrap_or(spec(&c.d.kind).base_latency_ms)),
         "archive" => (c.keep, base_latency_of(c.d)),
-        _ => (c.keep * kids_succ, service_latency(c.d, st) + kids_lat),
+        _ => (c.keep * kids_succ, service_latency(c.d, st, c.cfg) + kids_lat),
     }
 }
 
@@ -1910,7 +1916,7 @@ impl Engine {
                     "client" | "queue" | "stream" | "gateway" => 0.0,
                     "function" => (SERVICE_P99 - 1.0) * base_latency_of(d),
                     "llmapi" | "external" | "kv" | "storage" | "archive" => (API_P99 - 1.0) * base_latency_of(d),
-                    _ => service_tail(d, st),
+                    _ => service_tail(d, st, cfg),
                 };
                 let kids = if has_kids { tail * if retries > 0.0 { st.retry_amp } else { 1.0 } } else { 0.0 };
                 let t = (own_share * own * own + kid_share * kids * kids).sqrt();
@@ -1929,7 +1935,7 @@ impl Engine {
                     "client" | "queue" | "stream" | "gateway" => 0.0,
                     "function" => (SERVICE_P99 - 1.0) * base_latency_of(d),
                     "llmapi" | "external" | "kv" | "storage" | "archive" => (API_P99 - 1.0) * base_latency_of(d),
-                    _ => service_tail(d, st),
+                    _ => service_tail(d, st, cfg),
                 };
                 let own_mean = if d.kind == "client" { 0.0 } else { own_mean };
                 let mut kids = if !has_kids {
