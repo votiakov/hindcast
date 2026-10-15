@@ -663,6 +663,14 @@ select { background: #0a1122; color: var(--text); border: 1px solid var(--border
 .an-table i { font-style: normal; color: var(--muted); font-size: 11px; }
 .an-note { margin-top: 7px; font-size: 11.5px; line-height: 1.45; color: var(--muted); }
 .an-note b { color: var(--text); }
+.an-why { margin-top: 8px; display: grid; gap: 3px; font-size: 11.5px; }
+.an-why-head { color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-size: 10px; }
+.an-why-row { display: grid; grid-template-columns: 54px 1fr auto; gap: 8px; align-items: center; }
+.an-why-bar { height: 6px; background: color-mix(in srgb, var(--muted) 18%, transparent); }
+.an-why-bar i { display: block; height: 100%; background: var(--red); }
+.an-why-what { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.an-why-what b { color: var(--text); font-weight: 600; }
+.an-why-pct { font-variant-numeric: tabular-nums; color: var(--text); }
 .an-foot { margin-top: 7px; font-size: 10.5px; color: var(--muted); font-family: var(--mono); }
 .an-changes { margin: 7px 0 4px; padding-left: 16px; font-family: var(--mono); font-size: 11.5px; }
 .an-error { color: var(--red); font-size: 12px; }

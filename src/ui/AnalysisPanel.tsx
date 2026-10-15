@@ -102,6 +102,22 @@ function Result({ a, title }: { a: Analysis; title?: string }) {
           <b>{a.bottlenecks[0].id}</b> is the top bottleneck in {pct(a.bottlenecks[0].share)} of runs. {a.bottlenecks[0].note}
         </div>
       )}
+      {a.failures?.length > 0 && (
+        <div className="an-why">
+          <div className="an-why-head">why requests failed</div>
+          {a.failures.slice(0, 4).map((f) => (
+            <div key={`${f.id}-${f.reason}`} className="an-why-row">
+              <span className="an-why-bar">
+                <i style={{ width: `${Math.max(2, f.share * 100)}%` }} />
+              </span>
+              <span className="an-why-what">
+                <b>{f.name}</b> {f.reason}
+              </span>
+              <span className="an-why-pct">{pct(f.share)}</span>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="an-foot">
         {a.runs} runs · {a.events.toLocaleString()} requests-events · {a.wallMs} ms
       </div>

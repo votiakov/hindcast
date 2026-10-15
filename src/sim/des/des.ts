@@ -68,7 +68,18 @@ export interface DesResult {
   timeline: { t: number; rps: number; errorRate: number; p50Ms: number; p99Ms: number; costPerHour: number }[];
   components: Record<string, { kind: string; peakUtil: number; meanUtil: number; droppedTotal: number; finalStatus: string; note: string | null }>;
   bottlenecks: { id: string; peakUtil: number; droppedTotal: number; note: string | null }[];
+  /** why requests failed: the component each failure started at and the cause, most first */
+  failures: FailureCause[];
   events: { t: number; what: string }[];
+}
+
+export interface FailureCause {
+  id: string;
+  name: string;
+  reason: string;
+  requests: number;
+  /** of all failed requests */
+  share: number;
 }
 
 export function simulateDes(specInput: unknown, scenarioInput: unknown = {}, cfgIn: Partial<DesConfig> = {}): DesResult {

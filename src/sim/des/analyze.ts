@@ -1,4 +1,4 @@
-import {  type DesConfig, type DesResult } from './des';
+import { type DesConfig, type DesResult, type FailureCause } from './des';
 import * as wasm from '../../backtest/wasm/hindcast_engine.js';
 
 /**
@@ -34,6 +34,8 @@ export interface Analysis {
   };
   /** how often each component was the #1 bottleneck */
   bottlenecks: { id: string; share: number; note: string | null }[];
+  /** why requests failed over all runs (requests per run) */
+  failures: FailureCause[];
   wallMs: number;
   events: number;
 }
@@ -53,9 +55,26 @@ function stat(xs: number[], digits = 4): Stat {
   return { mean: Math.round(mean * f) / f, ci95: Math.round(t95(n - 1) * (sd / Math.sqrt(n)) * f) / f, min: Math.min(...xs), max: Math.max(...xs) };
 }
 
-export type RunSummary = Pick<DesResult, 'summary' | 'bottlenecks' | 'architecture' | 'scenario' | 'slo' | 'seed'>;
+export type RunSummary = Pick<DesResult, 'summary' | 'bottlenecks' | 'failures' | 'architecture' | 'scenario' | 'slo' | 'seed'>;
 
-export const slim = (r: DesResult): RunSummary => ({ summary: r.summary, bottlenecks: r.bottlenecks, architecture: r.architecture, scenario: r.scenario, slo: r.slo, seed: r.seed });
+export const slim = (r: DesResult): RunSummary => ({ summary: r.summary, bottlenecks: r.bottlenecks, failures: r.failures, architecture: r.architecture, scenario: r.scenario, slo: r.slo, seed: r.seed });
+
+/** failure causes of many runs, summed (mirrors the engine's merge_failures) */
+function mergeFailures(runs: RunSummary[]): FailureCause[] {
+  const by = new Map<string, FailureCause>();
+  for (const r of runs)
+    for (const f of r.failures ?? []) {
+      const k = `${f.id}\u0000${f.reason}`;
+      const cur = by.get(k) ?? { ...f, requests: 0, share: 0 };
+      cur.requests += f.requests;
+      by.set(k, cur);
+    }
+  const total = [...by.values()].reduce((s, f) => s + f.requests, 0);
+  return [...by.values()]
+    .map((f) => ({ ...f, share: total > 0 ? Math.round((f.requests / total) * 1000) / 1000 : 0, requests: Math.round(f.requests / Math.max(1, runs.length)) }))
+    .sort((a, b) => b.share - a.share)
+    .slice(0, 6);
+}
 
 export function aggregate(runs: RunSummary[], wallMs: number): Analysis {
   const s = runs.map((r) => r.summary);
@@ -84,6 +103,7 @@ export function aggregate(runs: RunSummary[], wallMs: number): Analysis {
       costPerHour: stat(s.map((x) => x.meanCostPerHour), 3),
     },
     bottlenecks: [...top].sort((a, b) => b[1].n - a[1].n).map(([id, v]) => ({ id, share: Math.round((v.n / runs.length) * 100) / 100, note: v.note })),
+    failures: mergeFailures(runs),
     wallMs,
     events: s.reduce((sum, x) => sum + x.events, 0),
   };

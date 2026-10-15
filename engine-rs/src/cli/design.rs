@@ -201,6 +201,13 @@ fn print_analysis(a: &Value, out: &mut Out) {
     for b in arr(a, &["bottlenecks"]) {
         out.log(&format!("  {} top bottleneck in {} of runs {}", yellow(&pad(&s(b, &["id"]), 14)), pct(n(b, &["share"])), dim(&s(b, &["note"]))));
     }
+    let why = arr(a, &["failures"]);
+    if !why.is_empty() {
+        out.log(&format!("  {}", bold("Why requests failed (where each failure started)")));
+        for f in why {
+            out.log(&format!("  {} {} {}", yellow(&pad(&s(f, &["id"]), 14)), pad(&pct(n(f, &["share"])), 7), s(f, &["reason"])));
+        }
+    }
     out.log("");
 }
 

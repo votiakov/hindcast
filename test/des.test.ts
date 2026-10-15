@@ -40,3 +40,40 @@ describe('discrete-event engine', () => {
     expect(tailErr(simulateDes(arch('budget'), sc))).toBeLessThan(0.05);
   });
 });
+
+describe('why requests failed', () => {
+  const run = (spec: unknown, rps: number) => simulateDes(spec, steady(rps, 20), { seed: 3 });
+
+  it('counts each failed request where it started, with the cause', () => {
+    // the payment API's rate limit rejects; the api's workers wait on it and the rest queue out
+    const r = run(
+      {
+        components: [
+          { id: 'u', kind: 'client' },
+          { id: 'api', kind: 'server', instances: 2 },
+          { id: 'pay', kind: 'external', limit: 100 },
+        ],
+        connections: [['u', 'api'], ['api', 'pay']],
+      },
+      300,
+    );
+    const top = r.failures[0];
+    expect(top).toMatchObject({ id: 'pay', reason: 'rate limited' });
+    const total = r.failures.reduce((s, f) => s + f.requests, 0);
+    expect(total).toBe(r.summary.failedRequests);
+    expect(r.failures.reduce((s, f) => s + f.share, 0)).toBeCloseTo(1, 2);
+  });
+
+  it('names a dead component, a full queue and a timeout for what they are', () => {
+    const dead = simulateDes({ components: [{ id: 'u', kind: 'client' }, { id: 'api', kind: 'server' }, { id: 'db', kind: 'db' }], connections: [['u', 'api'], ['api', 'db']] }, { ...steady(50, 20), events: [{ at: 0, action: { type: 'kill-id', id: 'db' } }] }, { seed: 3 });
+    expect(dead.failures[0]).toMatchObject({ id: 'db', reason: 'down', share: 1 });
+    const busy = run({ components: [{ id: 'u', kind: 'client' }, { id: 'api', kind: 'server' }], connections: [['u', 'api']] }, 3000);
+    expect(busy.failures[0]).toMatchObject({ id: 'api', reason: 'overloaded' });
+    const slow = run({ components: [{ id: 'u', kind: 'client' }, { id: 'api', kind: 'server', timeoutMs: 50 }, { id: 'llm', kind: 'llmapi' }], connections: [['u', 'api'], ['api', 'llm']] }, 20);
+    expect(slow.failures[0]).toMatchObject({ id: 'api', reason: 'timed out waiting on its calls' });
+  });
+
+  it('a healthy system has nothing to explain', () => {
+    expect(run(shop, 200).failures).toEqual([]);
+  });
+});

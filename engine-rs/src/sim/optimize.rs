@@ -52,6 +52,8 @@ pub struct Analysis {
     pub p_slo_met: f64,
     pub metrics: Metrics,
     pub bottlenecks: Vec<TopBottleneck>,
+    /// why requests failed, over all runs: where each failure started and the cause (requests per run)
+    pub failures: Vec<super::des::FailureCause>,
     pub wall_ms: f64,
     pub events: f64,
 }
@@ -100,6 +102,7 @@ pub fn aggregate(runs: &[DesResult], wall_ms: f64) -> Analysis {
         }
     }
     let n = runs.len() as f64;
+    let failures = merge_failures(runs.iter().map(|r| r.failures.as_slice()), n);
     let s: Vec<&super::des::DesSummary> = runs.iter().map(|r| &r.summary).collect();
     let mut tops: Vec<(String, (f64, Option<String>))> = top.into_iter().collect();
     js_sort_by(&mut tops, |a, b| b.1 .0 - a.1 .0);
@@ -120,9 +123,28 @@ pub fn aggregate(runs: &[DesResult], wall_ms: f64) -> Analysis {
             cost_per_hour: stat(&s.iter().map(|x| x.mean_cost_per_hour).collect::<Vec<_>>(), 3),
         },
         bottlenecks: tops.into_iter().map(|(id, (k, note))| TopBottleneck { id, share: js_round((k / n) * 100.0) / 100.0, note }).collect(),
+        failures,
         wall_ms,
         events: s.iter().fold(0.0, |a, x| a + x.events),
     }
+}
+
+/// failure causes of many runs, summed: requests per run, and each cause's share of all failures
+pub fn merge_failures<'a>(runs: impl Iterator<Item = &'a [super::des::FailureCause]>, n: f64) -> Vec<super::des::FailureCause> {
+    let mut by: IndexMap<(String, &'static str), super::des::FailureCause> = IndexMap::new();
+    for fs in runs {
+        for f in fs {
+            by.entry((f.id.clone(), f.reason)).or_insert_with(|| super::des::FailureCause { requests: 0.0, share: 0.0, ..f.clone() }).requests += f.requests;
+        }
+    }
+    let total: f64 = by.values().map(|f| f.requests).sum();
+    let mut out: Vec<super::des::FailureCause> = by
+        .into_values()
+        .map(|f| super::des::FailureCause { share: if total > 0.0 { js_round(f.requests / total * 1000.0) / 1000.0 } else { 0.0 }, requests: js_round(f.requests / n.max(1.0)), ..f })
+        .collect();
+    js_sort_by(&mut out, |a, b| b.share - a.share);
+    out.truncate(6);
+    out
 }
 
 /// the discrete-event runs of many seeds: on every core natively, one after another in WebAssembly

@@ -243,6 +243,13 @@ fn print_des(r: &crate::sim::des::DesResult, out: &mut Out) {
     let v = to_json(r);
     print_result(&v, out);
     let s = |k: &str| gn(&v, &["summary", k]);
+    if !r.failures.is_empty() {
+        out.log(&format!("  {}", bold("Why requests failed (where each failure started)")));
+        for f in &r.failures {
+            out.log(&format!("  {} {} {} {}", yellow(&pad(&f.id, 14)), pad(&pct(f.share), 7), pad(&f.reason, 32), dim(&format!("{} requests", loc(f.requests)))));
+        }
+        out.log("");
+    }
     out.log(&format!("  {}  p50 {}  p90 {}  p99 {}  p99.9 {}", bold("Latency (discrete-event, successful requests)"), ms(s("p50Ms")), ms(s("p90Ms")), ms(s("p99Ms")), ms(s("p999Ms"))));
     out.log(&format!("  {}\n", dim(&format!("seed {} · {} events in {} ms", js_num(gn(&v, &["seed"])), loc(s("events")), js_num(s("wallMs"))))));
 }

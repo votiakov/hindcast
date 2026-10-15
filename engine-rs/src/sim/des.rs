@@ -229,6 +229,42 @@ impl EventQueue {
 
 type ContId = usize;
 
+/// how a request ended: OK, or the component it failed at and why (node + 1 in the high bits, so
+/// that 0 is OK), carried up to the user so each failure is counted where it started
+type Why = u32;
+const OK: Why = 0;
+const R_DOWN: u8 = 1;
+const R_LIMIT: u8 = 2;
+const R_SHED: u8 = 3;
+const R_TIMEOUT: u8 = 4;
+const R_PARTITION: u8 = 5;
+const R_ERROR: u8 = 6;
+const R_BREAKER: u8 = 7;
+const R_DNS: u8 = 8;
+const R_NO_ROUTE: u8 = 9;
+const R_SYNC: u8 = 10;
+
+fn why(n: usize, r: u8) -> Why {
+    ((n as u32 + 1) << 8) | r as u32
+}
+
+/// what a user would read: the cause, worded for the component it happened at
+fn reason_text(r: u8) -> &'static str {
+    match r {
+        R_DOWN => "down",
+        R_LIMIT => "rate limited",
+        R_SHED => "overloaded",
+        R_TIMEOUT => "timed out waiting on its calls",
+        R_PARTITION => "unreachable (network partition)",
+        R_ERROR => "returned errors",
+        R_BREAKER => "circuit breaker open",
+        R_DNS => "stale DNS answer",
+        R_NO_ROUTE => "no healthy target",
+        R_SYNC => "synchronous replica unreachable",
+        _ => "failed",
+    }
+}
+
 #[derive(Clone, Copy)]
 enum Cont {
     /// a user's request finished
@@ -252,7 +288,7 @@ enum Cont {
 enum Ev {
     Generate { c: usize, emit: bool },
     Arrive { i: usize, read: bool, done: ContId },
-    Deliver { done: ContId, ok: bool },
+    Deliver { done: ContId, why: Why },
     Finish { n: usize, job: Job },
     /// fault: the node's fault rate when the request arrived
     LlmDone { n: usize, done: ContId, fault: f64 },
@@ -289,7 +325,8 @@ struct Call {
 
 struct Group {
     pending: usize,
-    all_ok: bool,
+    /// the first part that failed (OK while all have answered)
+    why: Why,
     done: ContId,
 }
 
@@ -440,7 +477,20 @@ pub struct DesResult {
     pub timeline: Vec<DesPoint>,
     pub components: IndexMap<String, DesComponent>,
     pub bottlenecks: Vec<super::headless::Bottleneck>,
+    /// why requests failed: the component each failure started at and the cause, most first
+    pub failures: Vec<FailureCause>,
     pub events: Vec<super::headless::Event>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct FailureCause {
+    pub id: String,
+    pub name: String,
+    pub reason: &'static str,
+    pub requests: f64,
+    /// of all failed requests
+    pub share: f64,
 }
 
 fn r3(n: f64) -> f64 {
@@ -480,6 +530,8 @@ struct Des<'a> {
     win_hist: Histogram,
     win_reqs: f64,
     win_fail: f64,
+    /// failed user requests by where and why they failed
+    fail_by: HashMap<Why, f64>,
     total_reqs: f64,
     total_fail: f64,
     lost_writes: f64,
@@ -521,12 +573,12 @@ impl<'a> Des<'a> {
         x.busy += delta;
     }
 
-    fn fail(&mut self, n: Option<usize>, done: ContId, ms: f64) {
+    fn fail(&mut self, n: Option<usize>, why: Why, done: ContId, ms: f64) {
         if let Some(n) = n {
             self.nodes[n].win.drops += 1.0;
             self.nodes[n].drops_total += 1.0;
         }
-        self.at(ms, Ev::Deliver { done, ok: false });
+        self.at(ms, Ev::Deliver { done, why });
     }
 
     /// derive pool size, service time and limits from the node's (possibly changed) data
@@ -606,7 +658,8 @@ impl<'a> Des<'a> {
     }
 
     /// run a continuation now
-    fn deliver(&mut self, id: ContId, ok: bool) {
+    fn deliver(&mut self, id: ContId, why: Why) {
+        let ok = why == OK;
         match self.conts[id] {
             Cont::User { t0 } => {
                 self.release(id);
@@ -619,24 +672,27 @@ impl<'a> Des<'a> {
                 } else {
                     self.win_fail += 1.0;
                     self.total_fail += 1.0;
+                    *self.fail_by.entry(why).or_insert(0.0) += 1.0;
                 }
             }
-            Cont::Settle { .. } => self.settle(id, ok, false),
+            Cont::Settle { .. } => self.settle(id, why, false),
             Cont::Part { group } => {
                 self.release(id);
                 let g = self.groups[group].as_mut().unwrap();
-                g.all_ok = g.all_ok && ok;
+                if g.why == OK {
+                    g.why = why;
+                }
                 g.pending -= 1;
                 if g.pending == 0 {
                     let g = self.groups[group].take().unwrap();
-                    self.deliver(g.done, g.all_ok);
+                    self.deliver(g.done, g.why);
                 }
             }
             Cont::Failover { n, read, order, i, done } => {
                 self.release(id);
                 let len = self.orders[order].len();
                 if ok || i + 1 >= len {
-                    self.deliver(done, ok);
+                    self.deliver(done, why);
                 } else {
                     self.try_failover(n, read, order, i + 1, done);
                 }
@@ -680,7 +736,7 @@ impl<'a> Des<'a> {
         }
         let kind: &str = kind;
         if !up(&self.nodes[i]) {
-            return self.fail(Some(i), done, 0.5);
+            return self.fail(Some(i), why(i, R_DOWN), done, 0.5);
         }
         let now = self.now;
         {
@@ -689,7 +745,7 @@ impl<'a> Des<'a> {
                 n.tokens = n.rate.min(n.tokens + (now - n.last_refill) * n.rate);
                 n.last_refill = now;
                 if n.tokens < 1.0 {
-                    return self.fail(Some(i), done, 1.0); // 429
+                    return self.fail(Some(i), why(i, R_LIMIT), done, 1.0); // 429
                 }
                 n.tokens -= 1.0;
             }
@@ -704,17 +760,17 @@ impl<'a> Des<'a> {
                 q.push_back(Job { read, t_in: now, done: None, shard: NO_SHARD });
             }
             let ack = base_latency_of(&self.nodes[i].data);
-            self.at(ack, Ev::Deliver { done, ok: true }); // the producer gets the ack
+            self.at(ack, Ev::Deliver { done, why: OK }); // the producer gets the ack
             self.pump_stream(i);
             return;
         }
         if kind == "queue" {
             if self.nodes[i].backlog.len() >= QUEUE_BACKLOG_MAX {
-                return self.fail(Some(i), done, 0.5);
+                return self.fail(Some(i), why(i, R_SHED), done, 0.5);
             }
             self.nodes[i].backlog.push_back(Job { read, t_in: now, done: None, shard: NO_SHARD });
             let ack = base_latency_of(&self.nodes[i].data);
-            self.at(ack, Ev::Deliver { done, ok: true }); // the producer gets the ack
+            self.at(ack, Ev::Deliver { done, why: OK }); // the producer gets the ack
             self.pump(i);
             return;
         }
@@ -725,7 +781,7 @@ impl<'a> Des<'a> {
             let targets: Vec<(bool, f64)> = self.nodes[i].children.iter().map(|&c| if self.reach(i, c) { (true, 0.0) } else { (false, self.nodes[c].dead_since.map(|t| now - t).unwrap_or(0.0)) }).collect();
             let stale = super::catalog::dns_stale_share(d, &targets);
             if stale > 0.0 && self.rng.next() < stale {
-                return self.fail(Some(i), done, 1000.0);
+                return self.fail(Some(i), why(i, R_DNS), done, 1000.0);
             }
         }
         if kind == "kv" {
@@ -737,7 +793,7 @@ impl<'a> Des<'a> {
                 n.kv_t = now;
                 let cost = if read { 1.0 / super::catalog::KV_PARTITION_READS } else { 1.0 / super::catalog::KV_PARTITION_WRITES };
                 if n.kv_bucket < cost {
-                    return self.fail(Some(i), done, 1.0); // throttled
+                    return self.fail(Some(i), why(i, R_LIMIT), done, 1.0); // throttled
                 }
                 n.kv_bucket -= cost;
             }
@@ -766,7 +822,7 @@ impl<'a> Des<'a> {
             self.nodes[i].promoted_counted = false;
             // a synchronous replica out of reach: the write cannot be acknowledged
             if !read && self.nodes[i].children.iter().any(|&c| self.link_sync.contains(&(i, c)) && !self.reach(i, c)) {
-                return self.fail(Some(i), done, 0.5);
+                return self.fail(Some(i), why(i, R_SYNC), done, 0.5);
             }
             if read && !replicas.is_empty() {
                 let pick = (self.rng.next() * (replicas.len() + 1) as f64).floor() as usize;
@@ -791,14 +847,14 @@ impl<'a> Des<'a> {
             self.nodes[i].down_since = Some(self.now);
         }
         if replicas.is_empty() {
-            return self.fail(Some(i), done, 0.5);
+            return self.fail(Some(i), why(i, R_DOWN), done, 0.5);
         }
         let promoted = match self.cfg.failover_s {
             Some(f) => self.now - self.nodes[i].down_since.unwrap() >= f,
             None => false,
         };
         if !read {
-            return if promoted { self.hop(replicas[0], read, done, Some(i)) } else { self.fail(Some(i), done, 0.5) };
+            return if promoted { self.hop(replicas[0], read, done, Some(i)) } else { self.fail(Some(i), why(i, R_DOWN), done, 0.5) };
         }
         let k = (self.rng.next() * replicas.len() as f64).floor() as usize;
         self.hop(replicas[k], read, done, Some(i))
@@ -809,7 +865,7 @@ impl<'a> Des<'a> {
         // across a partition: no answer until the connection times out
         if let Some(f) = from {
             if cut(&self.nodes[f].data, &self.nodes[i].data) && !(self.nodes[f].data.kind == "db" && !up(&self.nodes[f])) {
-                return self.fail(None, done, 1000.0);
+                return self.fail(None, why(i, R_PARTITION), done, 1000.0);
             }
         }
         let link = from.and_then(|f| self.link_ms.get(&(f, i)).copied()).unwrap_or(0.0);
@@ -818,7 +874,7 @@ impl<'a> Des<'a> {
         let n = from.and_then(|f| self.link_calls.get(&(f, i)).copied()).unwrap_or(1.0);
         if n > 1.0 {
             let group = self.groups.len();
-            self.groups.push(Some(Group { pending: n as usize, all_ok: true, done }));
+            self.groups.push(Some(Group { pending: n as usize, why: OK, done }));
             for _ in 0..(n as usize) {
                 let p = self.cont(Cont::Part { group });
                 self.at(ms, Ev::Arrive { i, read, done: p });
@@ -836,7 +892,7 @@ impl<'a> Des<'a> {
                 return self.start(n, Job { shard: s as u16, ..job });
             }
             if x.sh_queue[s].len() as f64 >= x.sh_qmax {
-                return self.fail(Some(n), job.done.unwrap(), 0.5);
+                return self.fail(Some(n), why(n, R_SHED), job.done.unwrap(), 0.5);
             }
             self.nodes[n].sh_queue[s].push_back(Job { shard: s as u16, ..job });
             return;
@@ -845,7 +901,7 @@ impl<'a> Des<'a> {
             return self.start(n, job);
         }
         if x.queue.len() as f64 >= x.queue_max {
-            return self.fail(Some(n), job.done.unwrap(), 0.5);
+            return self.fail(Some(n), why(n, R_SHED), job.done.unwrap(), 0.5);
         }
         self.nodes[n].queue.push_back(job);
     }
@@ -892,7 +948,7 @@ impl<'a> Des<'a> {
             while s < self.nodes[n].sh_queue.len() && !self.nodes[n].sh_queue[s].is_empty() && self.nodes[n].sh_busy[s] < self.nodes[n].sh_workers {
                 let next = self.nodes[n].sh_queue[s].pop_front().unwrap();
                 if (self.now - next.t_in) * 1000.0 > bound {
-                    self.fail(Some(n), next.done.unwrap(), 0.5);
+                    self.fail(Some(n), why(n, R_SHED), next.done.unwrap(), 0.5);
                     continue;
                 }
                 self.start(n, next);
@@ -901,7 +957,7 @@ impl<'a> Des<'a> {
         while !self.nodes[n].queue.is_empty() && self.nodes[n].busy < self.nodes[n].workers {
             let next = self.nodes[n].queue.pop_front().unwrap();
             if (self.now - next.t_in) * 1000.0 > bound {
-                self.fail(Some(n), next.done.unwrap(), 0.5);
+                self.fail(Some(n), why(n, R_SHED), next.done.unwrap(), 0.5);
                 continue;
             }
             self.start(n, next);
@@ -914,7 +970,7 @@ impl<'a> Des<'a> {
         let kind = self.nodes[n].kind;
         if let Some(fr) = self.nodes[n].data.fault_rate.filter(|x| *x != 0.0) {
             if self.rng.next() < fr {
-                return self.fail(Some(n), done, 0.0);
+                return self.fail(Some(n), why(n, R_ERROR), done, 0.0);
             }
         }
         if kind == "cache" || kind == "cdn" {
@@ -923,30 +979,30 @@ impl<'a> Des<'a> {
             if !job.read && d.write_policy.as_deref() == Some("behind") {
                 let wait = self.rng.exp(super::engine::WRITE_BEHIND_S) * 1000.0;
                 self.at(wait, Ev::Flush { n });
-                return self.deliver(done, true);
+                return self.deliver(done, OK);
             }
             let hit = if job.read { super::catalog::cache_hit_rate(d) * cache_warmth(self.nodes[n].cold_at, self.now, d.warmup_s) } else { 0.0 };
             if self.rng.next() < hit {
                 self.nodes[n].win.hits += 1.0;
-                return self.deliver(done, true);
+                return self.deliver(done, OK);
             }
             if self.nodes[n].children.is_empty() {
-                return self.fail(Some(n), done, 0.0);
+                return self.fail(Some(n), why(n, R_NO_ROUTE), done, 0.0);
             }
         }
         if kind == "db" && !job.read {
             // every synchronous replica acknowledges before the write is answered
             let wait = self.nodes[n].children.iter().filter(|&&c| self.link_sync.contains(&(n, c))).map(|&c| self.link_ms.get(&(n, c)).copied().unwrap_or(0.0) + self.cfg.hop_ms + self.nodes[c].svc_mean_ms).fold(0.0, f64::max);
             if wait > 0.0 {
-                self.at(wait, Ev::Deliver { done, ok: true });
+                self.at(wait, Ev::Deliver { done, why: OK });
                 return;
             }
         }
         if kind == "db" || kind == "replica" {
-            return self.deliver(done, true);
+            return self.deliver(done, OK);
         }
         if self.nodes[n].children.is_empty() {
-            return self.deliver(done, kind != "lb" && kind != "gateway");
+            return self.deliver(done, if kind == "lb" || kind == "gateway" { why(n, R_NO_ROUTE) } else { OK });
         }
         self.call_downstream(n, job.read, done);
     }
@@ -999,7 +1055,7 @@ impl<'a> Des<'a> {
             }
             if self.nodes[n].br == "open" || self.rng.next() > BR_PROBE {
                 let fb = self.nodes[n].data.fallback == Some(true);
-                return self.at(1.0, Ev::Deliver { done, ok: fb });
+                return self.at(1.0, Ev::Deliver { done, why: if fb { OK } else { why(n, R_BREAKER) } });
             }
         }
         let retries = self.nodes[n].data.retries.unwrap_or(0.0);
@@ -1031,7 +1087,8 @@ impl<'a> Des<'a> {
         self.route(n, read, settle);
     }
 
-    fn settle(&mut self, id: ContId, ok: bool, late: bool) {
+    fn settle(&mut self, id: ContId, why: Why, late: bool) {
+        let ok = why == OK && !late;
         let (call, k, settled) = match &mut self.conts[id] {
             Cont::Settle { call, k, settled, refs } => {
                 *refs -= 1;
@@ -1063,12 +1120,12 @@ impl<'a> Des<'a> {
         }
         if ok {
             self.calls[call] = None;
-            return self.deliver(done, true);
+            return self.deliver(done, OK);
         }
         let can_retry = k < retries && (!budget || self.nodes[n].retry_tokens >= 1.0);
         if !can_retry {
             self.calls[call] = None;
-            return self.deliver(done, false);
+            return self.deliver(done, if late { self::why(n, R_TIMEOUT) } else { why });
         }
         if budget {
             self.nodes[n].retry_tokens -= 1.0;
@@ -1087,7 +1144,7 @@ impl<'a> Des<'a> {
         if mode == "split" && degree <= 1.0 && !filter && !restricted {
             let len = self.nodes[n].children.len();
             if len == 0 {
-                return self.fail(Some(n), done, 0.5);
+                return self.fail(Some(n), why(n, R_NO_ROUTE), done, 0.5);
             }
             let k = (self.rng.next() * len as f64).floor() as usize;
             let c = self.nodes[n].children[k];
@@ -1106,11 +1163,11 @@ impl<'a> Des<'a> {
             });
         }
         if kids.is_empty() {
-            return self.fail(Some(n), done, 0.5);
+            return self.fail(Some(n), why(n, R_NO_ROUTE), done, 0.5);
         }
         if mode == "fanout" {
             let group = self.groups.len();
-            self.groups.push(Some(Group { pending: kids.len(), all_ok: true, done }));
+            self.groups.push(Some(Group { pending: kids.len(), why: OK, done }));
             for c in kids {
                 let p = self.cont(Cont::Part { group });
                 self.hop(c, read, p, Some(n));
@@ -1135,7 +1192,7 @@ impl<'a> Des<'a> {
         if degree > 1.0 {
             // scatter-gather over N partitions; wait for all
             let group = self.groups.len();
-            self.groups.push(Some(Group { pending: degree as usize, all_ok: true, done }));
+            self.groups.push(Some(Group { pending: degree as usize, why: OK, done }));
             let mut i = 0.0;
             while i < degree {
                 let k = (self.rng.next() * kids.len() as f64).floor() as usize;
@@ -1177,7 +1234,7 @@ impl<'a> Des<'a> {
             self.nodes[c].win.arrivals += 1.0;
             let finish = self.cont(Cont::User { t0 });
             if self.nodes[c].children.is_empty() {
-                self.deliver(finish, false);
+                self.deliver(finish, why(c, R_NO_ROUTE));
             } else {
                 self.call_downstream(c, read, finish);
             }
@@ -1389,17 +1446,17 @@ impl<'a> Des<'a> {
         match ev {
             Ev::Generate { c, emit } => self.generate(c, emit),
             Ev::Arrive { i, read, done } => self.arrive(i, read, done),
-            Ev::Deliver { done, ok } => self.deliver(done, ok),
+            Ev::Deliver { done, why } => self.deliver(done, why),
             Ev::Finish { n, job } => self.finish(n, job),
             Ev::LlmDone { n, done, fault } => {
                 self.nodes[n].win.usage_reqs += 1.0;
                 if fault != 0.0 && !fault.is_nan() && self.rng.next() < fault {
-                    return self.fail(Some(n), done, 0.0);
+                    return self.fail(Some(n), why(n, R_ERROR), done, 0.0);
                 }
-                self.deliver(done, true)
+                self.deliver(done, OK)
             }
             Ev::Attempt { call, k } => self.attempt(call, k),
-            Ev::Timeout { settle } => self.settle(settle, false, true),
+            Ev::Timeout { settle } => self.settle(settle, OK, true),
             Ev::Sample => self.sample(),
             Ev::Scenario { k } => self.scenario(k),
             Ev::Flush { n } => {
@@ -1550,6 +1607,7 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
         win_hist: Histogram::new(),
         win_reqs: 0.0,
         win_fail: 0.0,
+        fail_by: HashMap::new(),
         total_reqs: 0.0,
         total_fail: 0.0,
         lost_writes: 0.0,
@@ -1614,6 +1672,17 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
         }
     });
     let bottlenecks = ranked.iter().take(5).map(|(id, c)| super::headless::Bottleneck { id: (*id).clone(), peak_util: c.peak_util, dropped_total: c.dropped_total, note: c.note.clone() }).collect();
+    let mut failures: Vec<FailureCause> = des
+        .fail_by
+        .iter()
+        .map(|(&w, &count)| {
+            let n = ((w >> 8) as usize).saturating_sub(1);
+            let node = &des.sim_nodes[n.min(des.sim_nodes.len().saturating_sub(1))];
+            FailureCause { id: node.id.clone(), name: node.data.name.clone(), reason: reason_text((w & 0xff) as u8), requests: count, share: if des.total_fail > 0.0 { r3(count / des.total_fail) } else { 0.0 } }
+        })
+        .collect();
+    js_sort_by(&mut failures, |a, b| if b.requests != a.requests { b.requests - a.requests } else if a.id < b.id { -1.0 } else { 1.0 });
+    failures.truncate(8);
     let tln = &des.timeline;
     let mean = |f: &dyn Fn(&DesPoint) -> f64| if tln.is_empty() { 0.0 } else { tln.iter().fold(0.0, |s, x| s + f(x)) / tln.len() as f64 };
     let peak = |f: &dyn Fn(&DesPoint) -> f64| js_max(0.0, tln.iter().map(f));
@@ -1654,6 +1723,7 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
         timeline: des.timeline.clone(),
         components,
         bottlenecks,
+        failures,
         events: des.ev_log.clone(),
     }
 }
