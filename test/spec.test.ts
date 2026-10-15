@@ -120,3 +120,21 @@ describe('component keys', () => {
   it('the engine reads every one', () => expect(listed('engine-rs/src/sim/spec.rs', 'const DATA_KEYS')).toEqual(keys));
   it('the board keeps every one', () => expect(listed('src/spec/convert.ts', 'const DATA_KEYS')).toEqual(keys));
 });
+
+// the same for a link's properties: the canonical spec and the connect edit keep each one
+describe('connection keys', () => {
+  const object = ArchitectureSpec.shape.connections.element.options[2] as unknown as { shape: Record<string, unknown> };
+  const keys = Object.keys(object.shape).filter((k) => k !== 'from' && k !== 'to').sort();
+  const lists = (file: string) => [...readFileSync(file, 'utf8').matchAll(/for k in \[([^\]]*"latencyMs"[^\]]*)\]/g)].map((m) => m[1].split(',').map((x) => x.trim().replace(/^"|"$/g, '')).filter((k) => k !== 'from' && k !== 'to').sort());
+  it('the CLI canonical spec keeps every one', () => expect(lists('engine-rs/src/cli/sim.rs')).toEqual([keys]));
+  it('the connect edit keeps every one', () => expect(lists('engine-rs/src/cli/design.rs')).toEqual([keys]));
+  it('a link round-trips through the board', () => {
+    for (const reconnect of [240, 'until-restart'] as const) {
+      const spec = { version: 1 as const, components: [{ id: 'api', kind: 'server' as const }, { id: 'cart', kind: 'server' as const }], connections: [{ from: 'api', to: 'cart', reconnect }] };
+      expect(ArchitectureSpec.safeParse(spec).success).toBe(true);
+      const g = specToGraph(spec);
+      expect(graphToSpec(g.nodes, g.edges).connections).toEqual([{ from: 'api', to: 'cart', reconnect }]);
+    }
+    expect(ArchitectureSpec.safeParse({ components: [{ id: 'a', kind: 'server' }], connections: [{ from: 'a', to: 'a', reconnect: 'never' }] }).success).toBe(false);
+  });
+});

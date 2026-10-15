@@ -248,7 +248,7 @@ interface State {
   removeNodes: (b: BoardId, ids: string[]) => void;
   removeEdge: (b: BoardId, id: string) => void;
   /** link properties (network latency) */
-  updateEdge: (b: BoardId, id: string, data: { latencyMs?: number; calls?: number; carries?: 'reads' | 'writes'; replication?: 'sync' | 'async' }) => void;
+  updateEdge: (b: BoardId, id: string, data: { latencyMs?: number; calls?: number; carries?: 'reads' | 'writes'; replication?: 'sync' | 'async'; reconnect?: number | 'until-restart' }) => void;
   killNode: (b: BoardId, id: string) => void;
   reviveNode: (b: BoardId, id: string) => void;
   setZoneFailed: (b: BoardId, id: string, failed: boolean) => void;

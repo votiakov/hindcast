@@ -696,7 +696,7 @@ pub(crate) fn apply_variant(base: &Value, v: &Value) -> Result<Value, String> {
                 find(&st("to"))?;
                 let (from, to) = (st("from"), st("to"));
                 let mut props = JMap::new();
-                for k in ["latencyMs", "calls", "carries", "replication"] {
+                for k in ["latencyMs", "calls", "carries", "replication", "reconnect"] {
                     if let Some(v) = ch.get(k).filter(|v| !v.is_null() && v.as_str() != Some("async")) {
                         props.insert(k.into(), v.clone());
                     }

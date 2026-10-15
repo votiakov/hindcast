@@ -96,7 +96,7 @@ export interface GlobalStats {
 }
 
 export interface SimEvent {
-  kind: 'overload' | 'recovered' | 'failover' | 'breaker-open' | 'breaker-closed' | 'scale-out' | 'scale-in';
+  kind: 'overload' | 'recovered' | 'failover' | 'breaker-open' | 'breaker-closed' | 'scale-out' | 'scale-in' | 'reconnect';
   nodeId: string;
   name: string;
   detail?: string;

@@ -64,6 +64,17 @@ pub struct EdgeData {
     pub carries: Option<String>,
     /// database → replica: "sync" — every write waits for this replica's acknowledgement
     pub replication: Option<String>,
+    /// how long (s) the caller keeps failing its calls over this link after the callee comes back from
+    /// being down — a client channel that stays broken (gRPC reconnect backoff, a channel that gave
+    /// up); infinite ("until-restart"): until the caller itself restarts. None: it reconnects at once
+    #[serde(default, deserialize_with = "reconnect_de")]
+    pub reconnect: Option<f64>,
+}
+
+/// seconds, or "until-restart"
+fn reconnect_de<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<f64>, D::Error> {
+    let v = Option::<serde_json::Value>::deserialize(d)?;
+    Ok(v.as_ref().and_then(super::spec::reconnect_of).filter(|r| *r > 0.0))
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -1181,6 +1192,25 @@ pub struct Engine {
     since_history: f64,
     /// requests sent this tick to a component that had already run (a call cycle): they arrive next tick
     carry: HashMap<String, (f64, f64)>,
+    /// links with a `reconnect`, by "from>to": whether each end was up last tick, and until when the
+    /// caller's calls over it keep failing
+    links: HashMap<String, LinkState>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct LinkState {
+    source_up: bool,
+    target_up: bool,
+    until: f64,
+}
+
+/// the reconnect event both engines log when a callee comes back and its caller's link stays broken
+pub fn reconnect_event(caller: &str, callee: &str, s: f64) -> String {
+    if s.is_infinite() {
+        format!("{} → {} stays broken until {} restarts", caller, callee, caller)
+    } else {
+        format!("{} → {} stays broken for {} s", caller, callee, js_num(s))
+    }
 }
 
 fn failover_name(f: Failover) -> &'static str {
@@ -1347,6 +1377,8 @@ impl Engine {
         let mut pooled: Vec<bool> = vec![false; n];
         // links a network partition has cut, and each replica's primary (edge, node)
         let mut edge_cut = vec![false; edges.len()];
+        // of those, links whose caller's connection is still broken: its calls fail at once
+        let mut edge_broken = vec![false; edges.len()];
         let mut primary_of: Vec<Option<(usize, usize)>> = vec![None; n];
         for (ei, e) in edges.iter().enumerate() {
             let (si, ti) = match (by_id.get(e.source.as_str()), by_id.get(e.target.as_str())) {
@@ -1360,6 +1392,26 @@ impl Engine {
             }
             // a dead primary's links to its replicas are not the network's: failover is decided around it
             edge_cut[ei] = (cut(&data[si], &data[ti]) || data[si].cut_to.as_ref().map_or(false, |v| v.iter().any(|x| *x == nodes_in[ti].id))) && !(sd.kind == "db" && !sd.alive);
+            // a caller whose connection stays broken after the callee came back (`reconnect`): nothing
+            // reaches the callee, as across a cut link, until the time is up or the caller restarts; the
+            // calls fail at once (a channel in transient failure), not at the connection's timeout
+            if let Some(r) = e.data.as_ref().and_then(|d| d.reconnect) {
+                let (s_up, t_up) = (is_up(sd), is_up(&data[ti]));
+                let l = self.links.entry(format!("{}>{}", e.source, e.target)).or_insert(LinkState { source_up: s_up, target_up: t_up, until: f64::NEG_INFINITY });
+                if !l.source_up && s_up {
+                    // the caller restarted (at the same moment as the callee, too): fresh connections
+                    l.until = f64::NEG_INFINITY;
+                } else if !l.target_up && t_up && s_up {
+                    l.until = now + r;
+                    events.push(SimEvent { kind: "reconnect".into(), node_id: e.source.clone(), name: reconnect_event(&sd.name, &data[ti].name, r), detail: None });
+                }
+                l.source_up = s_up;
+                l.target_up = t_up;
+                if now < l.until {
+                    edge_cut[ei] = true;
+                    edge_broken[ei] = true;
+                }
+            }
             if sd.kind == "db" && data[ti].kind == "replica" {
                 primary_of[ti] = Some((ei, si));
             }
@@ -1745,7 +1797,7 @@ impl Engine {
                     let n = edge_calls[k.e];
                     if edge_cut[k.e] {
                         // across a partition: no answer, until the connection times out
-                        return (0.0, timeout_ms, f, 0.0);
+                        return (0.0, if edge_broken[k.e] { FAST_FAIL_MS } else { timeout_ms }, f, 0.0);
                     }
                     let (ks, kl, kt) = if n > 1.0 { (s.success.js_pow(n), s.latency_ms * fanout_tail(n) + edge_lat[k.e], s.tail_ms * fanout_tail(n)) } else { (s.success, s.latency_ms + edge_lat[k.e], s.tail_ms) };
                     // a bulkhead: past its share of waiting calls, the rest fail at once
@@ -1758,7 +1810,7 @@ impl Engine {
                         let (ks, _, f, _) = kid(k);
                         let wk = f.max(1e-9) * (1.0 - ks).max(1e-9);
                         w += wk;
-                        ms += wk * if edge_cut[k.e] { timeout_ms } else { self.nodes[sidx[k.t]].fail_ms + edge_lat[k.e] };
+                        ms += wk * if edge_broken[k.e] { FAST_FAIL_MS } else if edge_cut[k.e] { timeout_ms } else { self.nodes[sidx[k.t]].fail_ms + edge_lat[k.e] };
                     }
                     kid_fail = ms / w;
                 }
@@ -1767,7 +1819,7 @@ impl Engine {
                     let s = &self.nodes[sidx[k.t]];
                     let n = edge_calls[k.e];
                     if edge_cut[k.e] {
-                        return vec![[1.0, timeout_ms, 0.0]];
+                        return vec![[1.0, if edge_broken[k.e] { FAST_FAIL_MS } else { timeout_ms }, 0.0]];
                     }
                     if n > 1.0 {
                         return vec![[1.0, s.latency_ms * fanout_tail(n) + edge_lat[k.e], s.tail_ms * fanout_tail(n)]];
@@ -2258,5 +2310,67 @@ impl Engine {
         }
         let global = if with_history { self.global.clone() } else { GlobalStats { history: vec![], ..self.global.clone() } };
         Snapshot { node_stats, edge_stats, global }
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::super::headless::{simulate, SimOptions};
+    use serde_json::{json, Value};
+
+    /// users → api → cart; cart is down from 10 s to 20 s; api's link to it has `reconnect`
+    pub fn shop(reconnect: Option<Value>) -> Value {
+        let mut link = json!({ "from": "api", "to": "cart" });
+        if let Some(r) = reconnect {
+            link["reconnect"] = r;
+        }
+        json!({ "components": [{ "id": "users", "kind": "client" }, { "id": "api", "kind": "server", "capacity": 5000 }, { "id": "cart", "kind": "server", "capacity": 5000 }], "connections": ["users -> api", link] })
+    }
+
+    pub fn outage(extra: Vec<Value>) -> Value {
+        let mut events = vec![json!({ "at": 10, "action": { "type": "kill-id", "id": "cart" } }), json!({ "at": 20, "action": { "type": "revive-id", "id": "cart" } })];
+        events.extend(extra);
+        json!({ "duration": 60, "rps": 200, "events": events })
+    }
+
+    /// the mean error rate over the timeline points in [from, to)
+    pub fn errors(tl: &[(f64, f64)], from: f64, to: f64) -> f64 {
+        let xs: Vec<f64> = tl.iter().filter(|p| p.0 >= from && p.0 < to).map(|p| p.1).collect();
+        xs.iter().sum::<f64>() / xs.len().max(1) as f64
+    }
+
+    fn fluid(spec: Value, sc: Value) -> (Vec<(f64, f64)>, Vec<String>) {
+        let r = simulate(&spec, &sc, &SimOptions::default()).unwrap();
+        (r.timeline.iter().map(|p| (p.t, p.error_rate)).collect(), r.events.iter().map(|e| e.what.clone()).collect())
+    }
+
+    #[test]
+    fn a_broken_link_keeps_failing_for_its_reconnect_time_after_the_callee_is_back() {
+        // no knob: back as soon as cart is
+        let (tl, _) = fluid(shop(None), outage(vec![]));
+        assert!(errors(&tl, 12.0, 19.0) > 0.95, "down: {}", errors(&tl, 12.0, 19.0));
+        assert!(errors(&tl, 23.0, 60.0) < 0.01, "after: {}", errors(&tl, 23.0, 60.0));
+        // 15 s: api's calls keep failing until 35 s, then it is back
+        let (tl, ev) = fluid(shop(Some(json!(15))), outage(vec![]));
+        assert!(errors(&tl, 21.0, 34.0) > 0.95, "still broken: {}", errors(&tl, 21.0, 34.0));
+        assert!(errors(&tl, 38.0, 60.0) < 0.01, "reconnected: {}", errors(&tl, 38.0, 60.0));
+        assert!(ev.iter().any(|e| e == "reconnect: api → cart stays broken for 15 s"), "{:?}", ev);
+        // 0 is today's behaviour
+        let (tl0, _) = fluid(shop(Some(json!(0))), outage(vec![]));
+        assert!(errors(&tl0, 23.0, 60.0) < 0.01);
+    }
+
+    #[test]
+    fn until_restart_lasts_until_the_caller_restarts() {
+        let (tl, ev) = fluid(shop(Some(json!("until-restart"))), outage(vec![]));
+        assert!(errors(&tl, 21.0, 60.0) > 0.95, "never reconnects: {}", errors(&tl, 21.0, 60.0));
+        assert!(ev.iter().any(|e| e == "reconnect: api → cart stays broken until api restarts"), "{:?}", ev);
+        // api restarted at 40 s: fresh connections
+        let (tl, _) = fluid(shop(Some(json!("until-restart"))), outage(vec![json!({ "at": 40, "action": { "type": "kill-id", "id": "api" } }), json!({ "at": 41, "action": { "type": "revive-id", "id": "api" } })]));
+        assert!(errors(&tl, 21.0, 39.0) > 0.95);
+        assert!(errors(&tl, 44.0, 60.0) < 0.01, "after the restart: {}", errors(&tl, 44.0, 60.0));
+        // a caller restarted together with its callee starts afresh
+        let (tl, _) = fluid(shop(Some(json!(15))), outage(vec![json!({ "at": 10, "action": { "type": "kill-id", "id": "api" } }), json!({ "at": 20, "action": { "type": "revive-id", "id": "api" } })]));
+        assert!(errors(&tl, 23.0, 60.0) < 0.01, "both restarted: {}", errors(&tl, 23.0, 60.0));
     }
 }

@@ -514,6 +514,20 @@
               "sync",
               "async"
              ]
+            },
+            "reconnect": {
+             "anyOf": [
+              {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 86400
+              },
+              {
+               "type": "string",
+               "const": "until-restart"
+              }
+             ],
+             "description": "seconds the caller keeps failing its calls over this link after the callee comes back from being down: a client connection that stays broken (gRPC reconnect backoff, a channel that gave up). \"until-restart\": until the caller itself restarts. Unset or 0: it reconnects at once. An assumption you state, not something measured"
             }
            },
            "required": [
@@ -1076,6 +1090,20 @@
               "sync",
               "async"
              ]
+            },
+            "reconnect": {
+             "anyOf": [
+              {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 86400
+              },
+              {
+               "type": "string",
+               "const": "until-restart"
+              }
+             ],
+             "description": "seconds the caller keeps failing its calls over this link after the callee comes back from being down: a client connection that stays broken (gRPC reconnect backoff, a channel that gave up). \"until-restart\": until the caller itself restarts. Unset or 0: it reconnects at once. An assumption you state, not something measured"
             }
            },
            "required": [
@@ -2060,6 +2088,20 @@
               "sync",
               "async"
              ]
+            },
+            "reconnect": {
+             "anyOf": [
+              {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 86400
+              },
+              {
+               "type": "string",
+               "const": "until-restart"
+              }
+             ],
+             "description": "seconds the caller keeps failing its calls over this link after the callee comes back from being down: a client connection that stays broken (gRPC reconnect backoff, a channel that gave up). \"until-restart\": until the caller itself restarts. Unset or 0: it reconnects at once. An assumption you state, not something measured"
             }
            },
            "required": [
@@ -2611,6 +2653,20 @@
                  "sync",
                  "async"
                 ]
+               },
+               "reconnect": {
+                "anyOf": [
+                 {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 86400
+                 },
+                 {
+                  "type": "string",
+                  "const": "until-restart"
+                 }
+                ],
+                "description": "seconds the caller keeps failing its calls over this link after the callee comes back from being down: a client connection that stays broken (gRPC reconnect backoff, a channel that gave up). \"until-restart\": until the caller itself restarts. Unset or 0: it reconnects at once. An assumption you state, not something measured"
                }
               },
               "required": [
@@ -3487,6 +3543,20 @@
                "sync",
                "async"
               ]
+             },
+             "reconnect": {
+              "anyOf": [
+               {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 86400
+               },
+               {
+                "type": "string",
+                "const": "until-restart"
+               }
+              ],
+              "description": "seconds the caller keeps failing its calls over this link after the callee comes back from being down: a client connection that stays broken (gRPC reconnect backoff, a channel that gave up). \"until-restart\": until the caller itself restarts. Unset or 0: it reconnects at once. An assumption you state, not something measured"
              }
             },
             "required": [
@@ -4423,6 +4493,20 @@
               "sync",
               "async"
              ]
+            },
+            "reconnect": {
+             "anyOf": [
+              {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 86400
+              },
+              {
+               "type": "string",
+               "const": "until-restart"
+              }
+             ],
+             "description": "seconds the caller keeps failing its calls over this link after the callee comes back from being down: a client connection that stays broken (gRPC reconnect backoff, a channel that gave up). \"until-restart\": until the caller itself restarts. Unset or 0: it reconnects at once. An assumption you state, not something measured"
             }
            },
            "required": [
@@ -5001,6 +5085,20 @@
               "sync",
               "async"
              ]
+            },
+            "reconnect": {
+             "anyOf": [
+              {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 86400
+              },
+              {
+               "type": "string",
+               "const": "until-restart"
+              }
+             ],
+             "description": "seconds the caller keeps failing its calls over this link after the callee comes back from being down: a client connection that stays broken (gRPC reconnect backoff, a channel that gave up). \"until-restart\": until the caller itself restarts. Unset or 0: it reconnects at once. An assumption you state, not something measured"
             }
            },
            "required": [
@@ -5974,6 +6072,20 @@
               "sync",
               "async"
              ]
+            },
+            "reconnect": {
+             "anyOf": [
+              {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 86400
+              },
+              {
+               "type": "string",
+               "const": "until-restart"
+              }
+             ],
+             "description": "seconds the caller keeps failing its calls over this link after the callee comes back from being down: a client connection that stays broken (gRPC reconnect backoff, a channel that gave up). \"until-restart\": until the caller itself restarts. Unset or 0: it reconnects at once. An assumption you state, not something measured"
             }
            },
            "required": [
@@ -6956,6 +7068,20 @@
               "sync",
               "async"
              ]
+            },
+            "reconnect": {
+             "anyOf": [
+              {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 86400
+              },
+              {
+               "type": "string",
+               "const": "until-restart"
+              }
+             ],
+             "description": "seconds the caller keeps failing its calls over this link after the callee comes back from being down: a client connection that stays broken (gRPC reconnect backoff, a channel that gave up). \"until-restart\": until the caller itself restarts. Unset or 0: it reconnects at once. An assumption you state, not something measured"
             }
            },
            "required": [
@@ -7602,6 +7728,20 @@
               "sync",
               "async"
              ]
+            },
+            "reconnect": {
+             "anyOf": [
+              {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 86400
+              },
+              {
+               "type": "string",
+               "const": "until-restart"
+              }
+             ],
+             "description": "seconds the caller keeps failing its calls over this link after the callee comes back from being down: a client connection that stays broken (gRPC reconnect backoff, a channel that gave up). \"until-restart\": until the caller itself restarts. Unset or 0: it reconnects at once. An assumption you state, not something measured"
             }
            },
            "required": [
@@ -8150,6 +8290,20 @@
                 "sync",
                 "async"
                ]
+              },
+              "reconnect": {
+               "anyOf": [
+                {
+                 "type": "number",
+                 "minimum": 0,
+                 "maximum": 86400
+                },
+                {
+                 "type": "string",
+                 "const": "until-restart"
+                }
+               ],
+               "description": "seconds the caller keeps failing its calls over this link after the callee comes back from being down: a client connection that stays broken (gRPC reconnect backoff, a channel that gave up). \"until-restart\": until the caller itself restarts. Unset or 0: it reconnects at once. An assumption you state, not something measured"
               }
              },
              "required": [
@@ -9026,6 +9180,20 @@
               "sync",
               "async"
              ]
+            },
+            "reconnect": {
+             "anyOf": [
+              {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 86400
+              },
+              {
+               "type": "string",
+               "const": "until-restart"
+              }
+             ],
+             "description": "seconds the caller keeps failing its calls over this link after the callee comes back from being down: a client connection that stays broken (gRPC reconnect backoff, a channel that gave up). \"until-restart\": until the caller itself restarts. Unset or 0: it reconnects at once. An assumption you state, not something measured"
             }
            },
            "required": [
@@ -9960,6 +10128,20 @@
               "sync",
               "async"
              ]
+            },
+            "reconnect": {
+             "anyOf": [
+              {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 86400
+              },
+              {
+               "type": "string",
+               "const": "until-restart"
+              }
+             ],
+             "description": "seconds the caller keeps failing its calls over this link after the callee comes back from being down: a client connection that stays broken (gRPC reconnect backoff, a channel that gave up). \"until-restart\": until the caller itself restarts. Unset or 0: it reconnects at once. An assumption you state, not something measured"
             }
            },
            "required": [
@@ -10508,6 +10690,20 @@
                 "sync",
                 "async"
                ]
+              },
+              "reconnect": {
+               "anyOf": [
+                {
+                 "type": "number",
+                 "minimum": 0,
+                 "maximum": 86400
+                },
+                {
+                 "type": "string",
+                 "const": "until-restart"
+                }
+               ],
+               "description": "seconds the caller keeps failing its calls over this link after the callee comes back from being down: a client connection that stays broken (gRPC reconnect backoff, a channel that gave up). \"until-restart\": until the caller itself restarts. Unset or 0: it reconnects at once. An assumption you state, not something measured"
               }
              },
              "required": [
@@ -11384,6 +11580,20 @@
               "sync",
               "async"
              ]
+            },
+            "reconnect": {
+             "anyOf": [
+              {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 86400
+              },
+              {
+               "type": "string",
+               "const": "until-restart"
+              }
+             ],
+             "description": "seconds the caller keeps failing its calls over this link after the callee comes back from being down: a client connection that stays broken (gRPC reconnect backoff, a channel that gave up). \"until-restart\": until the caller itself restarts. Unset or 0: it reconnects at once. An assumption you state, not something measured"
             }
            },
            "required": [

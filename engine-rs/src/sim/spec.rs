@@ -230,6 +230,9 @@ pub struct Architecture {
     pub carries: std::collections::HashMap<(String, String), String>,
     /// database → replica links replicated synchronously (from, to)
     pub sync: std::collections::HashSet<(String, String)>,
+    /// links whose caller keeps failing its calls for this long (s) after the callee comes back from
+    /// being down (from, to) → s; infinite: "until-restart", until the caller itself restarts
+    pub reconnect: std::collections::HashMap<(String, String), f64>,
     pub zones: Vec<(String, Option<String>, Vec<String>)>,
 }
 
@@ -276,9 +279,32 @@ fn connection_of(c: &Value) -> Option<(String, String, Option<f64>)> {
                     return None;
                 }
             }
+            if let Some(v) = o.get("reconnect") {
+                reconnect_of(v)?;
+            }
             Some((from, to, lat))
         }
         _ => None,
+    }
+}
+
+pub const RECONNECT_MAX_S: f64 = 86400.0;
+
+/// a link's `reconnect`: seconds (0–86400), or "until-restart" (infinite)
+pub fn reconnect_of(v: &Value) -> Option<f64> {
+    match v {
+        Value::Number(n) => n.as_f64().filter(|x| (0.0..=RECONNECT_MAX_S).contains(x)),
+        Value::String(s) if s == "until-restart" => Some(f64::INFINITY),
+        _ => None,
+    }
+}
+
+/// a link's `reconnect` as the spec writes it
+pub fn reconnect_value(s: f64) -> Value {
+    if s.is_infinite() {
+        json!("until-restart")
+    } else {
+        num_v(s)
     }
 }
 
@@ -327,6 +353,30 @@ fn connection_issues(c: &Value, i: usize) -> Vec<Issue> {
                 None | Some(Value::Null) => {}
                 Some(Value::String(c)) if c == "reads" || c == "writes" => {}
                 Some(_) => object.push(Issue { path: vec![json!("carries")], message: "Invalid option: expected one of \"reads\"|\"writes\"".into(), code: "invalid_value", values: Some(vec![json!("reads"), json!("writes")]), head: h(&[("code", json!("invalid_value")), ("values", json!(["reads", "writes"]))]), ..Default::default() }),
+            }
+            match o.get("reconnect") {
+                None => {}
+                Some(Value::Number(n)) => {
+                    let x = n.as_f64().unwrap_or(f64::NAN);
+                    if x < 0.0 {
+                        object.push(Issue { path: vec![json!("reconnect")], message: "Too small: expected number to be >=0".into(), code: "too_small", minimum: Some(0.0), head: h(&[("origin", json!("number")), ("code", json!("too_small")), ("minimum", json!(0)), ("inclusive", json!(true))]), ..Default::default() });
+                    }
+                    if x > RECONNECT_MAX_S {
+                        object.push(Issue { path: vec![json!("reconnect")], message: "Too big: expected number to be <=86400".into(), code: "too_big", maximum: Some(RECONNECT_MAX_S), head: h(&[("origin", json!("number")), ("code", json!("too_big")), ("maximum", json!(86400)), ("inclusive", json!(true))]), ..Default::default() });
+                    }
+                }
+                Some(Value::String(r)) if r == "until-restart" => {}
+                Some(x) => {
+                    // neither a number nor the literal: the object branch fails as a whole
+                    object.push(Issue {
+                        path: vec![json!("reconnect")],
+                        message: "Invalid input".into(),
+                        code: "invalid_union",
+                        head: h(&[("code", json!("invalid_union")), ("errors", json!([[{ "expected": "number", "code": "invalid_type", "path": [], "message": format!("Invalid input: expected number, received {}", received(Some(x))) }], [{ "code": "invalid_value", "values": ["until-restart"], "path": [], "message": "Invalid input: expected \"until-restart\"" }]]))]),
+                        ..Default::default()
+                    });
+                    object_aborted = true;
+                }
             }
             match o.get("calls") {
                 None => {}
@@ -425,6 +475,7 @@ pub fn check_architecture(v: &Value) -> (Option<Architecture>, Vec<Issue>) {
     let mut calls = std::collections::HashMap::new();
     let mut carries = std::collections::HashMap::new();
     let mut sync = std::collections::HashSet::new();
+    let mut reconnect = std::collections::HashMap::new();
     match o.get("connections") {
         Some(Value::Array(a)) => {
             for (i, c) in a.iter().enumerate() {
@@ -438,6 +489,9 @@ pub fn check_architecture(v: &Value) -> (Option<Architecture>, Vec<Issue>) {
                         }
                         if c.get("replication").and_then(|v| v.as_str()) == Some("sync") {
                             sync.insert((x.0.clone(), x.1.clone()));
+                        }
+                        if let Some(r) = c.get("reconnect").and_then(reconnect_of) {
+                            reconnect.insert((x.0.clone(), x.1.clone()), r);
                         }
                         connections.push(x)
                     }
@@ -505,6 +559,7 @@ pub fn check_architecture(v: &Value) -> (Option<Architecture>, Vec<Issue>) {
         calls,
         carries,
         sync,
+        reconnect,
         zones,
     }), issues)
 }
@@ -541,7 +596,8 @@ pub fn graph_of(a: &Architecture) -> (Vec<SimNode>, Vec<SimEdge>) {
             let carries = a.carries.get(&(from.clone(), to.clone())).cloned();
             let replication = if a.sync.contains(&(from.clone(), to.clone())) { Some("sync".to_string()) } else { None };
             let latency_ms = lat.filter(|l| *l != 0.0);
-            SimEdge { id: format!("e-{}-{}", from, to), source: from.clone(), target: to.clone(), data: if latency_ms.is_some() || calls.is_some() || carries.is_some() || replication.is_some() { Some(EdgeData { latency_ms, calls, carries, replication }) } else { None } }
+            let reconnect = a.reconnect.get(&(from.clone(), to.clone())).copied().filter(|r| *r > 0.0);
+            SimEdge { id: format!("e-{}-{}", from, to), source: from.clone(), target: to.clone(), data: if latency_ms.is_some() || calls.is_some() || carries.is_some() || replication.is_some() || reconnect.is_some() { Some(EdgeData { latency_ms, calls, carries, replication, reconnect }) } else { None } }
         })
         .collect();
     (nodes, edges)
@@ -570,7 +626,8 @@ pub fn to_value(a: &Architecture) -> Value {
                     let calls = a.calls.get(&(f.clone(), t.clone()));
                     let carries = a.carries.get(&(f.clone(), t.clone()));
                     let sync = a.sync.contains(&(f.clone(), t.clone()));
-                    if l.is_none() && calls.is_none() && carries.is_none() && !sync {
+                    let reconnect = a.reconnect.get(&(f.clone(), t.clone()));
+                    if l.is_none() && calls.is_none() && carries.is_none() && !sync && reconnect.is_none() {
                         return json!([f, t]);
                     }
                     let mut o = JMap::new();
@@ -587,6 +644,9 @@ pub fn to_value(a: &Architecture) -> Value {
                     }
                     if sync {
                         o.insert("replication".into(), json!("sync"));
+                    }
+                    if let Some(r) = reconnect {
+                        o.insert("reconnect".into(), reconnect_value(*r));
                     }
                     Value::Object(o)
                 })
@@ -643,6 +703,7 @@ pub fn apply_variant(base: &Architecture, v: &Value) -> Result<Architecture, Str
                 find(&a, &id)?;
                 a.components.retain(|x| x.get("id").and_then(|x| x.as_str()) != Some(id.as_str()));
                 a.connections.retain(|(f, t, _)| *f != id && *t != id);
+                a.reconnect.retain(|(f, t), _| *f != id && *t != id);
                 for z in a.zones.iter_mut() {
                     z.2.retain(|m| *m != id);
                 }
@@ -669,11 +730,16 @@ pub fn apply_variant(base: &Architecture, v: &Value) -> Result<Architecture, Str
                     }
                     _ => {}
                 }
+                if let Some(v) = ch.get("reconnect").filter(|v| !v.is_null()) {
+                    let r = reconnect_of(v).ok_or_else(|| format!("connect {} -> {}: reconnect is seconds (0–86400) or \"until-restart\"", from, to))?;
+                    a.reconnect.insert(key.clone(), r);
+                }
                 a.connections.push((from, to, ch.get("latencyMs").and_then(|x| x.as_f64())));
             }
             "disconnect" => {
                 let (from, to) = (s("from"), s("to"));
                 a.connections.retain(|(f, t, _)| !(*f == from && *t == to));
+                a.reconnect.remove(&(from, to));
             }
             x => return Err(format!("unknown change op \"{}\" (set, add, remove, connect, disconnect)", x)),
         }
