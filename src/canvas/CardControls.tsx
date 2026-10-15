@@ -11,7 +11,7 @@ import { Calibrate } from './Calibrate';
 const CALLERS = new Set(['client', 'server', 'worker', 'function', 'gateway', 'lb']);
 
 /**
- * The controls of a selected component, inside its card (the Terminal and Reference themes): the
+ * The controls of a selected component, inside its card: the
  * card opens up instead of a toolbar floating over the board. The rows people change most are
  * always there — size, scaling, what is specific to the kind, chaos; resilience (retries,
  * timeouts, breakers, routing, fan-out, queue) opens under its own heading, and opens by itself
