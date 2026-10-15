@@ -1,0 +1,5 @@
+# Who calls whom, for a system with neither traces nor mesh metrics (quickstart --topology)
+entry: [web]
+calls:
+  web: { api: 2 }   # calls per request; a list ([api]) lets Hindcast work the rate out
+grpc: [api]         # services that serve gRPC

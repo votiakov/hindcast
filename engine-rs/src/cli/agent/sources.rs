@@ -8,11 +8,13 @@ use indexmap::{IndexMap, IndexSet};
 use serde_json::{json, Map as JMap, Value};
 
 /// the metric each preset needs, and the label that names services in it
-pub const PRESET_SIGNATURE: [(&str, &str, &str); 6] = [
+pub const PRESET_SIGNATURE: [(&str, &str, &str); 8] = [
     ("otel-spanmetrics", "traces_span_metrics_calls_total", "service_name"),
     ("http-server", "http_server_request_duration_seconds_count", "service_name"),
     ("spring", "http_server_requests_seconds_count", "job"),
     ("ingress-nginx", "nginx_ingress_controller_requests", "exported_service"),
+    ("istio", "istio_requests_total", "destination_workload"),
+    ("linkerd", "response_total", "deployment"),
     ("cadvisor", "container_spec_cpu_quota", "container_label_com_docker_compose_service"),
     ("kubernetes", "kube_pod_info", "pod"),
 ];
@@ -23,6 +25,11 @@ const NEAR_MISSES: [(&str, &str); 4] = [
     ("http_server_duration_milliseconds_count", "OpenTelemetry HTTP metrics under the pre-1.0 name (milliseconds): the http-server preset expects http_server_request_duration_seconds"),
     ("nginx_ingress_controller_nginx_process_requests_total", "ingress-nginx without per-request metrics: requests to an Ingress without a host are only counted with --metrics-per-undefined-host=true (controller.extraArgs in the Helm chart)"),
 ];
+
+/// metrics that name both ends of a call: who calls whom without traces
+pub const CALL_SIGNALS: [(&str, &str); 4] = [("istio", "istio_requests_total"), ("linkerd", "response_total"), ("servicegraph", "traces_service_graph_request_total"), ("spanmetrics", "traces_span_metrics_calls_total")];
+/// metrics that say a workload serves gRPC
+pub const GRPC_SIGNALS: [&str; 4] = ["grpc_server_handled_total", "grpc_server_started_total", "rpc_server_duration_milliseconds_count", "rpc_server_call_duration_seconds_count"];
 
 const LOOKBACKS_H: [f64; 8] = [0.0, 1.0, 6.0, 24.0, 72.0, 168.0, 336.0, 720.0];
 
@@ -38,6 +45,10 @@ fn js_str(v: Option<&Value>) -> String {
         Some(Value::Bool(b)) => b.to_string(),
         _ => String::new(),
     }
+}
+
+fn names_has(p: &[(&str, &str, &str)], m: &str) -> bool {
+    p.iter().any(|x| x.1 == m)
 }
 
 /// probe a Prometheus: presets, services, near misses, and when requests flowed
@@ -71,6 +82,8 @@ pub fn probe_prometheus(cfg: &Value, now: f64) -> Result<Value, String> {
     let start = js_num(now - 30.0 * 86400.0);
     let mut names: Vec<&str> = PRESET_SIGNATURE.iter().map(|p| p.1).collect();
     names.extend(NEAR_MISSES.iter().map(|n| n.0));
+    names.extend(CALL_SIGNALS.iter().map(|c| c.1).filter(|m| !names_has(&PRESET_SIGNATURE, m)));
+    names.extend(GRPC_SIGNALS);
     let found = get_json(&api(&url, "api/v1/label/__name__/values", &[("match[]", format!("{{__name__=~\"{}\"}}", names.join("|"))), ("start", start.clone()), ("end", js_num(now))]), &h, 30_000).map_err(|e| {
         // the two ways a first connection usually fails, with what to try
         if e.contains("answered 404") {
@@ -130,7 +143,7 @@ pub fn probe_prometheus(cfg: &Value, now: f64) -> Result<Value, String> {
         warnings.push("no metric any preset reads was found in the last 30 days".into());
     }
     // when requests flowed: traffic at a few lookbacks, then bisected to ~1% of the gap
-    let main = presets.iter().find(|p| matches!(p.as_str(), "otel-spanmetrics" | "http-server" | "spring")).cloned();
+    let main = ["otel-spanmetrics", "http-server", "spring", "istio", "linkerd", "ingress-nginx"].iter().find(|m| presets.iter().any(|p| p == *m)).map(|m| m.to_string());
     if let Some(main) = main {
         let m = PRESET_SIGNATURE.iter().find(|p| p.0 == main).unwrap().1;
         let sel = selector.as_ref().map(|s| format!("{{{}}}", s)).unwrap_or_default();
@@ -207,6 +220,15 @@ pub fn probe_prometheus(cfg: &Value, now: f64) -> Result<Value, String> {
     out.insert("nearMisses".into(), json!(near));
     out.insert("services".into(), Value::Object(services));
     out.insert("warnings".into(), json!(warnings));
+    // what the metrics can say about calls when there are no traces
+    let calls: Vec<&str> = CALL_SIGNALS.iter().filter(|(id, m)| have.contains(*m) && (*id != "linkerd" || presets.iter().any(|p| p == "linkerd"))).map(|c| c.0).collect();
+    if !calls.is_empty() {
+        out.insert("calls".into(), json!(calls));
+    }
+    let grpc: Vec<&str> = GRPC_SIGNALS.iter().copied().filter(|m| have.contains(*m)).collect();
+    if !grpc.is_empty() {
+        out.insert("grpcMetrics".into(), json!(grpc));
+    }
     if let Some(v) = version {
         if !v.is_null() {
             out.insert("version".into(), v);

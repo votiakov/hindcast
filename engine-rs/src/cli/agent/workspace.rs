@@ -186,6 +186,9 @@ pub fn parse_sources(v: &Value) -> Value {
     if let Some(t) = o.get("traceFiles").filter(|x| !x.is_null()) {
         out.insert("traceFiles".into(), t.clone());
     }
+    if let Some(t) = o.get("topologyFile").filter(|x| x.is_string()) {
+        out.insert("topologyFile".into(), t.clone());
+    }
     if let Some(Value::Object(b)) = o.get("bill") {
         out.insert("bill".into(), Value::Object(pick(b, &["cur", "gcp", "tag", "resources"])));
     }

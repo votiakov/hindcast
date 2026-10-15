@@ -41,7 +41,7 @@ fn join(parts: &[&str]) -> String {
 const SERVER: &str = "span_kind=\"SPAN_KIND_SERVER\"";
 const WORKERS: &str = "unless on (node) kube_node_role{role=~\"control-plane|master\"}";
 
-pub const PRESET_IDS: [&str; 6] = ["otel-spanmetrics", "http-server", "spring", "ingress-nginx", "cadvisor", "kubernetes"];
+pub const PRESET_IDS: [&str; 8] = ["otel-spanmetrics", "http-server", "spring", "ingress-nginx", "istio", "linkerd", "cadvisor", "kubernetes"];
 
 #[derive(Clone, Debug)]
 pub struct Query {
@@ -165,6 +165,41 @@ fn preset(id: &str, o: &Opts) -> Option<Vec<Query>> {
                 q("errors.json", format!("(sum by ({by}) (rate(nginx_ingress_controller_requests{{{s},status=~\"5..|499\"}}[{w}])) or sum by ({by}) (rate(nginx_ingress_controller_requests{{{s}}}[{w}])) * 0) / sum by ({by}) (rate(nginx_ingress_controller_requests{{{s}}}[{w}]))"), m("errorRate", &mm(&[("unit", json!("ratio"))]))),
                 q("p99.json", format!("histogram_quantile(0.99, sum by ({by}, le) (rate(nginx_ingress_controller_request_duration_seconds_bucket{{{s}}}[{w}])))"), m("p99Ms", &mm(&[("unit", json!("s"))]))),
                 q("mean.json", format!("sum by ({by}) (rate(nginx_ingress_controller_request_duration_seconds_sum{{{s}}}[{w}])) / sum by ({by}) (rate(nginx_ingress_controller_request_duration_seconds_count{{{s}}}[{w}]))"), m("meanMs", &mm(&[("unit", json!("s"))]))),
+            ]
+        }
+        "istio" => {
+            // what each workload served, as its own sidecar saw it; gRPC errors ride on a 200
+            let ns = if o.namespaces.is_empty() { String::new() } else { ns_matcher(&o.namespaces).replacen("namespace=", "destination_workload_namespace=", 1) };
+            let s = join(&["reporter=\"destination\"", &ns, sel]);
+            let by = "destination_workload";
+            let b = |extra: &[(&'static str, Value)]| -> Vec<(&'static str, Value)> {
+                let mut x: Vec<(&'static str, Value)> = extra.to_vec();
+                x.push(("by", json!(by)));
+                x
+            };
+            let all = format!("sum by ({by}) (rate(istio_requests_total{{{s}}}[{w}]))");
+            vec![
+                q("rps.json", all.clone(), m("rps", &b(&[]))),
+                q("errors.json", format!("((sum by ({by}) (rate(istio_requests_total{{{s},response_code=~\"5..\"}}[{w}])) or {all} * 0) + (sum by ({by}) (rate(istio_requests_total{{{s},response_code!~\"5..\",grpc_response_status=~\"2|4|8|12|13|14\"}}[{w}])) or {all} * 0)) / {all}"), m("errorRate", &b(&[("unit", json!("ratio"))]))),
+                q("p99.json", format!("histogram_quantile(0.99, sum by ({by}, le) (rate(istio_request_duration_milliseconds_bucket{{{s}}}[{w}])))"), m("p99Ms", &b(&[("unit", json!("ms"))]))),
+                q("mean.json", format!("sum by ({by}) (rate(istio_request_duration_milliseconds_sum{{{s}}}[{w}])) / sum by ({by}) (rate(istio_request_duration_milliseconds_count{{{s}}}[{w}]))"), m("meanMs", &b(&[("unit", json!("ms"))]))),
+            ]
+        }
+        "linkerd" => {
+            // inbound: what each workload's proxy served (Deployments and StatefulSets alike)
+            let s = join(&["direction=\"inbound\"", &ns_matcher(&o.namespaces), sel]);
+            let wl = |expr: &str| format!("label_replace(label_replace({}, \"workload\", \"$1\", \"deployment\", \"(.+)\"), \"workload\", \"$1\", \"statefulset\", \"(.+)\")", expr);
+            let b = |extra: &[(&'static str, Value)]| -> Vec<(&'static str, Value)> {
+                let mut x: Vec<(&'static str, Value)> = extra.to_vec();
+                x.push(("by", json!("workload")));
+                x
+            };
+            let all = format!("sum by (workload) ({})", wl(&format!("rate(response_total{{{s}}}[{w}])")));
+            vec![
+                q("rps.json", all.clone(), m("rps", &b(&[]))),
+                q("errors.json", format!("(sum by (workload) ({}) or {all} * 0) / {all}", wl(&format!("rate(response_total{{{s},classification=\"failure\"}}[{w}])"))), m("errorRate", &b(&[("unit", json!("ratio"))]))),
+                q("p99.json", format!("histogram_quantile(0.99, sum by (workload, le) ({}))", wl(&format!("rate(response_latency_ms_bucket{{{s}}}[{w}])"))), m("p99Ms", &b(&[("unit", json!("ms"))]))),
+                q("mean.json", format!("sum by (workload) ({}) / sum by (workload) ({})", wl(&format!("rate(response_latency_ms_sum{{{s}}}[{w}])")), wl(&format!("rate(response_latency_ms_count{{{s}}}[{w}])"))), m("meanMs", &b(&[("unit", json!("ms"))]))),
             ]
         }
         "cadvisor" => {

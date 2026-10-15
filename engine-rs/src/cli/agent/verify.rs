@@ -151,7 +151,10 @@ fn summary(m: &Value, cal: &Value, warnings: &[String]) -> Value {
     let ok = |x: &&&Value| matches!(s(x, &["fit"]).as_str(), "good" | "fair");
     let trusted: Vec<String> = svcs.iter().filter(ok).filter(|x| s(x, &["basis"]) != "extrapolated").map(|x| s(x, &["service"])).collect();
     let caution: Vec<String> = svcs.iter().filter(ok).filter(|x| s(x, &["basis"]) == "extrapolated").map(|x| format!("{}: capacity extrapolated (history peaked at {} of it)", s(x, &["service"]), pct(g(x, &["historyPeakUtil"]).as_f64().unwrap_or(0.0)))).collect();
-    let untrusted: Vec<String> = svcs.iter().filter(|x| matches!(s(x, &["fit"]).as_str(), "poor" | "unexplained")).map(|x| format!("{}: fit {} — {}", s(x, &["service"]), s(x, &["fit"]), why_untrusted(arr(x, &["notes"])))).collect();
+    // no latency metric: nothing to fit latency on, so the fit can't be scored — capacity rests on CPU
+    let blind: Vec<String> = arr(m, &["provenance", "latency", "without"]).iter().map(|x| s(x, &[])).collect();
+    let cpu_only: Vec<String> = svcs.iter().filter(|x| blind.contains(&s(x, &["service"])) && s(x, &["fit"]) == "unexplained").map(|x| s(x, &["service"])).collect();
+    let untrusted: Vec<String> = svcs.iter().filter(|x| matches!(s(x, &["fit"]).as_str(), "poor" | "unexplained") && !cpu_only.contains(&s(x, &["service"]))).map(|x| format!("{}: fit {} — {}", s(x, &["service"]), s(x, &["fit"]), why_untrusted(arr(x, &["notes"])))).collect();
     let cost_only: Vec<String> = svcs.iter().filter(|x| s(x, &["fit"]) == "cost-only").map(|x| s(x, &["service"])).collect();
     let mut o = JMap::new();
     o.insert("model".into(), g(m, &["name"]).clone());
@@ -169,6 +172,12 @@ fn summary(m: &Value, cal: &Value, warnings: &[String]) -> Value {
     );
     o.insert("accuracy".into(), accuracy_of(m));
     let mut t = json!({ "trusted": trusted, "caution": caution, "untrusted": untrusted, "costOnly": cost_only });
+    if !cpu_only.is_empty() {
+        t["cpuOnly"] = json!(cpu_only);
+    }
+    if let Some(said) = g(m, &["provenance", "said"]).as_str() {
+        t["withoutTraces"] = json!(said);
+    }
     let regimes = regime_lines(m);
     if !regimes.is_empty() {
         t["regimes"] = json!(regimes);
@@ -201,6 +210,10 @@ pub fn calibrate_model(ws: &Workspace, o: &Value) -> Result<Value, String> {
     let opts = calibrate_options(ws, o)?;
     let m = crate::calibrate::calibrate(&d, &opts);
     let mut mv = to_json(&m);
+    // where the topology and latency came from, for every answer read off this model
+    if let Some(p) = dv.get("provenance").filter(|p| !p.is_null()) {
+        mv["provenance"] = p.clone();
+    }
     let mut warnings: Vec<String> = vec![];
     let holdout = o.get("holdout").and_then(|x| x.as_f64()).unwrap_or(0.3);
     super::progress("measuring accuracy on the held-back requests", 1.0, 3.0);

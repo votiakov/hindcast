@@ -71,8 +71,37 @@ pub fn connect_telemetry(ws: &Workspace, input: &Value) -> Result<Value, String>
         if files == 0 {
             problems.push(format!("no trace files match {}", pats.iter().map(|p| p.as_str().unwrap_or("").to_string()).collect::<Vec<_>>().join(", ")));
         }
-    } else {
-        problems.push("no traces: give jaeger.url, tempo.url or traceFiles — without them the model has no topology".into());
+    }
+    // without traces, who calls whom comes from a topology file or the metrics: not a problem, a loss
+    let mut calls_report: Option<Value> = None;
+    let mut no_file = false;
+    if traces_report.is_none() && files_report.is_none() {
+        let file = next.get("topologyFile").and_then(|x| x.as_str()).map(String::from);
+        let from: Vec<String> = prom_report.as_ref().and_then(|p| p.get("calls")).and_then(|c| c.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
+        // span metrics name calls only where their preset is used
+        let chosen: Vec<String> = next.get("prometheus").and_then(|p| p.get("presets")).and_then(|x| x.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
+        let from: Vec<String> = from.into_iter().filter(|k| k != "spanmetrics" || chosen.is_empty() || chosen.iter().any(|p| p == "otel-spanmetrics")).collect();
+        let said = |k: &str| match k {
+            "istio" => "Istio metrics (istio_requests_total)",
+            "linkerd" => "Linkerd metrics (response_total)",
+            "servicegraph" => "the OpenTelemetry service graph (traces_service_graph_request_total)",
+            _ => "span metrics: client spans matched to the servers that answer them",
+        };
+        let how = match &file {
+            Some(f) => {
+                if !std::path::Path::new(f).exists() {
+                    problems.push(format!("topology file {} does not exist", f));
+                    no_file = true;
+                }
+                format!("the topology file {}", f)
+            }
+            None if !from.is_empty() => from.iter().map(|k| said(k)).collect::<Vec<_>>().join(", else "),
+            None => "nowhere: no metric here names both ends of a call, so each service with request metrics is its own entry and the others are read against the entry traffic (a topologyFile can name the calls)".into(),
+        };
+        calls_report = Some(json!({
+            "from": how,
+            "lost": "no traces: each endpoint's own path and measured self times (self time is estimated as a service's latency less its callees'). Connect Jaeger or Tempo, or give traceFiles, for them",
+        }));
     }
 
     if let Some(b) = next.get("bill") {
@@ -109,7 +138,9 @@ pub fn connect_telemetry(ws: &Workspace, input: &Value) -> Result<Value, String>
     if next.get("prometheus").is_some() && !prom_has_ns {
         if let Some(wns) = prom_report.as_ref().and_then(|p| p.get("workloadNamespaces")).and_then(|w| w.as_object()) {
             let mut traced: indexmap::IndexSet<String> = trace_svcs.iter().cloned().collect();
-            for p in ["otel-spanmetrics", "http-server"] {
+            // without traces, the services the ingress routes to stand in for the traced ones
+            let ingress: &[&str] = if trace_svcs.is_empty() { &["ingress-nginx"] } else { &[] };
+            for p in ["otel-spanmetrics", "http-server", "istio", "linkerd"].iter().chain(ingress) {
                 if let Some(a) = prom_report.as_ref().and_then(|r| r.get("services")).and_then(|s| s.get(p)).and_then(|x| x.as_array()) {
                     traced.extend(a.iter().filter_map(|x| x.as_str().map(String::from)));
                 }
@@ -148,7 +179,7 @@ pub fn connect_telemetry(ws: &Workspace, input: &Value) -> Result<Value, String>
     }
     next.insert("system".into(), Value::Object(sys.clone()));
     ws.save_sources(&Value::Object(next.clone()))?;
-    let ready = next.get("prometheus").is_some() && prom_report.as_ref().and_then(|p| p.get("presets")).and_then(|x| x.as_array()).map(|a| !a.is_empty()).unwrap_or(false);
+    let ready = !no_file && next.get("prometheus").is_some() && prom_report.as_ref().and_then(|p| p.get("presets")).and_then(|x| x.as_array()).map(|a| !a.is_empty()).unwrap_or(false);
     let on_nodes = prom_report.as_ref().and_then(|p| p.get("presets")).and_then(|x| x.as_array()).map(|a| a.iter().any(|x| x == "kubernetes")).unwrap_or(false);
     let mut out = JMap::new();
     out.insert("workspace".into(), json!(ws.dir_str()));
@@ -158,6 +189,9 @@ pub fn connect_telemetry(ws: &Workspace, input: &Value) -> Result<Value, String>
         out.insert("prometheus".into(), p);
     }
     out.insert("traces".into(), traces_report.or(files_report).unwrap_or(Value::Null));
+    if let Some(c) = calls_report {
+        out.insert("calls".into(), c);
+    }
     out.insert("bill".into(), bill_report.unwrap_or(json!(if on_nodes {
         "none — each service will be priced as its requests' share of a node, at the node size's on-demand list price (AWS Fargate list prices where there are no node metrics)"
     } else {

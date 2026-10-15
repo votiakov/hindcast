@@ -3,6 +3,7 @@
 
 pub mod collect;
 pub mod connect;
+pub mod infer;
 pub mod quickstart;
 pub mod review;
 pub mod setup;
