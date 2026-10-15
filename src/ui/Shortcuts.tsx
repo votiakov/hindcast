@@ -10,7 +10,10 @@ const KEYS: [string, string][] = [
   ['⌘S', 'save the design'],
   ['P', 'present mode (←/→ walks audit incidents, F fullscreen, Esc exits)'],
   ['← →', 'step through the recording while rewinding'],
-  ['Del', 'delete the selected component or connection'],
+  ['Del', 'delete what is selected'],
+  ['⇧ drag  ⌘ click', 'select several'],
+  ['⌘C  ⌘X  ⌘V', 'copy, cut, paste components (with the links between them)'],
+  ['⌘D  ⌘A', 'duplicate the selection / select everything'],
   ['?', 'this sheet'],
 ];
 

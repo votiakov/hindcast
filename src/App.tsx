@@ -32,11 +32,16 @@ import { writeAutosave } from './sim/designs';
 import { saveCurrent } from './ui/DesignMenu';
 import { openFile } from './spec/openFile';
 import { useState } from 'react';
-import type { Aspect, Mode } from './sim/store';
+import type { Aspect, Clip, Mode } from './sim/store';
 import './theme/reference.css';
 import './theme/terminal.css';
 import './ui/phone.css';
 import { manualClock } from './sim/clock';
+
+
+/** what ⌘C / ⌘X copied, and how many times it was pasted (each paste lands a step further) */
+let clip: Clip | null = null;
+let pastes = 0;
 
 /**
  * Render mode (used by scripts/record.mjs): `?render=1&ep=<id>&aspect=4:5&brand=personal`
@@ -88,6 +93,24 @@ function useSimLoop() {
         e.preventDefault();
         if (e.key === 'y' || e.shiftKey) s.redo(s.focus);
         else s.undo(s.focus);
+        return;
+      }
+      // copy, paste, duplicate and select all, on the board in focus
+      if (mod && !e.shiftKey && (s.mode === 'sandbox' || s.mode === 'compare') && ['c', 'x', 'v', 'd', 'a'].includes(e.key)) {
+        if (window.getSelection()?.toString()) return;
+        e.preventDefault();
+        const b = s.focus;
+        if (e.key === 'a') return s.selectAll(b);
+        if (e.key === 'v') {
+          if (clip) s.paste(b, clip, ++pastes);
+          return;
+        }
+        const c = s.copySelection(b);
+        if (!c) return;
+        if (e.key === 'd') return s.paste(b, c);
+        clip = c;
+        pastes = 0;
+        if (e.key === 'x') s.removeNodes(b, c.nodes.map((n) => n.id));
         return;
       }
       if (mod && e.key === 's' && s.mode === 'sandbox') {

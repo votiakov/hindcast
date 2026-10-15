@@ -221,11 +221,19 @@ interface State {
   onEdgesChange: (b: BoardId, c: EdgeChange<SystemEdge>[]) => void;
   onConnect: (b: BoardId, c: Connection) => void;
   addNode: (b: BoardId, kind: Kind, pos: XYPosition) => void;
+  /** the selected components and the links between them, for pasting */
+  copySelection: (b: BoardId) => Clip | null;
+  /** paste a copy below the original (the nth paste n steps down): new names, the links between the
+   *  copies kept, the copies selected */
+  paste: (b: BoardId, clip: Clip, times?: number) => void;
+  selectAll: (b: BoardId) => void;
   addZone: (b: BoardId, pos: XYPosition) => void;
   updateNode: (b: BoardId, id: string, patch: Partial<SystemNodeData>) => void;
   updateZone: (b: BoardId, id: string, patch: Partial<ZoneData>) => void;
   moveNodes: (b: BoardId, positions: Record<string, XYPosition>) => void;
   removeNode: (b: BoardId, id: string) => void;
+  /** several at once, one undo step */
+  removeNodes: (b: BoardId, ids: string[]) => void;
   removeEdge: (b: BoardId, id: string) => void;
   /** link properties (network latency) */
   updateEdge: (b: BoardId, id: string, data: { latencyMs?: number; calls?: number; carries?: 'reads' | 'writes'; replication?: 'sync' | 'async' }) => void;
@@ -292,6 +300,11 @@ function makeBoard(id: BoardId, title: string, g: Graph, version = 0): Board {
   engines[id].reset();
   recorders[id].clear();
   return { id, title, ...clone(g), nodeStats: {}, edgeStats: {}, global: emptyGlobal, version };
+}
+
+export interface Clip {
+  nodes: SystemNode[];
+  edges: SystemEdge[];
 }
 
 function nextName(nodes: AppNode[], kind: Kind): string {
@@ -517,6 +530,39 @@ export const useSim = create<State>()((set, get) => {
       const node: SystemNode = { id, type: 'system', position, data: defaultData(kind, name), selected: true };
       patch(b, { nodes: [...nodes.map((n) => ({ ...n, selected: false })), node] });
     },
+    copySelection: (b) => {
+      const { nodes, edges } = board(b);
+      const picked = nodes.filter((n): n is SystemNode => isSystem(n) && !!n.selected);
+      if (!picked.length) return null;
+      const ids = new Set(picked.map((n) => n.id));
+      return { nodes: structuredClone(picked), edges: structuredClone(edges.filter((e) => ids.has(e.source) && ids.has(e.target))) };
+    },
+    paste: (b, clip, times = 1) => {
+      if (!clip.nodes.length) return;
+      const ys = clip.nodes.map((n) => n.position.y);
+      const offset = { x: 0, y: (Math.max(...ys) - Math.min(...ys) + 240) * times };
+      remember(b);
+      let nodes: AppNode[] = board(b).nodes.map((n) => ({ ...n, selected: false }) as AppNode);
+      const rename = new Map<string, string>();
+      const added: SystemNode[] = [];
+      for (const n of clip.nodes) {
+        const name = nextName([...nodes, ...added], n.data.kind);
+        const id = [...nodes, ...added].some((x) => x.id === name) ? `${name}-${Date.now().toString(36)}` : name;
+        rename.set(n.id, id);
+        // a copy starts healthy: no failures injected into the original carry over
+        const { down: _d, degraded: _g, faultRate: _f, faultLatencyMs: _l, side: _s, ...data } = n.data;
+        added.push({ ...n, id, selected: true, position: { x: n.position.x + offset.x, y: n.position.y + offset.y }, parentId: undefined, data: { ...data, name, alive: true, ...(KINDS[n.data.kind].scalable ? { down: 0 } : {}) } as SystemNodeData });
+      }
+      nodes = [...nodes, ...added];
+      const edges = [
+        ...board(b).edges.map((e) => ({ ...e, selected: false })),
+        ...clip.edges.map((e) => ({ ...e, id: `e-${rename.get(e.source)}-${rename.get(e.target)}-${Date.now()}`, source: rename.get(e.source)!, target: rename.get(e.target)!, selected: false })),
+      ];
+      patch(b, { nodes, edges });
+    },
+    selectAll: (b) => {
+      patch(b, { nodes: board(b).nodes.map((n) => ({ ...n, selected: isSystem(n) })), edges: board(b).edges.map((e) => ({ ...e, selected: true })) });
+    },
     addZone: (b, position) => {
       remember(b);
       const nodes = board(b).nodes;
@@ -539,6 +585,11 @@ export const useSim = create<State>()((set, get) => {
     removeNode: (b, id) => {
       remember(b);
       patch(b, { nodes: board(b).nodes.filter((n) => n.id !== id), edges: board(b).edges.filter((e) => e.source !== id && e.target !== id) });
+    },
+    removeNodes: (b, ids) => {
+      remember(b);
+      const gone = new Set(ids);
+      patch(b, { nodes: board(b).nodes.filter((n) => !gone.has(n.id)), edges: board(b).edges.filter((e) => !gone.has(e.source) && !gone.has(e.target)) });
     },
     removeEdge: (b, id) => {
       remember(b);
