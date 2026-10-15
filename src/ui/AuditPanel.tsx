@@ -283,7 +283,7 @@ export function AuditPanel() {
               </div>
               {r.availability && (
                 <div title={`What the structure promises from the providers' published SLAs, not measured: components in sequence multiply their availability, redundant ones back each other up. ${r.availability.weakest.length ? `Costs the most downtime: ${r.availability.weakest.map((w) => `${w.name} ${downtimeText(w.downtimeHoursPerYear)}/yr`).join(', ')}.` : ''}`}>
-                  available <b>{availPct(r.availability.estimate)}</b> SLA (published), not measured · {downtimeText(r.availability.downtimeHoursPerYear)}/yr down
+                  <span title="From published SLAs, not measured">available <b>{availPct(r.availability.estimate)}</b> by SLA · {downtimeText(r.availability.downtimeHoursPerYear)}/yr down</span>
                   {r.availability.weakest[0] ? <> · {r.availability.weakest[0].name} the weakest link</> : null}
                 </div>
               )}
