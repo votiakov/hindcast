@@ -465,6 +465,22 @@ fn candidate_fixes(inc: &Incident, a: &Architecture, nm: &dyn Fn(&str) -> String
                 why: if inc.kind == "slow" { "Give up quickly on the slow dependency and serve a degraded answer instead of tying up workers.".into() } else { "Retry the occasional failure (within a 10 % budget so retries cannot snowball), cut off a dependency that keeps failing.".into() },
                 changes: vec![set(p, fields)],
             });
+            // a thread-per-request caller with other dependencies: the slow one must not take every thread
+            if inc.kind == "slow" {
+                let pc = by_id(p).unwrap();
+                let calls = a.connections.iter().filter(|(f, _, _)| f == p).count() as f64;
+                if let (Some(t), true) = (get_num(pc, "threads"), calls > 1.0) {
+                    if get_num(pc, "bulkhead").is_none() {
+                        let b = (t / calls).floor().max(5.0);
+                        out.push(Cand { title: format!("Bulkhead of {} threads per dependency on {}", js_num(b), nm(p)), why: format!("{} holds a thread while it waits: without a limit the slow dependency takes all of them, and calls to the others fail too.", nm(p)), changes: vec![set(p, json!({ "bulkhead": b }))] });
+                        out.push(Cand {
+                            title: format!("Bulkhead ({} per dependency) + timeout + breaker with fallback on {}", js_num(b), nm(p)),
+                            why: format!("The slow dependency gets at most {} of {}'s threads, the rest keep serving; its own calls give up after 200 ms and are answered by a fallback while the breaker is open.", js_num(b), nm(p)),
+                            changes: vec![set(p, json!({ "bulkhead": b, "timeoutMs": 200, "breaker": true, "fallback": true }))],
+                        });
+                    }
+                }
+            }
             if inc.kind == "errors" {
                 out.push(Cand { title: format!("2 retries with backoff on {}", nm(p)), why: "Most transient errors succeed on a second try; backoff with jitter spreads the extra load.".into(), changes: vec![set(p, json!({ "retries": 2, "retryPolicy": "backoff" }))] });
                 out.push(Cand { title: format!("Retry budget on {}", nm(p)), why: "Transient errors are retried; a 10 % budget stops retries from multiplying load.".into(), changes: vec![set(p, json!({ "retries": 2, "retryPolicy": "budget" }))] });
@@ -574,6 +590,12 @@ pub fn audit(input: &Architecture, o: &AuditOptions, progress: &mut dyn FnMut(f6
         }
         if kind != "lb" && kind != "queue" && kind != "stream" && kind != "dns" {
             incidents.push(Incident { id: format!("slow:{}", id), kind: "slow", target: id.clone(), title: format!("{} turns slow (+250 ms)", nm(&id)), events: fault(json!({ "type": "inject-latency", "id": id, "ms": 250 }), json!({ "type": "restore", "id": id })), traffic: None });
+            // a caller that holds a thread while it waits: a dependency that stalls for seconds is what
+            // exhausts its pool, and takes down calls that never touch it
+            let held = spec.connections.iter().filter(|(_, t, _)| *t == id).any(|(f, _, _)| spec.components.iter().any(|x| get_str(x, "id") == Some(f.as_str()) && get_num(x, "threads").is_some()));
+            if held {
+                incidents.push(Incident { id: format!("stall:{}", id), kind: "slow", target: id.clone(), title: format!("{} stalls (+2 s)", nm(&id)), events: fault(json!({ "type": "inject-latency", "id": id, "ms": 2000 }), json!({ "type": "restore", "id": id })), traffic: None });
+            }
         }
         if kind != "lb" && kind != "queue" && kind != "stream" && kind != "dns" && kind != "cdn" {
             incidents.push(Incident { id: format!("errors:{}", id), kind: "errors", target: id.clone(), title: format!("{} fails 20% of requests", nm(&id)), events: fault(json!({ "type": "inject-errors", "id": id, "rate": 0.2 }), json!({ "type": "restore", "id": id })), traffic: None });
