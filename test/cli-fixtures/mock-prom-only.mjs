@@ -2,7 +2,8 @@
 // mock-telemetry.mjs): /kps holds what kube-prometheus-stack and ingress-nginx export — no app metrics,
 // no mesh; /istio and /linkerd hold the same cluster metrics plus a mesh's proxy metrics; /spanmetrics
 // holds OpenTelemetry span metrics with the peer's address as a dimension, /spanmetrics-bare the same
-// spans without it. Every series is a function of time alone, so two runs see the same history.
+// spans without it, /servicegraph the same span metrics and the collector's service graph beside them.
+// Label shapes follow what the reference kind cluster's collector exported. Every series is a function of time alone, so two runs see the same history.
 const NOW = 1_791_500_000;
 const DAY = 86400;
 const MI = 1024 * 1024;
@@ -64,9 +65,11 @@ const WORLDS = {
     },
   },
   // OpenTelemetry span metrics, no traces: frontend calls catalog over gRPC (client and server spans
-  // share the RPC name) and cart over HTTP (a client span named "GET" alone); cart calls redis, which
-  // has no spans of its own; frontend calls Stripe. Where the connector keeps the peer's address as a
-  // dimension (server.address, net.peer.name, peer.service) it names the callee
+  // share the RPC name) and cart over HTTP (a client span named "GET" alone); cart calls Redis
+  // (valkey-cart), which has no spans of its own; frontend calls Stripe; cart asks flagd (no spans of its own either) over
+  // gRPC, and its .NET client traces each call twice: the RPC, and the HTTP/2 POST under it. Where the
+  // connector keeps the peer's address as a dimension (server.address, net.peer.name, peer.service) it
+  // names the callee
   spanmetrics: {
     names: ['kube_pod_info', 'traces_span_metrics_calls_total', 'container_spec_cpu_quota'],
     peer: true,
@@ -74,12 +77,13 @@ const WORLDS = {
       frontend: { ns: 'shop', pods: ['frontend-6f7d8c9b5d-a1b2c', 'frontend-6f7d8c9b5d-d3f4g'], nodes: ['node-a', 'node-b'], cpu: (L) => 0.08 + 0.003 * L, limit: 1, mem: (L) => 2 * (220 + 0.4 * L) * MI, memLimit: 512 * MI, throttled: () => 0.005 },
       cart: { ns: 'shop', pods: ['cart-58b9c7d6f4-h5j6k'], nodes: ['node-a'], cpu: (L) => 0.02 + 0.005 * L, limit: 0.5, mem: (L) => (140 + 0.3 * L) * MI, memLimit: 256 * MI, throttled: () => 0.003 },
       catalog: { ns: 'shop', pods: ['catalog-7c8d9f6b5c-m7n8p'], nodes: ['node-b'], cpu: (L) => 0.02 + 0.004 * L, limit: 1, mem: () => 180 * MI, memLimit: 512 * MI, throttled: () => 0.002 },
-      redis: { ns: 'shop', pods: ['redis-0'], nodes: ['node-b'], cpu: (L) => 0.01 + 0.002 * L, limit: 0.5, mem: () => 60 * MI, memLimit: 256 * MI, throttled: () => 0.001 },
+      'valkey-cart': { ns: 'shop', pods: ['valkey-cart-5988b6fbf7-rcwfv'], nodes: ['node-b'], cpu: (L) => 0.01 + 0.002 * L, limit: 0.5, mem: () => 60 * MI, memLimit: 256 * MI, throttled: () => 0.001 },
+      flagd: { ns: 'shop', pods: ['flagd-78bbf4cd55-bwznz'], nodes: ['node-b'], cpu: (L) => 0.005 + 0.0005 * L, limit: 0.5, mem: () => 40 * MI, memLimit: 128 * MI, throttled: () => 0.001 },
     },
     // server spans: what each service answered, by span name (latency in ms)
     servers: {
-      frontend: { span: 'GET /', rps: (L) => L, mean: (L) => 20 + 0.1 * L + (6 + 0.05 * L + 2 * (0.5 + 0.005 * L)) + 2 * (4 + 0.04 * L) + 0.1 * 80 },
-      cart: { span: 'GET /cart', rps: (L) => L, mean: (L) => 6 + 0.05 * L + 2 * (0.5 + 0.005 * L) },
+      frontend: { span: 'GET /', rps: (L) => L, mean: (L) => 20 + 0.1 * L + (6 + 0.05 * L + 2 * (0.5 + 0.005 * L) + 0.5) + 2 * (4 + 0.04 * L) + 0.1 * 80 },
+      cart: { span: 'GET /cart', rps: (L) => L, mean: (L) => 6 + 0.05 * L + 2 * (0.5 + 0.005 * L) + 0.5 },
       catalog: { span: 'oteldemo.CatalogService/ListProducts', rps: (L) => 2 * L, mean: (L) => 4 + 0.04 * L },
     },
     // client spans: caller, span name, the peer dimensions it carries, calls per second and ms per call
@@ -87,12 +91,30 @@ const WORLDS = {
       { from: 'frontend', span: 'oteldemo.CatalogService/ListProducts', peer: {}, rate: (L) => 2 * L, ms: (L) => 4 + 0.04 * L },
       { from: 'frontend', span: 'GET', peer: { server_address: 'cart.shop.svc.cluster.local:8080' }, rate: (L) => L, ms: (L) => 6 + 0.05 * L + 2 * (0.5 + 0.005 * L) },
       { from: 'frontend', span: 'POST', peer: { peer_service: 'stripe', server_address: 'api.stripe.com:443' }, rate: (L) => 0.1 * L, ms: () => 80 },
-      { from: 'cart', span: 'HGET', peer: { net_peer_name: 'redis' }, rate: (L) => 2 * L, ms: (L) => 0.5 + 0.005 * L },
+      { from: 'cart', span: 'HGET', peer: { server_address: 'valkey-cart' }, rate: (L) => 2 * L, ms: (L) => 0.5 + 0.005 * L },
+      { from: 'cart', span: 'flagd.evaluation.v1.Service/ResolveBoolean', peer: { server_address: 'flagd' }, rate: (L) => 0.5 * L, ms: () => 1 },
+      { from: 'cart', span: 'POST', peer: { server_address: 'flagd' }, rate: (L) => 0.5 * L, ms: () => 0 },
     ],
   },
 };
 // the same spans with the connector's default dimensions: no peer address on any of them
 WORLDS['spanmetrics-bare'] = { ...WORLDS.spanmetrics, peer: false };
+// the same spans and the collector's servicegraph connector: client → server edges from paired spans.
+// A client span nothing answered is a virtual node, named by peer.service, db.name or db.system (cart's
+// Redis calls: "redis" here, by db.system) or "unknown" (cart's flagd calls); server spans with no client
+// span before them hang under the virtual client "user"
+WORLDS.servicegraph = {
+  ...WORLDS.spanmetrics,
+  names: [...WORLDS.spanmetrics.names, 'traces_service_graph_request_total'],
+  graph: [
+    { client: 'user', server: 'frontend', virtual: true, rate: (L) => L, ms: () => 0 },
+    { client: 'frontend', server: 'catalog', rate: (L) => 2 * L, ms: (L) => 4 + 0.04 * L },
+    { client: 'frontend', server: 'cart', rate: (L) => L, ms: (L) => 6 + 0.05 * L + 2 * (0.5 + 0.005 * L) + 0.5 },
+    { client: 'cart', server: 'redis', virtual: true, rate: (L) => 2 * L, ms: (L) => 0.5 + 0.005 * L },
+    { client: 'cart', server: 'unknown', virtual: true, rate: (L) => 0.5 * L, ms: () => 1 },
+    { client: 'frontend', server: 'unknown', virtual: true, rate: (L) => 0.1 * L, ms: () => 80 },
+  ],
+};
 /** a client span's labels, keeping the peer dimensions the query groups by and the world exports */
 const clientLabels = (w, c, q) => ({ service_name: c.from, span_name: c.span, ...Object.fromEntries(Object.entries(w.peer ? c.peer : {}).filter(([k]) => by(q, true).includes(k))) });
 /** Linkerd's labels for a workload, by its kind, on either end of a call */
@@ -117,6 +139,12 @@ function at(w, q, t) {
     if (q.includes('_sum')) return v('mean');
     if (q.includes('status=~')) return v('errors');
     return v('rps');
+  }
+  if (q.includes('traces_service_graph_request_client_seconds')) {
+    // what each client spent in its calls, ms per second (the query multiplies seconds by 1000)
+    const out = new Map();
+    for (const e of w.graph ?? []) if (!e.virtual || e.client !== 'user') out.set(e.client, (out.get(e.client) ?? 0) + e.rate(L) * e.ms(L));
+    return [...out].map(([id, v]) => [{ client: id }, v]);
   }
   if (q.includes('traces_span_metrics')) {
     // per endpoint: none here, so each service is one endpoint
@@ -211,6 +239,8 @@ export function promOnly(kind, path, params, send) {
     if (q.includes('increase(traces_span_metrics_calls_total') && q.includes('SPAN_KIND_CLIENT')) return vector(w.clients.map((c) => [clientLabels(w, c, q), area(c.rate, t, win)]), t);
     if (q.includes('increase(traces_span_metrics_calls_total')) return vector(Object.entries(w.servers).map(([id, x]) => [{ service_name: id, span_name: x.span }, area(x.rps, t, win)]), t);
     if (q.includes('last_over_time(traces_span_metrics_calls_total')) return vector(Object.entries(w.servers).map(([id, x]) => [{ service_name: id, span_name: x.span }, 1]), t);
+    if (q.includes('increase(traces_service_graph_request_total'))
+      return vector((w.graph ?? []).map((e) => [{ client: e.client, server: e.server, ...(e.virtual ? { connection_type: 'virtual_node' } : {}) }, area(e.rate, t, win)]), t);
     if (q.includes('increase(istio_requests_total')) return vector((w.edges ?? []).map((e) => [{ source_workload: e.from, destination_workload: e.to, request_protocol: e.protocol }, area(e.rate, t, win)]), t);
     if (q.includes('increase(response_total') && q.includes('direction="outbound"'))
       return vector((w.edges ?? []).map((e) => [{ ...lk(w, e.from), ...lk(w, e.to, 'dst_'), ...(e.protocol === 'grpc' ? { grpc_status: '0' } : {}) }, area(e.rate, t, win)]), t);

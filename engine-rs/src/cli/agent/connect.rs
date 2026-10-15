@@ -81,6 +81,17 @@ pub fn connect_telemetry(ws: &Workspace, input: &Value) -> Result<Value, String>
         // span metrics name calls only where their preset is used
         let chosen: Vec<String> = next.get("prometheus").and_then(|p| p.get("presets")).and_then(|x| x.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
         let from: Vec<String> = from.into_iter().filter(|k| k != "spanmetrics" || chosen.is_empty() || chosen.iter().any(|p| p == "otel-spanmetrics")).collect();
+        // the sources prometheus.calls picks, where it picks any
+        let pcfg = next.get("prometheus").cloned().unwrap_or(Value::Null);
+        let picked = super::infer::chosen_calls(&from, &pcfg);
+        if file.is_none() && picked.is_empty() && pcfg.get("calls").and_then(|x| x.as_array()).map(|a| !a.is_empty()).unwrap_or(false) {
+            problems.push(format!(
+                "prometheus.calls names {}, which this Prometheus doesn't have{}",
+                pcfg["calls"].as_array().map(|a| a.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().join(", ")).unwrap_or_default(),
+                if from.is_empty() { String::new() } else { format!(" (it has {})", from.join(", ")) }
+            ));
+        }
+        let from = picked;
         let said = |k: &str| match k {
             "istio" => "Istio metrics (istio_requests_total)",
             "linkerd" => "Linkerd metrics (response_total)",

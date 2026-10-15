@@ -106,6 +106,16 @@ impl Prom {
     }
 }
 
+/// the call sources to read, of those found: the ones `prometheus.calls` names where it names any (a
+/// cluster can have both span metrics and the service graph), else all of them
+pub fn chosen_calls(found: &[String], prom: &Value) -> Vec<String> {
+    let want: Vec<String> = prom.get("calls").and_then(|x| x.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
+    if want.is_empty() {
+        return found.to_vec();
+    }
+    found.iter().filter(|f| want.contains(f)).cloned().collect()
+}
+
 /// the dimensions the spanmetrics connector can keep that name a client span's peer (sanitised), the
 /// service name first
 pub const PEER_LABELS: [&str; 3] = ["peer_service", "server_address", "net_peer_name"];
@@ -142,6 +152,11 @@ pub fn host_services(host: &str, namespaces: &[String]) -> Vec<String> {
         out.push(s);
     }
     out
+}
+
+/// an HTTP client span named by its method alone, POST: "POST", "HTTP POST"
+fn is_post(name: &str) -> bool {
+    matches!(name.trim().strip_prefix("HTTP ").unwrap_or(name.trim()), "POST")
 }
 
 fn label(m: &JMap<String, Value>, k: &str) -> String {
@@ -258,16 +273,52 @@ pub fn read_calls(p: &Prom, presets: &[String], sources: &[String], parts: &[(f6
             }
         }
         if c.edges.is_empty() && has("servicegraph") {
-            for (m, v) in p.increase("traces_service_graph_request_total", &p.matchers(&[], None), "client, server", None, parts) {
+            // a client span no server span answered becomes a virtual node, named by the first of the
+            // connector's peer attributes it has (peer.service, db.name, db.system; a host where it is
+            // configured so) — or "unknown"
+            let mut callee: IndexSet<String> = known.iter().cloned().collect();
+            callee.extend(workloads.iter().cloned());
+            let mut unnamed: IndexSet<String> = IndexSet::new();
+            let mut virtual_: IndexSet<String> = IndexSet::new();
+            let mut acc: IndexMap<(String, String), f64> = IndexMap::new();
+            for (m, v) in p.increase("traces_service_graph_request_total", &p.matchers(&[], None), "client, server, connection_type", None, parts) {
                 let (from, to) = (label(&m, "client"), label(&m, "server"));
-                if to.is_empty() {
+                let from = if from.is_empty() { "unknown".to_string() } else { p.name(&from) };
+                if to.is_empty() || to == "unknown" {
+                    unnamed.insert(from);
                     continue;
                 }
-                servers.insert(p.name(&to));
-                c.edges.push(Edge { from: if from.is_empty() { "unknown".into() } else { p.name(&from) }, to: p.name(&to), calls: v, per_request: None, grpc: false });
+                let to = if label(&m, "connection_type") == "virtual_node" && !callee.contains(&p.name(&to)) {
+                    match host_services(&to, &p.ns).into_iter().map(|h| p.name(&h)).find(|h| callee.contains(h) && *h != from) {
+                        Some(h) => h,
+                        None => {
+                            // "redis" (db.system) names a kind of peer, not a workload
+                            virtual_.insert(format!("{} → {}", from, to));
+                            continue;
+                        }
+                    }
+                } else {
+                    p.name(&to)
+                };
+                servers.insert(to.clone());
+                *acc.entry((from, to)).or_insert(0.0) += v;
+            }
+            for ((from, to), v) in acc {
+                c.edges.push(Edge { from, to, calls: v, per_request: None, grpc: false });
             }
             if !c.edges.is_empty() {
                 c.from = "servicegraph".into();
+                unnamed.shift_remove("unknown");
+                if !virtual_.is_empty() {
+                    let mut l: Vec<String> = virtual_.into_iter().collect();
+                    l.sort();
+                    c.notes.push(format!("{}: the service graph names {} callee by a peer attribute (a virtual node, e.g. db.system) that names no workload here — not in the topology; adding server.address to the connector's virtual_node_peer_attributes would name it", list(&l), if l.len() == 1 { "this" } else { "each" }));
+                }
+                if !unnamed.is_empty() {
+                    let mut l: Vec<String> = unnamed.into_iter().collect();
+                    l.sort();
+                    c.notes.push(format!("{} {} calls the service graph can't name the callee of (its virtual node \"unknown\": a client span no server span answered, with no peer.service or db attribute): they are not in the topology", list(&l), if l.len() == 1 { "makes" } else { "make" }));
+                }
             }
         }
         if c.edges.is_empty() && has("spanmetrics") && presets.iter().any(|x| x == "otel-spanmetrics") {
@@ -292,10 +343,16 @@ pub fn read_calls(p: &Prom, presets: &[String], sources: &[String], parts: &[(f6
             callee.extend(known.iter().cloned());
             callee.extend(workloads.iter().cloned());
             let mut by_peer = 0usize;
+            // per caller → callee, the calls its RPC-named spans and its bare "POST" spans count: a gRPC
+            // client that also traces the HTTP/2 request under each call (.NET) counts every call twice
+            let mut rpc_calls: IndexMap<(String, String), f64> = IndexMap::new();
+            let mut post_calls: IndexMap<(String, String), f64> = IndexMap::new();
             for (m, v) in p.increase("traces_span_metrics_calls_total", &client, &by, None, parts) {
                 let (from, name) = (p.name(&label(&m, "service_name")), label(&m, "span_name"));
-                let to = rpc_key(&name).and_then(|k| answers.get(&k)).map(|s| s.iter().filter(|x| **x != from).cloned().collect::<Vec<_>>()).unwrap_or_default();
+                let rpc = rpc_key(&name);
+                let to = rpc.as_ref().and_then(|k| answers.get(k)).map(|s| s.iter().filter(|x| **x != from).cloned().collect::<Vec<_>>()).unwrap_or_default();
                 if to.len() == 1 {
+                    *rpc_calls.entry((from.clone(), to[0].clone())).or_insert(0.0) += v;
                     let e = acc.entry((from, to[0].clone())).or_insert((0.0, true));
                     e.0 += v;
                     continue;
@@ -309,8 +366,15 @@ pub fn read_calls(p: &Prom, presets: &[String], sources: &[String], parts: &[(f6
                 match named {
                     Some(to) => {
                         by_peer += 1;
+                        if rpc.is_some() {
+                            *rpc_calls.entry((from.clone(), to.clone())).or_insert(0.0) += v;
+                        } else if is_post(&name) {
+                            *post_calls.entry((from.clone(), to.clone())).or_insert(0.0) += v;
+                        }
+                        // a span named package.Service/Method is a gRPC call, whoever answers it
                         let e = acc.entry((from, to)).or_insert((0.0, false));
                         e.0 += v;
+                        e.1 |= rpc.is_some();
                     }
                     None => {
                         unmatched.entry(from).or_default().insert(match host {
@@ -320,8 +384,23 @@ pub fn read_calls(p: &Prom, presets: &[String], sources: &[String], parts: &[(f6
                     }
                 }
             }
+            // bare POSTs to a callee as many as the RPCs to it (±10%) are those RPCs' HTTP/2 requests
+            let mut transport: Vec<String> = vec![];
+            for (k, post) in &post_calls {
+                let r = rpc_calls.get(k).copied().unwrap_or(0.0);
+                if r > 0.0 && (post - r).abs() <= 0.1 * r {
+                    if let Some(e) = acc.get_mut(k) {
+                        e.0 -= post;
+                        e.1 = true;
+                    }
+                    transport.push(format!("{} → {}", k.0, k.1));
+                }
+            }
             for ((from, to), (v, grpc)) in acc {
                 c.edges.push(Edge { from, to, calls: v, per_request: None, grpc });
+            }
+            if !transport.is_empty() {
+                c.notes.push(format!("{}: \"POST\" client spans as many as the gRPC calls beside them, counted once as the gRPC calls' own HTTP/2 requests", transport.join(", ")));
             }
             if !c.edges.is_empty() {
                 c.from = "spanmetrics".into();
@@ -331,7 +410,7 @@ pub fn read_calls(p: &Prom, presets: &[String], sources: &[String], parts: &[(f6
                 for (svc, names) in unmatched {
                     let mut l: Vec<String> = names.into_iter().collect();
                     l.sort();
-                    let bare = peer.is_empty() && l.iter().any(|x| HTTP_METHODS.contains(&x.as_str()));
+                    let bare = peer.is_empty() && l.iter().any(|x| HTTP_METHODS.contains(&x.strip_prefix("HTTP ").unwrap_or(x)));
                     c.notes.push(format!(
                         "{} makes calls no server's span names{} answer ({}): they are not in the topology{}",
                         svc,
@@ -914,10 +993,32 @@ mod tests {
         // outside the cluster: only itself, never its first label
         assert_eq!(v("api.stripe.com:443"), vec!["api.stripe.com"]);
         assert_eq!(v("cart.other"), vec!["cart.other"]);
+        // as the reference cluster's collector exported them: bare Service names, with and without a port
+        assert_eq!(v("valkey-cart"), vec!["valkey-cart"]);
+        assert_eq!(v("flagd:8013"), vec!["flagd"]);
+        assert_eq!(v("product-catalog"), vec!["product-catalog"]);
         // addresses name no service
         assert!(v("10.0.3.7:8080").is_empty());
         assert!(v("[::1]:8080").is_empty());
         assert!(v("").is_empty());
+    }
+
+    #[test]
+    fn transport_spans_are_posts() {
+        assert!(is_post("POST"));
+        assert!(is_post("HTTP POST"));
+        assert!(!is_post("POST /getquote"));
+        assert!(!is_post("GET"));
+        // flagd's gRPC service is named Service: its RPC still has a key, so it is not a bare POST
+        assert_eq!(rpc_key("flagd.evaluation.v1.Service/ResolveBoolean"), Some("service/resolveboolean".into()));
+    }
+
+    #[test]
+    fn calls_picks_the_sources() {
+        let found = vec!["servicegraph".to_string(), "spanmetrics".to_string()];
+        assert_eq!(chosen_calls(&found, &json!({ "url": "x" })), found);
+        assert_eq!(chosen_calls(&found, &json!({ "calls": ["spanmetrics"] })), vec!["spanmetrics".to_string()]);
+        assert!(chosen_calls(&found, &json!({ "calls": ["istio"] })).is_empty());
     }
 
     #[test]

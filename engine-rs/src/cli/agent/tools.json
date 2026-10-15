@@ -29,6 +29,19 @@
         "type": "string"
        }
       },
+      "calls": {
+       "description": "without traces: which metrics name who calls whom, where several do (default: the first found of istio, linkerd, servicegraph, spanmetrics)",
+       "type": "array",
+       "items": {
+        "type": "string",
+        "enum": [
+         "istio",
+         "linkerd",
+         "servicegraph",
+         "spanmetrics"
+        ]
+       }
+      },
       "presets": {
        "description": "default: every preset whose metrics exist",
        "type": "array",

@@ -175,7 +175,7 @@ pub fn parse_sources(v: &Value) -> Value {
         Value::Object(pick(x, &keys))
     };
     if let Some(Value::Object(p)) = o.get("prometheus") {
-        out.insert("prometheus".into(), with_auth(p, &["url", "presets", "selector", "namespaces"]));
+        out.insert("prometheus".into(), with_auth(p, &["url", "presets", "selector", "namespaces", "calls"]));
     }
     if let Some(Value::Object(p)) = o.get("jaeger") {
         out.insert("jaeger".into(), with_auth(p, &["url"]));

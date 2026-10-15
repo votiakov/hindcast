@@ -138,6 +138,10 @@ export const CASES: string[][] = [
   // span metrics: HTTP client spans named by method alone, matched by the peer's address — and without it
   ['quickstart', '--prometheus', `${TEL}/spanmetrics`, '--last', '6h', '--workspace', ws('qs')],
   ['quickstart', '--prometheus', `${TEL}/spanmetrics-bare`, '--last', '6h', '--workspace', ws('qsb')],
+  // the OpenTelemetry service graph beside the same span metrics: read first, or not at all with --calls
+  ['quickstart', '--prometheus', `${TEL}/servicegraph`, '--last', '6h', '--workspace', ws('qg')],
+  ['quickstart', '--prometheus', `${TEL}/servicegraph`, '--calls', 'spanmetrics', '--last', '6h', '--workspace', ws('qgs')],
+  agent('connect_telemetry', { workspace: ws('qgx'), prometheus: { url: `${TEL}/spanmetrics`, calls: ['servicegraph'] } }),
   // no request metrics left at all: nothing to replay, and the review says so
   ['quickstart', '--prometheus', `${TEL}/kps`, '--exclude', 'web', '--last', '6h', '--workspace', ws('qx')],
   agent('connect_telemetry', { workspace: ws('qn'), prometheus: { url: `${TEL}/kps` }, topologyFile: 'nowhere.yaml' }),

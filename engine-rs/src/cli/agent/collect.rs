@@ -263,7 +263,7 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
         let known: Vec<String> = ["otel-spanmetrics", "http-server", "http-server-legacy", "spring"].iter().flat_map(|k| strs(probe.get("services").and_then(|s| s.get(*k))).unwrap_or_default()).map(|x| rename_of(&x)).collect();
         // workloads a client span's peer address can name (a database with no request metrics of its own)
         let workloads: Vec<String> = ["kubernetes", "cadvisor"].iter().flat_map(|k| strs(probe.get("services").and_then(|s| s.get(*k))).unwrap_or_default()).map(|x| rename_of(&x)).collect();
-        let mut c = super::infer::read_calls(&infer_prom, &presets, &strs(probe.get("calls")).unwrap_or_default(), &parts, src.get("topologyFile").and_then(|x| x.as_str()), &known, &workloads)?;
+        let mut c = super::infer::read_calls(&infer_prom, &presets, &super::infer::chosen_calls(&strs(probe.get("calls")).unwrap_or_default(), &prom), &parts, src.get("topologyFile").and_then(|x| x.as_str()), &known, &workloads)?;
         match entry.as_ref().filter(|e| !e.is_empty()) {
             Some(e) => c.entry = e.clone(),
             None => entry = Some(c.entry.clone()),

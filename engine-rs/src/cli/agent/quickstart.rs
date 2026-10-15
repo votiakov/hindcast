@@ -40,7 +40,7 @@ fn phase(k: usize, name: &str, run: impl FnOnce() -> Result<Value, String>) -> R
 
 pub fn quickstart(f: &Flags, out: &mut Out) -> Result<i32, String> {
     if f.has("help") || f.has("h") {
-        out.log(&format!("{}\n\nConnects to Prometheus (and Jaeger or Tempo), collects the history, calibrates a model of the system from it and writes a capacity review: risk, headroom, cost, the one change to make, and how far to trust it. Traces are optional: without them, who calls whom is read from service-mesh, service-graph or span metrics, or from --topology (a file of `calls: {{ caller: [callees] }}`), and the review says what is missing. Read-only towards your systems; everything is written under the workspace (default ./.hindcast).", USAGE));
+        out.log(&format!("{}\n\nConnects to Prometheus (and Jaeger or Tempo), collects the history, calibrates a model of the system from it and writes a capacity review: risk, headroom, cost, the one change to make, and how far to trust it. Traces are optional: without them, who calls whom is read from service-mesh, service-graph or span metrics (--calls picks one where several exist), or from --topology (a file of `calls: {{ caller: [callees] }}`), and the review says what is missing. Read-only towards your systems; everything is written under the workspace (default ./.hindcast).", USAGE));
         return Ok(0);
     }
     let prom = f.get("prometheus").filter(|u| u != "true").ok_or_else(|| format!("quickstart needs your Prometheus: {}", USAGE))?;
@@ -52,6 +52,9 @@ pub fn quickstart(f: &Flags, out: &mut Out) -> Result<i32, String> {
     }
     if let Some(ns) = f.get("namespace") {
         p.insert("namespaces".into(), json!(ns.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect::<Vec<_>>()));
+    }
+    if let Some(c) = f.get("calls").filter(|c| c != "true") {
+        p.insert("calls".into(), json!(c.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect::<Vec<_>>()));
     }
     connect.insert("prometheus".into(), Value::Object(p));
     if let Some(j) = f.get("jaeger") {
@@ -127,10 +130,20 @@ pub fn quickstart(f: &Flags, out: &mut Out) -> Result<i32, String> {
     }
 
     let mut co = JMap::new();
-    if let Some(l) = f.get("last") {
-        co.insert("last".into(), json!(l));
-    }
-    let col = phase(2, &format!("collecting {} of history", f.get("last").unwrap_or_else(|| "the last 24 h".into())), || super::run_tool("collect_telemetry", &with_ws(co.clone())))?;
+    let span = match (f.get("start").filter(|x| x != "true"), f.get("end").filter(|x| x != "true")) {
+        (Some(a), Some(b)) => {
+            co.insert("start".into(), json!(a));
+            co.insert("end".into(), json!(b));
+            format!("{} … {}", a, b)
+        }
+        _ => {
+            if let Some(l) = f.get("last") {
+                co.insert("last".into(), json!(l));
+            }
+            format!("{} of history", f.get("last").unwrap_or_else(|| "the last 24 h".into()))
+        }
+    };
+    let col = phase(2, &format!("collecting {}", span), || super::run_tool("collect_telemetry", &with_ws(co.clone())))?;
     let num = |v: &Value| crate::math::js_num(v.as_f64().unwrap_or(0.0));
     say(&format!("      {} services, {} endpoints, {} h in {} s buckets; {}", num(&col["services"]), col["endpoints"].as_array().map(|a| a.len()).unwrap_or(0), num(&col["window"]["hours"]), num(&col["window"]["stepS"]), col["traces"].as_str().map(String::from).or_else(|| col["withoutTraces"]["said"].as_str().map(String::from)).unwrap_or_else(|| "no traces".into())));
     let mut warnings = strs(&col["warnings"]);
