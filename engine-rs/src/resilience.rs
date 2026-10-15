@@ -281,10 +281,14 @@ pub fn node_loss(model: &Model, d: &Dataset, o: &NodeLossOptions) -> Result<Node
         let r = backtest(model, d, &strategies, &bopts(Some(faults)))?;
         let s = pick(&r);
         let added = s.summary.minutes_out_of_slo.p50 - reference.summary.minutes_out_of_slo.p50;
+        // minutes can't grow where the history was already out of SLO: then the requests the loss
+        // fails decide, against what the error budget allows over the outage at the peak's rate
+        let added_failed = s.summary.failed_requests.p50 - reference.summary.failed_requests.p50;
+        let allowed = (peak * until.map(|u| u - start).unwrap_or(recover_s) * model.slo.error_rate).max(1.0);
         results.push(NodeLossResult {
             node: node.clone(),
             lost,
-            verdict: if added > gate { "fails".into() } else { "survives".into() },
+            verdict: if added > gate || added_failed > allowed { "fails".into() } else { "survives".into() },
             minutes_out_of_slo: js_round(added * 10.0) / 10.0,
             failed_requests: js_round(s.summary.failed_requests.p50 - reference.summary.failed_requests.p50),
             worst: s.worst.why.clone(),

@@ -35,6 +35,12 @@ pub fn review_capacity(ws: &Workspace, o: &Value) -> Result<Value, String> {
     let head = crate::accuracy::model_breaking_point(&m, Some(&crate::backtest::base_plan(&m, None)), None, None, None);
     let peak = g(&mv, &["traffic", "peak"]).as_f64().unwrap_or(0.0);
     super::progress("busier days", 1.0, 5.0);
+    // the recorded day itself, replayed: whether it already broke the SLO, and what it costs a month
+    let base = to_json(&crate::backtest::backtest(&m, &d, &[], &crate::backtest::BacktestOptions { draws: Some(draws), ..Default::default() })?.baseline);
+    let today = {
+        let mo = n(&base, &["summary", "minutesOutOfSlo", "p50"]);
+        json!({ "minutesOutOfSlo": num(r1(mo)), "failedRequests": num(js_round(n(&base, &["summary", "failedRequests", "p50"]))), "worst": g(&base, &["worst", "why"]), "holds": mo <= 0.5, "monthly": num(js_round(n(&base, &["summary", "monthly", "p50"]))) })
+    };
     let busier: Vec<Value> = [1.5, 2.0]
         .iter()
         .map(|scale| -> Result<Value, String> {
@@ -69,8 +75,7 @@ pub fn review_capacity(ws: &Workspace, o: &Value) -> Result<Value, String> {
     let c = g(&mv, &["cluster"]);
     let mut pool = Value::Null;
     if !c.is_null() {
-        let ab = to_json(&crate::backtest::backtest(&m, &d, &[], &crate::backtest::BacktestOptions { draws: Some(1.0), ..Default::default() })?.baseline);
-        let cl = g(&ab, &["cluster"]);
+        let cl = g(&base, &["cluster"]);
         if !cl.is_null() {
             let (ncpu, nmem) = (n(c, &["node", "cpu"]), n(c, &["node", "memoryGb"]));
             let pn = n(cl, &["peakNodes"]);
@@ -83,7 +88,11 @@ pub fn review_capacity(ws: &Workspace, o: &Value) -> Result<Value, String> {
     out.insert("system".into(), g(&mv, &["name"]).clone());
     out.insert("history".into(), json!({ "from": iso(n(&dv, &["start"])), "to": iso(n(&dv, &["start"]) + n(&dv, &["n"]) * n(&dv, &["stepS"])), "peakRps": num(r1(peak)) }));
     out.insert("slo".into(), g(&mv, &["slo"]).clone());
-    out.insert("headroom".into(), json!({ "rps": num(r1(head.rps)), "limitedBy": head.limited_by, "overPeak": if peak > 0.0 { num(js_round((head.rps / peak) * 100.0) / 100.0) } else { Value::Null } }));
+    // a headroom set by a service the model doesn't explain is a guess: say so where it is read
+    let limit_fit = head.limited_by.as_ref().map(|id| s(&mv, &["services", id, "fit", "status"])).unwrap_or_default();
+    out.insert("headroom".into(), json!({ "rps": num(r1(head.rps)), "limitedBy": head.limited_by, "overPeak": if peak > 0.0 { num(js_round((head.rps / peak) * 100.0) / 100.0) } else { Value::Null }, "limitTrusted": !matches!(limit_fit.as_str(), "poor" | "unexplained") }));
+    out.insert("today".into(), today);
+    out.insert("trust".into(), trust(&mv));
     out.insert("busier".into(), json!(busier));
     out.insert(
         "nodeLoss".into(),
@@ -102,7 +111,7 @@ pub fn review_capacity(ws: &Workspace, o: &Value) -> Result<Value, String> {
     );
     out.insert("throttled".into(), json!(throttled));
     out.insert("memoryNearLimit".into(), json!(memory));
-    out.insert("fixes".into(), json!(arr(&sug, &["fixes"]).iter().take(5).map(|f| json!({ "name": g(f, &["name"]), "minutesOutOfSloDelta": g(f, &["minutesOutOfSloDelta"]), "monthlyDelta": g(f, &["monthlyDelta"]) })).collect::<Vec<_>>()));
+    out.insert("fixes".into(), json!(arr(&sug, &["fixes"]).iter().take(5).map(|f| json!({ "name": g(f, &["name"]), "minutesOutOfSloDelta": g(f, &["minutesOutOfSloDelta"]), "failedRequestsDelta": g(f, &["failedRequestsDelta"]), "monthlyDelta": g(f, &["monthlyDelta"]) })).collect::<Vec<_>>()));
     out.insert("savings".into(), json!(arr(&sug, &["savings"]).iter().take(8).map(|x| json!({ "name": g(x, &["name"]), "monthlyDelta": g(x, &["monthlyDelta"]), "verdict": g(x, &["verdict"]) })).collect::<Vec<_>>()));
     out.insert("nodePool".into(), pool);
     out.insert("commitment".into(), commitment(&mv, &dv));
@@ -124,14 +133,24 @@ pub fn review_markdown(r: &Value) -> String {
     let mut l: Vec<String> = vec![
         format!("# Capacity review — {}", s(r, &["system"])),
         String::new(),
-        format!("History {} … {}, busiest moment {} req/s. SLO: p99 ≤ {} ms, errors ≤ {}%.", s(r, &["history", "from"]), s(r, &["history", "to"]), js_num(n(r, &["history", "peakRps"])), js_num(n(r, &["slo", "p99Ms"])), js_to_fixed(n(r, &["slo", "errorRate"]) * 100.0, 1)),
+        format!("History {} – {} UTC, busiest moment {} req/s. SLO: p99 ≤ {} ms, errors ≤ {}%.", when(&s(r, &["history", "from"])), when(&s(r, &["history", "to"])), js_num(n(r, &["history", "peakRps"])), js_num(n(r, &["slo", "p99Ms"])), js_to_fixed(n(r, &["slo", "errorRate"]) * 100.0, 1)),
         String::new(),
     ];
+    if !g(r, &["today"]).is_null() {
+        l.push("## Summary".into());
+        l.push(String::new());
+        l.extend(summary_lines(r));
+        l.push(String::new());
+    }
     l.push("## Headroom".into());
     l.push(String::new());
     let over = g(r, &["headroom", "overPeak"]);
-    l.push(format!("Within SLO up to **{} req/s**{}; {} saturates first.", js_num(n(r, &["headroom", "rps"])), if truthy(over) { format!(" — {}× the busiest moment", js_num(n(r, &["headroom", "overPeak"]))) } else { String::new() }, match g(r, &["headroom", "limitedBy"]) { Value::Null => "nothing".to_string(), x => s(x, &[]) }));
+    l.push(format!("Within SLO up to **{} req/s**{}; {}.", js_num(n(r, &["headroom", "rps"])), if truthy(over) { format!(" — {}× the busiest moment", js_num(n(r, &["headroom", "overPeak"]))) } else { String::new() }, match g(r, &["headroom", "limitedBy"]) { Value::Null => "nothing saturates in the range searched".to_string(), x => format!("{} saturates first", s(x, &[])) }));
     l.push(String::new());
+    let t = g(r, &["today"]);
+    if !t.is_null() {
+        l.push(format!("- **The recorded day, replayed:** {}", if g(t, &["holds"]).as_bool().unwrap_or(false) { "holds".to_string() } else { format!("{} min out of SLO, {} failed requests — {}", js_num(n(t, &["minutesOutOfSlo"])), js_locale(n(t, &["failedRequests"])), s(t, &["worst"])) }));
+    }
     for b in arr(r, &["busier"]) {
         l.push(format!("- **{}× today's traffic:** {}", js_num(n(b, &["scale"])), if g(b, &["holds"]).as_bool().unwrap_or(false) { "holds".to_string() } else { format!("{} min out of SLO, {} failed requests — {}", js_num(n(b, &["minutesOutOfSlo"])), js_locale(n(b, &["failedRequests"])), s(b, &["worst"])) }));
     }
@@ -142,10 +161,14 @@ pub fn review_markdown(r: &Value) -> String {
         l.push(String::new());
         let w = g(nl, &["worst"]);
         if g(nl, &["survives"]).as_bool().unwrap_or(false) {
-            l.push("Survives the loss of any one node.".into());
+            l.push(if !w.is_null() && n(w, &["failedRequests"]) > 0.0 {
+                format!("Stays within SLO when any one node is lost. The worst, **{}**, still fails {} requests while its pods come back elsewhere.", s(w, &["node"]), js_locale(n(w, &["failedRequests"])))
+            } else {
+                "Stays within SLO when any one node is lost.".into()
+            });
         } else if !w.is_null() {
             let down: Vec<String> = arr(w, &["down"]).iter().map(|x| s(x, &[])).collect();
-            l.push(format!("Losing **{}** costs {} min out of SLO and {} failed requests{}.", s(w, &["node"]), js_num(n(w, &["minutesOutOfSlo"])), js_locale(n(w, &["failedRequests"])), if down.is_empty() { String::new() } else { format!(": {} {} no replica left", down.join(", "), if down.len() == 1 { "has" } else { "have" }) }));
+            l.push(format!("Losing **{}** fails {} more requests{}{}.", s(w, &["node"]), js_locale(n(w, &["failedRequests"])), minutes_added(n(w, &["minutesOutOfSlo"])), if down.is_empty() { String::new() } else { format!(": {} {} no replica left", down.join(", "), if down.len() == 1 { "has" } else { "have" }) }));
         }
         let spof: Vec<String> = arr(nl, &["singlePointsOfFailure"]).iter().map(|x| s(x, &[])).collect();
         if !spof.is_empty() {
@@ -187,8 +210,9 @@ pub fn review_markdown(r: &Value) -> String {
     if !fixes.is_empty() {
         l.push("## Fixes that pass".into());
         l.push(String::new());
+        let pool = !g(r, &["nodePool"]).is_null();
         for f in fixes {
-            l.push(format!("- {}: {} min out of SLO, {}", s(f, &["name"]), js_num(n(f, &["minutesOutOfSloDelta"])), usd(n(f, &["monthlyDelta"]))));
+            l.push(format!("- {}: {}, {}", s(f, &["name"]), gain(f), cost_word(n(f, &["monthlyDelta"]), pool)));
         }
         l.push(String::new());
     }
@@ -235,6 +259,143 @@ pub fn review_markdown(r: &Value) -> String {
     }
     l.push("Every number is a replay of the recorded history through the calibrated model; `verify_change` the one you ship for its full evidence.".into());
     l.join("\n") + "\n"
+}
+
+/// how far the model can be read: services that fit, and those it doesn't explain
+fn trust(mv: &Value) -> Value {
+    let svcs = g(mv, &["services"]).as_object().cloned().unwrap_or_default();
+    let fit = |sv: &Value| s(sv, &["fit", "status"]);
+    let modelled: Vec<(&String, &Value)> = svcs.iter().filter(|(_, sv)| fit(sv) != "cost-only").collect();
+    let good = modelled.iter().filter(|(_, sv)| matches!(fit(sv).as_str(), "good" | "fair")).count();
+    let poor: Vec<&String> = modelled.iter().filter(|(_, sv)| matches!(fit(sv).as_str(), "poor" | "unexplained")).map(|(id, _)| *id).collect();
+    // the p99 check on held-back history, the one number that says how the whole model predicts
+    let held = arr(mv, &["accuracy"]).iter().rev().flat_map(|a| arr(a, &["checks"])).find(|c| s(c, &["metric"]) == "p99").map(|c| json!({ "error": num(js_round(n(c, &["error"]) * 100.0) / 100.0), "pass": g(c, &["pass"]) })).unwrap_or(Value::Null);
+    json!({ "services": modelled.len(), "fit": good, "untrusted": poor, "heldOutP99": held })
+}
+
+/// "14 Oct 2026 14:22" from an ISO time
+fn when(iso: &str) -> String {
+    const MON: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let (date, time) = (iso.get(..10).unwrap_or(iso), iso.get(11..16).unwrap_or(""));
+    let p: Vec<&str> = date.split('-').collect();
+    match (p.first(), p.get(1).and_then(|m| m.parse::<usize>().ok()), p.get(2)) {
+        (Some(y), Some(mo), Some(dd)) if (1..=12).contains(&mo) => format!("{} {} {} {}", dd.trim_start_matches('0'), MON[mo - 1], y, time),
+        _ => iso.to_string(),
+    }
+}
+
+/// five lines a CTO reads first: risk, headroom, cost, the one change, how far to trust it
+fn summary_lines(r: &Value) -> Vec<String> {
+    let mut l = vec![];
+    let today = g(r, &["today"]);
+    let busier = arr(r, &["busier"]);
+    let nl = g(r, &["nodeLoss"]);
+    let first_fail = busier.iter().find(|b| !g(b, &["holds"]).as_bool().unwrap_or(true));
+    let node_fails = !nl.is_null() && !g(nl, &["survives"]).as_bool().unwrap_or(true);
+    let node_cost = || format!("losing **{}** at the busiest moment fails {} more requests{}", s(nl, &["worst", "node"]), js_locale(n(nl, &["worst", "failedRequests"])), minutes_added(n(nl, &["worst", "minutesOutOfSlo"])));
+    let and_node = || if node_fails { format!(" And {}.", node_cost()) } else { String::new() };
+    let risk = if !today.is_null() && !g(today, &["holds"]).as_bool().unwrap_or(true) {
+        format!("**High.** The recorded day itself spent {} min out of SLO ({} failed requests); worst moment: {}.{}", js_num(n(today, &["minutesOutOfSlo"])), js_locale(n(today, &["failedRequests"])), s(today, &["worst"]), and_node())
+    } else if let Some(b) = first_fail {
+        format!("**Medium.** The recorded day held, but a {}× day spends {} min out of SLO — {}.{}", js_num(n(b, &["scale"])), js_num(n(b, &["minutesOutOfSlo"])), s(b, &["worst"]), and_node())
+    } else if node_fails {
+        format!("**Medium.** Traffic holds to 2×, but {}.", node_cost())
+    } else {
+        format!("**Low.** The recorded day held, and so do 1.5× and 2× days{}.", if nl.is_null() { "" } else { " and the loss of any one node" })
+    };
+    // a verdict from a model that mostly doesn't fit is said with that, not after it
+    let t = g(r, &["trust"]);
+    let shaky = !t.is_null() && n(t, &["fit"]) * 2.0 < n(t, &["services"]);
+    l.push(format!("- **Risk:** {}{}", risk, if shaky { " Read it with the trust line below: most of the model doesn't fit the history yet." } else { "" }));
+    let over = g(r, &["headroom", "overPeak"]);
+    let over_s = if truthy(over) { format!(", {}× the busiest moment ({} req/s)", js_num(n(r, &["headroom", "overPeak"])), js_num(n(r, &["history", "peakRps"]))) } else { String::new() };
+    l.push(match g(r, &["headroom", "limitedBy"]) {
+        // nothing gave out before the search's ceiling
+        Value::Null => format!("- **Headroom:** more than {} req/s within SLO{} — nothing saturates in the range searched.", js_num(n(r, &["headroom", "rps"])), over_s),
+        x => format!(
+            "- **Headroom:** {} req/s within SLO{}; {} saturates first.{}",
+            js_num(n(r, &["headroom", "rps"])),
+            over_s,
+            s(x, &[]),
+            if g(r, &["headroom", "limitTrusted"]).as_bool().unwrap_or(true) { String::new() } else { format!(" Treat it as a guess: the model does not explain {} well.", s(x, &[])) }
+        ),
+    });
+    let p = g(r, &["nodePool"]);
+    // a fixed pool is paid for whole, whatever the pods on it use
+    let fixed = !p.is_null() && !g(p, &["autoscaled"]).as_bool().unwrap_or(false);
+    let monthly = if fixed { n(p, &["nodes"]) * n(p, &["monthlyPerNode"]) } else { n(today, &["monthly"]) };
+    let mut cost = if monthly > 0.0 { format!("about **{}/month** as run", usd_plain(monthly)) } else { "no price — connect the bill (`connect_telemetry` with `bill`) or a pricing profile".to_string() };
+    if !p.is_null() {
+        cost.push_str(&format!(", on {} node{} {}% full at the busiest moment", js_num(n(p, &["nodes"])), if n(p, &["nodes"]) == 1.0 { "" } else { "s" }, js_num(js_round(n(p, &["peakFill"]) * 100.0))));
+    }
+    let cm = g(r, &["commitment"]);
+    if let Some(best) = arr(cm, &["options"]).iter().map(|o| n(o, &["savesMonthly"])).fold(None, |a: Option<f64>, x| Some(a.map_or(x, |a| a.max(x)))) {
+        cost.push_str(&format!("; a commitment on the always-on floor saves up to {}/month", usd_plain(best)));
+    }
+    if let Some(sv) = arr(r, &["savings"]).first() {
+        cost.push_str(&format!("; the best saving that passes: {} ({})", s(sv, &["name"]), usd_signed(n(sv, &["monthlyDelta"]))));
+    }
+    l.push(format!("- **Cost:** {}.", cost));
+    let risky = !g(today, &["holds"]).as_bool().unwrap_or(true) || first_fail.is_some() || node_fails;
+    let fix = arr(r, &["fixes"]).first().cloned();
+    let node_fix = g(nl, &["fix"]);
+    let one = match (risky, fix, arr(r, &["savings"]).first()) {
+        (true, Some(f), _) => format!("{} — {}, {}.", s(f, &["name"]), gain(f), cost_word(n(f, &["monthlyDelta"]), !p.is_null())),
+        (true, None, _) if !node_fix.is_null() && g(node_fix, &["survives"]).as_bool().unwrap_or(false) => format!(
+            "run {} spread over the nodes, so losing one leaves a replica of each — {}.",
+            arr(node_fix, &["change", "changes"]).iter().map(|c| format!("{}{}", s(c, &["service"]), if truthy(g(c, &["replicas"])) { format!(" × {}", js_num(n(c, &["replicas"]))) } else { String::new() })).collect::<Vec<_>>().join(", "),
+            cost_word(n(node_fix, &["monthlyDelta"]), !p.is_null())
+        ),
+        (_, _, Some(sv)) => format!("{} — {}, {}.", s(sv, &["name"]), usd_signed(n(sv, &["monthlyDelta"])), s(sv, &["verdict"])),
+        (true, None, None) => "no single change passed the backtest; see the limits below.".to_string(),
+        (false, _, None) => "nothing — no fix is needed and no saving passed.".to_string(),
+    };
+    l.push(format!("- **Do this:** {}{}", one, if one.starts_with("no") || one.starts_with("nothing") { "" } else { " Run `verify_change` on it before it ships." }));
+    let t = g(r, &["trust"]);
+    if !t.is_null() {
+        let un: Vec<String> = arr(t, &["untrusted"]).iter().map(|x| s(x, &[])).collect();
+        let h = g(t, &["heldOutP99"]);
+        let held = if h.is_null() {
+            " Its predictions were not checked on held-back history (see calibrate_model's warnings).".to_string()
+        } else {
+            format!(" On history it was not fitted to, it predicts p99 within {}% ({}).", js_num(js_round(n(h, &["error"]) * 100.0)), if g(h, &["pass"]).as_bool().unwrap_or(false) { "inside the 20% tolerance" } else { "outside the 20% tolerance: read every number as directional" })
+        };
+        l.push(format!("- **Trust:** {} of {} services fit the history well{}.{}", js_num(n(t, &["fit"])), js_num(n(t, &["services"])), if un.is_empty() { String::new() } else { format!("; not explained: {} — numbers that rest on them are guesses", un.join(", ")) }, held));
+    }
+    l
+}
+
+/// the minutes a failure adds out of SLO; none where the history was already out of it then
+fn minutes_added(m: f64) -> String {
+    if m > 0.0 {
+        format!(" and {} min out of SLO", js_num(m))
+    } else {
+        " — more than the error budget allows, though no minutes are added: the history was already out of SLO then".into()
+    }
+}
+
+/// what a fix gives back: minutes out of SLO, or failed requests where the minutes don't move
+fn gain(f: &Value) -> String {
+    let (m, fr) = (-n(f, &["minutesOutOfSloDelta"]), -n(f, &["failedRequestsDelta"]));
+    match (m >= 0.5, fr >= 1.0) {
+        (true, true) => format!("{} fewer minutes out of SLO and {} fewer failed requests", js_num(m), js_locale(js_round(fr))),
+        (true, false) => format!("{} fewer minutes out of SLO", js_num(m)),
+        (false, true) => format!("{} fewer failed requests (the minutes out of SLO stay)", js_locale(js_round(fr))),
+        _ => "no measurable gain".into(),
+    }
+}
+
+/// a fix's money: on a fixed pool, a change that adds no node adds no cost
+fn cost_word(x: f64, pool: bool) -> String {
+    if x.abs() < 0.5 {
+        if pool { "no added cost (it fits on the nodes already running)".into() } else { "no added cost".into() }
+    } else {
+        usd_signed(x)
+    }
+}
+
+fn usd_signed(x: f64) -> String {
+    format!("{}${}/month", if x < 0.0 { "−" } else { "+" }, js_locale(js_round(x).abs()))
 }
 
 fn usd_plain(x: f64) -> String {

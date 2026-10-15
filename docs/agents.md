@@ -17,6 +17,32 @@ Everything is read-only towards your systems. Hindcast queries your Prometheus, 
 Jaeger/Tempo and (only when asked, against a named context) `kubectl get`. It writes only inside
 its workspace directory, and nothing leaves your machine.
 
+## Quickstart: one command, a capacity review
+
+Before giving the tools to an agent, see what they say about your system:
+
+```bash
+hindcast quickstart --prometheus http://prometheus:9090 --jaeger http://jaeger:16686
+#   --tempo <url> in place of --jaeger; --last 7d for more history (default: the last 24 h)
+#   --namespace shop, --exclude jaeger,otel-collector, --p99 500 --errors 0.01, --token-env PROM_TOKEN
+```
+
+It runs `connect_telemetry` → `collect_telemetry` → `calibrate_model` → `review_capacity`, prints
+each phase as it goes, and ends on a five-line summary — **risk** (does the recorded day already
+break the SLO; does a 1.5× or 2× day; does losing a node), **headroom** (req/s within SLO and what
+gives out first), **cost** (a month as run, and what a commitment saves), **do this** (the one
+change that passed the backtest) and **trust** (which services the model explains, and which it
+doesn't, so you know which numbers are guesses). The full report is written to
+`.hindcast/reports/capacity-review-<date>.md`. On the reference kind cluster (15 services, two
+days of Prometheus and Jaeger) the whole run takes about 20 s; collecting the history is most of
+it.
+
+When it can't connect it says why and what to try: a 404 usually means Prometheus is served under
+a path (`http://host/prometheus`), a refused connection that it isn't reachable from here
+(`kubectl port-forward`), a 401/403 that it wants a token (`--token-env`). Every tool below works on
+the workspace it leaves, so the next questions are ordinary tool calls:
+`verify_change` with your manifest diff, `suggest_changes` with `traffic`, `check_node_loss`.
+
 ## Set up
 
 One command does it for any host:
@@ -325,8 +351,10 @@ the error SLO.
 ### `review_capacity`
 
 The capacity review a platform team does by hand, in one call, every number replayed from the
-history:
+history. The report opens with a five-line summary for whoever has to decide — risk, headroom,
+cost, the one change to make, how far to trust it — and then the evidence:
 
+- whether the recorded day itself held its SLO, replayed (`today`);
 - the headroom over the busiest moment, and what saturates first;
 - whether 1.5× and 2× today's traffic hold;
 - what losing a node at the peak costs, the single points of failure and the backtested fix;
@@ -335,7 +363,13 @@ history:
 - how full the node pool runs;
 - how much to commit to: the floor the history always ran (nodes, or replicas of list-priced
   services) and what a 1- or 3-year commitment saves on it — skipped when costs come from a bill;
-- the fixes and savings that pass.
+- the fixes and savings that pass;
+- `trust`: how many services the model explains, and which it doesn't. A headroom set by a service
+  it doesn't explain is flagged (`headroom.limitTrusted: false`) and read as a guess.
+
+Losing a node fails when it adds more than half a minute out of SLO **or** fails more requests than
+the error budget allows over the outage. The second matters on a day that was already out of SLO
+at its peak: no minutes can be added there, but the requests the node takes down still fail.
 
 It writes `reports/capacity-review-<date>.md` into the workspace. On the Kubernetes reference it
 takes about 6 seconds. It found the `email` service at 95% of its memory limit, which nobody had

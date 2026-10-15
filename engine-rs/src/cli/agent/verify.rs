@@ -76,6 +76,8 @@ fn trust_of(m: &Value, id: &str, peak: Option<f64>) -> Value {
         format!("${}/replica-hour from the bill", js_to_fixed(n(sv, &["cost", "perReplicaHour"]), 4))
     } else if s(sv, &["cost", "source"]) == "pricing" {
         format!("${}/replica-hour at list price", js_to_fixed(n(sv, &["cost", "perReplicaHour"]), 4))
+    } else if s(sv, &["cost", "source"]) == "nodes" {
+        format!("${}/replica-hour, its requests' share of a node", js_to_fixed(n(sv, &["cost", "perReplicaHour"]), 4))
     } else {
         "no price".to_string()
     };
@@ -108,19 +110,28 @@ pub fn accuracy_of(m: &Value) -> Value {
     )
 }
 
+/// the note that says why a fit is poor: capacity read two ways, the replay missing, CPU not following
+/// load — before whatever note happens to come first
+fn why_untrusted(notes: Vec<&Value>) -> String {
+    let texts: Vec<String> = notes.iter().map(|n| s(n, &[])).collect();
+    ["read the limit differently", "reproduces its self time", "barely follows load"].iter().find_map(|k| texts.iter().find(|t| t.contains(k)).cloned()).or_else(|| texts.first().cloned()).unwrap_or_default()
+}
+
 fn summary(m: &Value, cal: &Value, warnings: &[String]) -> Value {
     let svcs = arr(cal, &["services"]);
     let ok = |x: &&&Value| matches!(s(x, &["fit"]).as_str(), "good" | "fair");
     let trusted: Vec<String> = svcs.iter().filter(ok).filter(|x| s(x, &["basis"]) != "extrapolated").map(|x| s(x, &["service"])).collect();
     let caution: Vec<String> = svcs.iter().filter(ok).filter(|x| s(x, &["basis"]) == "extrapolated").map(|x| format!("{}: capacity extrapolated (history peaked at {} of it)", s(x, &["service"]), pct(g(x, &["historyPeakUtil"]).as_f64().unwrap_or(0.0)))).collect();
-    let untrusted: Vec<String> = svcs.iter().filter(|x| matches!(s(x, &["fit"]).as_str(), "poor" | "unexplained")).map(|x| format!("{}: fit {} — {}", s(x, &["service"]), s(x, &["fit"]), arr(x, &["notes"]).first().map(|n| s(n, &[])).unwrap_or_default())).collect();
+    let untrusted: Vec<String> = svcs.iter().filter(|x| matches!(s(x, &["fit"]).as_str(), "poor" | "unexplained")).map(|x| format!("{}: fit {} — {}", s(x, &["service"]), s(x, &["fit"]), why_untrusted(arr(x, &["notes"])))).collect();
     let cost_only: Vec<String> = svcs.iter().filter(|x| s(x, &["fit"]) == "cost-only").map(|x| s(x, &["service"])).collect();
     let mut o = JMap::new();
     o.insert("model".into(), g(m, &["name"]).clone());
     o.insert("fittedOn".into(), g(cal, &["fittedOn"]).clone());
     o.insert("slo".into(), g(m, &["slo"]).clone());
     if let Some(t) = m.get("traffic") {
-        o.insert("traffic".into(), t.clone());
+        // req/s to two decimals: the model keeps the full precision
+        let rounded = t.as_object().map(|t| Value::Object(t.iter().map(|(k, v)| (k.clone(), v.as_f64().map(|x| num(r2(x))).unwrap_or_else(|| v.clone()))).collect())).unwrap_or_else(|| t.clone());
+        o.insert("traffic".into(), rounded);
     }
     o.insert("services".into(), g(cal, &["services"]).clone());
     o.insert(
@@ -155,6 +166,15 @@ pub fn calibrate_model(ws: &Workspace, o: &Value) -> Result<Value, String> {
     super::progress("measuring accuracy on the held-back requests", 1.0, 3.0);
     if holdout > 0.0 && d.n >= 30.0 {
         let rec = crate::accuracy::holdout_accuracy(&d, &opts, Some(holdout), None);
+        if rec.checks.is_empty() {
+            // an empty accuracy list reads as "fine"; say it was not measured, and why
+            let ep_latency = d.endpoints.values().any(|e| e.p99_ms.as_ref().map(|v| v.iter().any(|x| x.is_some())).unwrap_or(false));
+            warnings.push(if ep_latency {
+                "accuracy not measured: the held-back part of the history has no end-to-end latency to compare with — trust the fit notes per service, and verify one change against a real rollout".to_string()
+            } else {
+                "accuracy not measured: the data has no end-to-end latency per endpoint (span names that carry raw URLs are dropped). Name server spans by route (http.route), or give request logs, so the model can be checked on held-back history".to_string()
+            });
+        }
         if let Some(Value::Array(a)) = mv.get_mut("accuracy") {
             a.push(to_json(&rec));
         }
@@ -579,6 +599,7 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
     let basis = cost_basis.iter().map(|b| match b.as_str() {
         "bill" => "your bill",
         "pricing" => "list price",
+        "nodes" => "node share at list price",
         _ => "unpriced",
     }).collect::<Vec<_>>().join(", ");
     let mut o = JMap::new();
