@@ -3,6 +3,7 @@
 
 pub mod agent;
 pub mod bt;
+pub mod demo;
 pub mod design;
 pub mod files;
 pub mod http;
@@ -14,6 +15,9 @@ pub mod util;
 use util::*;
 
 const USAGE: &str = r#"Hindcast CLI — the simulation engine without the UI. (In a checkout of the repository, use "npm run sim --" in place of "hindcast".)
+
+No system handy? A recorded one is built in (no network, no files):
+  hindcast demo            [--workspace ./hindcast-demo] [--json]   (the review, a backtest and the accuracy record; --workspace writes the data out)
 
 Start here, on a running system (read-only; one command → a capacity review):
   hindcast quickstart      --prometheus http://prom:9090 [--jaeger http://jaeger:16686 | --tempo http://tempo:3200] [--last 24h]
@@ -70,6 +74,9 @@ fn run(args: &[String], out: &mut Out) -> Result<i32, String> {
     let rest = if args.is_empty() { &[][..] } else { &args[1..] };
     if cmd == "agent" {
         return agent::command(rest, out);
+    }
+    if cmd == "demo" {
+        return demo::command(&flags(rest), out);
     }
     if cmd == "quickstart" {
         return agent::quickstart::quickstart(&flags(rest), out);

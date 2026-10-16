@@ -20,6 +20,12 @@ libm = "0.2"
 rayon = "1"
 serde_norway = "0.9"
 ureq = "3"
+# hindcast demo: its bundled reference data is gzipped (already linked, through ureq)
+flate2 = "1"
+
+[build-dependencies]
+# build.rs packs the reference systems `hindcast demo` ships with
+flate2 = "1"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "=0.2.100"

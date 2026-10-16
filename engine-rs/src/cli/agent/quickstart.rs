@@ -38,6 +38,11 @@ fn phase(k: usize, name: &str, run: impl FnOnce() -> Result<Value, String>) -> R
     r
 }
 
+/// the capacity review's five summary lines (risk, headroom, cost, the change, trust), as plain text
+pub fn summary_lines(markdown: &str) -> Vec<String> {
+    markdown.lines().skip_while(|l| !l.starts_with("## Summary")).skip(1).take_while(|l| !l.starts_with("## ")).filter(|l| !l.trim().is_empty()).map(|l| l.replace("**", "")).collect()
+}
+
 pub fn quickstart(f: &Flags, out: &mut Out) -> Result<i32, String> {
     if f.has("help") || f.has("h") {
         out.log(&format!("{}\n\nConnects to Prometheus or Datadog (and Jaeger or Tempo), collects the history, calibrates a model of the system from it and writes a capacity review: risk, headroom, cost, the one change to make, and how far to trust it. Traces are optional: without them, who calls whom is read from service-mesh, service-graph or span metrics (--calls picks one where several exist), or from --topology (a file of `calls: {{ caller: [callees] }}`), and the review says what is missing. With --datadog, the API and application keys are read from DD_API_KEY and DD_APP_KEY (or the variables --dd-api-key-env and --dd-app-key-env name), and who calls whom from APM service dependencies. Read-only towards your systems; everything is written under the workspace (default ./.hindcast).", USAGE));
@@ -203,12 +208,11 @@ pub fn quickstart(f: &Flags, out: &mut Out) -> Result<i32, String> {
     }
     // the review's summary, then the warnings worth acting on, then the next questions
     let md = rev["markdown"].as_str().unwrap_or("");
-    let summary: Vec<&str> = md.lines().skip_while(|l| !l.starts_with("## Summary")).skip(1).take_while(|l| !l.starts_with("## ")).filter(|l| !l.trim().is_empty()).collect();
     out.log("");
     out.log(&format!("Capacity review — {}", rev["system"].as_str().unwrap_or("")));
     out.log("");
-    for l in summary {
-        out.log(&l.replace("**", ""));
+    for l in summary_lines(md) {
+        out.log(&l);
     }
     out.log("");
     out.log(&format!("Full report: {}", rev["report"].as_str().unwrap_or("")));

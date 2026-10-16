@@ -144,6 +144,7 @@ name = "hindcast-engine"
 version = "0.1.0"
 dependencies = [
  "dlmalloc",
+ "flate2",
  "indexmap",
  "js-sys",
  "libm",

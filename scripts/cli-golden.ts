@@ -177,6 +177,15 @@ export const CASES: string[][] = [
   ['quickstart', '--datadog', `${DD}/shop`, '--dd-app-key-env', 'HINDCAST_NO_SUCH_KEY', '--workspace', ws('qdk')],
   ['quickstart', '--datadog', 'datadoghq.cmo'],
   agent('connect_telemetry', { workspace: ws('qde'), datadog: { url: `${DD}/shop`, env: 'staging', presets: ['datadog-apm'] } }),
+  // the recorded system built into the binary; written out, the other commands run on it
+  ['demo'],
+  ['demo', '--json'],
+  ['demo', '--help'],
+  ['demo', '--workspace', `${out}/OUT/demo`],
+  ['demo', '--workspace', `${out}/OUT/demo`, '--json'],
+  ['demo', '--workspace', `${out}/OUT/ws-v`],
+  ['backtest', `${out}/OUT/demo/model.json`, `${out}/OUT/demo/dataset.json`, `${out}/OUT/demo/strategies/1-autoscale-frontend.yaml`, '--scale', '2', '--draws', '6'],
+  agent('check_node_loss', { workspace: `${out}/OUT/demo/k8s` }),
 ];
 
 /** wall-clock numbers differ run to run */
