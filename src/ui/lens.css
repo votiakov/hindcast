@@ -41,3 +41,4 @@
 .lens-bar .trace-bar i.svc, .key.svc { background: #a78bfa; }
 .lens-trace tr.bad .lens-name { color: var(--red); }
 .key { display: inline-block; width: 8px; height: 6px; margin: 0 3px 0 6px; }
+.lens-tr { width: 1px; padding-left: 8px !important; }

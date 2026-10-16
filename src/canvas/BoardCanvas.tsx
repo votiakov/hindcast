@@ -8,6 +8,7 @@ import { FlowEdge } from './FlowEdge';
 import { BoardContext } from './BoardContext';
 import { RefMarkers } from '../theme/reference/RefEdge';
 import { NoteNode } from './NoteNode';
+import { TraceStrip } from '../ui/TraceStrip';
 
 export const DND_TYPE = 'application/x-bottleneck-kind';
 export const ZONE_KIND = 'zone';
@@ -185,6 +186,7 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
             />
           )}
         </ReactFlow>
+        {interactive && id === 'main' && <TraceStrip board={id} />}
       </div>
     </BoardContext.Provider>
   );

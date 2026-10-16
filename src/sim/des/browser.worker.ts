@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { simulateDes } from './des';
+import { simulateDes, type TraceConfig } from './des';
 import { slim } from './analyze';
 import { optimize } from '../optimize';
 import { breakingPoint } from '../headless';
@@ -14,7 +14,8 @@ export type AnalysisRequest =
   | { id: number; type: 'runs'; spec: unknown; scenario: unknown; seeds: number[] }
   | { id: number; type: 'optimize'; spec: unknown; scenario: Record<string, unknown>; allowRuntimes: boolean }
   | { id: number; type: 'breaking'; spec: unknown; readRatio: number; slo?: { maxErrorRate: number; maxP99Ms: number } }
-  | { id: number; type: 'audit'; spec: unknown; opts: Omit<AuditOptions, 'onProgress'> };
+  | { id: number; type: 'audit'; spec: unknown; opts: Omit<AuditOptions, 'onProgress'> }
+  | { id: number; type: 'trace'; spec: unknown; scenario: unknown; seed: number; trace: TraceConfig };
 
 self.onmessage = async (e: MessageEvent<AnalysisRequest>) => {
   await ready;
@@ -22,6 +23,10 @@ self.onmessage = async (e: MessageEvent<AnalysisRequest>) => {
   try {
     let result: unknown;
     if (m.type === 'runs') result = m.seeds.map((seed) => slim(simulateDes(m.spec, m.scenario, { seed })));
+    else if (m.type === 'trace') {
+      const r = simulateDes(m.spec, m.scenario, { seed: m.seed, trace: m.trace });
+      result = { trace: r.trace, requests: r.summary.requests, failed: r.summary.failedRequests };
+    }
     else if (m.type === 'optimize') {
       const { spec: _spec, ...r } = optimize(m.spec, m.scenario, { allowRuntimes: m.allowRuntimes, verifyRuns: 6 });
       result = r;

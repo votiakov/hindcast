@@ -242,6 +242,36 @@ const SHOTS = {
       minimap: ['.react-flow__minimap', 'tl', 0, 10, 10],
     },
   },
+  'sandbox-trace': {
+    // the starter board with a slow database: the api (size L, an 800 ms timeout, one retry) calls a
+    // database at half capacity, so its calls queue there; then a request through the api, traced
+    setup: async (p) => {
+      await view(p, '#sandbox');
+      await p.evaluate(() => {
+        const s = window.sim.getState();
+        s.updateNode('main', 'api-1', { tier: 'L', timeoutMs: 800, retries: 1 });
+        s.apply('main', { type: 'degrade', id: 'postgres-1', factor: 0.5 });
+        s.setTraffic(600);
+      });
+      await p.keyboard.press('Space');
+      await wait(p, 6000);
+      await p.locator('.react-flow__node .ref-head').nth(1).click();
+      await wait(p, 400);
+      await p.click('.nc-act:has-text("trace")');
+      await p.waitForSelector('.trace-strip .ts-path', { timeout: 30000 });
+      // a request that queued at the database, timed out and was retried (the sample varies with the run)
+      for (let k = 0; k < 12 && !(await p.locator('.ts-path:has-text("queue"):has-text("retry")').count()); k++) await p.click('.ts-step button:has-text("next")');
+      await wait(p, 900);
+    },
+    pins: {
+      path: ['.ts-path', 'l', 0, -8],
+      step: ['.ts-step', 't', 0, 0, -8],
+      failed: ['.ts-toggle', 't', 0, 0, -8],
+      mark: ['.tr-mark', 'r', 0, 10],
+      link: ['.tr-label', 't', -1, 0, -8],
+      run: ['.ts-foot', 'l', 0, -8],
+    },
+  },
   'sandbox-node': {
     setup: async (p) => {
       await runSandbox(p);

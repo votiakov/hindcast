@@ -25,6 +25,65 @@ export interface DesConfig {
   hopMs: number;
   /** safety valve */
   maxEvents: number;
+  /** follow a sample of requests hop by hop (off unless given) */
+  trace?: TraceConfig;
+}
+
+export interface TraceConfig {
+  /** journeys kept per component, and failed journeys per component (default 8) */
+  perNode?: number;
+  /** about this many requests a second are followed (default 40) */
+  perSec?: number;
+  /** only requests that start in [fromS, toS] */
+  fromS?: number;
+  toS?: number;
+  /** hops per journey (default 64) */
+  maxSpans?: number;
+}
+
+/** one hop of a request: a call to a component, from the hop at `parent` */
+export interface TraceSpan {
+  id: string;
+  /** the hop that made this call (-1: the user's own) */
+  parent: number;
+  via: 'call' | 'retry' | 'fanout' | 'failover' | 'routed';
+  /** 0 for the first attempt, 1 for the first retry… */
+  attempt: number;
+  /** ms after the request began */
+  sentMs: number;
+  arriveMs: number | null;
+  startMs: number | null;
+  servedMs: number | null;
+  endMs: number | null;
+  networkMs: number;
+  waitMs: number;
+  serviceMs: number;
+  /** timeout: the caller gave up at its deadline; open: still out when the request ended */
+  outcome: 'ok' | 'hit' | 'queued' | 'failed' | 'timeout' | 'open';
+  reason: string | null;
+  /** the component the failure started at */
+  origin: string | null;
+  gaveUpMs: number | null;
+  deadlineMs: number | null;
+}
+
+export interface Journey {
+  id: number;
+  /** when it began in the run, s */
+  atS: number;
+  read: boolean;
+  ms: number;
+  ok: boolean;
+  failedAt: string | null;
+  reason: string | null;
+  truncated: boolean;
+  spans: TraceSpan[];
+}
+
+export interface TraceReport {
+  journeys: Journey[];
+  /** per component: indices into journeys through it (a sample), and failed ones */
+  byNode: Record<string, { all: number[]; failed: number[]; seen: number; seenFailed: number }>;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -77,6 +136,8 @@ export interface DesResult {
   /** why requests failed: the component each failure started at and the cause, most first */
   failures: FailureCause[];
   events: { t: number; what: string }[];
+  /** sampled request journeys, when the config asked for them */
+  trace?: TraceReport;
 }
 
 export interface FailureCause {

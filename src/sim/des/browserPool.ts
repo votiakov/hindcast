@@ -3,6 +3,7 @@ import { aggregate, seedsFor, type Analysis, type RunSummary } from './analyze';
 import type { OptimizeResult } from '../optimize';
 import type { breakingPoint } from '../headless';
 import type { AuditOptions, AuditResult } from '../audit';
+import type { TraceConfig, TraceReport } from './des';
 
 /**
  * Promise wrapper around analysis web workers. Monte Carlo seeds are split across up to
@@ -60,6 +61,21 @@ export async function breakingPointInBrowser(spec: unknown, readRatio: number, s
     return await ask<ReturnType<typeof breakingPoint>>(w, { type: 'breaking', spec, readRatio, slo });
   } finally {
     w.terminate();
+  }
+}
+
+let traceWorker: Worker | null = null;
+
+/** One discrete-event run that follows a sample of requests hop by hop. A new one cancels the last. */
+export async function traceInBrowser(spec: unknown, scenario: unknown, seed: number, trace: TraceConfig): Promise<{ trace: TraceReport; requests: number; failed: number }> {
+  traceWorker?.terminate();
+  const w = spawn();
+  traceWorker = w;
+  try {
+    return await ask(w, { type: 'trace', spec, scenario, seed, trace });
+  } finally {
+    w.terminate();
+    if (traceWorker === w) traceWorker = null;
   }
 }
 

@@ -7,6 +7,7 @@ import { graphToSpec } from '../spec/convert';
 import { simulate } from '../sim/headless';
 import { explain, nodeView } from '../canvas/nodeModel';
 import { traceRequest, type Hop } from './traceRequest';
+import { useTracer } from './tracer';
 import './lens.css';
 
 const TARGETS = [0.99, 0.995, 0.999, 0.9995, 0.9999];
@@ -20,6 +21,7 @@ const dur = (min: number) => (!isFinite(min) ? 'never' : min < 60 ? `${min.toFix
 export function Lens({ onClose }: { onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const [target, setTarget] = useState(0.999);
+  const b = useSim((s) => (s.mode === 'compare' ? s.focus : 'main'));
   const g = useSim((s) => s.boards[s.mode === 'compare' ? s.focus : 'main'].global);
   const nodes = useSim((s) => s.boards[s.mode === 'compare' ? s.focus : 'main'].nodes);
   const stats = useSim((s) => s.boards[s.mode === 'compare' ? s.focus : 'main'].nodeStats);
@@ -151,6 +153,13 @@ export function Lens({ onClose }: { onClose: () => void }) {
                     <i style={{ width: `${(f.rps / failingTotal) * 100}%` }} />
                   </td>
                   <td className="lens-num">{f.rps >= 100 ? f.rps.toFixed(0) : f.rps.toFixed(1)}/s</td>
+                  <td className="lens-tr">
+                    {b === 'main' && (
+                      <button className="lens-link" onClick={() => (useTracer.getState().start('main', f.id), onClose())} title={`Follow a sampled request through ${f.name} on the board`}>
+                        trace
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
