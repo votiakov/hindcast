@@ -3,7 +3,7 @@
 name: release
 on:
   push:
-    tags: ['v*']
+    tags: ['v*.*.*']   # full versions only; the floating v1 tag the Action uses builds nothing
 permissions:
   contents: write
 jobs:
