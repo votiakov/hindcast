@@ -19,7 +19,16 @@ import { createServer } from 'node:http';
 const NOW = 1_791_500_000;
 const DAY = 86400;
 const MI = 1024 * 1024;
-const load = (t) => 40 * (1 + 0.5 * Math.sin((2 * Math.PI * (t % DAY)) / DAY)) + (Math.floor(t / 30) % 5) * 0.4;
+// sine from + and × only, so every platform gets the same bits (Node's Math.sin can differ in the last
+// bit between x64 and arm64, and a value on a rounding boundary then changes the golden outputs)
+const sin = (x) => {
+  x -= 2 * Math.PI * Math.floor(x / (2 * Math.PI) + 0.5);
+  const x2 = x * x;
+  let term = x, sum = x;
+  for (let k = 1; k <= 12; k++) { term *= -x2 / ((2 * k) * (2 * k + 1)); sum += term; }
+  return sum;
+};
+const load = (t) => 40 * (1 + 0.5 * sin((2 * Math.PI * (t % DAY)) / DAY)) + (Math.floor(t / 30) % 5) * 0.4;
 const busy = (t) => t >= NOW - 2 * DAY && t <= NOW;
 
 // latency in seconds, as the trace.<span> distribution reports it
