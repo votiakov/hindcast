@@ -1401,7 +1401,15 @@ impl Engine {
         let by_id: HashMap<&str, usize> = nodes_in.iter().enumerate().map(|(i, nd)| (nd.id.as_str(), i)).collect();
         // states by node index (every node gets one this tick, as the TypeScript engine's lookups do)
         let sidx: Vec<usize> = nodes_in.iter().map(|nd| self.state_index(&nd.id)).collect();
-        let edge_lat: Vec<f64> = edges.iter().map(|e| e.data.as_ref().and_then(|d| d.latency_ms).filter(|l| *l != 0.0 && !l.is_nan()).unwrap_or(0.0)).collect();
+        // a link's round trip, plus what a slow-link action added to it
+        let edge_lat: Vec<f64> = edges
+            .iter()
+            .map(|e| {
+                let own = e.data.as_ref().and_then(|d| d.latency_ms).filter(|l| *l != 0.0 && !l.is_nan()).unwrap_or(0.0);
+                let slow = by_id.get(e.source.as_str()).and_then(|&s| data[s].slow_to.as_ref()).and_then(|m| m.get(&e.target)).copied().filter(|x| *x > 0.0).unwrap_or(0.0);
+                own + slow
+            })
+            .collect();
         // calls per request over each link: N in parallel, all must answer
         let edge_calls: Vec<f64> = edges.iter().map(|e| e.data.as_ref().and_then(|d| d.calls).filter(|c| *c > 1.0).unwrap_or(1.0)).collect();
         // which requests a link carries: 0 both, 1 reads only, 2 writes only
@@ -2453,6 +2461,37 @@ pub(crate) mod tests {
         // 0 is today's behaviour
         let (tl0, _) = fluid(shop(Some(json!(0))), outage(vec![]));
         assert!(errors(&tl0, 23.0, 60.0) < 0.01);
+    }
+
+    /// users → api → cart with a slow-link on api → cart from 10 s to 20 s; api's deadline `timeout`
+    pub fn slow_link(timeout: Option<f64>, ms: f64) -> (Value, Value) {
+        let mut api = json!({ "id": "api", "kind": "server", "capacity": 5000 });
+        if let Some(t) = timeout {
+            api["timeoutMs"] = json!(t);
+        }
+        let spec = json!({ "components": [{ "id": "users", "kind": "client" }, api, { "id": "cart", "kind": "server", "capacity": 5000 }], "connections": ["users -> api", "api -> cart"] });
+        let sc = json!({ "duration": 30, "rps": 200, "events": [
+            { "at": 10, "action": { "type": "slow-link", "from": "api", "to": "cart", "ms": ms } },
+            { "at": 20, "action": { "type": "heal-link", "from": "api", "to": "cart" } }
+        ] });
+        (spec, sc)
+    }
+
+    #[test]
+    fn a_slow_link_adds_its_round_trip_to_every_call_until_it_is_healed() {
+        let (spec, sc) = slow_link(None, 300.0);
+        let r = simulate(&spec, &sc, &SimOptions::default()).unwrap();
+        let p99: Vec<(f64, f64)> = r.timeline.iter().map(|p| (p.t, p.p99_ms)).collect();
+        // `errors` is the mean over the points in a window, here of the p99
+        let (before, during, after) = (errors(&p99, 3.0, 9.0), errors(&p99, 13.0, 19.0), errors(&p99, 24.0, 30.0));
+        assert!(during - before > 250.0 && during - before < 400.0, "before {} during {}", before, during);
+        assert!((after - before).abs() < 20.0, "before {} after {}", before, after);
+        assert!(r.summary.mean_error_rate < 0.01, "no deadline, no failures: {}", r.summary.mean_error_rate);
+        // with a 200 ms deadline at the caller the slow link's calls time out
+        let (spec, sc) = slow_link(Some(200.0), 300.0);
+        let (tl, _) = fluid(spec, sc);
+        assert!(errors(&tl, 13.0, 19.0) > 0.95, "timed out: {}", errors(&tl, 13.0, 19.0));
+        assert!(errors(&tl, 24.0, 30.0) < 0.01, "healed: {}", errors(&tl, 24.0, 30.0));
     }
 
     #[test]

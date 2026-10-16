@@ -58,6 +58,7 @@ export function boardNow(b: BoardId) {
     if (d.faultRate) events.push({ at: 0, action: { type: 'inject-errors', id: n.id, rate: d.faultRate } });
     if (d.faultLatencyMs) events.push({ at: 0, action: { type: 'inject-latency', id: n.id, ms: d.faultLatencyMs } });
     for (const to of d.cutTo ?? []) events.push({ at: 0, action: { type: 'cut-link', from: n.id, to } });
+    for (const [to, ms] of Object.entries(d.slowTo ?? {})) events.push({ at: 0, action: { type: 'slow-link', from: n.id, to, ms } });
   }
   // what the users send now (a scheduled job's batches are its own)
   const users = nodes.filter(isSystem).filter((n) => n.data.kind === 'client' && !n.data.everyS);

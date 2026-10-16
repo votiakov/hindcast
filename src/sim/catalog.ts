@@ -157,6 +157,8 @@ export interface SystemNodeData extends Record<string, unknown> {
   side?: string;
   /** links from this component that are cut (a cut-link action): the targets' ids */
   cutTo?: string[];
+  /** links from this component that are slow (a slow-link action): extra round trip per target id, ms */
+  slowTo?: Record<string, number>;
   /** cache / cdn: bumped by the flush action — the engine empties the cache when it changes */
   flushes?: number;
 

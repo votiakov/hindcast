@@ -769,6 +769,8 @@ pub enum Action {
     /// one link cut: calls from → to get no answer until the connection times out
     CutLink(String, String),
     HealLink(String, String),
+    /// one link slow: every call from → to takes `ms` longer (a congested path, a route change); 0 ends it
+    SlowLink(String, String, f64),
 }
 
 impl Action {
@@ -790,6 +792,7 @@ impl Action {
             Action::HealPartition => "heal-partition",
             Action::CutLink(..) => "cut-link",
             Action::HealLink(..) => "heal-link",
+            Action::SlowLink(..) => "slow-link",
         }
     }
     pub fn id(&self) -> Option<&str> {
@@ -878,7 +881,7 @@ pub fn parse_action(v: &Value, path: Vec<Value>, issues: &mut Vec<Issue>) -> Opt
             Action::Partition(a?, b?)
         }
         "heal-partition" => Action::HealPartition,
-        "cut-link" | "heal-link" => {
+        "cut-link" | "heal-link" | "slow-link" => {
             let end = |k: &str, issues: &mut Vec<Issue>| -> Option<String> {
                 let r = o.get(k).and_then(|x| x.as_str()).map(String::from);
                 if r.is_none() {
@@ -889,7 +892,10 @@ pub fn parse_action(v: &Value, path: Vec<Value>, issues: &mut Vec<Issue>) -> Opt
                 r
             };
             let (from, to) = (end("from", issues), end("to", issues));
-            if ty == "cut-link" {
+            if ty == "slow-link" {
+                let ms = frac("ms", Some(10000.0), issues);
+                Action::SlowLink(from?, to?, ms?)
+            } else if ty == "cut-link" {
                 Action::CutLink(from?, to?)
             } else {
                 Action::HealLink(from?, to?)
@@ -898,7 +904,7 @@ pub fn parse_action(v: &Value, path: Vec<Value>, issues: &mut Vec<Issue>) -> Opt
         x => {
             let mut p = path.clone();
             p.push(json!("type"));
-            issues.push(Issue { path: p, message: format!("unknown action \"{}\" (kill-id, revive-id, kill, revive-all, fail-zone, restore-zone, degrade, restore, inject-errors, inject-latency, flush-cache, hot-key, partition, heal-partition, cut-link, heal-link)", x), ..Default::default() });
+            issues.push(Issue { path: p, message: format!("unknown action \"{}\" (kill-id, revive-id, kill, revive-all, fail-zone, restore-zone, degrade, restore, inject-errors, inject-latency, flush-cache, hot-key, partition, heal-partition, cut-link, heal-link, slow-link)", x), ..Default::default() });
             return None;
         }
     })

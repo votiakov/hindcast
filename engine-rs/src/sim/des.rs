@@ -666,6 +666,15 @@ impl<'a> Des<'a> {
         cut(&self.nodes[a].data, &self.nodes[b].data) || self.nodes[a].data.cut_to.as_ref().map_or(false, |v| v.iter().any(|x| *x == self.nodes[b].id)) || self.link_broken(a, b)
     }
 
+    /// the round trip over a → b: the link's own, plus what a slow-link action added
+    fn link_lat(&self, a: usize, b: usize) -> f64 {
+        let own = self.link_ms.get(&(a, b)).copied().unwrap_or(0.0);
+        match self.nodes[a].data.slow_to.as_ref() {
+            Some(m) => own + m.get(&self.nodes[b].id).copied().filter(|x| *x > 0.0).unwrap_or(0.0),
+            None => own,
+        }
+    }
+
     /// a → b's caller still fails its calls after b came back (`reconnect`)
     fn link_broken(&self, a: usize, b: usize) -> bool {
         !self.broken.is_empty() && self.broken.get(&(a, b)).map_or(false, |u| self.now < *u)
@@ -1160,7 +1169,7 @@ impl<'a> Des<'a> {
                 }
             }
         }
-        let link = from.and_then(|f| self.link_ms.get(&(f, i)).copied()).unwrap_or(0.0);
+        let link = from.map(|f| self.link_lat(f, i)).unwrap_or(0.0);
         let ms = self.cfg.hop_ms + link;
         // a link that makes N calls per request: N in parallel, done when all have answered
         let n = from.and_then(|f| self.link_calls.get(&(f, i)).copied()).unwrap_or(1.0);
@@ -1387,7 +1396,7 @@ impl<'a> Des<'a> {
         }
         if kind == "db" && !job.read {
             // every synchronous replica acknowledges before the write is answered
-            let wait = self.nodes[n].children.iter().filter(|&&c| self.link_sync.contains(&(n, c))).map(|&c| self.link_ms.get(&(n, c)).copied().unwrap_or(0.0) + self.cfg.hop_ms + self.nodes[c].svc_mean_ms).fold(0.0, f64::max);
+            let wait = self.nodes[n].children.iter().filter(|&&c| self.link_sync.contains(&(n, c))).map(|&c| self.link_lat(n, c) + self.cfg.hop_ms + self.nodes[c].svc_mean_ms).fold(0.0, f64::max);
             if wait > 0.0 {
                 self.at(wait, Ev::Deliver { done, why: OK });
                 return;
@@ -1721,7 +1730,7 @@ impl<'a> Des<'a> {
             if let Some(&p) = self.primary_of.get(&i) {
                 let primary_up = up(&self.nodes[p]);
                 let reachable = primary_up && !self.link_cut(p, i);
-                let base = self.link_ms.get(&(p, i)).copied().unwrap_or(0.0) / 1000.0;
+                let base = self.link_lat(p, i) / 1000.0;
                 let primary_promoted = !primary_up && matches!((failover_after(&self.nodes[p].data, self.cfg.failover_s), self.nodes[p].down_since), (Some(f), Some(t)) if now - t >= f);
                 let sync = self.link_sync.contains(&(p, i));
                 let x = &mut self.nodes[i];
@@ -2371,6 +2380,42 @@ mod reconnect_tests {
             let (ft, dt) = (first_ok(&f.timeline.iter().map(|p| (p.t, p.error_rate)).collect::<Vec<_>>()), first_ok(&tl(&d)));
             let near = |x: f64| if back.is_infinite() { x.is_infinite() } else { (x - back).abs() <= 2.0 };
             assert!(near(ft) && near(dt), "reconnect {}: back at {} (fluid) and {} (des), want {}", r, ft, dt, back);
+        }
+    }
+}
+
+#[cfg(test)]
+mod slow_link_tests {
+    use super::super::engine::tests::{errors, slow_link};
+    use super::*;
+
+    #[test]
+    fn a_slow_link_adds_its_round_trip_to_every_call_until_it_is_healed() {
+        let (spec, sc) = slow_link(None, 300.0);
+        let r = simulate_des(&spec, &sc, &DesConfig::default()).unwrap();
+        let p50: Vec<(f64, f64)> = r.timeline.iter().map(|p| (p.t, p.p50_ms)).collect();
+        let (before, during, after) = (errors(&p50, 3.0, 9.0), errors(&p50, 13.0, 19.0), errors(&p50, 24.0, 30.0));
+        assert!(during - before > 280.0 && during - before < 320.0, "before {} during {}", before, during);
+        assert!((after - before).abs() < 10.0, "before {} after {}", before, after);
+        assert!(r.summary.mean_error_rate < 0.01, "{}", r.summary.mean_error_rate);
+        let (spec, sc) = slow_link(Some(200.0), 300.0);
+        let r = simulate_des(&spec, &sc, &DesConfig::default()).unwrap();
+        let tl: Vec<(f64, f64)> = r.timeline.iter().map(|p| (p.t, p.error_rate)).collect();
+        assert!(errors(&tl, 13.0, 19.0) > 0.95, "timed out: {}", errors(&tl, 13.0, 19.0));
+        assert!(errors(&tl, 24.0, 30.0) < 0.01, "healed: {}", errors(&tl, 24.0, 30.0));
+        assert!(r.events.iter().any(|e| e.what == "slow-link → api → cart"), "{:?}", r.events.iter().map(|e| &e.what).collect::<Vec<_>>());
+    }
+
+    /// the two engines agree on what a slow link costs: the run's error rate with a deadline that
+    /// the slow link's calls miss, and the latency it adds
+    #[test]
+    fn both_engines_agree_on_a_slow_link() {
+        for (tmo, ms) in [(None, 100.0), (None, 300.0), (Some(200.0), 300.0), (Some(500.0), 300.0)] {
+            let (spec, sc) = slow_link(tmo, ms);
+            let f = super::super::headless::simulate(&spec, &sc, &Default::default()).unwrap();
+            let d = simulate_des(&spec, &sc, &DesConfig::default()).unwrap();
+            let (fe, de) = (f.summary.mean_error_rate, d.summary.mean_error_rate);
+            assert!((fe - de).abs() <= 0.02 + 0.1 * fe.max(de), "{:?} {}: fluid {} des {}", tmo, ms, fe, de);
         }
     }
 }

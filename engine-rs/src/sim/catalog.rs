@@ -187,6 +187,9 @@ pub struct NodeData {
     /// links from this component that are cut (by a cut-link action): the targets' ids
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cut_to: Option<Vec<String>>,
+    /// links from this component that are slow (by a slow-link action): extra round trip per target id, ms
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub slow_to: Option<std::collections::BTreeMap<String, f64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fault_rate: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -1551,6 +1551,36 @@
               "from",
               "to"
              ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "slow-link"
+              },
+              "from": {
+               "type": "string",
+               "description": "component id"
+              },
+              "to": {
+               "type": "string",
+               "description": "component id"
+              },
+              "ms": {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 10000,
+               "description": "extra round trip, ms (0 ends it)"
+              }
+             },
+             "required": [
+              "type",
+              "from",
+              "to",
+              "ms"
+             ],
+             "description": "one link slow: every call over it takes `ms` longer — a congested path, a route change; heal-link or ms 0 ends it"
             }
            ]
           },
@@ -2549,6 +2579,36 @@
               "from",
               "to"
              ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "slow-link"
+              },
+              "from": {
+               "type": "string",
+               "description": "component id"
+              },
+              "to": {
+               "type": "string",
+               "description": "component id"
+              },
+              "ms": {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 10000,
+               "description": "extra round trip, ms (0 ends it)"
+              }
+             },
+             "required": [
+              "type",
+              "from",
+              "to",
+              "ms"
+             ],
+             "description": "one link slow: every call over it takes `ms` longer — a congested path, a route change; heal-link or ms 0 ends it"
             }
            ]
           },
@@ -4975,6 +5035,36 @@
               "from",
               "to"
              ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "slow-link"
+              },
+              "from": {
+               "type": "string",
+               "description": "component id"
+              },
+              "to": {
+               "type": "string",
+               "description": "component id"
+              },
+              "ms": {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 10000,
+               "description": "extra round trip, ms (0 ends it)"
+              }
+             },
+             "required": [
+              "type",
+              "from",
+              "to",
+              "ms"
+             ],
+             "description": "one link slow: every call over it takes `ms` longer — a congested path, a route change; heal-link or ms 0 ends it"
             }
            ]
           },
@@ -6549,6 +6639,36 @@
               "from",
               "to"
              ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "slow-link"
+              },
+              "from": {
+               "type": "string",
+               "description": "component id"
+              },
+              "to": {
+               "type": "string",
+               "description": "component id"
+              },
+              "ms": {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 10000,
+               "description": "extra round trip, ms (0 ends it)"
+              }
+             },
+             "required": [
+              "type",
+              "from",
+              "to",
+              "ms"
+             ],
+             "description": "one link slow: every call over it takes `ms` longer — a congested path, a route change; heal-link or ms 0 ends it"
             }
            ]
           },
@@ -7536,6 +7656,36 @@
               "from",
               "to"
              ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "slow-link"
+              },
+              "from": {
+               "type": "string",
+               "description": "component id"
+              },
+              "to": {
+               "type": "string",
+               "description": "component id"
+              },
+              "ms": {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 10000,
+               "description": "extra round trip, ms (0 ends it)"
+              }
+             },
+             "required": [
+              "type",
+              "from",
+              "to",
+              "ms"
+             ],
+             "description": "one link slow: every call over it takes `ms` longer — a congested path, a route change; heal-link or ms 0 ends it"
             }
            ]
           },
@@ -10611,6 +10761,36 @@
               "from",
               "to"
              ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "slow-link"
+              },
+              "from": {
+               "type": "string",
+               "description": "component id"
+              },
+              "to": {
+               "type": "string",
+               "description": "component id"
+              },
+              "ms": {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 10000,
+               "description": "extra round trip, ms (0 ends it)"
+              }
+             },
+             "required": [
+              "type",
+              "from",
+              "to",
+              "ms"
+             ],
+             "description": "one link slow: every call over it takes `ms` longer — a congested path, a route change; heal-link or ms 0 ends it"
             }
            ]
           },
@@ -13011,6 +13191,36 @@
               "from",
               "to"
              ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "slow-link"
+              },
+              "from": {
+               "type": "string",
+               "description": "component id"
+              },
+              "to": {
+               "type": "string",
+               "description": "component id"
+              },
+              "ms": {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 10000,
+               "description": "extra round trip, ms (0 ends it)"
+              }
+             },
+             "required": [
+              "type",
+              "from",
+              "to",
+              "ms"
+             ],
+             "description": "one link slow: every call over it takes `ms` longer — a congested path, a route change; heal-link or ms 0 ends it"
             }
            ]
           },

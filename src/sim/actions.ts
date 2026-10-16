@@ -25,7 +25,9 @@ export type SimAction =
   | { type: 'heal-partition' }
   /** one link cut: calls from → to get no answer until the connection times out */
   | { type: 'cut-link'; from: string; to: string }
-  | { type: 'heal-link'; from: string; to: string };
+  | { type: 'heal-link'; from: string; to: string }
+  /** one link slow: every call from → to takes `ms` longer (a congested path, a route change); 0 ends it */
+  | { type: 'slow-link'; from: string; to: string; ms: number };
 
 import { KINDS, instancesUp, isSystem, type AppNode, type SystemNodeData } from './catalog';
 
@@ -53,6 +55,12 @@ function kill(nodes: AppNode[], id: string): ActionResult {
     return { nodes: setData(nodes, id, { down: (n.data.down ?? 0) + 1 }), notes: [{ tone: 'bad', text: `💥 ${n.data.name}: 1 instance down` }], target: id };
   return { nodes: setData(nodes, id, { alive: false }), notes: [{ tone: 'bad', text: `💀 ${n.data.name} is DOWN` }], target: id };
 }
+
+const withoutKey = (m: Record<string, number> | undefined, k: string): Record<string, number> | undefined => {
+  if (!m || !(k in m)) return m;
+  const { [k]: _, ...rest } = m;
+  return Object.keys(rest).length ? rest : undefined;
+};
 
 /** Pure: apply a scripted action to a graph. Used by the app store and the headless runner. */
 export function applyAction(nodes: AppNode[], a: SimAction, ctx: ActionContext): ActionResult {
@@ -116,9 +124,21 @@ export function applyAction(nodes: AppNode[], a: SimAction, ctx: ActionContext):
       if (!n || !isSystem(n)) return { nodes, notes: [], target: null };
       const rest = (n.data.cutTo ?? []).filter((x) => x !== a.to);
       const cutTo = a.type === 'cut-link' ? [...rest, a.to] : rest;
+      // a healed link is back to its own round trip, too
+      const slowTo = a.type === 'heal-link' ? withoutKey(n.data.slowTo, a.to) : n.data.slowTo;
       return {
-        nodes: setData(nodes, a.from, { cutTo: cutTo.length ? cutTo : undefined }),
+        nodes: setData(nodes, a.from, { cutTo: cutTo.length ? cutTo : undefined, slowTo }),
         notes: [a.type === 'cut-link' ? { tone: 'bad', text: `✂ link ${a.from} → ${a.to} cut` } : { tone: 'good', text: `✅ link ${a.from} → ${a.to} restored` }],
+        target: a.from,
+      };
+    }
+    case 'slow-link': {
+      const n = nodes.find((x) => x.id === a.from);
+      if (!n || !isSystem(n)) return { nodes, notes: [], target: null };
+      const slowTo = a.ms > 0 ? { ...(n.data.slowTo ?? {}), [a.to]: a.ms } : withoutKey(n.data.slowTo, a.to);
+      return {
+        nodes: setData(nodes, a.from, { slowTo }),
+        notes: [a.ms > 0 ? { tone: 'bad', text: `🐌 link ${a.from} → ${a.to} +${a.ms} ms` } : { tone: 'good', text: `✅ link ${a.from} → ${a.to} back to normal` }],
         target: a.from,
       };
     }

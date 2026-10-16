@@ -177,6 +177,9 @@ slo: { maxErrorRate: 0.01, maxP99Ms: 300 }      # defaults
 | `{ type: hot-key, id, share }` | a database or key-value store: `share` of its traffic goes to one key — one shard, or one partition (0 ends it) |
 | `{ type: partition, a, b }` | cut the network between zones `a` and `b`: every link between their members fails (both sides keep running) |
 | `{ type: heal-partition }` | restore the network between every zone |
+| `{ type: cut-link, from, to }` | cut one link: calls over it get no answer until the connection times out |
+| `{ type: slow-link, from, to, ms }` | one link slow: every call over it takes `ms` longer (a congested path, a route change); a caller's `timeoutMs` counts it. `ms: 0` ends it |
+| `{ type: heal-link, from, to }` | restore one link: neither cut nor slow |
 
 ## Variants (hypotheses)
 

@@ -138,6 +138,7 @@ export const ActionSpec = z.discriminatedUnion('type', [
   z.object({ type: z.literal('heal-partition') }),
   z.object({ type: z.literal('cut-link'), from: z.string().describe('component id'), to: z.string().describe('component id') }).describe('cut one link: calls over it get no answer until the connection times out'),
   z.object({ type: z.literal('heal-link'), from: z.string(), to: z.string() }),
+  z.object({ type: z.literal('slow-link'), from: z.string().describe('component id'), to: z.string().describe('component id'), ms: z.number().min(0).max(10000).describe('extra round trip, ms (0 ends it)') }).describe('one link slow: every call over it takes `ms` longer — a congested path, a route change; heal-link or ms 0 ends it'),
 ]);
 
 export const ScenarioSpec = z.object({

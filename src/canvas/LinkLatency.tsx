@@ -13,6 +13,9 @@ export const LINK_PRESETS: { ms: number; label: string }[] = [
 
 const CALLS = [1, 2, 3, 5, 10, 20, 50, 100];
 
+/** the slow-link chaos button's extra round trip, ms: a cross-region detour on a same-region link */
+const SLOW_LINK_MS = 200;
+
 /** how long a caller stays broken after its callee is back: seconds, or until it restarts */
 const RECONNECT: { v: number | 'until-restart'; label: string; short: string }[] = [
   { v: 0, label: 'reconnects at once', short: '' },
@@ -34,11 +37,12 @@ export function LinkLatency({ id, selected }: { id: string; selected?: boolean }
   // one string, not a fresh array: a selector must return something stable between renders
   const key = useSim((s) => {
     const nodes = s.boards[b].nodes;
-    const find = (nid?: string) => nodes.find((n) => n.id === nid)?.data as { kind?: string; side?: string; cutTo?: string[] } | undefined;
+    const find = (nid?: string) => nodes.find((n) => n.id === nid)?.data as { kind?: string; side?: string; cutTo?: string[]; slowTo?: Record<string, number> } | undefined;
     const [a, z] = [find(edge?.source), find(edge?.target)];
-    return `${a?.kind ?? ''}|${a?.side ?? ''}|${z?.kind ?? ''}|${z?.side ?? ''}|${a?.cutTo?.includes(edge?.target ?? '') ? 'cut' : ''}`;
+    return `${a?.kind ?? ''}|${a?.side ?? ''}|${z?.kind ?? ''}|${z?.side ?? ''}|${a?.cutTo?.includes(edge?.target ?? '') ? 'cut' : ''}|${a?.slowTo?.[edge?.target ?? ''] ?? 0}`;
   });
-  const [k0, s0, k1, s1, linkCut] = key.split('|');
+  const [k0, s0, k1, s1, linkCut, slowS] = key.split('|');
+  const slow = Number(slowS) || 0;
   const ends = [{ kind: k0, side: s0 || undefined }, { kind: k1, side: s1 || undefined }] as const;
   const replicated = ends[0]?.kind === 'db' && ends[1]?.kind === 'replica';
   const sync = data?.replication === 'sync';
@@ -59,6 +63,11 @@ export function LinkLatency({ id, selected }: { id: string; selected?: boolean }
         </span>
       )}
       {severed && <span className="edge-link cut" title="A network partition cuts this link: nothing gets through">✂ cut</span>}
+      {slow > 0 && !severed && (
+        <span className="edge-link cut" title="Chaos: this link is slow — every call over it takes this much longer (a congested path, a route change)">
+          🐌 +{slow}ms
+        </span>
+      )}
       {selected && (
         <>
           <select className="edge-link-select nodrag" value={ms} onChange={(e) => updateEdge(b, id, { latencyMs: +e.target.value || undefined })} title="Network round trip added to every call over this link">
@@ -99,6 +108,11 @@ export function LinkLatency({ id, selected }: { id: string; selected?: boolean }
           {edge && (
             <button className="edge-link-select nodrag" onClick={() => apply(b, { type: linkCut === 'cut' ? 'heal-link' : 'cut-link', from: edge.source, to: edge.target })} title="Chaos: cut this one link — calls over it get no answer until the connection times out">
               {linkCut === 'cut' ? 'restore link' : '✂ cut link'}
+            </button>
+          )}
+          {edge && linkCut !== 'cut' && (
+            <button className="edge-link-select nodrag" onClick={() => apply(b, { type: 'slow-link', from: edge.source, to: edge.target, ms: slow > 0 ? 0 : SLOW_LINK_MS })} title={`Chaos: slow this one link — every call over it takes ${SLOW_LINK_MS} ms longer, as a congested path or a route change would`}>
+              {slow > 0 ? 'link back to normal' : `🐌 slow link +${SLOW_LINK_MS} ms`}
             </button>
           )}
         </>

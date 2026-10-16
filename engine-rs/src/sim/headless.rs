@@ -338,6 +338,26 @@ pub fn apply_action(nodes: &mut [SimNode], zones: &IndexMap<String, Vec<String>>
             if n.data.cut_to.as_ref().map(|v| v.is_empty()).unwrap_or(false) {
                 n.data.cut_to = None;
             }
+            // a healed link is back to its own round trip, too
+            if let Some(m) = n.data.slow_to.as_mut() {
+                m.remove(to);
+            }
+            if n.data.slow_to.as_ref().map(|m| m.is_empty()).unwrap_or(false) {
+                n.data.slow_to = None;
+            }
+            Some(format!("{} → {}", from, to))
+        }
+        Action::SlowLink(from, to, ms) => {
+            let n = nodes.iter_mut().find(|n| n.id == *from)?;
+            let m = n.data.slow_to.get_or_insert_with(Default::default);
+            if *ms > 0.0 {
+                m.insert(to.clone(), *ms);
+            } else {
+                m.remove(to);
+            }
+            if m.is_empty() {
+                n.data.slow_to = None;
+            }
             Some(format!("{} → {}", from, to))
         }
         Action::HealPartition => {
