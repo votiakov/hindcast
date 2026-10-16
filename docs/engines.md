@@ -3,7 +3,7 @@
 Hindcast has two engines with the same inputs (an architecture graph + traffic + scripted
 actions) and different jobs:
 
-| | **fluid** (`src/sim/engine.ts`) | **discrete-event** (`src/sim/des/des.ts`) |
+| | **fluid** (`engine-rs/src/sim/engine.rs`) | **discrete-event** (`engine-rs/src/sim/des.rs`) |
 |---|---|---|
 | unit | request *volume* per 50 ms tick | every individual request |
 | speed | ~1 ms per simulated second | ~2 M events/s (≈ 0.1–0.5 s per simulated minute at 1–3 k req/s) |
@@ -12,9 +12,18 @@ actions) and different jobs:
 | randomness | optional jitter | seeded PRNG, Monte Carlo across seeds |
 | used by | the live app, lessons, studio, optimizer search, breaking point | Analysis panel, `analyze`, optimizer verification, CLI/MCP `--engine des` |
 
+Both are written in Rust; the app runs them as WebAssembly (`src/sim/engine.ts` and
+`src/sim/des/` are the browser-side wrappers), the CLI and MCP server as one native binary.
+
+Both model routing (split / fan-out / failover), retries (immediate / backoff / budget), deadlines,
+circuit breakers with fallback, bounded queues, DB failover to replicas, zones, language runtimes,
+serverless cold starts, GPU inference and hosted LLM APIs, target-tracking autoscaling with warm-up,
+cache warmth, injected errors and latency, and network latency per link. The test suite checks that
+the two engines agree where they should.
+
 Both are directional models — excellent for comparing designs, finding bottlenecks and teaching;
 not a replacement for load testing a real system. Calibrate with per-component `capacity`,
-`latencyMs` and `costPerHour` when modelling real infrastructure.
+`latencyMs` and `costPerHour` (or use `pricing: aws-us-east-1`) when modelling real infrastructure.
 
 ---
 

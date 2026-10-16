@@ -113,6 +113,38 @@ zones:                          # optional failure domains
 - cache/cdn without origin; `instances > 1` without lb/gateway/queue in front; replica not fed by a db;
   component nothing connects to; `fallback` without `breaker`
 
+### A complete example
+
+A web shop priced at AWS list prices: clients with a retry budget and a 1 s timeout, a load
+balancer, an autoscaled Go API, a cache in front of a database, and a read replica.
+
+```yaml
+version: 1
+name: Web shop
+pricing: aws-us-east-1
+components:
+  - { id: users, kind: client, retries: 2, retryPolicy: budget, timeoutMs: 1000 }
+  - { id: lb, kind: lb }
+  - id: api
+    kind: server
+    instances: 4
+    runtime: go
+    autoscale: { min: 4, max: 16, warmupS: 20 }
+  - { id: redis, kind: cache, hitRate: 0.9 }
+  - { id: db, kind: db, tier: M }
+  - { id: db-replica, kind: replica, tier: M }
+connections:
+  - [users, lb]
+  - [lb, api]
+  - [api, redis]
+  - { from: redis, to: db, latencyMs: 1 }
+  - [db, db-replica]
+zones:
+  - { id: az-a, label: us-east-1a, members: [api, db] }
+```
+
+Scenarios (below) add traffic, timed events and an SLO; variants are edit lists against a base.
+
 ## Scenario
 
 ```yaml

@@ -38,13 +38,17 @@ build of it is what the PR workflow ships.
 Every command accepts `--json`. Files may be YAML or JSON. Examples live in `examples/`:
 
 ```bash
+npm run sim -- audit    examples/shop.yaml --rps 500 --cost-per-min 1000 --md report.md
 npm run sim -- simulate examples/shop.yaml examples/black-friday.yaml --engine des
+npm run sim -- simulate examples/shop.yaml --traffic examples/traffic-day.csv --duration 240
 npm run sim -- simulate examples/shop.yaml examples/black-friday.yaml --engine des --trace api --failed
 npm run sim -- compare  examples/shop.yaml examples/shop-variants.yaml examples/black-friday.yaml
 npm run sim -- analyze  examples/shop.yaml --rps 800 --runs 24
 npm run sim -- optimize examples/shop.yaml examples/black-friday.yaml --runtimes --out optimized.yaml
 npm run sim -- link     examples/shop.yaml examples/shop-hypothesis.yaml
+npm run sim -- breaking-point examples/shop.yaml
 npm run sim -- import-terraform examples/terraform/shop.tfstate.json --out shop.yaml
+npm run sim -- import-k8s       examples/kubernetes/shop.yaml --out shop.yaml
 ```
 
 `--trace` prints each sampled request on its own lines: the arrow into each hop is the network and

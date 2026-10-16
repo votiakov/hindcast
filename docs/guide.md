@@ -6,6 +6,39 @@ Backtest tab directly. ⌘K opens the command palette from anywhere, and `?` lis
 
 Everything runs in the browser. Designs are saved to local storage; nothing is uploaded.
 
+## At a glance
+
+- **Backtest** – real history as a chart, strategies drawn over it, ranked; open any moment on the
+  board; Studio card of the result.
+- **Live** – a running system that fails on arrival, with the next move pinned to the component
+  under stress.
+- **Lessons** – a study path of 18 lessons, 54 levels, in four tracks: scaling a web service
+  (Scale 101/201, Pastebin, Mint, sizing a cache), asynchrony and failure (queues, event streams,
+  timeouts and retries read off one traced request, retry storms, thread pools and bulkheads,
+  elasticity, zones), data at scale (CAP with sync/async replication and partitions, sharding and
+  hot keys, a web crawler), and AI serving (a vector index sized by memory and recall) and runtimes.
+  Every level has a reference solution ("show me"), a debrief and saved progress; each is proven
+  solvable in the tests.
+- **Sandbox** – build anything. Autoscaling, retries, timeouts, breakers, failover, fan-out, gray
+  failures, cross-region links. Every run is recorded; drag the timeline to rewind the whole board.
+- **Failure audit** – risk register with blast radius, recovery time and $ at risk; replay any
+  incident on the board; apply a verified fix with one click (undoable); copy the report as Markdown.
+- **Architecture as code** – a YAML editor that stays in sync with the board in both directions.
+- **Compare** – two designs, same traffic and failures, side by side, with a measured scoreboard and
+  a takeaway computed by the engine. Thirty-two built-in comparisons, each proven to show a
+  difference, and seven real systems (chat, video, ride dispatch, payments, timelines, an AI
+  assistant with retrieval, e-commerce search) rebuilt from their engineers' public write-ups as
+  starting boards.
+- **Present** – press P: no chrome, large numbers, captions; ←/→ walks through the audit's incidents
+  live.
+- **Studio** – scripted episodes rendered in the browser to MP4, GIF and a PDF carousel for posts
+  (or frame-perfect from the command line with `npm run record`).
+- **Agents** – an MCP server and CLI so an agent can connect to Prometheus and Jaeger/Tempo,
+  calibrate, and verify an infrastructure change against real history (`npm run sim -- agent setup`).
+
+⌘K opens the command palette. ⌘Z undoes. ⌘S saves the design locally. Drop a spec, Kubernetes
+manifests or a `terraform show -json` file on the board to open it. `?` lists the shortcuts.
+
 ---
 
 ## Backtest
