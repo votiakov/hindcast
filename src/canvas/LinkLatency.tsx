@@ -65,7 +65,7 @@ export function LinkLatency({ id, selected }: { id: string; selected?: boolean }
       {severed && <span className="edge-link cut" title="A network partition cuts this link: nothing gets through">✂ cut</span>}
       {slow > 0 && !severed && (
         <span className="edge-link cut" title="Chaos: this link is slow — every call over it takes this much longer (a congested path, a route change)">
-          🐌 +{slow}ms
+          slow +{slow}ms
         </span>
       )}
       {selected && (
@@ -112,7 +112,7 @@ export function LinkLatency({ id, selected }: { id: string; selected?: boolean }
           )}
           {edge && linkCut !== 'cut' && (
             <button className="edge-link-select nodrag" onClick={() => apply(b, { type: 'slow-link', from: edge.source, to: edge.target, ms: slow > 0 ? 0 : SLOW_LINK_MS })} title={`Chaos: slow this one link — every call over it takes ${SLOW_LINK_MS} ms longer, as a congested path or a route change would`}>
-              {slow > 0 ? 'link back to normal' : `🐌 slow link +${SLOW_LINK_MS} ms`}
+              {slow > 0 ? 'link back to normal' : `slow link +${SLOW_LINK_MS} ms`}
             </button>
           )}
         </>
