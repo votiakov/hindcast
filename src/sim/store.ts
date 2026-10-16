@@ -243,6 +243,10 @@ interface State {
   /** a note on the board (empty: it opens for typing); no position: above the design */
   addNote: (b: BoardId, pos?: XYPosition, text?: string) => void;
   updateNote: (b: BoardId, id: string, text: string) => void;
+  /** group components in a section: a labelled frame for reading the design, not a failure domain
+   *  (no ids: the selected components); empty label: it opens for typing. Returns its id */
+  addSection: (b: BoardId, ids?: string[], label?: string) => string | null;
+  renameSection: (b: BoardId, id: string, label: string) => void;
   updateNode: (b: BoardId, id: string, patch: Partial<SystemNodeData>) => void;
   updateZone: (b: BoardId, id: string, patch: Partial<ZoneData>) => void;
   moveNodes: (b: BoardId, positions: Record<string, XYPosition>) => void;
@@ -320,6 +324,8 @@ function makeBoard(id: BoardId, title: string, g: Graph, version = 0): Board {
 export interface Clip {
   nodes: SystemNode[];
   edges: SystemEdge[];
+  /** sections whose members are all in the copy */
+  sections?: { label: string; members: string[] }[];
 }
 
 function nextName(nodes: AppNode[], kind: Kind): string {
@@ -553,7 +559,13 @@ export const useSim = create<State>()((set, get) => {
       const picked = nodes.filter((n): n is SystemNode => isSystem(n) && !!n.selected);
       if (!picked.length) return null;
       const ids = new Set(picked.map((n) => n.id));
-      return { nodes: structuredClone(picked), edges: structuredClone(edges.filter((e) => ids.has(e.source) && ids.has(e.target))) };
+      const live = new Set(nodes.filter(isSystem).map((n) => n.id));
+      const sections = nodes.flatMap((n) => {
+        if (n.type !== 'section') return [];
+        const ms = n.data.members.filter((m) => live.has(m));
+        return ms.length && ms.every((m) => ids.has(m)) ? [{ label: n.data.label, members: ms }] : [];
+      });
+      return { nodes: structuredClone(picked), edges: structuredClone(edges.filter((e) => ids.has(e.source) && ids.has(e.target))), ...(sections.length ? { sections } : {}) };
     },
     paste: (b, clip, times = 1) => {
       if (!clip.nodes.length) return;
@@ -572,6 +584,8 @@ export const useSim = create<State>()((set, get) => {
         added.push({ ...n, id, selected: true, position: { x: n.position.x + offset.x, y: n.position.y + offset.y }, parentId: undefined, data: { ...data, name, alive: true, ...(KINDS[n.data.kind].scalable ? { down: 0 } : {}) } as SystemNodeData });
       }
       nodes = [...nodes, ...added];
+      // a copied section frames the copies
+      (clip.sections ?? []).forEach((x, i) => nodes.push({ id: `section-${Date.now().toString(36)}-${i}`, type: 'section', position: { x: 0, y: 0 }, zIndex: -2, data: { label: x.label, members: x.members.map((m) => rename.get(m)!).filter(Boolean) } }));
       const edges = [
         ...board(b).edges.map((e) => ({ ...e, selected: false })),
         ...clip.edges.map((e) => ({ ...e, id: `e-${rename.get(e.source)}-${rename.get(e.target)}-${Date.now()}`, source: rename.get(e.source)!, target: rename.get(e.target)!, selected: false })),
@@ -593,6 +607,21 @@ export const useSim = create<State>()((set, get) => {
     updateNote: (b, id, text) => {
       remember(b, `note:${id}`);
       setNodes(b, (nodes) => nodes.map((n) => (n.id === id && n.type === 'note' ? { ...n, data: { ...n.data, text } } : n)));
+    },
+    addSection: (b, ids, label = '') => {
+      const { nodes } = board(b);
+      const members = (ids ?? nodes.filter((n) => isSystem(n) && n.selected).map((n) => n.id)).filter((id) => nodes.some((n) => n.id === id && isSystem(n)));
+      if (!members.length) return null;
+      remember(b);
+      const id = `section-${Date.now().toString(36)}`;
+      const section: AppNode = { id, type: 'section', position: { x: 0, y: 0 }, zIndex: -2, data: { label, members }, selected: true };
+      // behind everything else, and the only thing selected: it is ready to be named
+      patch(b, { nodes: [section, ...nodes.map((n) => ({ ...n, selected: false }) as AppNode)], edges: board(b).edges.map((e) => (e.selected ? { ...e, selected: false } : e)) });
+      return id;
+    },
+    renameSection: (b, id, label) => {
+      remember(b, `section:${id}`);
+      setNodes(b, (nodes) => nodes.map((n) => (n.id === id && n.type === 'section' ? { ...n, data: { ...n.data, label } } : n)));
     },
     addZone: (b, position) => {
       remember(b);

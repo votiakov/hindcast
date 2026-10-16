@@ -23,7 +23,16 @@ connections:                    # caller → callee
   - { from: api, to: db, latencyMs: 70 }   # the object form: a link with network round-trip latency (cross-region)
 zones:                          # optional failure domains
   - { id: az-a, label: us-east-1a, members: [api, db] }
+sections:                       # optional: frames for reading the board; the engines ignore them
+  - { label: checkout path, members: [lb, api, db] }
 ```
+
+A **zone** is a failure domain: failing it takes down everything in it, and a partition cuts the
+links between two. A **section** only groups components for reading ("checkout path", "async
+jobs"): it fails nothing, the engines ignore it, and it may hold components of any zone. On the board
+a zone is a solid frame with a zone chip, a section a dotted frame with a plain label; the Mermaid
+export draws both as subgraphs (a section dotted, a zone wholly inside a section nested in it). The
+spec may also carry `notes` (free text at a position), which the engines ignore too.
 
 ### Component fields
 
@@ -110,6 +119,7 @@ zones:                          # optional failure domains
 ### Lint rules (warnings unless noted)
 
 - no `client` component (error); duplicate ids, unknown/self connections, unknown zone members (errors)
+- a section listing an id that is not a component
 - `lb`/`gateway`/`queue` with nothing behind it (error)
 - cache/cdn without origin; `instances > 1` without lb/gateway/queue in front; replica not fed by a db;
   component nothing connects to; `fallback` without `breaker`
@@ -204,8 +214,9 @@ A variants file is either a list of variants or `{ variants: [...], scenario: {.
 ## Board ↔ spec
 
 - `specToGraph` lays components out left-to-right by longest path from a traffic source and draws
-  zone frames around their members.
-- `graphToSpec` exports a board (only non-default fields), deriving zone membership from geometry.
+  zone frames around their members; a section's frame fits its members wherever they are moved.
+- `graphToSpec` exports a board (only non-default fields), deriving zone membership from geometry;
+  a section keeps the members it was given, less any that were removed.
   Round-trips are exact.
 
 ## Importing from Terraform

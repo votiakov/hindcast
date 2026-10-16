@@ -58,6 +58,7 @@ export function validateSpec(input: unknown): { ok: boolean; issues: Issue[]; sp
     if ((c.bulkheadWaitMs ?? 0) > 0 && c.bulkhead === undefined) issues.push({ level: 'warning', message: `"${c.id}" has bulkheadWaitMs without bulkhead — the wait only applies to calls past a bulkhead`, path: at(c) });
   }
   for (const [zi, z] of (spec.zones ?? []).entries()) for (const [mi, m] of z.members.entries()) if (!ids.has(m)) issues.push({ level: 'error', message: `zone "${z.id}" lists unknown member "${m}"`, path: ['zones', zi, 'members', mi] });
+  for (const [si, x] of (spec.sections ?? []).entries()) for (const [mi, m] of x.members.entries()) if (!ids.has(m)) issues.push({ level: 'warning', message: `section "${x.label}" lists unknown member "${m}"`, path: ['sections', si, 'members', mi] });
 
   return { ok: !issues.some((i) => i.level === 'error'), issues, spec };
 }

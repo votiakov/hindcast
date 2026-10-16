@@ -68,6 +68,7 @@ function buildCommands(q: string): Cmd[] {
     { id: 'present', group: 'View', label: s.present ? 'Exit present mode' : 'Present', hint: 'P — chrome-free, big numbers; ←/→ walks audit incidents', run: () => s.setPresent(!s.present) },
     { id: 'spec', group: 'Design', label: 'Edit as YAML (architecture as code)', run: () => (sandbox(), useSim.getState().setSpecOpen(true)) },
     { id: 'note', group: 'Design', label: 'Add a note', hint: 'N — free text on the board; double-click to edit', run: () => useSim.getState().addNote(useSim.getState().focus) },
+    { id: 'section', group: 'Design', label: 'Group the selection as a section', hint: 'G — a labelled frame for reading; not a failure domain', run: () => useSim.getState().addSection(useSim.getState().focus) ?? useSim.getState().toast('info', 'Select the components to group first (shift-drag a box around them)') },
     { id: 'play', group: 'Simulation', label: s.running ? 'Pause' : 'Play', hint: 'Space', run: () => s.setRunning(!s.running) },
     { id: 'reset', group: 'Simulation', label: 'Reset simulation', run: () => s.reset() },
     { id: 'spike', group: 'Simulation', label: 'Traffic spike ×3', run: () => s.spike() },

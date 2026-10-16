@@ -79,6 +79,8 @@ export function specToGraph(input: unknown): Graph {
     const y1 = Math.max(...ps.map((p) => p.y)) + NODE_H + ZONE_PAD;
     nodes.push({ id: z.id, type: 'zone', position: { x: x0, y: y0 }, width: x1 - x0, height: y1 - y0, zIndex: -1, data: { label: z.label ?? z.id } });
   }
+  // sections: a frame that fits its members wherever they are (src/sim/sections.ts); placed on the board
+  (spec.sections ?? []).forEach((x, i) => nodes.push({ id: `section-${i + 1}`, type: 'section', position: { x: 0, y: 0 }, zIndex: -2, data: { label: x.label, members: [...x.members] } }));
   for (const c of spec.components) nodes.push({ id: c.id, type: 'system', position: pos.get(c.id)!, data: componentData(c) });
   (spec.notes ?? []).forEach((n, i) => nodes.push({ id: `note-${i + 1}`, type: 'note', position: { x: n.x, y: n.y }, ...(n.width ? { width: n.width } : {}), data: { text: n.text } }));
   const edges: SystemEdge[] = links(spec).map(({ from: source, to: target, latencyMs, calls, carries, replication, reconnect }) => {
@@ -117,6 +119,11 @@ export function graphToSpec(nodes: AppNode[], edges: SystemEdge[], name?: string
       return { id: z.id, label: String(z.data.label ?? z.id), members };
     });
   const ids = new Set(sys.map((n) => n.id));
+  const sections = nodes.flatMap((n) => {
+    if (n.type !== 'section') return [];
+    const members = n.data.members.filter((m) => ids.has(m));
+    return members.length ? [{ label: String(n.data.label || 'section'), members }] : [];
+  });
   const notes = nodes.filter((n) => n.type === 'note').map((n) => ({ text: String(n.data.text ?? ''), x: Math.round(n.position.x), y: Math.round(n.position.y), ...(n.width ? { width: Math.round(n.width) } : {}) }));
   return {
     version: 1,
@@ -130,6 +137,7 @@ export function graphToSpec(nodes: AppNode[], edges: SystemEdge[], name?: string
           : ([e.source, e.target] as [string, string]),
       ),
     ...(zones.length ? { zones } : {}),
+    ...(sections.length ? { sections } : {}),
     ...(notes.length ? { notes } : {}),
   };
 }
@@ -166,6 +174,7 @@ function applyChange(spec: ArchitectureSpec, ch: ChangeSpec) {
       spec.components = spec.components.filter((x) => x.id !== ch.id);
       spec.connections = spec.connections.filter((c) => !(Array.isArray(c) ? c.includes(ch.id) : c.from === ch.id || c.to === ch.id));
       for (const z of spec.zones ?? []) z.members = z.members.filter((m) => m !== ch.id);
+      for (const x of spec.sections ?? []) x.members = x.members.filter((m) => m !== ch.id);
       break;
     case 'connect': {
       find(ch.from);

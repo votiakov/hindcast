@@ -123,6 +123,11 @@ function useSimLoop() {
         s.addNote(s.focus);
         return;
       }
+      if (!mod && !e.altKey && (e.key === 'g' || e.key === 'G') && (s.mode === 'sandbox' || s.mode === 'compare')) {
+        e.preventDefault();
+        s.addSection(s.focus);
+        return;
+      }
       if (!mod && !e.altKey && (e.key === 'p' || e.key === 'P') && s.mode !== 'studio') {
         s.setPresent(!s.present);
         return;

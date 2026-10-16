@@ -167,14 +167,32 @@
 
 /* zones */
 [data-theme='terminal'] .react-flow__node-zone { border-radius: 8px; }
-[data-theme='terminal'] .zone { border: 1.5px dashed var(--r-line-strong); background: var(--r-zone-tint); border-radius: 8px; animation: none; }
+/* a zone is a failure domain: a solid frame and a chip that says so (a section, below, is dotted and plain) */
+[data-theme='terminal'] .zone { border: 1px solid var(--r-line-strong); background: var(--r-zone-tint); border-radius: 8px; animation: none; }
 [data-theme='terminal'] .zone.selected { border-color: var(--r-accent); border-style: solid; }
-[data-theme='terminal'] .zone-label { top: 8px; left: 12px; font-family: var(--sans); color: var(--r-muted); font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; }
-[data-theme='terminal'] .zone-label::before { content: 'Availability zone · '; color: var(--r-faint); font-weight: 500; }
+[data-theme='terminal'] .zone-label { top: 8px; left: 10px; font-family: var(--sans); color: var(--r-ink-2); font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; padding: 2px 7px; border: 1px solid var(--r-line-strong); background: var(--r-sunken); border-radius: 3px; }
+[data-theme='terminal'] .zone-label::before { content: 'Availability zone · '; color: var(--r-muted); font-weight: 500; }
 [data-theme='terminal'] .zone-dot { display: none; }
 [data-theme='terminal'] .zone.failed { border-color: var(--r-bad); background: repeating-linear-gradient(135deg, rgba(var(--r-bad-rgb), 0.06) 0 8px, rgba(var(--r-bad-rgb), 0.02) 8px 16px); }
 [data-theme='terminal'] .zone.failed .zone-label { color: var(--r-bad); }
 [data-theme='terminal'] .zone-status { background: var(--r-bad); color: var(--r-on-ink); border-radius: 3px; font-size: 10px; letter-spacing: 0.6px; }
+
+/* sections: a dotted frame with a muted label in its top line, for reading the design; not a failure
+   domain. Only the label and the edges take the pointer, so a box can still be drawn inside */
+.react-flow__node-section { pointer-events: none !important; }
+.section { position: absolute; inset: 0; border: 1.5px dotted var(--r-line-strong); border-radius: 6px; pointer-events: none; }
+.section.selected { border-color: var(--r-accent); }
+.section-edge { position: absolute; pointer-events: auto; cursor: move; }
+.section-edge.top, .section-edge.bottom { left: 0; right: 0; height: 8px; }
+.section-edge.top { top: -5px; }
+.section-edge.bottom { bottom: -5px; }
+.section-edge.left, .section-edge.right { top: 0; bottom: 0; width: 8px; }
+.section-edge.left { left: -5px; }
+.section-edge.right { right: -5px; }
+.section-label { position: absolute; top: -9px; left: 14px; padding: 0 6px; background: var(--r-bg); color: var(--r-muted); font-family: var(--mono); font-size: 12px; font-weight: 500; line-height: 16px; white-space: nowrap; pointer-events: auto; cursor: move; }
+.section.selected .section-label { color: var(--r-ink-2); }
+.section-input { background: var(--r-surface); border: 1px solid var(--r-accent-line); border-radius: 2px; color: var(--r-ink); font: 500 12px var(--mono); padding: 0 4px; outline: none; cursor: text; }
+.board-canvas.exporting .section-label { background: var(--r-bg); }
 [data-theme='terminal'] .zone-input { color: var(--r-ink); font-family: var(--mono); }
 
 /* node control panel */

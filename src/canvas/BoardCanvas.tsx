@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef } from 'react';
-import { Background, BackgroundVariant, MiniMap, Panel, ReactFlow, useReactFlow, type NodeTypes, type EdgeTypes, type XYPosition } from '@xyflow/react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { Background, BackgroundVariant, MiniMap, NodeToolbar, Panel, Position, ReactFlow, useReactFlow, type NodeTypes, type EdgeTypes, type XYPosition } from '@xyflow/react';
+import { SquareDashed } from 'lucide-react';
 import { useSim, type BoardId } from '../sim/store';
 import { KINDS, isSystem, isUp, type AppNode, type Kind, type SystemNodeData } from '../sim/catalog';
 import { SystemNode, healthOf } from './SystemNode';
@@ -8,6 +9,8 @@ import { FlowEdge } from './FlowEdge';
 import { BoardContext } from './BoardContext';
 import { RefMarkers } from '../theme/reference/RefEdge';
 import { NoteNode } from './NoteNode';
+import { SectionNode } from './SectionNode';
+import { fitSections, membersOf } from '../sim/sections';
 import { TraceStrip } from '../ui/TraceStrip';
 
 export const DND_TYPE = 'application/x-bottleneck-kind';
@@ -15,7 +18,7 @@ export const ZONE_KIND = 'zone';
 
 const TERMINAL_MAP_HEALTH = { idle: '#33475a', ok: '#6e8191', warm: '#e3c55a', hot: '#ef5b5b', down: '#22303c' } as const;
 
-const nodeTypes: NodeTypes = { system: SystemNode, zone: ZoneNode, note: NoteNode };
+const nodeTypes: NodeTypes = { system: SystemNode, zone: ZoneNode, note: NoteNode, section: SectionNode };
 const edgeTypes: EdgeTypes = { flow: FlowEdge };
 
 /** palette click-to-add goes to the focused board; each canvas registers how to add at its centre */
@@ -34,7 +37,9 @@ interface Props {
 }
 
 export function BoardCanvas({ id, padding, minimap = true, interactive = true, fitDuration = 400, children }: Props) {
-  const nodes = useSim((s) => s.boards[id].nodes);
+  const stored = useSim((s) => s.boards[id].nodes);
+  // sections are drawn around their members as they are now
+  const nodes = useMemo(() => fitSections(stored), [stored]);
   const edges = useSim((s) => s.boards[id].edges);
   const version = useSim((s) => s.boards[id].version);
   const { onNodesChange, onEdgesChange, onConnect, addNode, addZone, moveNodes, setFocus } = useSim.getState();
@@ -105,9 +110,17 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
     [id, add, screenToFlowPosition, setFocus],
   );
 
-  // dragging a zone carries the nodes inside it
+  // dragging a zone carries the nodes inside it; a section, its members (those not already dragged along)
   const onNodeDragStart = useCallback(
     (_: unknown, node: AppNode) => {
+      if (node.type === 'section') {
+        const all = useSim.getState().boards[id].nodes;
+        const ids = new Set(membersOf(all, node));
+        const members: Record<string, XYPosition> = {};
+        for (const n of all) if (ids.has(n.id) && !n.selected) members[n.id] = { ...n.position };
+        zoneDrag.current = { start: { ...node.position }, members };
+        return;
+      }
       if (node.type !== 'zone') return;
       const w = node.width ?? node.measured?.width ?? 0;
       const h = node.height ?? node.measured?.height ?? 0;
@@ -125,7 +138,7 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
   const onNodeDrag = useCallback(
     (_: unknown, node: AppNode) => {
       const zd = zoneDrag.current;
-      if (node.type !== 'zone' || !zd) return;
+      if ((node.type !== 'zone' && node.type !== 'section') || !zd) return;
       const dx = node.position.x - zd.start.x;
       const dy = node.position.y - zd.start.y;
       const next: Record<string, XYPosition> = {};
@@ -169,6 +182,7 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
           <Background variant={BackgroundVariant.Dots} gap={24} size={1.4} color="#1e293b" />
           {children}
           {minimap && <ReplicaToggle id={id} />}
+          {interactive && <GroupBar id={id} />}
           {minimap && (
             <MiniMap
               pannable
@@ -178,6 +192,7 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
               nodeColor={(n) => {
                 if (n.type === 'zone') return 'rgba(56, 189, 248, 0.08)';
                 if (n.type === 'note') return 'rgba(250, 204, 21, 0.25)';
+                if (n.type === 'section') return 'transparent';
                 const st = useSim.getState().boards[id].nodeStats[n.id];
                 const d = (n as AppNode & { type: 'system' }).data;
                 const h = healthOf(st?.util ?? 0, st?.dropRps ?? 0, st?.inRps ?? 1, isUp(d));
@@ -189,6 +204,26 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
         {interactive && <TraceStrip board={id} padding={padding} />}
       </div>
     </BoardContext.Provider>
+  );
+}
+
+/** two or more components selected (box-select, shift-click): group them as a section */
+function GroupBar({ id }: { id: BoardId }) {
+  const picked = useSim((s) => {
+    const ids = s.boards[id].nodes.filter((n) => n.type === 'system' && n.selected).map((n) => n.id);
+    return ids.length > 1 ? ids.join(' ') : '';
+  });
+  if (!picked) return null;
+  const ids = picked.split(' ');
+  return (
+    <NodeToolbar nodeId={ids} isVisible position={Position.Top} align="start" offset={14} className="node-toolbar group-bar">
+      <div className="tb-group">
+        <button className="tb-btn wide" onClick={() => useSim.getState().addSection(id, ids)} title="Draw a labelled frame around these components, for reading the design (G). Not a failure domain: use a zone for that">
+          <SquareDashed size={14} /> Group as section
+        </button>
+        <span className="tb-label">{ids.length} selected · G</span>
+      </div>
+    </NodeToolbar>
   );
 }
 

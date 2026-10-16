@@ -176,6 +176,16 @@ export interface ZoneData extends Record<string, unknown> {
   failed?: boolean;
 }
 
+/**
+ * a section on the board: a labelled frame around some components, for reading the design ("checkout
+ * path"). Unlike a zone it means nothing to the engines: it does not fail together, and it fits its
+ * members wherever they are moved
+ */
+export interface SectionData extends Record<string, unknown> {
+  label: string;
+  members: string[];
+}
+
 /** a note on the board: free text, for explaining a design; the engines ignore it */
 export interface NoteData extends Record<string, unknown> {
   text: string;
@@ -184,7 +194,8 @@ export interface NoteData extends Record<string, unknown> {
 export type SystemNode = Node<SystemNodeData, 'system'>;
 export type ZoneNode = Node<ZoneData, 'zone'>;
 export type NoteNode = Node<NoteData, 'note'>;
-export type AppNode = SystemNode | ZoneNode | NoteNode;
+export type SectionNode = Node<SectionData, 'section'>;
+export type AppNode = SystemNode | ZoneNode | NoteNode | SectionNode;
 export type SystemEdge = Edge;
 
 export const isSystem = (n: AppNode): n is SystemNode => n.type === 'system';
