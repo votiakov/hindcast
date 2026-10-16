@@ -1220,6 +1220,9 @@ impl<'a> Des<'a> {
         };
         while let Some(job) = self.nodes[n].lock_q.pop_front() {
             if (self.now - job.t_in) * 1000.0 > bound {
+                if let Some(t) = self.tr.as_mut() {
+                    t.left_queue(job.done.unwrap(), self.now);
+                }
                 self.fail(Some(n), why(n, R_LOCK), job.done.unwrap(), 0.5);
                 continue;
             }
@@ -1294,6 +1297,9 @@ impl<'a> Des<'a> {
             while s < self.nodes[n].sh_queue.len() && !self.nodes[n].sh_queue[s].is_empty() && self.nodes[n].sh_busy[s] < self.nodes[n].sh_workers {
                 let next = self.nodes[n].sh_queue[s].pop_front().unwrap();
                 if (self.now - next.t_in) * 1000.0 > bound {
+                    if let Some(t) = self.tr.as_mut() {
+                        t.left_queue(next.done.unwrap(), self.now);
+                    }
                     self.fail(Some(n), why(n, R_SHED), next.done.unwrap(), 0.5);
                     continue;
                 }
@@ -1311,6 +1317,9 @@ impl<'a> Des<'a> {
             if (self.now - next.t_in) * 1000.0 > bound {
                 // it waited for a thread, not for the work, when workers were free
                 let r = if self.nodes[n].threads_cap.is_finite() && self.nodes[n].busy < self.nodes[n].workers { R_THREADS } else { R_SHED };
+                if let Some(t) = self.tr.as_mut() {
+                    t.left_queue(next.done.unwrap(), self.now);
+                }
                 self.fail(Some(n), why(n, r), next.done.unwrap(), 0.5);
                 continue;
             }

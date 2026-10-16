@@ -67,6 +67,8 @@ struct Span {
     arrive: f64,
     start: f64,
     served: f64,
+    /// shed from its queue after waiting past the bound, without being worked on
+    left: f64,
     end: f64,
     why: u32,
     mark: u8,
@@ -166,7 +168,7 @@ impl Tracer {
         self.picked += 1.0;
         let id = self.next_id;
         self.next_id += 1;
-        let root = Span { node: client, parent: -1, k: 0, via: VIA_CALL, fwd: false, sent: now, arrive: now, start: now, served: now, end: f64::NAN, why: 0, mark: 0, gave_up: f64::NAN, deadline_ms: f64::NAN };
+        let root = Span { node: client, parent: -1, k: 0, via: VIA_CALL, fwd: false, sent: now, arrive: now, start: now, served: now, left: f64::NAN, end: f64::NAN, why: 0, mark: 0, gave_up: f64::NAN, deadline_ms: f64::NAN };
         self.live.insert(id, Buf { t0: now, read, spans: vec![root], truncated: false, why: 0, end: f64::NAN });
         self.callee[done] = Tc { tr: id, span: 0, k: 0, via: VIA_CALL };
     }
@@ -213,7 +215,7 @@ impl Tracer {
             b.truncated = true;
             return;
         }
-        b.spans.push(Span { node, parent: parent as i32, k, via, fwd, sent: now, arrive: f64::NAN, start: f64::NAN, served: f64::NAN, end: f64::NAN, why: 0, mark: 0, gave_up: f64::NAN, deadline_ms: f64::NAN });
+        b.spans.push(Span { node, parent: parent as i32, k, via, fwd, sent: now, arrive: f64::NAN, start: f64::NAN, served: f64::NAN, left: f64::NAN, end: f64::NAN, why: 0, mark: 0, gave_up: f64::NAN, deadline_ms: f64::NAN });
         self.callee[done] = Tc { tr, span: (b.spans.len() - 1) as u16, k, via };
     }
 
@@ -249,6 +251,15 @@ impl Tracer {
         }
     }
 
+    /// it waited past its queue's bound and was shed without being worked on
+    pub fn left_queue(&mut self, id: usize, now: f64) {
+        if let Some(s) = self.span(id) {
+            if s.left.is_nan() && s.start.is_nan() {
+                s.left = now;
+            }
+        }
+    }
+
     pub fn mark(&mut self, id: usize, m: u8) {
         if let Some(s) = self.span(id) {
             s.mark = m;
@@ -262,12 +273,13 @@ impl Tracer {
             return;
         }
         if let Some(b) = self.live.get_mut(&o.tr) {
-            // the attempt's own hops, and anything they passed the request on to
+            // the attempt's own hops, and every hop below them still out (the one stuck in a queue
+            // may be a few calls further down)
             let mut out: Vec<usize> = (0..b.spans.len()).filter(|&i| b.spans[i].parent == o.span as i32 && b.spans[i].k == o.k && b.spans[i].end.is_nan()).collect();
             let mut j = 0;
             while j < out.len() {
                 let p = out[j] as i32;
-                out.extend((0..b.spans.len()).filter(|&i| b.spans[i].parent == p && b.spans[i].fwd && b.spans[i].end.is_nan()));
+                out.extend((0..b.spans.len()).filter(|&i| b.spans[i].parent == p && b.spans[i].end.is_nan()));
                 j += 1;
             }
             for i in out {
@@ -380,7 +392,15 @@ impl Tracer {
                             "ok"
                         };
                         let net = if s.arrive.is_nan() { 0.0 } else { s.arrive - s.sent };
-                        let wait = if s.arrive.is_nan() || s.start.is_nan() { 0.0 } else { s.start - s.arrive };
+                        let wait = if s.arrive.is_nan() {
+                            0.0
+                        } else if !s.start.is_nan() {
+                            s.start - s.arrive
+                        } else if !s.left.is_nan() {
+                            s.left - s.arrive
+                        } else {
+                            0.0
+                        };
                         let svc = if s.start.is_nan() || s.served.is_nan() { 0.0 } else { s.served - s.start };
                         SpanOut {
                             id: nodes[s.node].0.clone(),
@@ -454,7 +474,8 @@ pub struct SpanOut {
     pub start_ms: Option<f64>,
     pub served_ms: Option<f64>,
     pub end_ms: Option<f64>,
-    /// the network on the way there, the wait in its queue, and its own work
+    /// the network on the way there, the wait in its queue (also when it was shed from it after
+    /// waiting past the bound), and its own work
     pub network_ms: f64,
     pub wait_ms: f64,
     pub service_ms: f64,

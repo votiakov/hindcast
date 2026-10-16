@@ -174,3 +174,28 @@ fn tracing_leaves_the_run_unchanged_and_keeps_a_bounded_sample() {
     assert!(t.journeys.len() <= 5 * 6, "{}", t.journeys.len());
     assert!(t.by_node["db"].seen_failed > 0.0);
 }
+
+/// the api (one worker, 100 ms a request, a queue bound of 0.5 s) gets 30 req/s against its 10: a
+/// request is refused at once when the queue is full, or shed when it reaches the front after more
+/// than 0.5 s in it; either way it was never worked on, and the wait it had is the queue's
+#[test]
+fn a_request_shed_from_the_queue_shows_the_wait_it_had() {
+    let spec = json!({ "components": [{ "id": "users", "kind": "client" }, { "id": "api", "kind": "server", "capacity": 10, "latencyMs": 100, "queueS": 0.5 }], "connections": ["users -> api"] });
+    // service times spread (the default), so some reach the front past the bound
+    let cfg = DesConfig { trace: Some(TraceConfig { from_s: 5.0, ..Default::default() }), ..Default::default() };
+    let t = simulate_des(&spec, &json!({ "duration": 20, "rps": 30 }), &cfg).unwrap().trace.unwrap();
+    let (mut refused, mut waited) = (0, 0);
+    for j in t.journeys.iter().filter(|j| !j.ok) {
+        let api = hop(j, "api")[0];
+        assert_eq!((api.reason, api.origin.as_deref()), (Some("overloaded"), Some("api")));
+        assert!(api.start_ms.is_none() && api.service_ms == 0.0);
+        if api.wait_ms == 0.0 {
+            refused += 1;
+        } else {
+            waited += 1;
+            assert!(api.wait_ms > 500.0 && api.wait_ms < 1500.0, "{}", api.wait_ms);
+            assert!(near(api.end_ms.unwrap() - api.arrive_ms.unwrap(), api.wait_ms + 0.5));
+        }
+    }
+    assert!(refused > 0 && waited > 0, "refused {} waited {}", refused, waited);
+}
