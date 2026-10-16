@@ -5,6 +5,7 @@
 <p>Everything shares one time axis: what users saw, what the model replays for the system as built, and what each change would have done. The screenshot shows HotROD, one of the three built-in reference systems: 40 minutes of real traffic with a push past capacity, and four strategies replayed over it.</p>
 <ol class="pins">
 <li data-pin="views"><h3>Views</h3><p>Every part of Hindcast is one click away: the backtest, the Live board, Lessons, Sandbox, Compare and Studio.</p></li>
+<li data-pin="screens"><h3>Replay or review</h3><p><b>Replay</b> is this chart. <b>Review</b> is the capacity review of the same system on one screen: headroom, busier days, losing a node, what to commit to, and the fixes that pass. <code>/#backtest/review</code> opens it directly.</p></li>
 <li data-pin="ranges"><h3>Range and resolution</h3><p>The whole run, or the last 24 h, 6 h, 1 h or 15 min. ⌘/ctrl + wheel zooms around the cursor. The resolution is the data's own: here every 30 s.</p></li>
 <li data-pin="p99"><h3>p99 latency</h3><p>The p99 users saw, measured, as a line over a light area. The dashed grey line is the model replaying the system <em>as built</em>. Each strategy has its own coloured line with a shaded 10–90% band. The dashed red line is the SLO.</p></li>
 <li data-pin="incident"><h3>Incidents</h3><p>Shaded columns are stretches out of SLO. Here, the push to twice the normal load: the as-built system timed out for minutes. Click any moment to open it on the board as a replay.</p></li>
@@ -19,6 +20,40 @@
 <li data-pin="card"><h3>Card</h3><p>A Studio card of the focused strategy at post size: the chart drawing itself, then the verdict, with the model's measured accuracy.</p></li>
 <li data-pin="outage"><h3>Replay an outage</h3><p>Cloudflare 2019, GitHub 2018, Slack 2021, AWS us-east-1 2025, replayed against this system as built and with each strategy. See <a href="outages.html">public-outage replays</a>.</p></li>
 <li data-pin="files"><h3>Open files</h3><p>Your own data: an import manifest with its metric, trace and bill files, or a <code>dataset.json</code> and <code>model.json</code> from the CLI, plus strategy files. You can also drop them anywhere on the screen. See <a href="data.html">bring your data</a>.</p></li>
+</ol>
+</div>
+</section>
+
+<section class="screen" data-shot="bt-review">
+<div>
+<h2>The capacity review</h2>
+<p>The review a platform team does by hand before a launch or a budget round, computed from the same model and history: <b>Review</b> in the bar. It is the same code as <code>hindcast agent review_capacity</code>, so the screen and the Markdown report agree number for number. The screenshot is the Astronomy Shop on Kubernetes.</p>
+<ol class="pins">
+<li data-pin="summary"><h3>Five lines first</h3><p>Risk, headroom, cost, the one change to make and how far to trust the model, in sentences a lead can repeat. A line about restarts over gRPC is added when the model has single-replica services called that way.</p></li>
+<li data-pin="risk"><h3>Risk</h3><p>High when the recorded day itself left the SLO, medium when a 1.5× or 2× day would, or losing a node would, low when none of them do.</p></li>
+<li data-pin="chart"><h3>Headroom over the traffic</h3><p>The recorded requests per second, the same day at 1.5× and 2× (dashed and dotted), and the dashed red limit: the most the system serves within SLO, and what saturates first. Traffic above the limit is shaded red.</p></li>
+<li data-pin="peak"><h3>The busiest moment</h3><p>Where today's peak sits against that limit. Hover anywhere for the three days' rates at that moment.</p></li>
+<li data-pin="days"><h3>Busier days, replayed</h3><p>The recorded day and the 1.5× and 2× days, each replayed through the model: minutes out of SLO, failed requests, whether the SLO holds, and the worst moment's cause.</p></li>
+<li data-pin="node"><h3>Losing a node at the peak</h3><p>Every node's loss is replayed; the worst is listed with the minutes out of SLO and failed requests it adds and the services left with no replica. <b>replay it</b> opens that loss on the replay screen.</p></li>
+<li data-pin="fix"><h3>The node-loss fix</h3><p>Replicas spread over the nodes so losing any one leaves a replica of each, checked by replaying every node's loss again, with what it costs.</p></li>
+<li data-pin="stuck"><h3>Stuck callers, an assumption</h3><p>Where the model marks calls as gRPC, the same loss if callers' connections stay broken until they restart (252 s, as measured once on the reference cluster), boxed and labelled an assumption: it is not part of the answer above it. Without gRPC calls it says it was not computed.</p></li>
+<li data-pin="commit"><h3>What to commit to</h3><p>The floor the history never went below, priced on demand, and what a 1- or 3-year commitment on that floor saves. Commit to the floor, not the peak. When costs come from the bill, it says why there is nothing to read.</p></li>
+<li data-pin="limits"><h3>Limits that bind</h3><p>CPU quotas that throttle before the limit, memory near its limit, leaks and how many requests until a container is OOM-killed.</p></li>
+<li data-pin="markdown"><h3>Copy as Markdown</h3><p>The same review as the report the CLI and agents write, ready to paste into a ticket.</p></li>
+</ol>
+</div>
+</section>
+
+<section class="screen" data-shot="bt-review-fixes">
+<div>
+<h2>Fixes and savings that pass</h2>
+<p>The last part of the review: changes generated from the history (capacity for what ran out of it, cuts for what idled), each backtested over the recorded history and judged. HotROD here.</p>
+<ol class="pins">
+<li data-pin="fix"><h3>Fixes</h3><p>Changes that take time out of SLO off the recorded day, with the minutes and failed requests they remove and what they cost a month.</p></li>
+<li data-pin="verdict"><h3>Verdict and confidence</h3><p>Pass, fail or inconclusive, and how far to trust it. Low confidence means the change leans on a service the model doesn't explain well, or runs it past anything the history showed.</p></li>
+<li data-pin="saving"><h3>Savings</h3><p>Cuts that pass: they cost less and add no time out of SLO.</p></li>
+<li data-pin="together"><h3>All of them together</h3><p>The passing savings applied at once and backtested again, since cuts can add up to a problem none of them is alone.</p></li>
+<li data-pin="link"><h3>Its full backtest</h3><p>Opens the change on the replay screen as a strategy, focused, drawn against the system as built over the whole history.</p></li>
 </ol>
 </div>
 </section>

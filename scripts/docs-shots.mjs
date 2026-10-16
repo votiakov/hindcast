@@ -29,6 +29,18 @@ const backtest = async (p, ref) => {
   await p.waitForSelector('.bt-verdict', { timeout: 60000 });
   await wait(p, 1200);
 };
+/** the capacity review of a reference system, laid out at a height that shows it whole */
+const review = async (p, ref, name, height) => {
+  await backtest(p);
+  if (ref !== 'hotrod') {
+    await p.selectOption('select[aria-label="Reference system"]', ref);
+    await p.waitForFunction((n) => document.querySelector('.bt-system')?.textContent?.includes(n), name, { timeout: 60000 });
+  }
+  await p.click('.bt-screens button:has-text("Review")');
+  await p.waitForFunction((n) => document.querySelector('.rv-head h2')?.textContent?.includes(n), name, { timeout: 120000 });
+  await p.setViewportSize({ width: W, height });
+  await wait(p, 1200);
+};
 const tab = async (p, name) => {
   await p.click(`.bt-tabs [role="tab"]:has-text("${name}")`);
   await wait(p, 500);
@@ -65,7 +77,8 @@ const SHOTS = {
     setup: (p) => backtest(p),
     pins: {
       views: ['.bt-modes', 'r', 0, 12],
-      ranges: ['.bt-seg', 'b', 0, 0, 8],
+      screens: ['.bt-screens', 'b', 0, 0, 8],
+      ranges: ['.bt-seg:not(.bt-screens)', 'b', 0, 0, 8],
       p99: ['.bt-pane', 'tl', 0, 16, 60],
       incident: ['.bt-breach', 'c', -1],
       errors: ['.bt-pane', 'tl', 1, 16, 48],
@@ -79,6 +92,34 @@ const SHOTS = {
       card: ['.bt-bar .bt-chip:has-text("Card")', 'b', 0, 0, 8],
       outage: ['select[aria-label="Replay a public outage"]', 'b', 0, 0, 8],
       files: ['.bt-bar .bt-chip:has-text("Open files")', 'b', 0, 0, 8],
+    },
+  },
+  'bt-review': {
+    clip: '.rv-doc',
+    setup: (p) => review(p, 'k8s-shop', 'Kubernetes', 1700),
+    pins: {
+      summary: ['.rv-summary', 'tr', 0, -14, 16],
+      risk: ['.rv-summary dt', 'r', 0, 6],
+      chart: ['.rv-limit', 'l', 0, 60, 0],
+      peak: ['.rv-peaktag', 'r', 0, 10],
+      days: ['.rv-sec:nth-of-type(2) .rv-table tr', 'l', 2, 6],
+      node: ['.rv-pair .rv-table tr', 'l', 1, 6],
+      fix: ['.rv-fixline .rv-link', 'r', 0, 10],
+      stuck: ['.rv-pair > .rv-sec:first-child p.rv-dim', 'l', -1, 6],
+      commit: ['.rv-pair .rv-table', 'tr', 1, -10, 14],
+      limits: ['.rv-limits', 'tl', 0, 10, 12],
+      markdown: ['.rv-head .bt-chip', 'l', 0, -8],
+    },
+  },
+  'bt-review-fixes': {
+    clip: '.rv-doc > .rv-sec:last-of-type',
+    setup: (p) => review(p, 'hotrod', 'HotROD', 1600),
+    pins: {
+      fix: ['.rv-fixes tbody tr', 'l', 1, 6],
+      verdict: ['.rv-fixes tbody tr td:nth-child(2)', 'r', 0, 10],
+      saving: ['.rv-fixes tbody tr', 'l', 3, 6],
+      together: ['.rv-total', 'l', 0, 6],
+      link: ['.rv-fixes .rv-link', 'l', 0, -6],
     },
   },
   'bt-incidents': {
