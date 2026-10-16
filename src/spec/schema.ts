@@ -74,6 +74,12 @@ export const ComponentSpec = z
   })
   .describe('One component of the architecture');
 
+const Reconnect = z
+  .union([z.number().min(0).max(86400), z.literal('until-restart')])
+  .describe(
+    'seconds the caller keeps failing its calls over this link after the callee comes back from being down: a client connection that stays broken (gRPC reconnect backoff, a channel that gave up). "until-restart": until the caller itself restarts. Unset or 0: it reconnects at once. An assumption you state, not something measured',
+  );
+
 export const ZoneSpec = z.object({
   id: z.string(),
   label: z.string().optional(),
@@ -103,6 +109,7 @@ export const ArchitectureSpec = z.object({
           calls: z.number().int().min(1).max(1000).optional().describe('calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)'),
           carries: z.enum(['reads', 'writes']).optional().describe('the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both'),
           replication: z.enum(['sync', 'async']).optional().describe('database → replica: sync — every write waits for this replica (no data lost on failover, writes stop while it is unreachable); async (default) — the replica lags, a failover loses what it had not received'),
+          reconnect: Reconnect.optional(),
         }),
       ]),
     )
@@ -156,6 +163,7 @@ export const ChangeSpec = z.discriminatedUnion('op', [
       calls: z.number().int().min(1).max(1000).optional(),
       carries: z.enum(['reads', 'writes']).optional(),
       replication: z.enum(['sync', 'async']).optional(),
+      reconnect: Reconnect.optional(),
     })
     .describe('add a link, or with link properties set them on an existing one'),
   z.object({ op: z.literal('disconnect'), from: z.string(), to: z.string() }),

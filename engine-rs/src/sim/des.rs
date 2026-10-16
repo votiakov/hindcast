@@ -253,6 +253,7 @@ const R_THREADS: u8 = 12;
 const R_LOCK: u8 = 13;
 const R_CONN: u8 = 14;
 const R_CPU: u8 = 15;
+const R_RECONNECT: u8 = 16;
 
 fn why(n: usize, r: u8) -> Why {
     ((n as u32 + 1) << 8) | r as u32
@@ -276,6 +277,7 @@ fn reason_text(r: u8) -> &'static str {
         R_LOCK => "waited too long for a row lock",
         R_CONN => "connection refused (all connections in use)",
         R_CPU => "killed at its CPU time limit",
+        R_RECONNECT => "connection still broken after its dependency came back",
         _ => "failed",
     }
 }
@@ -573,6 +575,12 @@ struct Des<'a> {
     link_carries: HashMap<(usize, usize), u8>,
     /// database → replica links replicated synchronously
     link_sync: std::collections::HashSet<(usize, usize)>,
+    /// links whose caller stays broken this long (s) after the callee comes back (`reconnect`)
+    link_reconnect: HashMap<(usize, usize), f64>,
+    /// until when each such link's calls keep failing
+    broken: HashMap<(usize, usize), f64>,
+    /// when each component last came back up
+    up_at: Vec<f64>,
     /// each replica's primary
     primary_of: HashMap<usize, usize>,
     stale_reads: f64,
@@ -625,9 +633,37 @@ impl<'a> Des<'a> {
         self.q.push(self.now + dt_ms / 1000.0, ev);
     }
 
-    /// the link a → b is cut: the two are on different sides of a partition, or the link itself is
+    /// the link a → b is cut: the two are on different sides of a partition, or the link itself is, or
+    /// its caller's connection is still broken after b came back
     fn link_cut(&self, a: usize, b: usize) -> bool {
-        cut(&self.nodes[a].data, &self.nodes[b].data) || self.nodes[a].data.cut_to.as_ref().map_or(false, |v| v.iter().any(|x| *x == self.nodes[b].id))
+        cut(&self.nodes[a].data, &self.nodes[b].data) || self.nodes[a].data.cut_to.as_ref().map_or(false, |v| v.iter().any(|x| *x == self.nodes[b].id)) || self.link_broken(a, b)
+    }
+
+    /// a → b's caller still fails its calls after b came back (`reconnect`)
+    fn link_broken(&self, a: usize, b: usize) -> bool {
+        !self.broken.is_empty() && self.broken.get(&(a, b)).map_or(false, |u| self.now < *u)
+    }
+
+    /// i went down or came back: a callee back up leaves its callers' links with a `reconnect` broken
+    /// for that long; a caller back up has restarted, and connects afresh
+    fn reconnects(&mut self, i: usize, now_up: bool) {
+        if !now_up || self.link_reconnect.is_empty() {
+            return;
+        }
+        let now = self.now;
+        self.up_at[i] = now;
+        self.broken.retain(|(a, _), _| *a != i);
+        let mut callers: Vec<(usize, f64)> = self.link_reconnect.iter().filter(|((_, b), _)| *b == i).map(|((a, _), r)| (*a, *r)).collect();
+        callers.sort_by_key(|x| x.0);
+        for (a, r) in callers {
+            // a caller that came back at this same moment starts with fresh connections
+            if !up(&self.nodes[a]) || self.up_at[a] == now {
+                continue;
+            }
+            self.broken.insert((a, i), now + r);
+            let what = format!("reconnect: {}", super::engine::reconnect_event(&self.nodes[a].data.name, &self.nodes[i].data.name, r));
+            self.ev_log.push(super::headless::Event { t: r3(now), what });
+        }
     }
 
     fn set_busy(&mut self, n: usize, delta: f64) {
@@ -648,6 +684,15 @@ impl<'a> Des<'a> {
 
     /// derive pool size, service time and limits from the node's (possibly changed) data
     fn configure(&mut self, i: usize) {
+        let was_up = self.nodes[i].dead_since.is_none();
+        self.configure_node(i);
+        let now_up = self.nodes[i].dead_since.is_none();
+        if was_up != now_up {
+            self.reconnects(i, now_up);
+        }
+    }
+
+    fn configure_node(&mut self, i: usize) {
         let now = self.now;
         let cfg_queue = self.cfg.queue_s;
         let n = &mut self.nodes[i];
@@ -1033,8 +1078,12 @@ impl<'a> Des<'a> {
 
     /// one call over the network: a hop plus the link's round trip, if it has one
     fn hop(&mut self, i: usize, read: bool, done: ContId, from: Option<usize>) {
-        // across a partition: no answer until the connection times out
+        // a connection that stayed broken after its callee came back: the call fails at once (a channel
+        // in transient failure); across a partition: no answer until the connection times out
         if let Some(f) = from {
+            if self.link_broken(f, i) {
+                return self.fail(Some(f), why(f, R_RECONNECT), done, 0.5);
+            }
             if self.link_cut(f, i) && !(self.nodes[f].data.kind == "db" && !up(&self.nodes[f])) {
                 return self.fail(None, why(i, R_PARTITION), done, 1000.0);
             }
@@ -1834,6 +1883,7 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
     let mut link_calls = HashMap::new();
     let mut link_carries = HashMap::new();
     let mut link_sync = std::collections::HashSet::new();
+    let mut link_reconnect = HashMap::new();
     let mut primary_of = HashMap::new();
     for e in &edges {
         let (a, b) = match (index.get(&e.source), index.get(&e.target)) {
@@ -1848,6 +1898,9 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
         }
         if e.data.as_ref().and_then(|d| d.replication.as_deref()) == Some("sync") {
             link_sync.insert((a, b));
+        }
+        if let Some(r) = e.data.as_ref().and_then(|d| d.reconnect) {
+            link_reconnect.insert((a, b), r);
         }
         if nodes[a].data.kind == "db" && nodes[b].data.kind == "replica" {
             primary_of.insert(b, a);
@@ -1877,6 +1930,7 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
     };
     js_sort_by(&mut tl, |a, b| a.0 - b.0);
     let clients: Vec<usize> = (0..nodes.len()).filter(|&i| nodes[i].data.kind == "client").collect();
+    let n_nodes = nodes.len();
     let mut des = Des {
         cfg: cfg.clone(),
         sc,
@@ -1889,6 +1943,9 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
         link_calls,
         link_carries,
         link_sync,
+        link_reconnect,
+        broken: HashMap::new(),
+        up_at: vec![f64::NEG_INFINITY; n_nodes],
         primary_of,
         stale_reads: 0.0,
         max_replica_lag: 0.0,
@@ -2121,5 +2178,60 @@ mod tests {
         let want = 2_400_000.0;
         assert!((r.summary.p99_ms - want).abs() <= want * 0.025, "p99 {} ms", r.summary.p99_ms);
         assert!((r.summary.p50_ms - want).abs() <= want * 0.025, "p50 {} ms", r.summary.p50_ms);
+    }
+}
+
+#[cfg(test)]
+mod reconnect_tests {
+    use super::super::engine::tests::{errors, outage, shop};
+    use super::*;
+    use serde_json::json;
+
+    fn des(spec: serde_json::Value, sc: serde_json::Value) -> DesResult {
+        simulate_des(&spec, &sc, &DesConfig::default()).unwrap()
+    }
+    fn tl(r: &DesResult) -> Vec<(f64, f64)> {
+        r.timeline.iter().map(|p| (p.t, p.error_rate)).collect()
+    }
+
+    #[test]
+    fn a_broken_link_keeps_failing_for_its_reconnect_time_after_the_callee_is_back() {
+        let r = des(shop(None), outage(vec![]));
+        assert!(errors(&tl(&r), 12.0, 19.0) > 0.95);
+        assert!(errors(&tl(&r), 23.0, 60.0) < 0.01, "after: {}", errors(&tl(&r), 23.0, 60.0));
+        let r = des(shop(Some(json!(15))), outage(vec![]));
+        assert!(errors(&tl(&r), 21.0, 34.0) > 0.95, "still broken: {}", errors(&tl(&r), 21.0, 34.0));
+        assert!(errors(&tl(&r), 38.0, 60.0) < 0.01, "reconnected: {}", errors(&tl(&r), 38.0, 60.0));
+        assert!(r.events.iter().any(|e| e.what == "reconnect: api → cart stays broken for 15 s"), "{:?}", r.events.iter().map(|e| &e.what).collect::<Vec<_>>());
+        // the failures are put down to the caller's connection
+        assert!(r.failures.iter().any(|f| f.id == "api" && f.reason == "connection still broken after its dependency came back"), "{:?}", r.failures);
+    }
+
+    #[test]
+    fn until_restart_lasts_until_the_caller_restarts() {
+        let r = des(shop(Some(json!("until-restart"))), outage(vec![]));
+        assert!(errors(&tl(&r), 21.0, 60.0) > 0.95);
+        let r = des(shop(Some(json!("until-restart"))), outage(vec![json!({ "at": 40, "action": { "type": "kill-id", "id": "api" } }), json!({ "at": 41, "action": { "type": "revive-id", "id": "api" } })]));
+        assert!(errors(&tl(&r), 21.0, 39.0) > 0.95);
+        assert!(errors(&tl(&r), 44.0, 60.0) < 0.01, "after the restart: {}", errors(&tl(&r), 44.0, 60.0));
+        let r = des(shop(Some(json!(15))), outage(vec![json!({ "at": 10, "action": { "type": "kill-id", "id": "api" } }), json!({ "at": 20, "action": { "type": "revive-id", "id": "api" } })]));
+        assert!(errors(&tl(&r), 23.0, 60.0) < 0.01, "both restarted: {}", errors(&tl(&r), 23.0, 60.0));
+    }
+
+    /// the two engines agree on what a broken link costs, as scripts/engine-crosscheck.ts compares
+    /// them: the run's error rate, and the second the caller is back
+    #[test]
+    fn both_engines_agree_on_a_broken_link() {
+        for (r, back) in [(json!(15), 35.0), (json!(5), 25.0), (json!(30), 50.0), (json!("until-restart"), f64::INFINITY)] {
+            let spec = shop(Some(r.clone()));
+            let f = super::super::headless::simulate(&spec, &outage(vec![]), &Default::default()).unwrap();
+            let d = des(spec, outage(vec![]));
+            let (fe, de) = (f.summary.mean_error_rate, d.summary.mean_error_rate);
+            assert!((fe - de).abs() <= 0.02 + 0.1 * fe.max(de), "reconnect {}: fluid {} des {}", r, fe, de);
+            let first_ok = |tl: &[(f64, f64)]| tl.iter().find(|p| p.0 > 20.0 && p.1 < 0.5).map(|p| p.0).unwrap_or(f64::INFINITY);
+            let (ft, dt) = (first_ok(&f.timeline.iter().map(|p| (p.t, p.error_rate)).collect::<Vec<_>>()), first_ok(&tl(&d)));
+            let near = |x: f64| if back.is_infinite() { x.is_infinite() } else { (x - back).abs() <= 2.0 };
+            assert!(near(ft) && near(dt), "reconnect {}: back at {} (fluid) and {} (des), want {}", r, ft, dt, back);
+        }
     }
 }

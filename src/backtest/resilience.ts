@@ -29,6 +29,13 @@ export interface NodeLossOptions {
   atS?: number;
   /** lose whole zones (every node in one) instead of single nodes — needs the nodes' zones */
   zones?: boolean;
+  /** calls made over gRPC, [caller, callee] (a model's provenance.grpc.calls): where the node takes a
+   *  callee's every replica, each result also says what the loss costs if the caller's calls to it keep
+   *  failing `reconnectS` after it is back (`ifCallersStayBroken`) */
+  grpcCalls?: [string, string][];
+  /** that sensitivity's time, s (default 252: how long the frontend's channel to cart stayed broken on
+   *  the reference cluster — one observation, an assumption) */
+  reconnectS?: number;
 }
 
 export interface NodeLossReport {
@@ -61,6 +68,9 @@ export interface NodeLossResult {
   recovered: boolean;
   /** with the node lost: the whole replay's minutes out of SLO and failed requests (not the difference) */
   total: { minutesOutOfSlo: number; failedRequests: number };
+  /** the same loss if gRPC callers of what it took keep failing their calls to it `reconnectS` after
+   *  the replacement is up — a sensitivity, not part of the answer */
+  ifCallersStayBroken?: { reconnectS: number; calls: [string, string][]; verdict: 'survives' | 'fails'; minutesOutOfSlo: number; failedRequests: number; cutShort?: boolean };
 }
 
 export function nodeLoss(model: Model, d: Dataset, o: NodeLossOptions = {}): NodeLossReport {

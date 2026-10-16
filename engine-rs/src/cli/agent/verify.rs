@@ -867,7 +867,8 @@ pub fn find_headroom(ws: &Workspace, a: &Value) -> Result<Value, String> {
 }
 
 pub fn check_node_loss(ws: &Workspace, a: &Value) -> Result<Value, String> {
-    let m = model_of(&ws.read_json("model.json")?)?;
+    let mv = ws.read_json("model.json")?;
+    let m = model_of(&mv)?;
     let d = dataset_of(&ws.read_json("dataset.json")?)?;
     let strategy = match a.get("strategy") {
         Some(Value::String(t)) => Some(crate::cli::util::parse_yaml(t)?),
@@ -875,8 +876,17 @@ pub fn check_node_loss(ws: &Workspace, a: &Value) -> Result<Value, String> {
         Some(x) => Some(x.clone()),
     };
     let load = a.get("traffic").filter(|x| !x.is_null()).map(|t| crate::backtest::LoadOpts { scale: t.get("scale").and_then(|x| x.as_f64()), peak_rps: t.get("peakRps").and_then(|x| x.as_f64()) });
-    let o = crate::resilience::NodeLossOptions { strategy, load, recover_s: a.get("recoverS").and_then(|x| x.as_f64()), zones: a.get("zones").and_then(|x| x.as_bool()), ..Default::default() };
+    let o = crate::resilience::NodeLossOptions { strategy, load, recover_s: a.get("recoverS").and_then(|x| x.as_f64()), zones: a.get("zones").and_then(|x| x.as_bool()), grpc_calls: grpc_calls(&mv), ..Default::default() };
     Ok(to_json(&crate::resilience::node_loss(&m, &d, &o)?))
+}
+
+/// the calls collection found made over gRPC (model provenance.grpc.calls), as (caller, callee)
+pub fn grpc_calls(mv: &Value) -> Option<Vec<(String, String)>> {
+    let v: Vec<(String, String)> = arr(mv, &["provenance", "grpc", "calls"])
+        .iter()
+        .filter_map(|c| Some((c.get(0)?.as_str()?.to_string(), c.get(1)?.as_str()?.to_string())))
+        .collect();
+    (!v.is_empty()).then_some(v)
 }
 
 pub fn verify_design(a: &Value) -> Result<Value, String> {

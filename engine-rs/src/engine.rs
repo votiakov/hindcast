@@ -188,7 +188,8 @@ pub fn run_plan(plan: &Plan, traffic: &Traffic, opts: &Opts) -> RunResult {
     let effect = |i: usize, on: &Vec<usize>| -> Effect {
         let mut e = Effect { capacity: 1.0, down: false, extra_ms: 0.0, error_rate: 0.0, no_scale_out: false, warmup_factor: 1.0, lost: 0.0 };
         for &k in on {
-            if fault_svc[k] != Some(i) {
+            // a fault on one caller's calls leaves the service as it is
+            if fault_svc[k] != Some(i) || faults[k].caller.is_some() {
                 continue;
             }
             let f = faults[k];
@@ -275,6 +276,11 @@ pub fn run_plan(plan: &Plan, traffic: &Traffic, opts: &Opts) -> RunResult {
         .map(|j| eps[j].weights.keys().map(|s| visits[j].get(s).copied().unwrap_or(0.0) / eps[j].visits.get(s).copied().unwrap_or(1.0).max(1e-9)).collect())
         .collect();
     let visits_of: Vec<Vec<(Option<usize>, f64)>> = visits.iter().map(|v| v.iter().map(|(s, x)| (idx(s), *x)).collect()).collect();
+    // faults on one caller's calls: per endpoint, (fault, those calls per request) where it makes them
+    let caller_calls: Vec<Vec<(usize, f64)>> = eps
+        .iter()
+        .map(|ep| faults.iter().enumerate().filter_map(|(k, f)| f.caller.as_ref().and_then(|c| ep.calls.get(&format!("{}>{}", c, f.service)).copied().filter(|n| *n > 0.0)).map(|n| (k, n))).collect())
+        .collect();
     let stalls_of: Vec<Vec<(Option<usize>, f64)>> = eps.iter().map(|ep| ep.stalls.as_ref().map(|v| v.iter().map(|x| (idx(&x.service), x.limit)).collect()).unwrap_or_default()).collect();
     let host_group: Vec<Vec<usize>> = (0..ns).map(|i| (0..ns).filter(|&x| svcs[x].hosted_by.as_deref() == Some(svc_ids[i].as_str()) || x == i).collect()).collect();
     let own_visits: Vec<Vec<f64>> = (0..ns).map(|i| (0..ne).map(|j| visits[j].get(svc_ids[i]).copied().unwrap_or(0.0)).collect()).collect();
@@ -521,6 +527,13 @@ pub fn run_plan(plan: &Plan, traffic: &Traffic, opts: &Opts) -> RunResult {
                         if e != 0.0 && !e.is_nan() {
                             ok *= (1.0 - e).js_pow(v.max(1.0));
                         }
+                    }
+                }
+                // a caller whose calls to a service fail (its connection to it broken) fails the request too
+                for &(k, n) in &caller_calls[j] {
+                    let e = faults[k].error_rate.unwrap_or(1.0);
+                    if e > 0.0 && fault_on.contains(&k) {
+                        ok *= (1.0 - e).js_pow(n.max(1.0));
                     }
                 }
                 let base0 = (ep.error_rate + ep.error_slope.unwrap_or(0.0) * traffic_at(j, i)).max(0.0).min(1.0);

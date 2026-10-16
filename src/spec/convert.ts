@@ -12,7 +12,7 @@ const DATA_KEYS = ['tier', 'instances', 'runtime', 'hitRate', 'limit', 'batching
 
 export const pairs = (spec: ArchitectureSpec): [string, string][] => spec.connections.map((c) => (Array.isArray(c) ? [c[0], c[1]] : [c.from, c.to]));
 /** connections with their link properties */
-export const links = (spec: ArchitectureSpec): { from: string; to: string; latencyMs?: number; calls?: number; carries?: 'reads' | 'writes'; replication?: 'sync' | 'async' }[] =>
+export const links = (spec: ArchitectureSpec): { from: string; to: string; latencyMs?: number; calls?: number; carries?: 'reads' | 'writes'; replication?: 'sync' | 'async'; reconnect?: number | 'until-restart' }[] =>
   spec.connections.map((c) => (Array.isArray(c) ? { from: c[0], to: c[1] } : c));
 
 export function componentData(c: ComponentSpec): SystemNodeData {
@@ -81,10 +81,10 @@ export function specToGraph(input: unknown): Graph {
   }
   for (const c of spec.components) nodes.push({ id: c.id, type: 'system', position: pos.get(c.id)!, data: componentData(c) });
   (spec.notes ?? []).forEach((n, i) => nodes.push({ id: `note-${i + 1}`, type: 'note', position: { x: n.x, y: n.y }, ...(n.width ? { width: n.width } : {}), data: { text: n.text } }));
-  const edges: SystemEdge[] = links(spec).map(({ from: source, to: target, latencyMs, calls, carries, replication }) => {
+  const edges: SystemEdge[] = links(spec).map(({ from: source, to: target, latencyMs, calls, carries, replication, reconnect }) => {
     const sync = replication === 'sync';
-    const has = latencyMs || (calls ?? 1) > 1 || carries || sync;
-    return { id: `e-${source}-${target}`, source, target, type: 'flow', ...(has ? { data: { ...(latencyMs ? { latencyMs } : {}), ...((calls ?? 1) > 1 ? { calls } : {}), ...(carries ? { carries } : {}), ...(sync ? { replication: 'sync' } : {}) } } : {}) };
+    const has = latencyMs || (calls ?? 1) > 1 || carries || sync || reconnect;
+    return { id: `e-${source}-${target}`, source, target, type: 'flow', ...(has ? { data: { ...(latencyMs ? { latencyMs } : {}), ...((calls ?? 1) > 1 ? { calls } : {}), ...(carries ? { carries } : {}), ...(sync ? { replication: 'sync' } : {}), ...(reconnect ? { reconnect } : {}) } } : {}) };
   });
   return { nodes, edges };
 }
@@ -125,8 +125,8 @@ export function graphToSpec(nodes: AppNode[], edges: SystemEdge[], name?: string
     connections: edges
       .filter((e) => ids.has(e.source) && ids.has(e.target))
       .map((e) =>
-        e.data?.latencyMs || Number(e.data?.calls ?? 1) > 1 || e.data?.carries || e.data?.replication === 'sync'
-          ? { from: e.source, to: e.target, ...(e.data?.latencyMs ? { latencyMs: Number(e.data.latencyMs) } : {}), ...(Number(e.data?.calls ?? 1) > 1 ? { calls: Number(e.data!.calls) } : {}), ...(e.data?.carries ? { carries: e.data.carries as 'reads' | 'writes' } : {}), ...(e.data?.replication === 'sync' ? { replication: 'sync' as const } : {}) }
+        e.data?.latencyMs || Number(e.data?.calls ?? 1) > 1 || e.data?.carries || e.data?.replication === 'sync' || e.data?.reconnect
+          ? { from: e.source, to: e.target, ...(e.data?.latencyMs ? { latencyMs: Number(e.data.latencyMs) } : {}), ...(Number(e.data?.calls ?? 1) > 1 ? { calls: Number(e.data!.calls) } : {}), ...(e.data?.carries ? { carries: e.data.carries as 'reads' | 'writes' } : {}), ...(e.data?.replication === 'sync' ? { replication: 'sync' as const } : {}), ...(e.data?.reconnect ? { reconnect: e.data.reconnect === 'until-restart' ? ('until-restart' as const) : Number(e.data.reconnect) } : {}) }
           : ([e.source, e.target] as [string, string]),
       ),
     ...(zones.length ? { zones } : {}),

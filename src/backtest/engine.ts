@@ -49,6 +49,9 @@ export interface Fault {
   /** replicas gone (a node failure took them) until the fault ends */
   replicasLost?: number;
   note?: string;
+  /** only this caller's calls to the service fail (`errorRate` of them, all when unset): a client
+   *  whose connection to it stays broken; the service and its other callers are untouched */
+  caller?: string;
 }
 
 export interface ServicePlan {

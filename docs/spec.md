@@ -77,7 +77,7 @@ zones:                          # optional failure domains
 ### Connections and semantics
 
 - Three ways to write one: `users -> lb`, `[users, lb]`, `{ from: users, to: lb }`. Only the object
-  form carries link properties (`latencyMs`, `calls`, `carries`, `replication`).
+  form carries link properties (`latencyMs`, `calls`, `carries`, `replication`, `reconnect`).
 - Order matters for `routing: failover` (first child first).
 - `db → replica` connections define replicas (reads are shared, failover target).
 - `queue → worker` connections define consumers (pull model).
@@ -96,6 +96,15 @@ zones:                          # optional failure domains
   received missing (`lostWrites`), and its reads are stale (`staleReads`, `replicaLagS`).
   `sync`: every write waits for that replica — no data lost on failover, and writes fail while it is
   unreachable. CAP in one field: consistency or availability during a partition.
+- `reconnect: S | until-restart` on a connection: after the callee was down (killed, its zone lost)
+  and comes back, the caller keeps failing its calls over this link for S seconds, or until the
+  caller itself restarts — a client connection that stays broken (gRPC reconnect backoff, a channel
+  that gave up). The calls fail at once and never reach the callee; a balancer routes around such a
+  link. A caller restarted at the same moment as its callee starts afresh. Unset or 0: it reconnects
+  at once. It is an assumption you state: the one measured value is 252 s, the frontend's channel to
+  cart on the reference kind cluster (reference/k8s). The failure audit shows, beside each
+  server or worker killed whole that other services call directly, the same incident with those
+  links at 252 s (not graded).
 
 ### Lint rules (warnings unless noted)
 

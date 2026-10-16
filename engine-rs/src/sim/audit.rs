@@ -114,6 +114,38 @@ pub struct Finding {
     pub cost_at_risk: Option<f64>,
     pub fixes: Vec<Fix>,
     pub scenario: Value,
+    /// a service killed whole and called directly by other services: the incident again, with those
+    /// callers' links staying broken after it is back — a sensitivity, not part of the grade
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub if_callers_stay_broken: Option<StuckCallers>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct StuckCallers {
+    /// how long each caller's calls kept failing after the service was back, s
+    pub reconnect_s: f64,
+    /// (caller, service)
+    pub links: Vec<(String, String)>,
+    pub failed_requests: f64,
+    pub breach_s: f64,
+    /// seconds after the fault cleared until users were within SLO again
+    pub recovery_s: Option<f64>,
+}
+
+/// the links into a service killed whole whose callers are services themselves, holding a client
+/// connection to it (the spec doesn't say which links are gRPC: a service calling another directly
+/// is where such channels live), that don't already state a `reconnect`
+fn stuck_links(inc: &Incident, a: &Architecture) -> Vec<(String, String)> {
+    let kind = |id: &str| a.components.iter().find(|c| get_str(c, "id") == Some(id)).and_then(|c| get_str(c, "kind")).unwrap_or("").to_string();
+    if inc.kind != "component" || !matches!(kind(&inc.target).as_str(), "server" | "worker") {
+        return vec![];
+    }
+    a.connections
+        .iter()
+        .filter(|(f, t, _)| *t == inc.target && f != t && matches!(kind(f).as_str(), "server" | "worker" | "function") && !a.reconnect.contains_key(&(f.clone(), t.clone())))
+        .map(|(f, t, _)| (f.clone(), t.clone()))
+        .collect()
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -743,7 +775,37 @@ pub fn audit(input: &Architecture, o: &AuditOptions, progress: &mut dyn FnMut(f6
             fixes: vec![],
             scenario: scenario_for(inc),
             impact,
+            if_callers_stay_broken: None,
         };
+        let links = stuck_links(inc, &spec);
+        if !links.is_empty() {
+            // the same incident with those callers' links broken for the reference cluster's time after
+            // the service is back, run long enough to see them reconnect
+            let secs = crate::resilience::REFERENCE_RECONNECT_S;
+            let mut v = spec.clone();
+            for l in &links {
+                v.reconnect.insert(l.clone(), secs);
+            }
+            let mut sc = scenario_for(inc);
+            sc["duration"] = json!(CLEAR_AT + secs + 20.0);
+            let im = measure(&sim(&v, sc)?, slo, &base, fade);
+            let who = links.iter().map(|l| nm(&l.0)).collect::<Vec<_>>().join(", ");
+            f.explanation = format!(
+                "{} If callers' connections stay broken until they restart ({} s after it is back, as one gRPC channel did on the reference cluster — an assumption, not graded): {} {} failing {} calls to it: {} failed requests in all instead of {}{}.",
+                f.explanation,
+                js_num(secs),
+                who,
+                if links.len() == 1 { "keeps" } else { "keep" },
+                if links.len() == 1 { "its" } else { "their" },
+                crate::strategy::locale_int(im.failed_requests),
+                crate::strategy::locale_int(f.impact.failed_requests),
+                match im.recovery_s {
+                    Some(r) => format!(", users back within SLO {} s after the fault clears", js_num(r)),
+                    None => " and users are not back within SLO when the run ends".into(),
+                }
+            );
+            f.if_callers_stay_broken = Some(StuckCallers { reconnect_s: secs, links, failed_requests: im.failed_requests, breach_s: im.breach_s, recovery_s: im.recovery_s });
+        }
         if fixes_on && sev_rank(severity) >= 2.0 {
             for cand in candidate_fixes(inc, &spec, nm) {
                 let variant = match apply_variant(&spec, &json!({ "name": cand.title, "changes": cand.changes })) {
@@ -798,6 +860,7 @@ pub fn audit(input: &Architecture, o: &AuditOptions, progress: &mut dyn FnMut(f6
         },
         cost_at_risk: None,
         fixes: vec![],
+        if_callers_stay_broken: None,
         scenario: json!({ "duration": 30, "rps": js_round(bp.first_failing_rps.unwrap_or(bp.max_rps * 1.2)), "readRatio": read_ratio, "slo": slo_v }),
     };
     if fixes_on && sev_rank(headroom_sev) >= 2.0 {
@@ -856,4 +919,34 @@ pub fn audit(input: &Architecture, o: &AuditOptions, progress: &mut dyn FnMut(f6
         curve,
         wall_ms: now_ms() - t0,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn findings(spec: Value) -> Vec<Finding> {
+        let a = super::super::spec::parse_architecture(&spec).unwrap();
+        audit(&a, &AuditOptions { fixes: Some(false), ..Default::default() }, &mut |_, _, _| {}).unwrap().findings
+    }
+
+    #[test]
+    fn a_service_called_directly_by_another_says_what_a_stuck_caller_would_cost() {
+        let spec = |link: Value| json!({ "components": [{ "id": "users", "kind": "client" }, { "id": "lb", "kind": "lb" }, { "id": "frontend", "kind": "server", "instances": 3 }, { "id": "cart", "kind": "server" }], "connections": ["users -> lb", "lb -> frontend", link] });
+        let fs = findings(spec(json!("frontend -> cart")));
+        let cart = fs.iter().find(|f| f.id == "component:cart").unwrap();
+        let s = cart.if_callers_stay_broken.as_ref().unwrap();
+        assert_eq!(s.links, vec![("frontend".to_string(), "cart".to_string())]);
+        // back about 252 s after the fault clears, and far more failed than the graded incident
+        let r = s.recovery_s.unwrap();
+        assert!((r - 252.0).abs() <= 10.0, "recovery {}", r);
+        assert!(s.failed_requests > cart.impact.failed_requests * 3.0, "{} vs {}", s.failed_requests, cart.impact.failed_requests);
+        assert!(cart.explanation.contains("If callers' connections stay broken until they restart (252 s"), "{}", cart.explanation);
+        // the grade is the incident's own
+        assert_eq!(cart.severity, "critical");
+        // a balancer in front, an instance lost, or a link that states its own reconnect: none
+        assert!(fs.iter().filter(|f| f.id != "component:cart").all(|f| f.if_callers_stay_broken.is_none()));
+        let fs = findings(spec(json!({ "from": "frontend", "to": "cart", "reconnect": 30 })));
+        assert!(fs.iter().all(|f| f.if_callers_stay_broken.is_none()));
+    }
 }

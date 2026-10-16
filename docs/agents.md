@@ -97,7 +97,9 @@ Linkerd's `grpc_status`, span names of the form `package.Service/Method`, `grpc_
 OpenTelemetry `rpc_server_*` metrics with `rpc_system="grpc"`), the review's risks say: *a restart
 of X may leave callers' gRPC channels broken; check keepalive/reconnect settings — the replay times
 only the platform's recovery*. The node-loss run on the reference cluster lasted 50% longer than
-the replay for exactly that reason. This advisory comes with traces too.
+the replay for exactly that reason. This advisory comes with traces too. The gRPC calls found this
+way also drive `check_node_loss`'s sensitivity for callers that stay broken (below). Collection from
+traces alone doesn't mark calls as gRPC, so a traced model without these metrics gets no sensitivity.
 
 ## Set up
 
@@ -470,7 +472,15 @@ NotReady (~50 s), the default 300 s eviction toleration and a start: about 6 min
 pool with no room for them leaves them Pending. It returns, per node:
 
 - what the node takes down;
-- the minutes out of SLO and failed requests it adds.
+- the minutes out of SLO and failed requests it adds;
+- `ifCallersStayBroken`, where a service the node takes whole is called over gRPC (see **gRPC**
+  above) by a caller that kept a replica: the same loss with that caller's calls to it failing
+  252 s more after the replacement is up, with its minutes, failed requests and verdict. 252 s is
+  how long the frontend's channel to cart stayed broken on the reference cluster (cart ready 348 s
+  after its node stopped, the frontend's calls failing until it restarted at 600 s). That is one
+  observation on one kind cluster, an assumption rather than a fit, and the main answer leaves it
+  out. `cutShort` says the history ended before the callers would have reconnected.
+  `review_capacity` reports the worst node's figure in one line under "Losing a node".
 
 It also lists the services one node failure takes out entirely. With `zones: true` it loses a whole
 availability zone at once. Zones come from the nodes' provider ids: AWS
@@ -597,7 +607,7 @@ or dropped on the app's Backtest screen.
 | `suggest_changes` | `goal?` (reliability \| cost \| both), `traffic?` ({scale} \| {peakRps}), `last?`, `draws?`, `gateMinutes?`, `idleBelow?` | saturated services; fixes and savings that pass, each judged; the savings combined; rejected candidates |
 | `find_headroom` | `strategy?` | req/s within SLO, what binds, history peak |
 | `review_capacity` | `draws?` | headroom, 1.5× and 2× load, node loss and its fix, throttled and memory-bound services, node pool fill, fixes and savings; a Markdown report |
-| `check_node_loss` | `strategy?`, `traffic?{scale \| peakRps}`, `recoverS?`, `zones?` | per node: services lost or degraded, minutes out of SLO and failed requests added; single points of failure |
+| `check_node_loss` | `strategy?`, `traffic?{scale \| peakRps}`, `recoverS?`, `zones?` | per node: services lost or degraded, minutes out of SLO and failed requests added, and with gRPC callers the same if they stay broken 252 s more; single points of failure |
 | `verify_design` | `spec`, `rps?`, `slo?`, `budgetMonthly?`, `incidentCostPerMinute?` | verdict, problems, findings with fixes as spec changes, app link |
 | `read_cluster` | `context`, `namespace?`, `selector?` | workloads, snapshot path, the exact command run |
 
