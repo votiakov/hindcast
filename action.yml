@@ -1,0 +1,196 @@
+name: Hindcast backtest
+description: Backtest an infrastructure pull request (Kubernetes manifests or a Terraform plan) against recorded production traffic; comment the verdict and fail on it.
+author: Andrii Votiakov
+branding:
+  icon: activity
+  color: orange
+
+# All the logic is in the hindcast binary (hindcast verify-change); this file fetches it, gives it the
+# manifests before and after the pull request, and posts what it wrote.
+inputs:
+  model:
+    description: The calibrated model (hindcast calibrate), e.g. .hindcast/model.json
+    required: true
+  dataset:
+    description: The recorded history (hindcast import), e.g. .hindcast/dataset.json
+    required: true
+  manifests:
+    description: Kubernetes manifests, a directory or a file. The pull request's base version is read from git (git show <base-ref>:<path>) and compared with this one.
+    required: false
+    default: ''
+  terraform-plan:
+    description: A Terraform plan as JSON (terraform show -json plan.out > plan.json). It holds before and after itself, so no base is needed.
+    required: false
+    default: ''
+  strategies:
+    description: Strategy files to backtest as well (one per line or space-separated)
+    required: false
+    default: ''
+  base-ref:
+    description: The commit to compare the manifests with. Default on a pull request is its base commit; elsewhere, HEAD^.
+    required: false
+    default: ''
+  head-ref:
+    description: Read the head manifests from this commit instead of the working tree.
+    required: false
+    default: ''
+  base-manifests:
+    description: Use these files as the manifests before the change, instead of reading base-ref from git.
+    required: false
+    default: ''
+  last:
+    description: Replay only the most recent part of the history, e.g. 14d. Empty replays all of it.
+    required: false
+    default: 14d
+  draws:
+    description: Capacity draws behind the 10-90% bands
+    required: false
+    default: '30'
+  gate-minutes:
+    description: Minutes out of SLO a change may add over the window before its verdict is fail
+    required: false
+    default: '0.5'
+  slo-p99-ms:
+    description: Override the model's p99 latency SLO (milliseconds), for the system and every endpoint
+    required: false
+    default: ''
+  slo-error-rate:
+    description: Override the model's error-rate SLO (0.01 = 1%), for the system and every endpoint
+    required: false
+    default: ''
+  fail-on:
+    description: 'Which verdict fails the step: fail, inconclusive (fail or inconclusive), or never'
+    required: false
+    default: fail
+  comment:
+    description: Post the result as one pull-request comment, updated in place on later pushes (true or false)
+    required: false
+    default: 'true'
+  comment-key:
+    description: Tells apart the comments of several Hindcast checks on one pull request (e.g. one per system)
+    required: false
+    default: ''
+  title:
+    description: The comment's heading
+    required: false
+    default: Hindcast backtest
+  version:
+    description: 'Hindcast release to run, e.g. v1.2.0. Default: the tag this action was used at (a major tag like v1 means the newest v1.x release), else the latest release.'
+    required: false
+    default: ''
+  binary:
+    description: Path to a hindcast binary to run instead of downloading a release
+    required: false
+    default: ''
+  working-directory:
+    description: Directory the other paths are relative to
+    required: false
+    default: .
+  github-token:
+    description: Token for downloading the release and writing the pull-request comment (needs pull-requests write for the comment)
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  verdict:
+    description: pass, fail, inconclusive, or "nothing to verify"
+    value: ${{ steps.verify.outputs.verdict }}
+  confidence:
+    description: high, medium or low (the lowest over the changes)
+    value: ${{ steps.verify.outputs.confidence }}
+  gate:
+    description: failed when the verdict is one fail-on names, else passed
+    value: ${{ steps.verify.outputs.gate }}
+  monthly-delta:
+    description: $ per month the first change adds (negative saves), median
+    value: ${{ steps.verify.outputs.monthly-delta }}
+  minutes-out-of-slo-delta:
+    description: Minutes out of SLO the first change adds over the window, median
+    value: ${{ steps.verify.outputs.minutes-out-of-slo-delta }}
+  failed-requests-delta:
+    description: Failed requests the first change adds over the window, median
+    value: ${{ steps.verify.outputs.failed-requests-delta }}
+  summary:
+    description: Path of the Markdown comment (also in the job summary)
+    value: ${{ steps.verify.outputs.summary }}
+  result:
+    description: Path of the full verify_change result (JSON)
+    value: ${{ steps.verify.outputs.result }}
+  report:
+    description: Path of the HTML report (upload it with actions/upload-artifact)
+    value: ${{ steps.verify.outputs.report }}
+
+runs:
+  using: composite
+  steps:
+    - name: Hindcast release
+      id: release
+      if: inputs.binary == ''
+      shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+        ACTION_REF: ${{ github.action_ref }}
+        ACTION_REPO: ${{ github.action_repository }}
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: bash "$GITHUB_ACTION_PATH/action/install.sh" resolve
+    - name: Cached Hindcast binary
+      id: cache
+      if: inputs.binary == ''
+      uses: actions/cache@v4
+      with:
+        path: ${{ steps.release.outputs.dir }}
+        key: hindcast-${{ steps.release.outputs.tag }}-${{ steps.release.outputs.asset }}
+    - name: Download Hindcast
+      if: inputs.binary == '' && steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        HINDCAST_REPO: ${{ steps.release.outputs.repo }}
+        HINDCAST_TAG: ${{ steps.release.outputs.tag }}
+        HINDCAST_ASSET: ${{ steps.release.outputs.asset }}
+        HINDCAST_DIR: ${{ steps.release.outputs.dir }}
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: bash "$GITHUB_ACTION_PATH/action/install.sh" download
+    - name: Backtest the change
+      id: verify
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        HINDCAST_BIN: ${{ inputs.binary != '' && inputs.binary || steps.release.outputs.bin }}
+        INPUT_MODEL: ${{ inputs.model }}
+        INPUT_DATASET: ${{ inputs.dataset }}
+        INPUT_MANIFESTS: ${{ inputs.manifests }}
+        INPUT_TERRAFORM_PLAN: ${{ inputs.terraform-plan }}
+        INPUT_STRATEGIES: ${{ inputs.strategies }}
+        INPUT_BASE_REF: ${{ inputs.base-ref }}
+        INPUT_HEAD_REF: ${{ inputs.head-ref }}
+        INPUT_BASE_MANIFESTS: ${{ inputs.base-manifests }}
+        INPUT_LAST: ${{ inputs.last }}
+        INPUT_DRAWS: ${{ inputs.draws }}
+        INPUT_GATE_MINUTES: ${{ inputs.gate-minutes }}
+        INPUT_SLO_P99_MS: ${{ inputs.slo-p99-ms }}
+        INPUT_SLO_ERROR_RATE: ${{ inputs.slo-error-rate }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_COMMENT_KEY: ${{ inputs.comment-key }}
+        INPUT_TITLE: ${{ inputs.title }}
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: bash "$GITHUB_ACTION_PATH/action/verify.sh"
+    - name: Comment on the pull request
+      if: always() && inputs.comment == 'true' && steps.verify.outputs.summary != '' && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target')
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        REPO: ${{ github.repository }}
+        PR: ${{ github.event.pull_request.number }}
+        SUMMARY: ${{ steps.verify.outputs.summary }}
+        MARKER: ${{ steps.verify.outputs.marker }}
+      run: bash "$GITHUB_ACTION_PATH/action/comment.sh"
+    - name: Verdict
+      if: always() && steps.verify.outputs.gate == 'failed'
+      shell: bash
+      env:
+        VERDICT: ${{ steps.verify.outputs.verdict }}
+        FAIL_ON: ${{ inputs.fail-on }}
+      run: |
+        echo "::error title=Hindcast::The backtest verdict is $VERDICT (this check fails on: $FAIL_ON). See the job summary or the pull-request comment."
+        exit 1

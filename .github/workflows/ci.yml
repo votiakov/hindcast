@@ -28,3 +28,80 @@ jobs:
         uses: actions/upload-artifact@v4
         with: { name: golden-dump, path: golden-dump, retention-days: 7 }
       - run: npm run mcp:golden
+
+  # the GitHub Action (action.yml) from this checkout, on a pull request simulated in the working tree:
+  # the frontend cut to 50 millicores against the committed manifests (base-ref: HEAD), with a binary
+  # built here, since no release holds this commit's yet
+  action:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: engine-rs }
+      - run: cargo build --release --bin hindcast
+        working-directory: engine-rs
+      - name: The pull request's change
+        run: cp test/cli-fixtures/hotrod-frontend-50m.yaml examples/backtest-ci/deploy/hotrod.yaml
+      - name: Backtest it (fails the step)
+        id: cut
+        uses: ./
+        continue-on-error: true
+        with:
+          model: reference/hotrod/model.json
+          dataset: reference/hotrod/dataset.json
+          manifests: examples/backtest-ci/deploy
+          base-ref: HEAD
+          binary: engine-rs/target/release/hindcast
+          comment: 'false'
+      - name: Backtest it with fail-on never
+        id: never
+        uses: ./
+        with:
+          model: reference/hotrod/model.json
+          dataset: reference/hotrod/dataset.json
+          manifests: examples/backtest-ci/deploy
+          base-ref: HEAD
+          binary: engine-rs/target/release/hindcast
+          comment: 'false'
+          fail-on: never
+          comment-key: never
+      - name: A Terraform plan (customer 1 → 2 tasks)
+        id: tf
+        uses: ./
+        with:
+          model: reference/hotrod/model.json
+          dataset: reference/hotrod/dataset.json
+          terraform-plan: test/cli-fixtures/hotrod-tfplan.json
+          binary: engine-rs/target/release/hindcast
+          comment: 'false'
+      - name: No change (head-ref = base-ref)
+        id: none
+        uses: ./
+        with:
+          model: reference/hotrod/model.json
+          dataset: reference/hotrod/dataset.json
+          manifests: examples/backtest-ci/deploy
+          base-ref: HEAD
+          binary: engine-rs/target/release/hindcast
+          comment: 'false'
+          head-ref: HEAD
+      - name: Check the verdicts and the summaries
+        env:
+          CUT: ${{ steps.cut.outcome }} ${{ steps.cut.outputs.verdict }} ${{ steps.cut.outputs.gate }}
+          NEVER: ${{ steps.never.outcome }} ${{ steps.never.outputs.verdict }} ${{ steps.never.outputs.gate }}
+          TF: ${{ steps.tf.outcome }} ${{ steps.tf.outputs.verdict }} ${{ steps.tf.outputs.gate }}
+          NONE: ${{ steps.none.outcome }} ${{ steps.none.outputs.verdict }}
+          CUT_SUMMARY: ${{ steps.cut.outputs.summary }}
+          NEVER_SUMMARY: ${{ steps.never.outputs.summary }}
+          CUT_MINUTES: ${{ steps.cut.outputs.minutes-out-of-slo-delta }}
+        run: |
+          set -x
+          [ "$CUT" = "failure fail failed" ]
+          [ "$NEVER" = "success fail passed" ]
+          [ "$TF" = "success inconclusive passed" ]
+          [ "$NONE" = "success nothing to verify" ]
+          awk -v m="$CUT_MINUTES" 'BEGIN { exit !(m > 5) }'
+          head -n 1 "$CUT_SUMMARY" | grep -qx '<!-- hindcast-verify-change -->'
+          head -n 1 "$NEVER_SUMMARY" | grep -qx '<!-- hindcast-verify-change:never -->'
+          grep -q 'frontend CPU 1 → 0.05' "$CUT_SUMMARY"
+          cat "$CUT_SUMMARY" >> "$GITHUB_STEP_SUMMARY"
