@@ -46,7 +46,10 @@ it.
 
 When it can't connect it says why and what to try: a 404 usually means Prometheus is served under
 a path (`http://host/prometheus`), a refused connection that it isn't reachable from here
-(`kubectl port-forward`), a 401/403 that it wants a token (`--token-env`). Every tool below works on
+(`kubectl port-forward`), a 401/403 that it wants a token (`--token-env`). When the window holds no
+traffic, it prints the probe's finding (no requests in the last hour, or in 30 days) before
+collecting, and the collection's error names the window and when traffic last flowed: pass
+`--last 7d`, or `--start`/`--end` around it. Every tool below works on
 the workspace it leaves, so the next questions are ordinary tool calls:
 `verify_change` with your manifest diff, `suggest_changes` with `traffic`, `check_node_loss`.
 
