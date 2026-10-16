@@ -81,6 +81,9 @@ fn failed_change(st: &Value, base: &Value) -> Option<String> {
         " (all of them)".to_string()
     } else if d < 0.0 && pct >= 100.0 {
         " (over 99% fewer)".to_string()
+    } else if d > 0.0 && pct >= 1000.0 {
+        // past 10× a percentage reads as noise: say what failed as built instead
+        format!(" (from {} as built)", js_locale(js_round(was)))
     } else {
         format!(" ({}% {})", js_num(pct), word)
     };
@@ -419,6 +422,7 @@ mod tests {
         assert_eq!(headline(&st(0.0, 0.0, -2000.0), &base), "costs the same, with no change in time out of SLO");
         assert_eq!(headline(&st(0.0, 0.0, -31990.0), &base), "costs the same, with no change in time out of SLO but 31,990 fewer failed requests (over 99% fewer)");
         assert_eq!(headline(&st(0.0, 0.0, -32000.0), &base), "costs the same, with no change in time out of SLO but 32,000 fewer failed requests (all of them)");
+        assert_eq!(headline(&st(0.0, 15.0, 400000.0), &base), "costs the same and adds 15 minutes out of SLO, with 400,000 more failed requests (from 32,000 as built)");
         let few = json!({ "summary": { "failedRequests": { "p50": 50.0 } }, "incidents": [] });
         assert_eq!(headline(&st(0.0, 0.0, -40.0), &few), "costs the same, with no change in time out of SLO");
     }

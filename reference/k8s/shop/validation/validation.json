@@ -1811,7 +1811,7 @@
        "hi": 0
       },
       "reasons": [
-       "costs the same and adds 15 minutes out of SLO",
+       "costs the same and adds 15 minutes out of SLO, with 238,843 more failed requests (from 283 as built)",
        "adds 14.8 min out of SLO (10–90%: 0 … 21.6)",
        "adds 238,843 failed requests (+84309% of 283)",
        "worst at 2026-10-13T17:04:30Z: frontend at 103% of capacity (275.2 req/s on 2 × 134.1 req/s), 32.4 s queue",
@@ -25606,5 +25606,5 @@
    }
   }
  ],
- "evaluatedAt": "2026-10-16T13:49:46.440Z"
+ "evaluatedAt": "2026-10-16T17:36:52.349Z"
 }
