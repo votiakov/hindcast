@@ -564,15 +564,18 @@ pub fn explain_moment(r: &RunResult, plan: &Plan, i: usize) -> (String, Option<S
     } else {
         "unbounded".into()
     };
-    let queue = if s.backlog[i] > 0.5 {
+    // offered ÷ capacity: utilisation itself is capped once the queue grows
+    let load = if per_rep.is_finite() && s.replicas[i] > 0.0 { js_max(util, [s.rps[i] / (s.replicas[i] * per_rep)]) } else { util };
+    let queue = if s.backlog[i] > 0.5 && load < 0.95 {
+        // clearly below capacity with a queue: the backlog an overload left, still being worked off
+        format!(", still draining a {} s backlog", js_to_fixed(s.wait_ms[i] / 1000.0, 1))
+    } else if s.backlog[i] > 0.5 {
         format!(", {} s queue", js_to_fixed(s.wait_ms[i] / 1000.0, 1))
     } else if s.wait_ms[i] > 5.0 {
         format!(", {} ms wait", js_num(js_round(s.wait_ms[i])))
     } else {
         String::new()
     };
-    // offered ÷ capacity: utilisation itself is capped once the queue grows
-    let load = if per_rep.is_finite() && s.replicas[i] > 0.0 { js_max(util, [s.rps[i] / (s.replicas[i] * per_rep)]) } else { util };
     (format!("{} at {}% of capacity ({} req/s on {}){}", id, js_num(js_round(load * 100.0)), js_to_fixed(s.rps[i], 1), cap, queue), Some(id.clone()))
 }
 

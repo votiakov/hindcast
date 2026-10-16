@@ -18,6 +18,7 @@ pub mod model;
 pub mod prom_export;
 pub mod regimes;
 pub mod resilience;
+pub mod review;
 pub mod sim;
 pub mod strategy;
 pub mod terraform_diff;
@@ -243,6 +244,28 @@ mod wasm {
         let d: crate::dataset::Dataset = from(dataset)?;
         let o: crate::resilience::NodeLossOptions = opt(opts)?;
         Ok(crate::resilience::node_loss(&model, &d, &o).map_err(err)?.serialize(&ser())?)
+    }
+
+    /// reviewCapacity(model, dataset, opts?, onProgress?) → the capacity review (review_capacity's data,
+    /// the summary worded for the app, the traffic, each fix's change, the Markdown); onProgress(label,
+    /// done, total) at each phase
+    #[wasm_bindgen(js_name = reviewCapacity)]
+    pub fn review_capacity(model: JsValue, dataset: JsValue, opts: JsValue, progress: JsValue) -> Result<JsValue, JsValue> {
+        #[derive(serde::Deserialize, Default)]
+        struct Opts {
+            draws: Option<f64>,
+        }
+        let mv: serde_json::Value = from(model)?;
+        let dv: serde_json::Value = from(dataset)?;
+        let o: Opts = opt(opts)?;
+        let f: Option<js_sys::Function> = progress.dyn_into().ok();
+        let hook: Option<Box<dyn FnMut(&str, f64, f64)>> = f.map(|f| {
+            Box::new(move |label: &str, done: f64, total: f64| {
+                let _ = f.call3(&JsValue::NULL, &JsValue::from(label), &JsValue::from(done), &JsValue::from(total));
+            }) as Box<dyn FnMut(&str, f64, f64)>
+        });
+        let r = crate::review::with_progress(hook, || crate::review::capacity::for_app(&mv, &dv, o.draws.unwrap_or(12.0))).map_err(err)?;
+        Ok(r.serialize(&ser())?)
     }
 
     /// nodeLossFaults(model, dataset, node, atS?, recoverS (undefined: default, null: never), pods?)

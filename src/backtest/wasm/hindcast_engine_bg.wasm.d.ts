@@ -10,6 +10,7 @@ export const modelBreakingPoint: (a: any, b: any, c: any) => [number, number, nu
 export const holdoutAccuracy: (a: any, b: any, c: number, d: number, e: any) => [number, number, number];
 export const referenceAccuracy: (a: any, b: any, c: number, d: number) => [number, number, number];
 export const nodeLoss: (a: any, b: any, c: any) => [number, number, number];
+export const reviewCapacity: (a: any, b: any, c: any, d: any) => [number, number, number];
 export const nodeLossFaults: (a: any, b: any, c: number, d: number, e: number, f: number, g: any, h: any) => [number, number, number];
 export const podsPerNode: (a: any, b: any) => [number, number, number];
 export const outageScenario: (a: any, b: any, c: number, d: number, e: any) => [number, number, number];

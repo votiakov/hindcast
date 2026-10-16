@@ -37,6 +37,12 @@ export function referenceAccuracy(model: any, runs: any, label: string): any;
  */
 export function nodeLoss(model: any, dataset: any, opts: any): any;
 /**
+ * reviewCapacity(model, dataset, opts?, onProgress?) → the capacity review (review_capacity's data,
+ * the summary worded for the app, the traffic, each fix's change, the Markdown); onProgress(label,
+ * done, total) at each phase
+ */
+export function reviewCapacity(model: any, dataset: any, opts: any, progress: any): any;
+/**
  * nodeLossFaults(model, dataset, node, atS?, recoverS (undefined: default, null: never), pods?)
  */
 export function nodeLossFaults(model: any, dataset: any, node: string, at_s: number | null | undefined, recover_s: any, pods: any): any;
@@ -177,6 +183,7 @@ export interface InitOutput {
   readonly holdoutAccuracy: (a: any, b: any, c: number, d: number, e: any) => [number, number, number];
   readonly referenceAccuracy: (a: any, b: any, c: number, d: number) => [number, number, number];
   readonly nodeLoss: (a: any, b: any, c: any) => [number, number, number];
+  readonly reviewCapacity: (a: any, b: any, c: any, d: any) => [number, number, number];
   readonly nodeLossFaults: (a: any, b: any, c: number, d: number, e: number, f: number, g: any, h: any) => [number, number, number];
   readonly podsPerNode: (a: any, b: any) => [number, number, number];
   readonly outageScenario: (a: any, b: any, c: number, d: number, e: any) => [number, number, number];

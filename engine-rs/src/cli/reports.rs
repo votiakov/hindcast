@@ -5,52 +5,15 @@ use super::util::loc;
 use crate::math::{js_num, js_round, js_to_fixed};
 use serde_json::{json, Map as JMap, Value};
 
-pub fn g<'a>(v: &'a Value, path: &[&str]) -> &'a Value {
-    let mut x = v;
-    for k in path {
-        x = x.get(*k).unwrap_or(&Value::Null);
-    }
-    x
-}
-/// a number; null (JSON's Infinity) and missing as NaN
-pub fn n(v: &Value, path: &[&str]) -> f64 {
-    g(v, path).as_f64().unwrap_or(f64::NAN)
-}
-/// a number where null stands for Infinity (a model's capacity)
-pub fn inf(v: &Value, path: &[&str]) -> f64 {
-    match g(v, path) {
-        Value::Null => f64::INFINITY,
-        x => x.as_f64().unwrap_or(f64::NAN),
-    }
-}
-pub fn s(v: &Value, path: &[&str]) -> String {
-    match g(v, path) {
-        Value::String(x) => x.clone(),
-        Value::Null => String::new(),
-        x => crate::convert::js_stringify(x),
-    }
-}
-pub fn arr<'a>(v: &'a Value, path: &[&str]) -> Vec<&'a Value> {
-    g(v, path).as_array().map(|a| a.iter().collect()).unwrap_or_default()
-}
+pub use crate::review::json::{arr, g, inf, n, s};
 fn nums(v: &Value, path: &[&str]) -> Vec<Option<f64>> {
     arr(v, path).iter().map(|x| x.as_f64()).collect()
 }
 
-const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
 /// ISO 8601 of epoch seconds
-pub fn iso(t: f64) -> String {
-    crate::accuracy::iso_of_ms((t * 1000.0).floor() as i64)
-}
-
+pub use crate::review::json::iso_floor as iso;
 /// "Sep 14 at 12:03 UTC"
-fn when(t: f64) -> String {
-    let i = iso(t);
-    let month: usize = i[5..7].parse().unwrap_or(1);
-    let day: usize = i[8..10].parse().unwrap_or(1);
-    format!("{} {} at {} UTC", MONTHS[month - 1], day, &i[11..16])
-}
+use crate::review::json::when_utc as when;
 
 fn money(x: f64) -> String {
     let a = x.abs();
@@ -75,47 +38,7 @@ fn count(x: f64) -> String {
     loc(js_round(x))
 }
 
-/// one-sentence verdict, e.g. "saves $410/month; on Sep 14 at 12:03 UTC it would have caused 9 minutes out of SLO (…)"
-pub fn headline(st: &Value, base: &Value) -> String {
-    let dm = n(st, &["delta", "monthly", "p50"]);
-    let m = if dm.abs() < 1.0 {
-        "costs the same".to_string()
-    } else if dm < 0.0 {
-        format!("saves ${}/month", loc(js_round(-dm)))
-    } else {
-        format!("costs ${}/month more", loc(js_round(dm)))
-    };
-    let base_inc = arr(base, &["incidents"]);
-    let new_inc: Vec<&Value> = arr(st, &["incidents"]).into_iter().filter(|i| !base_inc.iter().any(|b| n(b, &["start"]) < n(i, &["end"]) && n(i, &["start"]) < n(b, &["end"]))).collect();
-    if !new_inc.is_empty() {
-        let mut w = new_inc[0];
-        for i in &new_inc[1..] {
-            let c = n(i, &["minutes"]) - n(w, &["minutes"]);
-            if c > 0.0 || (c == 0.0 && n(i, &["peakP99Ms"]) > n(w, &["peakP99Ms"])) {
-                w = i;
-            }
-        }
-        let wm = n(w, &["minutes"]);
-        let total = crate::backtest::js_max(wm, std::iter::once(n(st, &["delta", "minutesOutOfSlo", "p50"])));
-        let mn = |x: f64| {
-            let k = js_round(x).max(1.0);
-            format!("{} minute{}", js_num(k), if k == 1.0 { "" } else { "s" })
-        };
-        if total < wm + 0.5 {
-            return format!("{}; on {} it would have caused {} out of SLO ({})", m, when(n(w, &["start"])), mn(wm), s(w, &["why"]));
-        }
-        return format!("{}; it would have caused {} out of SLO, the worst on {} ({})", m, mn(total), when(n(w, &["start"])), s(w, &["why"]));
-    }
-    let ds = n(st, &["delta", "minutesOutOfSlo", "p50"]);
-    if ds < -0.5 {
-        let k = js_round(-ds);
-        return format!("{} and removes {} minute{} out of SLO from the history", m, js_num(k), if k == 1.0 { "" } else { "s" });
-    }
-    if ds > 0.5 {
-        return format!("{} and adds {} minutes out of SLO", m, js_num(js_round(ds)));
-    }
-    format!("{}, with no change in time out of SLO", m)
-}
+pub use crate::review::judge::headline;
 
 fn accuracy_block(acc: &[&Value]) -> Vec<String> {
     if acc.is_empty() {

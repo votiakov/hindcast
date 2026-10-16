@@ -16317,7 +16317,7 @@
        "hi": 0
       },
       "reasons": [
-       "costs the same; on Oct 13 at 16:57 UTC it would have caused 1 minute out of SLO (frontend at 85% of capacity (172.5 req/s on 1.3 × 151.8 req/s (normally 168.7)), 0.2 s queue)",
+       "costs the same; on Oct 13 at 16:57 UTC it would have caused 1 minute out of SLO (frontend at 85% of capacity (172.5 req/s on 1.3 × 151.8 req/s (normally 168.7)), still draining a 0.2 s backlog)",
        "the backtest passes, but confidence is low (frontend: the model fits it poorly, and this change changes it) — load-test before trusting it",
        "worst at 2026-10-13T17:09:00Z: email OOM-killed: its memory grows with the requests it serves (a leak, +9.2 MiB per 1,000) until it passes the 150 MiB limit, its pods restarting (CrashLoopBackOff)",
        "frontend would run on one node: losing bnk8s-worker takes it down"

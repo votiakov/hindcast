@@ -310,6 +310,24 @@ export function nodeLoss(model, dataset, opts) {
 }
 
 /**
+ * reviewCapacity(model, dataset, opts?, onProgress?) → the capacity review (review_capacity's data,
+ * the summary worded for the app, the traffic, each fix's change, the Markdown); onProgress(label,
+ * done, total) at each phase
+ * @param {any} model
+ * @param {any} dataset
+ * @param {any} opts
+ * @param {any} progress
+ * @returns {any}
+ */
+export function reviewCapacity(model, dataset, opts, progress) {
+    const ret = wasm.reviewCapacity(model, dataset, opts, progress);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
  * nodeLossFaults(model, dataset, node, atS?, recoverS (undefined: default, null: never), pods?)
  * @param {any} model
  * @param {any} dataset

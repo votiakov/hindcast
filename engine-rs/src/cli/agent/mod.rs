@@ -16,26 +16,7 @@ use crate::cli::util::*;
 use serde_json::{json, Map as JMap, Value};
 use workspace::Workspace;
 
-thread_local! {
-    static PROGRESS: std::cell::RefCell<Option<Box<dyn FnMut(&str, f64, f64)>>> = std::cell::RefCell::new(None);
-}
-
-/// a long tool's phase, reported when the caller asked for progress (MCP progress notifications)
-pub fn progress(message: &str, done: f64, total: f64) {
-    PROGRESS.with(|p| {
-        if let Some(f) = p.borrow_mut().as_mut() {
-            f(message, done, total);
-        }
-    });
-}
-
-/// run with progress reported to `f` (or with none: `None`), restoring the previous hook after
-pub fn with_progress<T>(f: Option<Box<dyn FnMut(&str, f64, f64)>>, run: impl FnOnce() -> T) -> T {
-    let prev = PROGRESS.with(|p| std::mem::replace(&mut *p.borrow_mut(), f));
-    let out = run();
-    PROGRESS.with(|p| *p.borrow_mut() = prev);
-    out
-}
+pub use crate::review::{progress, with_progress};
 
 pub fn tools() -> Vec<Value> {
     serde_json::from_str(include_str!("tools.json")).unwrap_or_default()
@@ -220,16 +201,7 @@ pub fn validate(schema: &Value, v: Option<&Value>, path: &[String], issues: &mut
 }
 
 /// `${x}` of a JSON value in a template string
-pub fn sources_str(v: Option<&Value>) -> String {
-    match v {
-        None => "undefined".into(),
-        Some(Value::Null) => "null".into(),
-        Some(Value::String(s)) => s.clone(),
-        Some(Value::Number(n)) => crate::math::js_num(n.as_f64().unwrap_or(f64::NAN)),
-        Some(Value::Bool(b)) => b.to_string(),
-        Some(x) => crate::convert::js_stringify(x),
-    }
-}
+pub use crate::review::json::template_str as sources_str;
 
 /// a schema error (the issues as JSON) as explainError writes it: "invalid input" and a "path: message" line each
 pub fn explain_schema_error(e: &str) -> String {
