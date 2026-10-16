@@ -36,9 +36,18 @@
 .bt-spacer { flex: 1; }
 
 /* bar */
-.bt-bar { display: flex; align-items: center; gap: 6px 8px; padding: 6px 12px; border-bottom: 1px solid var(--bt-line); flex-wrap: wrap; white-space: nowrap; min-width: 0; }
+.bt-bar { display: flex; align-items: center; gap: 6px 3px; padding: 6px 8px; border-bottom: 1px solid var(--bt-line); flex-wrap: wrap; white-space: nowrap; min-width: 0; }
 .bt-bar .bt-select { max-width: 190px; min-width: 0; }
-.bt-brand { font: 600 12px var(--bt-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--bt-amber); margin-right: 8px; }
+/* the bar holds the app's views and every backtest control on one row from 1440 px wide: its selects
+   and chips are set in the condensed face, and the system select is as wide as its name */
+.bt .bt-bar .bt-select, .bt-bar .bt-chip { font: 12.5px var(--bt-sans) !important; }
+.bt-bar .bt-chip { padding: 2px 7px !important; }
+.bt-bar .bt-select.bt-sys { max-width: 240px; color: var(--bt-hi); }
+.bt-bar .bt-select { max-width: none; }
+.bt-modes button, .bt .bt-screens button { font: 12.5px var(--bt-sans) !important; padding: 3px 5px !important; }
+.bt-ranges button { padding: 2px 6px !important; }
+.bt-slo { font: 12.5px var(--bt-sans) !important; }
+.bt-brand { font: 600 12px var(--bt-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--bt-amber); margin-right: 4px; }
 .bt-system { font: 14px var(--bt-sans); color: var(--bt-hi); margin-right: 10px; }
 .bt-system .bt-dim { font-size: 12.5px; margin-right: 4px; }
 .bt-seg { display: inline-flex; border: 1px solid var(--bt-line); }
@@ -174,9 +183,9 @@
 .bt-marker text { fill: var(--bt-amber); font: 10.5px var(--bt-mono); }
 
 /* the other views, always visible: the simulator, lessons and studio are one click away */
-.bt-modes { display: flex; flex-shrink: 0; border: 1px solid var(--bt-line); margin-right: 12px; }
+.bt-modes { display: flex; flex-shrink: 0; border: 1px solid var(--bt-line); margin-right: 6px; }
 .bt-slo { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.bt-modes button { background: none; border: 0; border-left: 1px solid var(--bt-line); color: var(--bt-dim); font: 12px var(--bt-mono); padding: 3px 9px; cursor: pointer; white-space: nowrap; }
+.bt-modes button { background: none; border: 0; border-left: 1px solid var(--bt-line); color: var(--bt-dim); font: 12px var(--bt-mono); padding: 3px 7px; cursor: pointer; white-space: nowrap; }
 .bt-modes button:first-child { border-left: 0; }
 .bt-modes button:hover { color: var(--bt-hi); }
 .bt-modes button.on { color: var(--bt-amber); background: var(--bt-pane); }
@@ -189,6 +198,7 @@
 /* the capacity review: one screen read like a printed engineering review — numbered sections on
    hairlines, sentences in the condensed sans, every number in tabular mono */
 .bt-screens button { font: 12px var(--bt-mono) !important; }
+.bt-slo { font-size: 12.5px; }
 .bt-review { text-align: left; padding: 0; }
 .rv { overflow-y: auto; overflow-x: hidden; min-height: 0; grid-row: 2 / 4; }
 .rv-wait { padding: 40px 24px; font: 13px var(--bt-mono); color: var(--bt-text); }
@@ -274,3 +284,8 @@
   .rv-sec { overflow-x: auto; }
 }
 .rv-days td:first-child { white-space: nowrap; }
+/* the bar's busy note sits just under it, at the right, so it never pushes the bar onto two rows */
+.bt-bar { position: relative; }
+.bt .bt-computing { position: absolute; right: 8px; top: calc(100% + 4px); z-index: 3; background: var(--bt-bg); }
+.bt-bar .bt-slo { font-size: 12px !important; }
+.bt-bar .bt-chip { padding: 2px 6px !important; }

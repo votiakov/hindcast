@@ -707,7 +707,33 @@ pub fn for_app(mv: &Value, dv: &Value, draws: f64) -> Result<Value, String> {
         Ok(crate::calibrate::CalibrateOptions { slo: Some(m.slo.clone()), timeout_ms: Some(m.timeout_ms).filter(|t| *t != 0.0), list_prices: Some(json!(true)), ..Default::default() })
     };
     let Review { mut out, suggested } = review(mv, &m, dv, &d, None, draws, &opts)?;
-    let md = review_markdown(&Value::Object(out.clone()));
+    // the history open in the app may be shorter than the one the model was calibrated on: every
+    // ratio here is to the open history's busiest moment (the one the chart draws), and the
+    // calibration history's is said once, in a note
+    let open_peak = r1((0..d.n.max(0.0) as usize).map(|i| traffic_at(&d, i)).fold(0.0, f64::max));
+    let cal_peak = n(&Value::Object(out.clone()), &["history", "peakRps"]);
+    if open_peak > 0.0 && cal_peak.is_finite() && (cal_peak - open_peak).abs() > 0.02 * cal_peak {
+        let head = n(&Value::Object(out.clone()), &["headroom", "rps"]);
+        let any = !g(&Value::Object(out.clone()), &["headroom", "atAnyLoad"]).is_null();
+        if let Some(h) = out.get_mut("history") {
+            h["peakRps"] = num(open_peak);
+        }
+        if let Some(h) = out.get_mut("headroom") {
+            h["overPeak"] = num(js_round((head / open_peak) * 100.0) / 100.0);
+        }
+        let mut said = format!("The model was calibrated on a longer history, whose busiest moment was {} req/s; this one peaks at {} req/s, and every ratio here is to {}.", js_num(cal_peak), js_num(open_peak), js_num(open_peak));
+        if !any && head < cal_peak {
+            said.push_str(&format!(" The headroom, {} req/s, is below the {} req/s the model was calibrated on: that busiest moment was past what the system serves within SLO.", js_num(head), js_num(cal_peak)));
+        }
+        out.insert("calibrated".into(), json!({ "peakRps": num(cal_peak), "said": said }));
+    }
+    let mut md = review_markdown(&Value::Object(out.clone()));
+    if let Some(said) = out.get("calibrated").map(|c| s(c, &["said"])) {
+        // after the history line
+        if let Some(at) = md.find("\n\n").and_then(|a| md[a + 2..].find("\n\n").map(|b| a + 2 + b + 2)) {
+            md.insert_str(at, &format!("{}\n\n", said));
+        }
+    }
     let r = Value::Object(out.clone());
     out.insert("summary".into(), json!(summary(&r)));
     // each fix and saving with its change and how far its verdict can be trusted

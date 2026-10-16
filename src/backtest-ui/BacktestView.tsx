@@ -28,6 +28,23 @@ const costWords = (d: number) => (Math.abs(d) < 0.5 ? 'same cost' : `${usd(Math.
 const sloWords = (d: number, total: number) => (d < -0.5 ? (total < 0.5 ? 'within SLO' : `${Math.round(-d)} min less out of SLO`) : d > 0.5 ? `${Math.round(d)} min more out of SLO` : 'no SLO change');
 const when = (t: number) => new Date(t * 1000).toISOString().slice(5, 16).replace('T', ' ');
 
+/** a select as wide as the value it shows (the bar's condensed face, ~6.3 px a character) rather than
+ *  its longest option: the bar keeps every control on one row */
+let measure: CanvasRenderingContext2D | null | undefined;
+const fitSelect = (shown: string) => {
+  if (measure === undefined) {
+    try {
+      measure = document.createElement('canvas').getContext('2d');
+    } catch {
+      measure = null;
+    }
+  }
+  // before the face has loaded the fallback is wider, so the select is never too narrow
+  if (measure) measure.font = `12.5px 'IBM Plex Sans Condensed', 'Arial Narrow', sans-serif`;
+  const text = measure ? measure.measureText(shown).width : [...shown].reduce((a, c) => a + (c === c.toUpperCase() && c !== c.toLowerCase() ? 7.8 : 6.4), 0);
+  return `${Math.ceil(text) + 42}px`;
+};
+
 function Bar() {
   const w = useBacktest((s) => s.workspace);
   const nodes = w ? nodesOf((w.outage?.parent ?? w).model) : [];
@@ -58,9 +75,6 @@ function Bar() {
           </button>
         ))}
       </nav>
-      <span className="bt-system">
-        <span className="bt-dim">system</span> {w?.model.name ?? '—'}
-      </span>
       <span className="bt-seg bt-screens" role="tablist" aria-label="Screen">
         {(['replay', 'review'] as Screen[]).map((x) => (
           <button key={x} role="tab" aria-selected={screen === x} className={screen === x ? 'on' : ''} onClick={() => setScreen(x)} title={x === 'replay' ? 'The history replayed, with the changes tested against it' : 'The capacity review: headroom, busier days, losing a node, what to commit to, the fixes that pass'}>
@@ -70,32 +84,33 @@ function Bar() {
       </span>
       {screen === 'replay' && (
         <>
-          <span className="bt-dim">show</span>
-          <span className="bt-seg">
+          <span className="bt-seg bt-ranges" title={r ? `What the charts show; the data has a point every ${r.window.stepS >= 60 ? `${r.window.stepS / 60} min` : `${r.window.stepS} s`}` : undefined}>
             {ranges.map(([label, k]) => (
               <button key={label} className={cur === k ? 'on' : ''} onClick={() => setView(label === 'whole run' ? null : [Math.max(0, (view?.[1] ?? n) - k), view?.[1] ?? n])}>
                 {label}
               </button>
             ))}
           </span>
-          {r && <span className="bt-dim small">every {r.window.stepS >= 60 ? `${r.window.stepS / 60} min` : `${r.window.stepS} s`}</span>}
           {r && !w?.outage && <Load />}
         </>
       )}
-      {computing && <span className="bt-chip dim">computing…</span>}
+      {computing && <span className="bt-chip dim bt-computing">computing…</span>}
       <span className="bt-spacer" />
       {r && (
         <span className="bt-dim bt-slo">
-          SLO p99 ≤ {r.slo.p99Ms} ms · err ≤ {pct(r.slo.errorRate)}
+          SLO p99 ≤ {r.slo.p99Ms} ms · err ≤ {+(r.slo.errorRate * 100).toFixed(2)}%
         </span>
       )}
-      <select className="bt-select" aria-label="Reference system" value={w?.id ?? ''} onChange={(e) => loadReference(e.target.value)}>
+      {/* the system on screen: a reference, or the workspace opened */}
+      <select className="bt-select bt-sys" aria-label="Reference system" title={w ? `System: ${w.name}` : undefined} style={{ width: fitSelect(REFERENCES.find((x) => x.id === w?.id)?.label.replace(/ \(reference\)$/, '') ?? w?.name ?? 'workspace') }} value={w?.id ?? ''} onChange={(e) => loadReference(e.target.value)}>
         {!REFERENCES.some((x) => x.id === w?.id) && <option value={w?.id ?? ''}>{w?.name ?? 'workspace'}</option>}
-        {REFERENCES.map((x) => (
-          <option key={x.id} value={x.id}>
-            {x.label}
-          </option>
-        ))}
+        <optgroup label="Reference systems">
+          {REFERENCES.map((x) => (
+            <option key={x.id} value={x.id}>
+              {x.label.replace(/ \(reference\)$/, '')}
+            </option>
+          ))}
+        </optgroup>
       </select>
       {r && screen === 'replay' && (
         <button
@@ -113,7 +128,7 @@ function Bar() {
           Card ↗
         </button>
       )}
-      <select className="bt-select" aria-label="Replay a public outage" value={w?.outage?.outage.id ?? ''} onChange={(e) => (setScreen('replay'), !e.target.value ? closeOutage() : e.target.value.startsWith('node:') ? openNodeLoss(e.target.value.slice(5)) : openOutage(e.target.value))}>
+      <select className="bt-select" aria-label="Replay a public outage" style={{ width: fitSelect(w?.outage ? '← back to the history' : 'Replay an outage…') }} value={w?.outage?.outage.id ?? ''} onChange={(e) => (setScreen('replay'), !e.target.value ? closeOutage() : e.target.value.startsWith('node:') ? openNodeLoss(e.target.value.slice(5)) : openOutage(e.target.value))}>
         <option value="">{w?.outage ? '← back to the history' : 'Replay an outage…'}</option>
         {nodes.length > 0 && (
           <optgroup label="Lose a Kubernetes node at the peak">
@@ -149,12 +164,11 @@ function Load() {
   const setLoad = useBacktest((s) => s.setLoad);
   const steps = [0.5, 1, 1.5, 2, 3];
   return (
-    <label className="bt-load" title="Replay the history at a multiple of its traffic — same daily shape, spikes and endpoint mix; the as-built system and every change see the same load">
-      <span className="bt-dim">replayed at</span>
-      <select className="bt-select" value={load} onChange={(e) => setLoad(+e.target.value)}>
+    <label className="bt-load" title="Load ×1 is the traffic as recorded. Replay the history at a multiple of its traffic — same daily shape, spikes and endpoint mix; the as-built system and every change see the same load">
+      <select className="bt-select" aria-label="Replayed at" style={{ width: fitSelect(`load ×${load}`) }} value={load} onChange={(e) => setLoad(+e.target.value)}>
         {[...steps, ...(steps.includes(load) ? [] : [load])].map((x) => (
           <option key={x} value={x}>
-            {x === 1 ? 'the recorded traffic' : `${x}× the recorded traffic`}
+            {x === 1 ? 'load ×1' : `load ×${x}`}
           </option>
         ))}
       </select>

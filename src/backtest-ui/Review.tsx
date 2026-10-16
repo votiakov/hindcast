@@ -17,7 +17,8 @@ const MEASURED = '#e6edf3';
 const BUSIER = '#8193a3';
 
 const int = (x: number) => Math.round(x).toLocaleString('en-US');
-const num = (x: number) => (Math.abs(x) >= 100 ? int(x) : String(+x.toFixed(1)));
+/** one decimal at most, as the engine's sentences write numbers (164.5, not 165) */
+const num = (x: number) => x.toLocaleString('en-US', { maximumFractionDigits: 1 });
 const usd = (x: number) => `$${int(Math.abs(x))}`;
 const signedUsd = (x: number) => (Math.abs(x) < 0.5 ? '$0' : `${x > 0 ? '+' : '−'}$${int(Math.abs(x))}`);
 const signed = (x: number, f: (v: number) => string) => (Math.abs(x) < 0.05 ? '0' : `${x > 0 ? '+' : '−'}${f(Math.abs(x))}`);
@@ -221,9 +222,9 @@ function Binding({ r }: { r: CapacityReview }) {
           <span>
             <i>within SLO up to</i> {num(h.rps)} req/s
           </span>
-          {r.traffic.peakRps > 0 && (
+          {h.overPeak !== null && (
             <span>
-              <i>against this history's busiest moment</i> {+(h.rps / r.traffic.peakRps).toFixed(2)}×
+              <i>against the busiest moment</i> {h.overPeak}×
             </span>
           )}
           <span>
@@ -529,11 +530,7 @@ export function ReviewView() {
               <i>as run</i> {usd(r.nodePool && !r.nodePool.autoscaled ? r.nodePool.nodes * r.nodePool.monthlyPerNode : r.today.monthly)}/month
             </span>
           </div>
-          {Math.abs(r.history.peakRps - r.traffic.peakRps) > 0.02 * r.history.peakRps && (
-            <div className="rv-note">
-              The model was calibrated on more history than is open here: its busiest moment was {num(r.history.peakRps)} req/s, against {num(r.traffic.peakRps)} in this one. The summary's headroom ratio is to {num(r.history.peakRps)}; the chart and the replays are this history.
-            </div>
-          )}
+          {r.calibrated && <div className="rv-note">{r.calibrated.said}</div>}
           {(w.outage || load !== 1) && <div className="rv-note">Reviewed on the recorded history as it was: the {w.outage ? 'outage' : `${load}× load`} on the replay screen does not apply here.</div>}
           {r.noTraffic && <div className="rv-note">No service has request metrics, so there is no traffic to replay: headroom, busier days and losing a node can't be read; cost still can.</div>}
         </header>

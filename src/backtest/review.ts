@@ -90,6 +90,9 @@ export interface CapacityReview {
   savings: ReviewSaving[];
   nodePool: { nodes: number; autoscaled: boolean; node: { cpu: number; memoryGb: number; perHour: number }; peakFill: number; wouldFit: number; monthlyPerNode: number } | null;
   commitment: { floor: number; unit: string; onDemandMonthly: number; options: { term: string; savesMonthly: number }[]; basis: string } | null;
+  /** where the open history is shorter than the one the model was calibrated on: that history's busiest
+   *  moment, and the note that says so (history.peakRps and headroom.overPeak are then the open history's) */
+  calibrated?: { peakRps: number; said: string };
   /** why there is no commitment to read, where there is none */
   commitmentAbsent?: string;
   combinedSavings: { name: string; monthlyDelta: number; minutesOutOfSloDelta: number; failedRequestsDelta: number; verdict: string; confidence?: 'high' | 'medium' | 'low'; change: ReviewChange } | null;
