@@ -160,6 +160,10 @@ pub fn quickstart(f: &Flags, out: &mut Out) -> Result<i32, String> {
     for m in strs(&c[source]["missing"]) {
         say(&format!("      missing: {}", m));
     }
+    // what the probe noticed: above all, no traffic in the window about to be collected
+    for w in strs(&c[source]["warnings"]) {
+        say(&format!("      ! {}", w));
+    }
     for p in &problems {
         say(&format!("      ! {}", p));
     }

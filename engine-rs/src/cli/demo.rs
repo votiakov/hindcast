@@ -144,8 +144,12 @@ pub fn command(f: &Flags, out: &mut Out) -> Result<i32, String> {
     for l in arr(&rev, &["summary"]) {
         out.log(&s(l, &[]));
     }
+    // the backtest and accuracy are the Docker Compose recording, not the cluster reviewed above: say so
+    // where the numbers are, since its cost and accuracy differ from the review's
+    let mut bt = bt;
+    bt["model"] = json!(format!("{} on Docker Compose", s(&bt, &["model"])));
     print_backtest_table(&bt, out);
-    out.log(&format!("\n{}", bold(&format!("Accuracy — {}", s(&d.shop_model, &["name"])))));
+    out.log(&format!("\n{}", bold(&format!("Accuracy — {} on Docker Compose", s(&d.shop_model, &["name"])))));
     print_accuracy(&d.shop_model, out);
     out.log("");
     print_next(&next_lines(), out);

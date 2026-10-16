@@ -47,7 +47,7 @@ pub fn headline(st: &Value, base: &Value) -> String {
         if total < wm + 0.5 {
             return format!("{}; on {} it would have caused {} out of SLO ({})", m, when(n(w, &["start"])), mn(wm), s(w, &["why"]));
         }
-        return format!("{}; it would have caused {} out of SLO, the worst on {} ({})", m, mn(total), when(n(w, &["start"])), s(w, &["why"]));
+        return format!("{}; it would have caused {} out of SLO, the longest new incident starting {} ({})", m, mn(total), when(n(w, &["start"])), s(w, &["why"]));
     }
     let ds = n(st, &["delta", "minutesOutOfSlo", "p50"]);
     if ds < -0.5 {

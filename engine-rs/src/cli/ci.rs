@@ -194,6 +194,9 @@ pub fn command(cmd: &str, f: &Flags, out: &mut Out) -> Result<Option<i32>, Strin
         for note in arr(&res, &["notes"]) {
             out.log(&dim(&format!("  {}", s(note, &[]))));
         }
+        if written.is_empty() {
+            out.log(&dim("  why, how far to trust it and the worst moment: add --md report.md, --html report.html or --comment pr.md"));
+        }
         for w in written {
             out.log(&dim(&format!("  written {}", w)));
         }

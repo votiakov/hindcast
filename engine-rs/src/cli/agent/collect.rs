@@ -450,7 +450,22 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
     // ---- import
     super::progress("importing", 3.0, 4.0);
     let mut fs = DiskFiles::for_manifest(&manifest_path);
-    let (dataset, log) = crate::import::manifest::import_bundle(&manifest_v, &mut fs)?;
+    let (dataset, log) = crate::import::manifest::import_bundle(&manifest_v, &mut fs).map_err(|e| {
+        if e != "no data points were imported" {
+            return e;
+        }
+        // nothing came back for the window: say which window, when traffic last flowed, and what to try
+        let seen = match newest {
+            Some(nw) => format!("; the newest requests the probe found are around {}", iso(nw)),
+            None => "; the probe found no requests in the last 30 days either".to_string(),
+        };
+        format!(
+            "no data points were imported: the source returned no samples for {} … {}{}. Collect a window when the system served traffic (`last`, e.g. \"7d\", or `start` and `end`; quickstart: --last 7d, or --start and --end), and check that the services and namespaces connect_telemetry kept are the ones that serve it",
+            iso(start),
+            iso(end),
+            seen
+        )
+    })?;
     for l in log.iter().filter(|l| l.what.contains(": endpoint mix taken from the ")) {
         warnings.push(format!("{}. Span metrics of a service with several replicas, exported without a label per replica, jump between the replicas' counters and rate() reads each drop as a reset", l.what));
     }

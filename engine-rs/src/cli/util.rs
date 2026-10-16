@@ -128,22 +128,30 @@ pub fn yaml_documents(text: &str) -> Result<Vec<Value>, String> {
     Ok(out)
 }
 
-// ---- console colours (always on, as the Node CLI writes them) ----
+// ---- console colours (on, as the Node CLI writes them, unless NO_COLOR is set to anything: no-color.org) ----
 
+fn paint(code: &str, s: &str) -> String {
+    static OFF: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if *OFF.get_or_init(|| std::env::var("NO_COLOR").map(|v| !v.is_empty()).unwrap_or(false)) {
+        s.to_string()
+    } else {
+        format!("\x1b[{}m{}\x1b[0m", code, s)
+    }
+}
 pub fn dim(s: &str) -> String {
-    format!("\x1b[2m{}\x1b[0m", s)
+    paint("2", s)
 }
 pub fn bold(s: &str) -> String {
-    format!("\x1b[1m{}\x1b[0m", s)
+    paint("1", s)
 }
 pub fn red(s: &str) -> String {
-    format!("\x1b[31m{}\x1b[0m", s)
+    paint("31", s)
 }
 pub fn green(s: &str) -> String {
-    format!("\x1b[32m{}\x1b[0m", s)
+    paint("32", s)
 }
 pub fn yellow(s: &str) -> String {
-    format!("\x1b[33m{}\x1b[0m", s)
+    paint("33", s)
 }
 
 /// `${(n * 100).toFixed(n < 0.1 && n > 0 ? 2 : 1)}%`

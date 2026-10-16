@@ -84,14 +84,16 @@ hindcast headroom model.json [strategy.yaml]
 
 ### 7. Check a pull request before it merges
 
-- **Needs**: a calibrated model and dataset committed (or fetched) in the repository, and the
-  ready-made workflow from [examples/backtest-ci](../examples/backtest-ci).
-- **How**: the workflow turns the changed Kubernetes manifests into a strategy
-  (`hindcast diff-strategy --base … --head …`: replicas, CPU/memory limits, HPAs,
-  `kubernetes.io/arch`), backtests it over the last N days, and posts the result on the PR. `--gate`
-  fails the check if the change adds time out of SLO.
-- **You get**: "frontend CPU 1 → 0.05 saves $23/month; it would have caused 20 minutes out of SLO,
-  the worst on Oct 7 at 16:26 UTC". A working repository: `scripts/make-backtest-demo.sh`.
+- **Needs**: a calibrated model and dataset committed (or fetched) in the repository (the two files
+  `hindcast quickstart` leaves in `.hindcast/`), and the GitHub Action ([ci.md](ci.md)).
+- **How**: `uses: votiakov/hindcast@v1` reads the manifests at the pull request's base and head,
+  turns the diff into a strategy (replicas, CPU/memory limits, HPAs, `kubernetes.io/arch`),
+  backtests it over the recorded history, comments on the PR and fails the check if the change adds
+  time out of SLO. Other CI systems run `hindcast verify-change` directly; the older
+  `diff-strategy` + `backtest --gate` workflow is in [examples/backtest-ci](../examples/backtest-ci).
+- **You get**: "frontend CPU 1 → 0.05 — fail · confidence low. It saves $23/month; it would have
+  caused 18 minutes out of SLO, the longest new incident starting Oct 7 at 16:28 UTC", with the
+  ranges, the worst moment and why. A working repository: `scripts/make-backtest-demo.sh`.
 
 ### 8. Would we survive a famous outage?
 

@@ -86,7 +86,7 @@ steps:
 </ul>
 <p>The repository holds the calibrated model and the recent history in <code>.hindcast/</code>; the action downloads the binary for the runner. No secrets beyond <code>GITHUB_TOKEN</code>. Every input and output, and a full comment: <code>docs/ci.md</code> in the repository. <code>@v1</code> resolves once the repository has a <code>v1</code> tag; until then pin a release.</p>
 <p>What it posts on a pull request that trims the HotROD frontend to 50 millicores:</p>
-<p class="verdict"><b>frontend CPU 1 → 0.05</b> — fail · confidence low. It saves $23/month; it would have caused 18 minutes out of SLO, the worst on Oct 7 at 16:28 UTC (frontend at 71% of capacity (3.9 req/s on 1 × 5.5 req/s), 132 ms wait).</p>
+<p class="verdict"><b>frontend CPU 1 → 0.05</b> — fail · confidence low. It saves $23/month; it would have caused 18 minutes out of SLO, the longest new incident starting Oct 7 at 16:28 UTC (frontend at 71% of capacity (3.9 req/s on 1 × 5.5 req/s), 132 ms wait).</p>
 <p>The check fails, as it should. Under the verdict the comment lists $/month with its basis (your bill, or list prices), the minutes out of SLO and failed requests with their 10–90% bands, the worst moment, why the confidence is what it is, a table of as built against the change, and the model's accuracy record.</p>
 <p>A hand-written workflow doing the same with the CLI, and a script that assembles a demo repository, are in <code>examples/backtest-ci</code>.</p>
 </section>

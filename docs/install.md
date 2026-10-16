@@ -16,9 +16,15 @@ run it. No Node or Rust is needed.
 ```sh
 curl -fsSLo hindcast https://github.com/votiakov/hindcast/releases/latest/download/hindcast-aarch64-apple-darwin
 chmod +x hindcast
+./hindcast --version                               # hindcast 1.2.0
 ./hindcast demo                                    # a recorded system built in: no network, no files
 ./hindcast quickstart --prometheus http://localhost:9090 --last 24h
 ```
+
+Every example in these docs, and the "Next:" lines the commands print, call it `hindcast`: move
+it onto your `PATH` (`sudo mv hindcast /usr/local/bin/`, or `~/.local/bin`) or type `./hindcast`.
+On macOS, a binary fetched by a browser rather than `curl` is quarantined; `xattr -d
+com.apple.quarantine hindcast` lets it run.
 
 `hindcast demo` shows the output on the OpenTelemetry Astronomy Shop recorded under load, with
 nothing to download: a capacity review, four strategies backtested, and the accuracy record.

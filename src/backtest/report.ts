@@ -17,7 +17,7 @@ export function headline(s: StrategyResult, base: StrategyResult): string {
     const total = Math.max(w.minutes, s.delta.minutesOutOfSlo.p50);
     const mins = (x: number) => `${Math.max(1, Math.round(x))} minute${Math.max(1, Math.round(x)) === 1 ? '' : 's'}`;
     if (total < w.minutes + 0.5) return `${money}; on ${when(w.start)} it would have caused ${mins(w.minutes)} out of SLO (${w.why})`;
-    return `${money}; it would have caused ${mins(total)} out of SLO, the worst on ${when(w.start)} (${w.why})`;
+    return `${money}; it would have caused ${mins(total)} out of SLO, the longest new incident starting ${when(w.start)} (${w.why})`;
   }
   const ds = s.delta.minutesOutOfSlo.p50;
   if (ds < -0.5) return `${money} and removes ${Math.round(-ds)} minute${Math.round(-ds) === 1 ? '' : 's'} out of SLO from the history`;

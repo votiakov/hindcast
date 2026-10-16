@@ -75,6 +75,10 @@ pub fn main(args: Vec<String>) -> i32 {
 fn run(args: &[String], out: &mut Out) -> Result<i32, String> {
     let cmd = args.first().map(|s| s.as_str()).unwrap_or("");
     let rest = if args.is_empty() { &[][..] } else { &args[1..] };
+    if matches!(cmd, "--version" | "-V" | "version") {
+        out.log(&format!("hindcast {}", mcp::version()));
+        return Ok(0);
+    }
     if cmd == "agent" {
         return agent::command(rest, out);
     }
@@ -110,5 +114,9 @@ fn run(args: &[String], out: &mut Out) -> Result<i32, String> {
         return Ok(code);
     }
     out.log(USAGE);
-    Ok(if cmd.is_empty() { 0 } else { 1 })
+    if !cmd.is_empty() && !matches!(cmd, "help" | "--help" | "-h") {
+        out.err(&format!("unknown command \"{}\": the commands are listed above", cmd));
+        return Ok(1);
+    }
+    Ok(0)
 }

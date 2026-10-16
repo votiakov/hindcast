@@ -126,13 +126,38 @@ pub fn review(mv: &Value, m: &crate::model::Model, dv: &Value, d: &crate::datase
     }
     out.insert("throttled".into(), json!(throttled));
     out.insert("memoryNearLimit".into(), json!(memory));
-    out.insert("fixes".into(), json!(arr(&sug, &["fixes"]).iter().take(5).map(|f| json!({ "name": g(f, &["name"]), "minutesOutOfSloDelta": g(f, &["minutesOutOfSloDelta"]), "failedRequestsDelta": g(f, &["failedRequestsDelta"]), "monthlyDelta": g(f, &["monthlyDelta"]) })).collect::<Vec<_>>()));
+    out.insert("fixes".into(), json!(arr(&sug, &["fixes"]).iter().take(5).map(|f| json!({ "name": g(f, &["name"]), "minutesOutOfSloDelta": g(f, &["minutesOutOfSloDelta"]), "failedRequestsDelta": g(f, &["failedRequestsDelta"]), "monthlyDelta": g(f, &["monthlyDelta"]), "verdict": g(f, &["verdict"]), "confidence": g(f, &["confidence"]) })).collect::<Vec<_>>()));
     out.insert("savings".into(), json!(arr(&sug, &["savings"]).iter().take(8).map(|x| json!({ "name": g(x, &["name"]), "monthlyDelta": g(x, &["monthlyDelta"]), "verdict": g(x, &["verdict"]) })).collect::<Vec<_>>()));
     out.insert("nodePool".into(), pool);
     out.insert("commitment".into(), commitment(&mv, &dv));
     let cs = g(&sug, &["combinedSavings"]);
     out.insert("combinedSavings".into(), if cs.is_null() { Value::Null } else { json!({ "name": g(cs, &["name"]), "monthlyDelta": g(cs, &["monthlyDelta"]), "verdict": g(cs, &["verdict"]) }) });
+    to_replayed_peak(&mut out, d);
     Ok(Review { out, suggested: sug })
+}
+
+/// The history replayed here may be shorter than the one the model was calibrated on (the demo's,
+/// the app's): every ratio is then to the replayed history's busiest moment, the one the busier days
+/// scale and the chart draws, and the calibration history's is said once, in a note under the
+/// history line. Otherwise the headroom reads against one peak and "holds to 2×" against another.
+fn to_replayed_peak(out: &mut JMap<String, Value>, d: &crate::dataset::Dataset) {
+    let open_peak = r1((0..d.n.max(0.0) as usize).map(|i| traffic_at(d, i)).fold(0.0, f64::max));
+    let cal_peak = n(&Value::Object(out.clone()), &["history", "peakRps"]);
+    if open_peak > 0.0 && cal_peak.is_finite() && (cal_peak - open_peak).abs() > 0.02 * cal_peak {
+        let head = n(&Value::Object(out.clone()), &["headroom", "rps"]);
+        let any = !g(&Value::Object(out.clone()), &["headroom", "atAnyLoad"]).is_null();
+        if let Some(h) = out.get_mut("history") {
+            h["peakRps"] = num(open_peak);
+        }
+        if let Some(h) = out.get_mut("headroom") {
+            h["overPeak"] = num(js_round((head / open_peak) * 100.0) / 100.0);
+        }
+        let mut said = format!("The model was calibrated on a longer history, whose busiest moment was {} req/s; this one peaks at {} req/s, and every ratio here is to {}.", js_num(cal_peak), js_num(open_peak), js_num(open_peak));
+        if !any && head < cal_peak {
+            said.push_str(&format!(" The headroom, {} req/s, is below the {} req/s the model was calibrated on: that busiest moment was past what the system serves within SLO.", js_num(head), js_num(cal_peak)));
+        }
+        out.insert("calibrated".into(), json!({ "peakRps": num(cal_peak), "said": said }));
+    }
 }
 
 pub fn review_markdown(r: &Value) -> String {
@@ -143,6 +168,10 @@ pub fn review_markdown(r: &Value) -> String {
         format!("History {} – {} UTC, busiest moment {} req/s. SLO: p99 ≤ {} ms, errors ≤ {}%.", when(&s(r, &["history", "from"])), when(&s(r, &["history", "to"])), js_num(n(r, &["history", "peakRps"])), js_num(n(r, &["slo", "p99Ms"])), js_to_fixed(n(r, &["slo", "errorRate"]) * 100.0, 1)),
         String::new(),
     ];
+    if let Some(said) = g(r, &["calibrated", "said"]).as_str() {
+        l.push(said.to_string());
+        l.push(String::new());
+    }
     if !g(r, &["today"]).is_null() {
         l.push("## Summary".into());
         l.push(String::new());
@@ -272,6 +301,13 @@ pub fn review_markdown(r: &Value) -> String {
         if !auto && n(p, &["wouldFit"]) < nodes {
             l.push(String::new());
             l.push(format!("Request cuts save nothing on a fixed pool. {} nodes would hold the busiest moment's requests with one node to spare, about ${}/month less — check it with node loss before shrinking.", js_num(n(p, &["wouldFit"])), js_locale((nodes - n(p, &["wouldFit"])) * n(p, &["monthlyPerNode"]))));
+        } else if !auto && n(p, &["wouldFit"]) == nodes {
+            // a low fill reads as over-provisioned; say why the pool still can't shrink
+            l.push(String::new());
+            l.push(format!("It can't shrink: {} nodes is the fewest that hold the busiest moment's requests with one node to spare for losing one.", js_num(nodes)));
+        } else if !auto {
+            l.push(String::new());
+            l.push(format!("It has no node to spare: {} nodes would hold the busiest moment's requests with one to spare for losing one.", js_num(n(p, &["wouldFit"]))));
         }
         l.push(String::new());
     }
@@ -536,13 +572,30 @@ fn summary_lines(r: &Value, app: bool) -> Vec<String> {
     }
     if let Some(sv) = arr(r, &["savings"]).first() {
         cost.push_str(&format!("; the best saving that passes: {} ({})", s(sv, &["name"]), usd_signed(n(sv, &["monthlyDelta"]))));
+        // over-provisioned by how much: every saving that passes, applied at once and backtested again
+        let cs = g(r, &["combinedSavings"]);
+        if !cs.is_null() && s(cs, &["verdict"]) == "pass" && (n(cs, &["monthlyDelta"]) - n(sv, &["monthlyDelta"])).abs() >= 1.0 {
+            cost.push_str(&format!("; all of them together pass too ({})", usd_signed(n(cs, &["monthlyDelta"]))));
+        }
     }
     l.push(format!("- **Cost:** {}.", cost));
     let risky = !g(today, &["holds"]).as_bool().unwrap_or(true) || first_fail.is_some() || node_fails;
     let fix = arr(r, &["fixes"]).first().cloned();
     let node_fix = g(nl, &["fix"]);
+    // a fix whose own backtest isn't a confident pass is said with that, where the decision is read
+    let caveat = match &fix {
+        Some(f) if risky => {
+            let (v, c) = (s(f, &["verdict"]), s(f, &["confidence"]));
+            if (!v.is_empty() && v != "pass") || c == "low" {
+                format!(" Its own backtest is {}{}: load-test it before relying on it.", if v.is_empty() { "unproven".to_string() } else { v }, if c.is_empty() { String::new() } else { format!(" at {} confidence", c) })
+            } else {
+                String::new()
+            }
+        }
+        _ => String::new(),
+    };
     let one = match (risky, fix, arr(r, &["savings"]).first()) {
-        (true, Some(f), _) => format!("{} — {}, {}.", s(f, &["name"]), gain(f), cost_word(n(f, &["monthlyDelta"]), !p.is_null())),
+        (true, Some(f), _) => format!("{} — {}, {}.{}", s(f, &["name"]), gain(f), cost_word(n(f, &["monthlyDelta"]), !p.is_null()), caveat),
         (true, None, _) if !node_fix.is_null() && g(node_fix, &["survives"]).as_bool().unwrap_or(false) => format!(
             "run {} spread over the nodes, so losing one leaves a replica of each — {}.",
             arr(node_fix, &["change", "changes"]).iter().map(|c| format!("{}{}", s(c, &["service"]), if truthy(g(c, &["replicas"])) { format!(" × {}", js_num(n(c, &["replicas"]))) } else { String::new() })).collect::<Vec<_>>().join(", "),
@@ -707,33 +760,10 @@ pub fn for_app(mv: &Value, dv: &Value, draws: f64) -> Result<Value, String> {
         Ok(crate::calibrate::CalibrateOptions { slo: Some(m.slo.clone()), timeout_ms: Some(m.timeout_ms).filter(|t| *t != 0.0), list_prices: Some(json!(true)), ..Default::default() })
     };
     let Review { mut out, suggested } = review(mv, &m, dv, &d, None, draws, &opts)?;
-    // the history open in the app may be shorter than the one the model was calibrated on: every
-    // ratio here is to the open history's busiest moment (the one the chart draws), and the
-    // calibration history's is said once, in a note
-    let open_peak = r1((0..d.n.max(0.0) as usize).map(|i| traffic_at(&d, i)).fold(0.0, f64::max));
-    let cal_peak = n(&Value::Object(out.clone()), &["history", "peakRps"]);
-    if open_peak > 0.0 && cal_peak.is_finite() && (cal_peak - open_peak).abs() > 0.02 * cal_peak {
-        let head = n(&Value::Object(out.clone()), &["headroom", "rps"]);
-        let any = !g(&Value::Object(out.clone()), &["headroom", "atAnyLoad"]).is_null();
-        if let Some(h) = out.get_mut("history") {
-            h["peakRps"] = num(open_peak);
-        }
-        if let Some(h) = out.get_mut("headroom") {
-            h["overPeak"] = num(js_round((head / open_peak) * 100.0) / 100.0);
-        }
-        let mut said = format!("The model was calibrated on a longer history, whose busiest moment was {} req/s; this one peaks at {} req/s, and every ratio here is to {}.", js_num(cal_peak), js_num(open_peak), js_num(open_peak));
-        if !any && head < cal_peak {
-            said.push_str(&format!(" The headroom, {} req/s, is below the {} req/s the model was calibrated on: that busiest moment was past what the system serves within SLO.", js_num(head), js_num(cal_peak)));
-        }
-        out.insert("calibrated".into(), json!({ "peakRps": num(cal_peak), "said": said }));
-    }
-    let mut md = review_markdown(&Value::Object(out.clone()));
-    if let Some(said) = out.get("calibrated").map(|c| s(c, &["said"])) {
-        // after the history line
-        if let Some(at) = md.find("\n\n").and_then(|a| md[a + 2..].find("\n\n").map(|b| a + 2 + b + 2)) {
-            md.insert_str(at, &format!("{}\n\n", said));
-        }
-    }
+    // copied out of the app and passed on to people, not agents: the next step in their words
+    let md = review_markdown(&Value::Object(out.clone()))
+        .replace(" Run `verify_change` on it before it ships.", " Backtest it before it ships: Hindcast's Backtest tab (+ test a change), or `hindcast verify-change` in CI.")
+        .replace("`verify_change` the one you ship for its full evidence.", "backtest the change you ship for its full evidence.");
     let r = Value::Object(out.clone());
     out.insert("summary".into(), json!(summary(&r)));
     // each fix and saving with its change and how far its verdict can be trusted

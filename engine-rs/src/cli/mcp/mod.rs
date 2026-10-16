@@ -18,6 +18,11 @@ fn manifest() -> Value {
     serde_json::from_str(include_str!("manifest.json")).unwrap_or(Value::Null)
 }
 
+/// the release this binary is, as the MCP server reports it (serverInfo.version)
+pub fn version() -> String {
+    manifest().get("initialize").and_then(|i| i.get("serverInfo")).and_then(|s| s.get("version")).and_then(|v| v.as_str()).unwrap_or("unknown").to_string()
+}
+
 fn app_url() -> String {
     std::env::var("HINDCAST_APP_URL").or_else(|_| std::env::var("BOTTLENECK_APP_URL")).unwrap_or_else(|_| "http://localhost:5173".into())
 }

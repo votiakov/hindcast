@@ -13,10 +13,22 @@ Two ways to run it:
 - **The CLI in any CI system**: `hindcast verify-change` (see [the command](#the-command)), or the
   older `diff-strategy` + `backtest --gate` pair in [examples/backtest-ci](../examples/backtest-ci).
 
-What the repository needs either way: a calibrated model and a recorded history, e.g.
-`.hindcast/model.json` (`hindcast calibrate`) and `.hindcast/dataset.json` (`hindcast import`).
-Refresh them on a schedule from a runner that can reach your Prometheus; the pull-request check
-itself needs nothing but the repository.
+What the repository needs either way: a calibrated model and a recorded history. If you ran
+`hindcast quickstart` in the repository, they are already there: `.hindcast/model.json` and
+`.hindcast/dataset.json` (from files, `hindcast import` and `hindcast calibrate` write the same
+two). Commit those two files and leave the rest of `.hindcast/` (raw telemetry, reports)
+ignored:
+
+```gitignore
+.hindcast/*
+!.hindcast/model.json
+!.hindcast/dataset.json
+```
+
+They hold service names, endpoint paths and request rates, nothing more; if even that is
+sensitive, fetch them in the job instead of committing them. Refresh them on a schedule from a
+runner that can reach your Prometheus (`hindcast quickstart --prometheus … --last 7d`, then commit
+the two files); the pull-request check itself needs nothing but the repository.
 
 ## GitHub Action
 
@@ -148,7 +160,7 @@ to 50 millicores (`test/cli-fixtures/hotrod-frontend-50m.yaml`), as the action w
 
 **frontend CPU 1 → 0.05** — **fail** · confidence **low**
 
-It saves $23/month; it would have caused 18 minutes out of SLO, the worst on Oct 7 at 16:28 UTC (frontend at 71% of capacity (3.9 req/s on 1 × 5.5 req/s), 132 ms wait).
+It saves $23/month; it would have caused 18 minutes out of SLO, the longest new incident starting Oct 7 at 16:28 UTC (frontend at 71% of capacity (3.9 req/s on 1 × 5.5 req/s), 132 ms wait).
 
 - **$ / month:** −$23.03/month (your bill)
 - **minutes out of SLO:** +18 min (+14 min … +19.5 min), 32 min in all with the change
@@ -235,6 +247,12 @@ HINDCAST_BIN=engine-rs/target/release/hindcast INPUT_MODEL=reference/hotrod/mode
 INPUT_DATASET=reference/hotrod/dataset.json INPUT_MANIFESTS=test/cli-fixtures/hotrod-frontend-50m.yaml \
 INPUT_BASE_MANIFESTS=examples/backtest-ci/deploy bash action/verify.sh
 ```
+
+It prints the verdict, writes the comment, the JSON result and the reports to a temporary
+directory, and ends on `gate: failed` or `gate: passed`: what the action's last step would make
+of it. The script itself exits 0 on any verdict (in a workflow, that last step fails the job).
+Swap in your own `.hindcast/model.json`, `.hindcast/dataset.json` and manifests to try it on
+your system before adding the workflow.
 
 ## The command
 

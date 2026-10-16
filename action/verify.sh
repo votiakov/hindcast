@@ -127,3 +127,11 @@ fi
 } >> "$github_output"
 cat "$out/comment.md" >> "$step_summary"
 say "comment: $out/comment.md"
+# run by hand, outside a workflow: say what the action's last step would make of it
+if [ -z "${GITHUB_ACTIONS:-}" ]; then
+  if [ "$code" = 2 ]; then
+    say "gate: failed — in a workflow, the action's last step would fail the check (fail-on: ${INPUT_FAIL_ON:-fail})"
+  else
+    say "gate: passed — in a workflow, the check would pass"
+  fi
+fi

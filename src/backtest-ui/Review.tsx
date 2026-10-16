@@ -396,6 +396,16 @@ function Commit({ r }: { r: CapacityReview }) {
               <i>would fit on</i> {p.wouldFit} nodes with one to spare, about {usd((p.nodes - p.wouldFit) * p.monthlyPerNode)}/month less — check node loss before shrinking
             </span>
           )}
+          {!p.autoscaled && p.wouldFit === p.nodes && (
+            <span>
+              <i>can't shrink</i> {p.nodes} nodes is the fewest that hold the busiest moment's requests with one to spare for losing one
+            </span>
+          )}
+          {!p.autoscaled && p.wouldFit > p.nodes && (
+            <span>
+              <i>no node to spare</i> {p.wouldFit} nodes would hold the busiest moment's requests with one to spare for losing one
+            </span>
+          )}
         </div>
       )}
     </>

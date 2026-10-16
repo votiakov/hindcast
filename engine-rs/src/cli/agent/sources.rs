@@ -215,6 +215,10 @@ pub fn probe_prometheus(cfg: &Value, now: f64) -> Result<Value, String> {
             warnings.push(format!("{} shows no requests in the last 30 days", m));
         }
     }
+    // Kubernetes container metrics carry no Compose label: the kubernetes preset reads them, so it is no problem
+    if presets.iter().any(|p| p == "kubernetes") {
+        warnings.retain(|w| !w.ends_with("the cadvisor preset can't name services"));
+    }
     out.insert("ok".into(), json!(ok));
     out.insert("presets".into(), json!(presets));
     out.insert("nearMisses".into(), json!(near));
