@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { LESSONS } from '../src/lessons';
-import { playLesson } from '../src/lessons/verify';
+import { MARGIN, playLesson, playLevel, playLevelDes, referenceBoard } from '../src/lessons/verify';
+import { applyChangesToGraph } from '../src/spec/convert';
+import type { ChangeSpec } from '../src/spec/schema';
 
 /**
  * Every level can be won, and every level with a reference solution is a real challenge: the design
@@ -23,4 +25,46 @@ describe('lessons', () => {
         expect(step.takeaway, `${r.step} needs a takeaway`).toBeTruthy();
       });
     }, 60_000);
+});
+
+/**
+ * The tracer lesson is read off the discrete-event engine (the one "trace" runs), so its levels must
+ * fail and pass there too, not only on the fluid engine the lesson loop plays.
+ */
+describe('Follow One Request: both engines', () => {
+  const lesson = LESSONS.find((l) => l.id === 'deadlines')!;
+  const step = (id: string) => lesson.steps.findIndex((s) => s.id === id);
+  lesson.steps.forEach((s, i) => {
+    it(`${s.id}: fails as given and passes with its fix on the discrete-event engine`, () => {
+      expect(playLevelDes(referenceBoard(lesson, i - 1), s, lesson.readRatio, { trafficScale: MARGIN.fail }).passed).toBe(false);
+      expect(playLevelDes(referenceBoard(lesson, i), s, lesson.readRatio, { trafficScale: MARGIN.pass }).passed).toBe(true);
+    }, 60_000);
+  });
+
+  it('retries: immediate retries turn the stall into an outage on both engines', () => {
+    const i = step('retries');
+    const b = referenceBoard(lesson, i - 1);
+    const immediate = applyChangesToGraph(b.nodes, b.edges, [{ op: 'set', id: 'users', fields: { retries: 2, retryPolicy: 'immediate' } }]);
+    expect(playLevel(immediate, lesson.steps[i], lesson.readRatio).passed).toBe(false);
+    expect(playLevelDes(immediate, lesson.steps[i], lesson.readRatio).passed).toBe(false);
+  }, 60_000);
+
+  it('the timeouts cannot be bought out of: a large database is over budget, a cache barely helps', () => {
+    for (const id of ['deadline', 'aligned']) {
+      const i = step(id);
+      const b = referenceBoard(lesson, i - 1);
+      const large = applyChangesToGraph(b.nodes, b.edges, [{ op: 'set', id: 'db', fields: { tier: 'L' } }]);
+      const cache: ChangeSpec[] = [
+        { op: 'add', component: { id: 'cache', kind: 'cache' } },
+        { op: 'disconnect', from: 'api', to: 'db' },
+        { op: 'connect', from: 'api', to: 'cache' },
+        { op: 'connect', from: 'cache', to: 'db' },
+      ];
+      const cached = applyChangesToGraph(b.nodes, b.edges, cache);
+      for (const [what, board] of [['large db', large], ['cache', cached]] as const) {
+        expect(playLevel(board, lesson.steps[i], lesson.readRatio).passed, `${id}: ${what}`).toBe(false);
+        expect(playLevelDes(board, lesson.steps[i], lesson.readRatio).passed, `${id}: ${what} (discrete-event)`).toBe(false);
+      }
+    }
+  }, 60_000);
 });
