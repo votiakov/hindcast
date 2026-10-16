@@ -128,7 +128,7 @@ function Pane({ b }: { b: BoardId }) {
     <div className={`pane ${focused ? 'focused' : ''}`}>
       <ReactFlowProvider>
         <PaneHeader b={b} />
-        <BoardCanvas id={b} minimap={false} padding={{ top: '80px', left: b === 'A' ? '90px' : '40px', right: '40px', bottom: '150px' }} />
+        <BoardCanvas id={b} minimap={false} legible padding={{ top: '80px', left: b === 'A' ? '90px' : '40px', right: '40px', bottom: '150px' }} />
       </ReactFlowProvider>
     </div>
   );

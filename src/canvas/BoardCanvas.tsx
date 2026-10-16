@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { Background, BackgroundVariant, MiniMap, NodeToolbar, Panel, Position, ReactFlow, useReactFlow, type NodeTypes, type EdgeTypes, type XYPosition } from '@xyflow/react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Background, BackgroundVariant, MiniMap, NodeToolbar, Panel, Position, ReactFlow, useReactFlow, useStore, type NodeTypes, type EdgeTypes, type XYPosition } from '@xyflow/react';
 import { SquareDashed } from 'lucide-react';
 import { insertTarget, useSim, type BoardId } from '../sim/store';
 import { KINDS, isSystem, isUp, type AppNode, type Kind, type SystemNodeData } from '../sim/catalog';
@@ -34,9 +34,14 @@ interface Props {
   fitDuration?: number;
   /** overlays rendered inside the flow (e.g. ViewportPortal annotations) */
   children?: React.ReactNode;
+  /** a small pane (Compare): when the fit shrinks the cards past reading, they show less in bigger type */
+  legible?: boolean;
 }
 
-export function BoardCanvas({ id, padding, minimap = true, interactive = true, fitDuration = 400, children }: Props) {
+/** below this zoom a card's 10–13 px text drops under 10 px on screen */
+const LEGIBLE_ZOOM = 0.85;
+
+export function BoardCanvas({ id, padding, minimap = true, interactive = true, fitDuration = 400, children, legible = false }: Props) {
   const stored = useSim((s) => s.boards[id].nodes);
   // sections are drawn around their members as they are now
   const nodes = useMemo(() => fitSections(stored), [stored]);
@@ -48,6 +53,10 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
   const zoneDrag = useRef<{ start: XYPosition; members: Record<string, XYPosition> } | null>(null);
 
   const camera = useSim((s) => (s.mode === 'studio' ? s.studio.camera[id] : null));
+  // rounded so the cards re-render on a step of the zoom, not on every frame of a pinch
+  const zoom = useStore((s) => Math.round(s.transform[2] * 100) / 100);
+  const compact = legible && zoom < LEGIBLE_ZOOM;
+  const mapAt = useMinimapSpot(id, wrapper, minimap);
 
   useEffect(() => {
     const t = setTimeout(() => fitView({ padding, duration: fitDuration, maxZoom: 1.1 }), 60);
@@ -154,7 +163,7 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
   return (
     <BoardContext.Provider value={id}>
       <RefMarkers />
-      <div ref={wrapper} className="board-canvas" onDragOver={(e) => e.preventDefault()} onDrop={onDrop} onPointerDown={() => setFocus(id)}>
+      <div ref={wrapper} className={`board-canvas ${compact ? 'legible' : ''}`} style={compact ? ({ '--z': zoom } as React.CSSProperties) : undefined} onDragOver={(e) => e.preventDefault()} onDrop={onDrop} onPointerDown={() => setFocus(id)}>
         <ReactFlow<AppNode>
           nodes={nodes}
           edges={edges}
@@ -186,8 +195,9 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
           {children}
           {minimap && <ReplicaToggle id={id} />}
           {interactive && <GroupBar id={id} />}
-          {minimap && (
+          {minimap && mapAt && (
             <MiniMap
+              position={mapAt}
               pannable
               zoomable
               className="minimap"
@@ -208,6 +218,35 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
       </div>
     </BoardContext.Provider>
   );
+}
+
+type Spot = 'bottom-right' | 'top-right';
+const hits = (a: DOMRect | undefined, b: DOMRect) => !!a && !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom);
+
+/**
+ * Where the minimap goes: bottom right, unless the card open for editing reaches under it; then top
+ * right, and if the card reaches there too, nowhere until it is closed or moved
+ */
+function useMinimapSpot(id: BoardId, wrapper: React.RefObject<HTMLDivElement | null>, on: boolean): Spot | null {
+  const [spot, setSpot] = useState<Spot | null>('bottom-right');
+  const seen = useRef<Partial<Record<Spot, DOMRect>>>({});
+  const open = useSim((s) => s.boards[id].nodes.find((n) => n.type === 'system' && n.selected)?.id ?? '');
+  const nodes = useSim((s) => s.boards[id].nodes);
+  const view = useStore((s) => s.transform.join(','));
+  useEffect(() => {
+    if (!on) return;
+    const raf = requestAnimationFrame(() => {
+      const root = wrapper.current;
+      if (!root) return;
+      const map = root.querySelector('.react-flow__minimap');
+      if (map && spot) seen.current[spot] = map.getBoundingClientRect();
+      const card = open ? root.querySelector('.ref-node.open')?.getBoundingClientRect() : undefined;
+      const next: Spot | null = !card || !hits(seen.current['bottom-right'], card) ? 'bottom-right' : !seen.current['top-right'] || !hits(seen.current['top-right'], card) ? 'top-right' : null;
+      if (next !== spot) setSpot(next);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [on, open, nodes, view, spot, wrapper]);
+  return spot;
 }
 
 /** two or more components selected (box-select, shift-click): group them as a section */

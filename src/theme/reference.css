@@ -391,3 +391,19 @@
 /* an open card is wider, and sits above its neighbours */
 .ref-node.open { width: 300px; }
 .react-flow__node.selected { z-index: 10 !important; }
+
+/* a Compare pane fits a whole board, which shrinks its cards past reading: below 0.85 zoom a card shows
+   its kind and size, name, status, the readings that are bad and its meter, each at 11 px or more on
+   screen (--z is the zoom), and leaves the rest to a closer look */
+[data-theme] .board-canvas.legible .ref-node .ref-glyph, [data-theme] .board-canvas.legible .ref-node .ref-sku, [data-theme] .board-canvas.legible .ref-node .ref-tags, [data-theme] .board-canvas.legible .ref-node .ref-note, [data-theme] .board-canvas.legible .ref-node .ref-fleet, [data-theme] .board-canvas.legible .ref-node .tr-mark, [data-theme] .board-canvas.legible .ref-node .ref-kind span,
+[data-theme] .board-canvas.legible .ref-node .ref-rows > div:not(.bad), [data-theme] .board-canvas.legible .ref-node .ref-rows:not(:has(.bad)) { display: none; }
+[data-theme] .board-canvas.legible .ref-node .ref-head { flex-direction: column; align-items: flex-start; gap: calc(3px / var(--z)); padding: calc(5px / var(--z)) 10px calc(6px / var(--z)); }
+[data-theme] .board-canvas.legible .ref-node .ref-titles { width: 100%; }
+[data-theme] .board-canvas.legible .ref-node .ref-kind { font-size: calc(11px / var(--z)); letter-spacing: 0.2px; }
+[data-theme] .board-canvas.legible .ref-node .ref-name { font-size: calc(13px / var(--z)); }
+[data-theme] .board-canvas.legible .ref-node .ref-mult { font-size: calc(11px / var(--z)); }
+[data-theme] .board-canvas.legible .ref-node .ref-status { font-size: calc(11px / var(--z)); padding: 0 calc(5px / var(--z)); }
+[data-theme] .board-canvas.legible .ref-node .ref-rows dt, [data-theme] .board-canvas.legible .ref-node .ref-rows dd { font-size: calc(11px / var(--z)); }
+[data-theme] .board-canvas.legible .ref-node .ref-scale-head, [data-theme] .board-canvas.legible .ref-node .ref-instances em { font-size: calc(11px / var(--z)); }
+[data-theme] .board-canvas.legible .ref-node .ref-scale-track { height: calc(4px / var(--z)); }
+[data-theme] .board-canvas.legible .ref-node .ref-instances span { width: calc(6px / var(--z)); height: calc(6px / var(--z)); }

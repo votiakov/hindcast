@@ -1,5 +1,5 @@
 import { Handle, Position } from '@xyflow/react';
-import { KINDS, type SystemNodeData } from '../../sim/catalog';
+import { KINDS, TIERS, capacityOf, costOf, type SystemNodeData } from '../../sim/catalog';
 import type { NodeStats } from '../../sim/engine';
 import { KIND_ICONS } from '../../canvas/icons';
 import { explain, healthOf, type NodeView } from '../../canvas/nodeModel';
@@ -12,6 +12,15 @@ const STATUS: Record<NodeView['health'], string> = {
   hot: 'Overloaded',
   down: 'Down',
 };
+
+const perSecond = (n: number) => (n >= 10000 ? `${Math.round(n / 1000)}k` : n >= 1000 ? `${+(n / 1000).toFixed(1)}k` : `${+n.toFixed(n < 10 ? 1 : 0)}`);
+
+/** what the size on a card means: one instance's capacity and price at this size, and the other sizes */
+export function sizeTip(d: SystemNodeData): string {
+  const one = { ...d, instances: 1, down: 0, alive: true, degraded: undefined };
+  const t = TIERS[d.tier];
+  return `Size ${d.tier} (${t.label}): ${perSecond(capacityOf(one, 1))} req/s and $${costOf(one).toFixed(2)}/h per instance. M has ×${TIERS.M.capacity} the capacity of S for ×${TIERS.M.cost} the cost, L ×${TIERS.L.capacity} for ×${TIERS.L.cost}. Change it in the card (select it).`;
+}
 
 /** above this many instances the fleet folds back into pips */
 const FLEET_MAX = 12;
@@ -97,9 +106,16 @@ export function RefNode({ data, st, v, selected, showCost, running, motion = fal
           <Icon size={13} strokeWidth={1.9} />
         </span>
         <div className="ref-titles">
-          <div className="ref-kind">
+          <div className="ref-kind" title={spec.tiered ? sizeTip(data) : undefined}>
             {spec.label}
-            {spec.tiered && <span> · {data.tier}</span>}
+            {spec.tiered && (
+              <span>
+                {' · '}
+                <abbr className="term">
+                  {data.tier}
+                </abbr>
+              </span>
+            )}
           </div>
           <div className="ref-name">
             {data.name}

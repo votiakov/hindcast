@@ -384,6 +384,8 @@ select { background: #0a1122; color: var(--text); border: 1px solid var(--border
 
 /* minimap */
 .minimap.react-flow__minimap { background: rgba(10, 16, 32, 0.9); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; bottom: 70px; }
+/* moved out of the way of a card opened in its corner (BoardCanvas) */
+.minimap.react-flow__minimap.top { top: 4px; bottom: auto; }
 .react-flow__minimap-mask { fill: rgba(2, 6, 23, 0.6); }
 
 /* ---------- layout additions ---------- */
@@ -760,7 +762,7 @@ select { background: #0a1122; color: var(--text); border: 1px solid var(--border
 .app:has(.spec.panel, .audit.panel, .analysis.panel, .lesson.panel) .react-flow__minimap { display: none; }
 /* the sandbox's run timeline makes the control bar taller: the palette and minimap stay clear of it */
 .app:has(.controlbar .tl) .palette { max-height: calc(100% - 180px); }
-.app:has(.controlbar .tl) .minimap.react-flow__minimap { bottom: 128px; }
+.app:has(.controlbar .tl) .minimap.react-flow__minimap.bottom { bottom: 128px; }
 
 /* drawing the board as an image: the floating panels stay out of it */
 .board-canvas.exporting .react-flow__minimap,
