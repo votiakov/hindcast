@@ -235,6 +235,9 @@ pub struct Architecture {
     /// being down (from, to) → s; infinite: "until-restart", until the caller itself restarts
     pub reconnect: std::collections::HashMap<(String, String), f64>,
     pub zones: Vec<(String, Option<String>, Vec<String>)>,
+    /// sections on the board: a labelled frame around components, for reading the design (label,
+    /// members); kept for the app and the Mermaid export, ignored by the engines
+    pub sections: Vec<(String, Vec<String>)>,
 }
 
 fn connection_of(c: &Value) -> Option<(String, String, Option<f64>)> {
@@ -545,6 +548,46 @@ pub fn check_architecture(v: &Value) -> (Option<Architecture>, Vec<Issue>) {
         }
         x => issues.push(type_issue(vec![json!("zones")], "array", x)),
     }
+    let mut sections = vec![];
+    match o.get("sections") {
+        None => {}
+        Some(Value::Array(a)) => {
+            for (i, z) in a.iter().enumerate() {
+                let base = vec![json!("sections"), json!(i)];
+                let at = |k: &[Value]| {
+                    let mut p = base.clone();
+                    p.extend_from_slice(k);
+                    p
+                };
+                let so = match z {
+                    Value::Object(so) => so,
+                    x => {
+                        issues.push(type_issue(base.clone(), "object", Some(x)));
+                        continue;
+                    }
+                };
+                let before = issues.len();
+                if !matches!(so.get("label"), Some(Value::String(_))) {
+                    issues.push(type_issue(at(&[json!("label")]), "string", so.get("label")));
+                }
+                match so.get("members") {
+                    Some(Value::Array(m)) => {
+                        for (j, x) in m.iter().enumerate() {
+                            if !x.is_string() {
+                                issues.push(type_issue(at(&[json!("members"), json!(j)]), "string", Some(x)));
+                            }
+                        }
+                    }
+                    x => issues.push(type_issue(at(&[json!("members")]), "array", x)),
+                }
+                if issues.len() == before {
+                    let m: Vec<String> = so["members"].as_array().unwrap().iter().map(|x| x.as_str().unwrap().to_string()).collect();
+                    sections.push((so["label"].as_str().unwrap().to_string(), m));
+                }
+            }
+        }
+        x => issues.push(type_issue(vec![json!("sections")], "array", x)),
+    }
     if !issues.is_empty() {
         return (None, issues);
     }
@@ -562,6 +605,7 @@ pub fn check_architecture(v: &Value) -> (Option<Architecture>, Vec<Issue>) {
         sync,
         reconnect,
         zones,
+        sections,
     }), issues)
 }
 
@@ -657,6 +701,9 @@ pub fn to_value(a: &Architecture) -> Value {
     if !a.zones.is_empty() {
         o.insert("zones".into(), Value::Array(a.zones.iter().map(|(id, label, m)| { let mut z = json!({ "id": id, "members": m }); if let Some(l) = label { z["label"] = json!(l); } z }).collect()));
     }
+    if !a.sections.is_empty() {
+        o.insert("sections".into(), Value::Array(a.sections.iter().map(|(label, m)| json!({ "label": label, "members": m })).collect()));
+    }
     Value::Object(o)
 }
 
@@ -707,6 +754,9 @@ pub fn apply_variant(base: &Architecture, v: &Value) -> Result<Architecture, Str
                 a.reconnect.retain(|(f, t), _| *f != id && *t != id);
                 for z in a.zones.iter_mut() {
                     z.2.retain(|m| *m != id);
+                }
+                for x in a.sections.iter_mut() {
+                    x.1.retain(|m| *m != id);
                 }
             }
             "connect" => {

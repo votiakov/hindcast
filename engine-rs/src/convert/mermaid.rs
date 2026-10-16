@@ -1,6 +1,6 @@
 //! An architecture spec → a Mermaid flowchart, for a README, a design doc or a pull request: one
 //! node per component (shaped by what it is), one arrow per connection with what the link carries,
-//! zones as subgraphs. Text only; nothing is simulated.
+//! zones and sections as subgraphs. Text only; nothing is simulated.
 
 use crate::sim::spec::{check_architecture, issues_message, Architecture};
 use serde_json::Value;
@@ -124,18 +124,58 @@ pub fn to_mermaid(arch: &Architecture) -> String {
         node_line.insert(id.clone(), line);
         order.push(id);
     }
-    // zones as subgraphs, their members inside; the rest at the top level
+    // sections (labelled frames, for reading) and zones (failure domains) as subgraphs, their members
+    // inside; the rest at the top level. A node keeps to one subgraph: a zone wholly inside a section
+    // is drawn inside it, and a node in a zone that reaches outside the section stays in its zone
     let mut placed = std::collections::HashSet::new();
-    for (zid, zlabel, members) in &arch.zones {
-        let sid = node_id(&format!("zone {}", zid), &mut taken, &mut used);
-        out.push_str(&format!("  subgraph {}[\"{}\"]\n", sid, esc(zlabel.as_deref().unwrap_or(zid))));
+    let in_zone: std::collections::HashSet<&String> = arch.zones.iter().flat_map(|z| z.2.iter()).filter(|m| node_line.contains_key(*m)).collect();
+    let nested: Vec<Option<usize>> = arch
+        .zones
+        .iter()
+        .map(|(_, _, members)| {
+            let real: Vec<&String> = members.iter().filter(|m| node_line.contains_key(*m)).collect();
+            if real.is_empty() {
+                return None;
+            }
+            arch.sections.iter().position(|(_, sm)| real.iter().all(|m| sm.contains(m)))
+        })
+        .collect();
+    let zone_block = |out: &mut String, zi: usize, indent: &str, taken: &mut HashMap<String, String>, used: &mut std::collections::HashSet<String>, placed: &mut std::collections::HashSet<String>| {
+        let (zid, zlabel, members) = &arch.zones[zi];
+        let sid = node_id(&format!("zone {}", zid), taken, used);
+        out.push_str(&format!("{}subgraph {}[\"{}\"]\n", indent, sid, esc(zlabel.as_deref().unwrap_or(zid))));
         for m in members {
             if let Some(l) = node_line.get(m).filter(|_| !placed.contains(m)) {
-                out.push_str(&format!("    {}\n", l));
+                out.push_str(&format!("{}  {}\n", indent, l));
                 placed.insert(m.clone());
             }
         }
+        out.push_str(&format!("{}end\n", indent));
+    };
+    let mut dotted = vec![];
+    for (si, (label, members)) in arch.sections.iter().enumerate() {
+        let zones_here: Vec<usize> = (0..arch.zones.len()).filter(|zi| nested[*zi] == Some(si)).collect();
+        let own: Vec<&String> = members.iter().filter(|m| node_line.contains_key(*m) && !placed.contains(*m) && !in_zone.contains(m)).collect();
+        if zones_here.is_empty() && own.is_empty() {
+            continue;
+        }
+        let sid = node_id(&format!("section {}", label), &mut taken, &mut used);
+        out.push_str(&format!("  subgraph {}[\"{}\"]\n", sid, esc(label)));
+        for zi in zones_here {
+            zone_block(&mut out, zi, "    ", &mut taken, &mut used, &mut placed);
+        }
+        for m in own {
+            if placed.insert(m.clone()) {
+                out.push_str(&format!("    {}\n", node_line[m]));
+            }
+        }
         out.push_str("  end\n");
+        dotted.push(sid);
+    }
+    for zi in 0..arch.zones.len() {
+        if nested[zi].is_none() {
+            zone_block(&mut out, zi, "  ", &mut taken, &mut used, &mut placed);
+        }
     }
     for id in &order {
         if !placed.contains(id) {
@@ -163,6 +203,10 @@ pub fn to_mermaid(arch: &Architecture) -> String {
         } else {
             out.push_str(&format!("  {} -->|\"{}\"| {}\n", a, esc(&words.join(" · ")), b));
         }
+    }
+    // a section is drawn dotted, as on the board: it groups for reading, it is not a failure domain
+    for sid in dotted {
+        out.push_str(&format!("  style {} stroke-dasharray: 4 4\n", sid));
     }
     out
 }
@@ -213,6 +257,51 @@ mod tests {
   api --> jobs
 ";
         assert_eq!(m, want, "\n{}", m);
+    }
+
+    #[test]
+    fn sections_are_dotted_subgraphs_and_zones_keep_their_own() {
+        let spec = json!({
+            "components": [
+                { "id": "users", "kind": "client" },
+                { "id": "lb", "kind": "lb" },
+                { "id": "api", "kind": "server" },
+                { "id": "db", "kind": "db" },
+                { "id": "cache", "kind": "cache" },
+                { "id": "worker", "kind": "worker" }
+            ],
+            "connections": ["users -> lb", "lb -> api", "api -> db", "api -> cache", "api -> worker"],
+            "zones": [{ "id": "a", "label": "us-east-1a", "members": ["cache", "worker"] }, { "id": "b", "label": "us-east-1b", "members": ["db"] }],
+            "sections": [{ "label": "checkout path", "members": ["lb", "api", "db"] }, { "label": "empty", "members": ["gone"] }]
+        });
+        let m = spec_to_mermaid(&spec).unwrap();
+        let want = "flowchart LR
+  subgraph section_checkout_path[\"checkout path\"]
+    subgraph zone_b[\"us-east-1b\"]
+      db[(\"db<br/>Database\")]
+    end
+    lb{{\"lb<br/>Load Balancer\"}}
+    api[\"api<br/>API Server\"]
+  end
+  subgraph zone_a[\"us-east-1a\"]
+    cache((\"cache<br/>Cache\"))
+    worker[\"worker<br/>Worker\"]
+  end
+  users([\"users<br/>Users\"])
+  users --> lb
+  lb --> api
+  api --> db
+  api --> cache
+  api --> worker
+  style section_checkout_path stroke-dasharray: 4 4
+";
+        assert_eq!(m, want, "\n{}", m);
+        // a zone reaching outside the section keeps its node: the section takes the rest
+        let mut spec2 = spec.clone();
+        spec2["sections"] = json!([{ "label": "edge", "members": ["lb", "cache"] }]);
+        let m2 = spec_to_mermaid(&spec2).unwrap();
+        assert!(m2.contains("  subgraph section_edge[\"edge\"]\n    lb{{"), "{}", m2);
+        assert!(m2.contains("  subgraph zone_a[\"us-east-1a\"]\n    cache(("), "{}", m2);
     }
 
     #[test]

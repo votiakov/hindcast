@@ -22,6 +22,7 @@ export const simengine_step: (a: number, b: any, c: any, d: number, e: number, f
 export const simengine_snapshot: (a: number, b: any, c: any) => [number, number, number];
 export const simulate: (a: any, b: any, c: any) => [number, number, number];
 export const compareVariants: (a: any, b: any, c: any, d: any) => [number, number, number];
+export const backtestHeadline: (a: any, b: any) => [number, number, number, number];
 export const toMermaid: (a: any) => [number, number, number, number];
 export const breakingPoint: (a: any, b: any) => [number, number, number];
 export const loadCurve: (a: any, b: any) => [number, number, number];

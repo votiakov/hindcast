@@ -63,6 +63,10 @@ export function simulate(spec: any, scenario: any, opts: any): any;
  */
 export function compareVariants(base: any, variants: any, scenario: any, opts: any): any;
 /**
+ * backtestHeadline(strategy, baseline) → the one-sentence verdict a backtest is read by
+ */
+export function backtestHeadline(st: any, base: any): string;
+/**
  * toMermaid(spec) → a Mermaid flowchart of the architecture
  */
 export function toMermaid(spec: any): string;
@@ -208,6 +212,7 @@ export interface InitOutput {
   readonly simengine_snapshot: (a: number, b: any, c: any) => [number, number, number];
   readonly simulate: (a: any, b: any, c: any) => [number, number, number];
   readonly compareVariants: (a: any, b: any, c: any, d: any) => [number, number, number];
+  readonly backtestHeadline: (a: any, b: any) => [number, number, number, number];
   readonly toMermaid: (a: any) => [number, number, number, number];
   readonly breakingPoint: (a: any, b: any) => [number, number, number];
   readonly loadCurve: (a: any, b: any) => [number, number, number];

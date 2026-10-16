@@ -364,6 +364,14 @@ mod wasm {
         Ok(Out { ranked, results: results.into_iter().map(|(name, a, result)| Run { name, spec: crate::sim::spec::to_value(&a), result }).collect() }.serialize(&ser())?)
     }
 
+    /// backtestHeadline(strategy, baseline) → the one-sentence verdict a backtest is read by
+    #[wasm_bindgen(js_name = backtestHeadline)]
+    pub fn backtest_headline(st: JsValue, base: JsValue) -> Result<String, JsValue> {
+        let st: serde_json::Value = from(st)?;
+        let base: serde_json::Value = from(base)?;
+        Ok(crate::review::judge::headline(&st, &base))
+    }
+
     /// toMermaid(spec) → a Mermaid flowchart of the architecture
     #[wasm_bindgen(js_name = toMermaid)]
     pub fn to_mermaid(spec: JsValue) -> Result<String, JsValue> {

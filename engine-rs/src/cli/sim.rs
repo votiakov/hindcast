@@ -517,6 +517,23 @@ pub fn canonical_spec(v: &Value) -> Value {
             .collect();
         s.insert("zones".into(), Value::Array(zones));
     }
+    // sections on the board (a labelled frame around components): kept for the app, ignored by the engines
+    if let Some(Value::Array(ss)) = o.get("sections") {
+        let sections: Vec<Value> = ss
+            .iter()
+            .map(|x| {
+                let x = x.as_object().cloned().unwrap_or_default();
+                let mut n = JMap::new();
+                for k in ["label", "members"] {
+                    if let Some(y) = x.get(k) {
+                        n.insert(k.into(), y.clone());
+                    }
+                }
+                Value::Object(n)
+            })
+            .collect();
+        s.insert("sections".into(), Value::Array(sections));
+    }
     // notes on the board: kept for the app, ignored by the engines
     if let Some(Value::Array(ns)) = o.get("notes") {
         s.insert("notes".into(), Value::Array(ns.clone()));
@@ -699,6 +716,13 @@ pub fn validate(input: &Value) -> Validated {
             }
         }
     }
+    for (label, members) in &arch.sections {
+        for m in members {
+            if !ids.contains_key(m) {
+                out.push(("warning", format!("section \"{}\" lists unknown member \"{}\"", label, m)));
+            }
+        }
+    }
     Validated { ok: !out.iter().any(|i| i.0 == "error"), issues: out, spec: Some(spec) }
 }
 
@@ -713,5 +737,20 @@ mod tests {
         let msgs: Vec<&str> = v.issues.iter().map(|i| i.1.as_str()).collect();
         assert!(msgs.contains(&"external \"pay\" is a third-party API: it answers itself and does not call your components — its link to \"app\" carries no traffic"), "{:?}", msgs);
         assert!(msgs.iter().any(|m| m.starts_with("kv \"kv\" is a data store")), "{:?}", msgs);
+    }
+
+    #[test]
+    fn sections_round_trip_and_an_unknown_member_is_only_a_warning() {
+        let spec = json!({ "components": [{ "id": "users", "kind": "client" }, { "id": "api", "kind": "server" }], "connections": ["users -> api"], "sections": [{ "label": "front", "members": ["users", "api", "gone"] }] });
+        let canon = canonical_spec(&spec);
+        assert_eq!(canon["sections"], json!([{ "label": "front", "members": ["users", "api", "gone"] }]));
+        let (arch, issues) = check_architecture(&spec);
+        assert!(issues.is_empty());
+        assert_eq!(crate::sim::spec::to_value(&arch.unwrap())["sections"], spec["sections"]);
+        let v = validate(&spec);
+        assert!(v.ok);
+        assert!(v.issues.iter().any(|i| i.0 == "warning" && i.1 == "section \"front\" lists unknown member \"gone\""), "{:?}", v.issues);
+        let (_, bad) = check_architecture(&json!({ "components": [{ "id": "users", "kind": "client" }], "connections": [], "sections": [{ "members": [1] }] }));
+        assert_eq!(bad.len(), 2);
     }
 }

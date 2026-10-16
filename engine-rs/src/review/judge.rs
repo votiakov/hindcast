@@ -50,14 +50,41 @@ pub fn headline(st: &Value, base: &Value) -> String {
         return format!("{}; it would have caused {} out of SLO, the longest new incident starting {} ({})", m, mn(total), when(n(w, &["start"])), s(w, &["why"]));
     }
     let ds = n(st, &["delta", "minutesOutOfSlo", "p50"]);
+    let failed = failed_change(st, base);
     if ds < -0.5 {
         let k = js_round(-ds);
-        return format!("{} and removes {} minute{} out of SLO from the history", m, js_num(k), if k == 1.0 { "" } else { "s" });
+        return format!("{} and removes {} minute{} out of SLO from the history{}", m, js_num(k), if k == 1.0 { "" } else { "s" }, failed.map(|f| format!(", with {}", f)).unwrap_or_default());
     }
     if ds > 0.5 {
-        return format!("{} and adds {} minutes out of SLO", m, js_num(js_round(ds)));
+        return format!("{} and adds {} minutes out of SLO{}", m, js_num(js_round(ds)), failed.map(|f| format!(", with {}", f)).unwrap_or_default());
     }
-    format!("{}, with no change in time out of SLO", m)
+    match failed {
+        // the minutes out of SLO can stay put while far fewer (or more) requests fail inside them
+        Some(f) => format!("{}, with no change in time out of SLO but {}", m, f),
+        None => format!("{}, with no change in time out of SLO", m),
+    }
+}
+
+/// a change in failed requests worth a word in the headline: at least 100 and a tenth of what failed
+/// as built, e.g. "12,400 fewer failed requests (38% fewer)"
+fn failed_change(st: &Value, base: &Value) -> Option<String> {
+    let d = js_round(n(st, &["delta", "failedRequests", "p50"]));
+    let was = n(base, &["summary", "failedRequests", "p50"]);
+    if d.abs() < 100.0 || d.abs() < 0.1 * was {
+        return None;
+    }
+    let word = if d < 0.0 { "fewer" } else { "more" };
+    let pct = js_round(d.abs() / was * 100.0);
+    let share = if was < 1.0 {
+        String::new()
+    } else if d < 0.0 && d.abs() >= was - 0.5 {
+        " (all of them)".to_string()
+    } else if d < 0.0 && pct >= 100.0 {
+        " (over 99% fewer)".to_string()
+    } else {
+        format!(" ({}% {})", js_num(pct), word)
+    };
+    Some(format!("{} {} failed requests{}", js_locale(d.abs()), word, share))
 }
 
 /// capacity draws that fit a time budget: one replay of the history timed
@@ -374,3 +401,25 @@ pub fn grpc_calls(mv: &Value) -> Option<Vec<(String, String)>> {
     (!v.is_empty()).then_some(v)
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn st(dm: f64, ds: f64, df: f64) -> Value {
+        json!({ "delta": { "monthly": { "p50": dm }, "minutesOutOfSlo": { "p50": ds }, "failedRequests": { "p50": df } }, "incidents": [] })
+    }
+
+    #[test]
+    fn a_large_change_in_failed_requests_is_in_the_headline() {
+        let base = json!({ "summary": { "failedRequests": { "p50": 32000.0 } }, "incidents": [] });
+        assert_eq!(headline(&st(0.0, 0.0, -12400.0), &base), "costs the same, with no change in time out of SLO but 12,400 fewer failed requests (39% fewer)");
+        assert_eq!(headline(&st(120.0, -3.0, 5000.0), &base), "costs $120/month more and removes 3 minutes out of SLO from the history, with 5,000 more failed requests (16% more)");
+        // small against what failed as built, or a handful: not worth a word
+        assert_eq!(headline(&st(0.0, 0.0, -2000.0), &base), "costs the same, with no change in time out of SLO");
+        assert_eq!(headline(&st(0.0, 0.0, -31990.0), &base), "costs the same, with no change in time out of SLO but 31,990 fewer failed requests (over 99% fewer)");
+        assert_eq!(headline(&st(0.0, 0.0, -32000.0), &base), "costs the same, with no change in time out of SLO but 32,000 fewer failed requests (all of them)");
+        let few = json!({ "summary": { "failedRequests": { "p50": 50.0 } }, "incidents": [] });
+        assert_eq!(headline(&st(0.0, 0.0, -40.0), &few), "costs the same, with no change in time out of SLO");
+    }
+}

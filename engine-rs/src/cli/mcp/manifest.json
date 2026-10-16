@@ -570,6 +570,29 @@
          ]
         }
        },
+       "sections": {
+        "description": "sections on the board: a labelled frame around components, for reading the design (\"checkout path\"); unlike a zone it is not a failure domain, and the engines ignore it",
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "label": {
+           "type": "string"
+          },
+          "members": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           },
+           "description": "component ids inside the frame"
+          }
+         },
+         "required": [
+          "label",
+          "members"
+         ]
+        }
+       },
        "notes": {
         "description": "notes on the board: free text at a position, for explaining the design; the engines ignore them",
         "type": "array",
@@ -1148,6 +1171,29 @@
          },
          "required": [
           "id",
+          "members"
+         ]
+        }
+       },
+       "sections": {
+        "description": "sections on the board: a labelled frame around components, for reading the design (\"checkout path\"); unlike a zone it is not a failure domain, and the engines ignore it",
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "label": {
+           "type": "string"
+          },
+          "members": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           },
+           "description": "component ids inside the frame"
+          }
+         },
+         "required": [
+          "label",
           "members"
          ]
         }
@@ -2182,6 +2228,29 @@
          },
          "required": [
           "id",
+          "members"
+         ]
+        }
+       },
+       "sections": {
+        "description": "sections on the board: a labelled frame around components, for reading the design (\"checkout path\"); unlike a zone it is not a failure domain, and the engines ignore it",
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "label": {
+           "type": "string"
+          },
+          "members": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           },
+           "description": "component ids inside the frame"
+          }
+         },
+         "required": [
+          "label",
           "members"
          ]
         }
@@ -3225,6 +3294,29 @@
          ]
         }
        },
+       "sections": {
+        "description": "sections on the board: a labelled frame around components, for reading the design (\"checkout path\"); unlike a zone it is not a failure domain, and the engines ignore it",
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "label": {
+           "type": "string"
+          },
+          "members": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           },
+           "description": "component ids inside the frame"
+          }
+         },
+         "required": [
+          "label",
+          "members"
+         ]
+        }
+       },
        "notes": {
         "description": "notes on the board: free text at a position, for explaining the design; the engines ignore them",
         "type": "array",
@@ -3792,6 +3884,29 @@
             },
             "required": [
              "id",
+             "members"
+            ]
+           }
+          },
+          "sections": {
+           "description": "sections on the board: a labelled frame around components, for reading the design (\"checkout path\"); unlike a zone it is not a failure domain, and the engines ignore it",
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "label": {
+              "type": "string"
+             },
+             "members": {
+              "type": "array",
+              "items": {
+               "type": "string"
+              },
+              "description": "component ids inside the frame"
+             }
+            },
+            "required": [
+             "label",
              "members"
             ]
            }
@@ -5684,6 +5799,29 @@
          ]
         }
        },
+       "sections": {
+        "description": "sections on the board: a labelled frame around components, for reading the design (\"checkout path\"); unlike a zone it is not a failure domain, and the engines ignore it",
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "label": {
+           "type": "string"
+          },
+          "members": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           },
+           "description": "component ids inside the frame"
+          }
+         },
+         "required": [
+          "label",
+          "members"
+         ]
+        }
+       },
        "notes": {
         "description": "notes on the board: free text at a position, for explaining the design; the engines ignore them",
         "type": "array",
@@ -6278,6 +6416,29 @@
          },
          "required": [
           "id",
+          "members"
+         ]
+        }
+       },
+       "sections": {
+        "description": "sections on the board: a labelled frame around components, for reading the design (\"checkout path\"); unlike a zone it is not a failure domain, and the engines ignore it",
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "label": {
+           "type": "string"
+          },
+          "members": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           },
+           "description": "component ids inside the frame"
+          }
+         },
+         "required": [
+          "label",
           "members"
          ]
         }
@@ -7301,6 +7462,29 @@
          },
          "required": [
           "id",
+          "members"
+         ]
+        }
+       },
+       "sections": {
+        "description": "sections on the board: a labelled frame around components, for reading the design (\"checkout path\"); unlike a zone it is not a failure domain, and the engines ignore it",
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "label": {
+           "type": "string"
+          },
+          "members": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           },
+           "description": "component ids inside the frame"
+          }
+         },
+         "required": [
+          "label",
           "members"
          ]
         }
@@ -8337,6 +8521,29 @@
          ]
         }
        },
+       "sections": {
+        "description": "sections on the board: a labelled frame around components, for reading the design (\"checkout path\"); unlike a zone it is not a failure domain, and the engines ignore it",
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "label": {
+           "type": "string"
+          },
+          "members": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           },
+           "description": "component ids inside the frame"
+          }
+         },
+         "required": [
+          "label",
+          "members"
+         ]
+        }
+       },
        "notes": {
         "description": "notes on the board: free text at a position, for explaining the design; the engines ignore them",
         "type": "array",
@@ -9003,6 +9210,29 @@
          ]
         }
        },
+       "sections": {
+        "description": "sections on the board: a labelled frame around components, for reading the design (\"checkout path\"); unlike a zone it is not a failure domain, and the engines ignore it",
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "label": {
+           "type": "string"
+          },
+          "members": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           },
+           "description": "component ids inside the frame"
+          }
+         },
+         "required": [
+          "label",
+          "members"
+         ]
+        }
+       },
        "notes": {
         "description": "notes on the board: free text at a position, for explaining the design; the engines ignore them",
         "type": "array",
@@ -9567,6 +9797,29 @@
            },
            "required": [
             "id",
+            "members"
+           ]
+          }
+         },
+         "sections": {
+          "description": "sections on the board: a labelled frame around components, for reading the design (\"checkout path\"); unlike a zone it is not a failure domain, and the engines ignore it",
+          "type": "array",
+          "items": {
+           "type": "object",
+           "properties": {
+            "label": {
+             "type": "string"
+            },
+            "members": {
+             "type": "array",
+             "items": {
+              "type": "string"
+             },
+             "description": "component ids inside the frame"
+            }
+           },
+           "required": [
+            "label",
             "members"
            ]
           }
@@ -11457,6 +11710,29 @@
          ]
         }
        },
+       "sections": {
+        "description": "sections on the board: a labelled frame around components, for reading the design (\"checkout path\"); unlike a zone it is not a failure domain, and the engines ignore it",
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "label": {
+           "type": "string"
+          },
+          "members": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           },
+           "description": "component ids inside the frame"
+          }
+         },
+         "required": [
+          "label",
+          "members"
+         ]
+        }
+       },
        "notes": {
         "description": "notes on the board: free text at a position, for explaining the design; the engines ignore them",
         "type": "array",
@@ -12021,6 +12297,29 @@
            },
            "required": [
             "id",
+            "members"
+           ]
+          }
+         },
+         "sections": {
+          "description": "sections on the board: a labelled frame around components, for reading the design (\"checkout path\"); unlike a zone it is not a failure domain, and the engines ignore it",
+          "type": "array",
+          "items": {
+           "type": "object",
+           "properties": {
+            "label": {
+             "type": "string"
+            },
+            "members": {
+             "type": "array",
+             "items": {
+              "type": "string"
+             },
+             "description": "component ids inside the frame"
+            }
+           },
+           "required": [
+            "label",
             "members"
            ]
           }

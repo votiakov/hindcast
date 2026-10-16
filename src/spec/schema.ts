@@ -116,6 +116,10 @@ export const ArchitectureSpec = z.object({
     )
     .describe('caller → callee pairs, e.g. "lb -> api", ["lb","api"] or { from, to, latencyMs }; order matters for failover routing'),
   zones: z.array(ZoneSpec).optional(),
+  sections: z
+    .array(z.object({ label: z.string(), members: z.array(z.string()).describe('component ids inside the frame') }))
+    .optional()
+    .describe('sections on the board: a labelled frame around components, for reading the design ("checkout path"); unlike a zone it is not a failure domain, and the engines ignore it'),
   notes: z
     .array(z.object({ text: z.string().max(2000), x: z.number(), y: z.number(), width: z.number().positive().optional() }))
     .optional()
