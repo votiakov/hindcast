@@ -1,0 +1,13 @@
+{
+  "system": "petclinic",
+  "run": "normal-cust125",
+  "start": 1792183871,
+  "end": 1792186272,
+  "day": "12/Jul/1995",
+  "minutes": 40,
+  "scale": "x55",
+  "steps": null,
+  "manifests": "variants/customers-125m.yaml",
+  "note": null,
+  "recordedAt": "2026-10-16T21:31:58.183Z"
+}

@@ -1,0 +1,39 @@
+{
+ "system": {
+  "name": "PetClinic on Kubernetes — launch-hpa",
+  "slo": {
+   "p99Ms": 500,
+   "errorRate": 0.01
+  },
+  "timeoutMs": 5000,
+  "exclude": [
+   "ad",
+   "cart",
+   "checkout",
+   "currency",
+   "email",
+   "flagd",
+   "frontend",
+   "payment",
+   "product-catalog",
+   "quote",
+   "recommendation",
+   "shipping",
+   "valkey-cart",
+   "jaeger",
+   "otel-collector"
+  ],
+  "entry": [
+   "api-gateway"
+  ]
+ },
+ "prometheus": {
+  "url": "http://localhost:8088/prometheus",
+  "namespaces": [
+   "petclinic"
+  ]
+ },
+ "jaeger": {
+  "url": "http://localhost:8088/jaeger"
+ }
+}

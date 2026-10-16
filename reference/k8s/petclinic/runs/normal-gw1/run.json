@@ -1,0 +1,13 @@
+{
+  "system": "petclinic",
+  "run": "normal-gw1",
+  "start": 1792177634,
+  "end": 1792180034,
+  "day": "12/Jul/1995",
+  "minutes": 40,
+  "scale": "x55",
+  "steps": null,
+  "manifests": "variants/gateway-1.yaml",
+  "note": null,
+  "recordedAt": "2026-10-16T19:48:00.587Z"
+}

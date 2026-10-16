@@ -489,6 +489,15 @@ The sensitivity counts frontend → ad and the checkout's calls as stuck too; on
 frontend's channel to cart was. The verdicts and validation data above are unchanged: the answer is
 still +7 minutes, and the sensitivity sits beside it.
 
+## A second system: PetClinic
+
+[petclinic/](petclinic/README.md) runs Spring PetClinic Microservices on the same cluster and the
+same days, as a check on a system the model was not shaped on. Its six verdicts were committed
+before any of its runs was recorded. The model got 4 right, 1 wrong and 1 inconclusive, and the
+plain CPU rule got 5 right. The miss was a JVM whose CPU limit was halved. It never finished
+warming up under load: about four times the CPU per request for half an hour, a cold start the
+model does not know about yet.
+
 ## Running it
 
 ```sh
