@@ -1,0 +1,124 @@
+# Written by Hindcast collect_telemetry, 2026-10-16T15:25:15.494Z: 2026-10-16T14:44:27Z … 2026-10-16T15:24:27Z
+name: PetClinic on Kubernetes — history
+step: 30s
+window:
+  start: 2026-10-16T14:44:27Z
+  end: 2026-10-16T15:24:27Z
+metrics:
+  - prometheus: metrics/otel-spanmetrics-rps.json
+    metric: rps
+    by: service_name
+  - prometheus: metrics/otel-spanmetrics-errors.json
+    metric: errorRate
+    by: service_name
+    unit: ratio
+  - prometheus: metrics/otel-spanmetrics-p50.json
+    metric: p50Ms
+    by: service_name
+    unit: ms
+  - prometheus: metrics/otel-spanmetrics-p99.json
+    metric: p99Ms
+    by: service_name
+    unit: ms
+  - prometheus: metrics/otel-spanmetrics-mean.json
+    metric: meanMs
+    by: service_name
+    unit: ms
+  - prometheus: metrics/otel-spanmetrics-endpoint-rps.json
+    metric: rps
+    by: service_name
+    endpointBy: span_name
+    template: true
+  - prometheus: metrics/otel-spanmetrics-endpoint-errors.json
+    metric: errorRate
+    unit: ratio
+    by: service_name
+    endpointBy: span_name
+    template: true
+    combine: ratio
+  - prometheus: metrics/otel-spanmetrics-endpoint-latency.json
+    metric: p99Ms
+    unit: ms
+    by: service_name
+    endpointBy: span_name
+    template: true
+    combine: histogram
+  - prometheus: metrics/otel-spanmetrics-endpoint-mean.json
+    metric: meanMs
+    unit: ms
+    by: service_name
+    endpointBy: span_name
+    template: true
+    combine: ratio
+  - prometheus: metrics/ingress-nginx-rps.json
+    metric: rps
+    by: exported_service
+    edge: true
+  - prometheus: metrics/ingress-nginx-errors.json
+    metric: errorRate
+    unit: ratio
+    by: exported_service
+    edge: true
+  - prometheus: metrics/ingress-nginx-p99.json
+    metric: p99Ms
+    unit: s
+    by: exported_service
+    edge: true
+  - prometheus: metrics/ingress-nginx-mean.json
+    metric: meanMs
+    unit: s
+    by: exported_service
+    edge: true
+  - prometheus: metrics/kubernetes-cpu.json
+    metric: cpuCores
+    by: workload
+  - prometheus: metrics/kubernetes-cpu-limit.json
+    metric: cpuLimitCores
+    by: workload
+  - prometheus: metrics/kubernetes-replicas.json
+    metric: replicas
+    by: workload
+  - prometheus: metrics/kubernetes-net-tx.json
+    metric: netTxBps
+    by: workload
+  - prometheus: metrics/kubernetes-memory.json
+    metric: memoryBytes
+    by: workload
+  - prometheus: metrics/kubernetes-memory-max.json
+    metric: memoryMaxBytes
+    by: workload
+  - prometheus: metrics/kubernetes-memory-limit.json
+    metric: memoryLimitBytes
+    by: workload
+  - prometheus: metrics/kubernetes-cpu-request.json
+    metric: cpuRequestCores
+    by: workload
+  - prometheus: metrics/kubernetes-memory-request.json
+    metric: memoryRequestBytes
+    by: workload
+  - prometheus: metrics/kubernetes-cluster-nodes.json
+    metric: clusterNodes
+  - prometheus: metrics/kubernetes-cluster-node-cpu.json
+    metric: clusterNodeCpu
+  - prometheus: metrics/kubernetes-cluster-node-memory.json
+    metric: clusterNodeMemoryBytes
+  - prometheus: metrics/kubernetes-cluster-requested-cpu.json
+    metric: clusterRequestedCpu
+  - prometheus: metrics/kubernetes-cluster-requested-memory.json
+    metric: clusterRequestedMemoryBytes
+  - prometheus: metrics/kubernetes-throttled.json
+    metric: cpuThrottled
+    by: workload
+    unit: ratio
+traces:
+  - file: traces/jaeger.jsonl
+    series:
+      rps: false
+      latency: false
+      endpoints: false
+billing: []
+model:
+  slo:
+    p99Ms: 500
+    errorRate: 0.01
+  timeoutMs: 5000

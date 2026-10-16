@@ -195,6 +195,10 @@ mkdirSync(join(HERE, 'variants'), { recursive: true });
 const variants: Record<string, Options> = {
   // the capacity probe's configuration, before the limits above were chosen
   'probe.yaml': { over: { 'api-gateway': { cpu: '1', replicas: 1 }, 'customers-service': { cpu: '500m' }, 'visits-service': { cpu: '500m' }, 'vets-service': { cpu: '500m' } } },
+  // the questions, chosen after the ordinary day was recorded and predicted before any of them ran
+  'gateway-1.yaml': { over: { 'api-gateway': { replicas: 1 } } },
+  'customers-125m.yaml': { over: { 'customers-service': { cpu: '125m' } } },
+  'gateway-hpa-1-3.yaml': { over: { 'api-gateway': { replicas: 1 } }, hpa: { service: 'api-gateway', min: 1, max: 3, cpu: 60 } },
 };
 for (const [file, o] of Object.entries(variants)) writeFileSync(join(HERE, 'variants', file), manifests(o));
 console.log(`wrote petclinic.yaml and ${Object.keys(variants).length} variants`);

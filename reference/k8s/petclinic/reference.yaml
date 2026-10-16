@@ -31,3 +31,24 @@ runs:
   history: { day: 12/Jul/1995, minutes: 40, scale: x55, manifests: petclinic.yaml }
   # the system as built on launch day (STS-70, 2.2× the ordinary day's peak)
   launch: { day: 13/Jul/1995, minutes: 40, scale: x55, manifests: petclinic.yaml }
+  # the questions (variants/ from gen.ts): chosen after the history was recorded; the backtest's
+  # verdicts were committed in validation/predictions-oos.json before any of them ran
+  launch-gw1: { day: 13/Jul/1995, minutes: 40, scale: x55, manifests: variants/gateway-1.yaml }
+  normal-gw1: { day: 12/Jul/1995, minutes: 40, scale: x55, manifests: variants/gateway-1.yaml }
+  launch-cust125: { day: 13/Jul/1995, minutes: 40, scale: x55, manifests: variants/customers-125m.yaml }
+  normal-cust125: { day: 12/Jul/1995, minutes: 40, scale: x55, manifests: variants/customers-125m.yaml }
+  launch-hpa: { day: 13/Jul/1995, minutes: 40, scale: x55, manifests: variants/gateway-hpa-1-3.yaml }
+# how evaluate.ts scores it (reference/k8s/evaluate.ts petclinic). Launch day is forecast as the
+# ordinary day at 2.22×, its busiest 10 minutes over the ordinary day's in the log itself (as the
+# shop's). The naive rule: every service's busiest CPU share in the history, scaled by the load and
+# by replicas × cores; the worst one decides.
+evaluation:
+  manifests: petclinic.yaml
+  rounds: { 1: 'chosen after the ordinary day was recorded; every verdict was predicted from it alone and committed before any of these runs was recorded' }
+  cases:
+    - { run: launch, asBuilt: launch, scale: 2.22, oos: 1, question: 'As built (2 gateways), on launch day?' }
+    - { run: launch-gw1, asBuilt: launch, head: variants/gateway-1.yaml, scale: 2.22, oos: 1, service: api-gateway, name: 'One gateway', question: '1 gateway instead of 2, on launch day?' }
+    - { run: normal-gw1, asBuilt: history, head: variants/gateway-1.yaml, scale: 1, oos: 1, service: api-gateway, name: 'One gateway', question: '1 gateway instead of 2, on an ordinary day?' }
+    - { run: launch-cust125, asBuilt: launch, head: variants/customers-125m.yaml, scale: 2.22, oos: 1, service: customers-service, name: 'customers-service at 125m', question: 'customers-service at 125m instead of 250m, on launch day?' }
+    - { run: normal-cust125, asBuilt: history, head: variants/customers-125m.yaml, scale: 1, oos: 1, service: customers-service, name: 'customers-service at 125m', question: 'customers-service at 125m instead of 250m, on an ordinary day?' }
+    - { run: launch-hpa, asBuilt: launch, head: variants/gateway-hpa-1-3.yaml, scale: 2.22, oos: 1, service: api-gateway, name: 'Gateway on an HPA, 1–3 replicas', question: 'An HPA (1–3 gateways at 60% CPU) instead of 2 fixed, on launch day?' }

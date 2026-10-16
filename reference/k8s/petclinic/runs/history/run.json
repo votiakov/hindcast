@@ -1,0 +1,13 @@
+{
+  "system": "petclinic",
+  "run": "history",
+  "start": 1792161867,
+  "end": 1792164267,
+  "day": "12/Jul/1995",
+  "minutes": 40,
+  "scale": "x55",
+  "steps": null,
+  "manifests": "petclinic.yaml",
+  "note": null,
+  "recordedAt": "2026-10-16T15:25:14.012Z"
+}
