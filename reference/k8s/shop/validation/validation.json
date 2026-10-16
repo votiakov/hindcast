@@ -14545,7 +14545,7 @@
        "hi": 0
       },
       "reasons": [
-       "costs the same; it would have caused 4 minutes out of SLO, the worst on Oct 13 at 17:04 UTC (frontend at 108% of capacity (365.1 req/s on 2 × 168.7 req/s), 1.5 s queue)",
+       "costs the same; it would have caused 4 minutes out of SLO, the longest new incident starting Oct 13 at 17:04 UTC (frontend at 108% of capacity (365.1 req/s on 2 × 168.7 req/s), 1.5 s queue)",
        "adds 4 min out of SLO (10–90%: 3 … 4.5)",
        "adds 2,432 failed requests (+945% of 257)",
        "worst at 2026-10-13T17:04:00Z: frontend at 108% of capacity (365.1 req/s on 2 × 168.7 req/s), 1.5 s queue",
@@ -25606,5 +25606,5 @@
    }
   }
  ],
- "evaluatedAt": "2026-10-16T06:44:56.038Z"
+ "evaluatedAt": "2026-10-16T13:49:46.440Z"
 }
