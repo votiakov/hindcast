@@ -352,11 +352,12 @@ fn ema(prev: f64, next: f64, dt: f64, tau: f64) -> f64 {
 }
 
 /// node data with dynamic effects applied: autoscaled instance count, and the throughput lost to
-/// injected latency (a pool of workers that each take longer serves fewer requests per second)
+/// injected latency (a pool of workers that each take longer serves fewer requests per second). A
+/// server's or worker's injected latency is a wait, not work: it costs threads, if any (`hold_ms`)
 pub fn dynamic_data(d: &NodeData, scaler: Option<&ScalerState>) -> NodeData {
     let mut e = effective_data(d, scaler);
     if let Some(fl) = e.fault_latency_ms.filter(|x| *x != 0.0 && !x.is_nan()) {
-        if !matches!(d.kind.as_str(), "gateway" | "llmapi" | "external" | "kv" | "archive" | "client" | "queue" | "stream") {
+        if !fault_latency_waits(&d.kind) && !matches!(d.kind.as_str(), "gateway" | "llmapi" | "external" | "kv" | "archive" | "client" | "queue" | "stream") {
             let base = base_latency_of(d).max(0.05);
             e.degraded = Some(e.degraded.unwrap_or(1.0) * (base / (base + fl)));
         }
@@ -2046,7 +2047,9 @@ impl Engine {
                 child_lat = p * child_lat + (1.0 - p) * 2.0;
                 call_fail_ms = p * call_fail_ms + (1.0 - p) * 2.0;
             }
-            st.hold_ms = ema(st.hold_ms, if has_kids { child_lat } else { 0.0 }, dt, 0.3);
+            // a thread is held through the calls, and through the component's own injected wait
+            let waited = if fault_latency_waits(&d.kind) { d.fault_latency_ms.filter(|x| *x > 0.0).unwrap_or(0.0) } else { 0.0 };
+            st.hold_ms = ema(st.hold_ms, waited + if has_kids { child_lat } else { 0.0 }, dt, 0.3);
             // a queue with a redrive policy: of what its consumers failed, the messages with receives
             // left come back after the visibility timeout; the rest go to the dead-letter queue
             // (with a failure share f and N receives, f^(N−1)(1−f)/(1−f^N) of the failures are last tries)
@@ -2464,5 +2467,78 @@ pub(crate) mod tests {
         // a caller restarted together with its callee starts afresh
         let (tl, _) = fluid(shop(Some(json!(15))), outage(vec![json!({ "at": 10, "action": { "type": "kill-id", "id": "api" } }), json!({ "at": 20, "action": { "type": "revive-id", "id": "api" } })]));
         assert!(errors(&tl, 23.0, 60.0) < 0.01, "both restarted: {}", errors(&tl, 23.0, 60.0));
+    }
+}
+
+/// a slow dependency costs a caller's capacity only when the caller holds a thread while it waits
+/// (`threads`); an async caller (Node, Go, Envoy) waits without holding anything
+#[cfg(test)]
+pub(crate) mod slow_dependency_tests {
+    use super::super::headless::{simulate, SimOptions};
+    use serde_json::{json, Value};
+
+    /// users → lb → api (2 instances × 150 req/s) → dep (a server, 1000 req/s); 200 req/s offered
+    pub fn board(threads: Option<f64>) -> Value {
+        let mut api = json!({ "id": "api", "kind": "server", "instances": 2, "capacity": 150 });
+        if let Some(t) = threads {
+            api["threads"] = json!(t);
+        }
+        json!({ "components": [{ "id": "users", "kind": "client" }, { "id": "lb", "kind": "lb" }, api, { "id": "dep", "kind": "server", "capacity": 1000 }], "connections": ["users -> lb", "lb -> api", "api -> dep"] })
+    }
+
+    /// `target` turns slow (+250 ms) at 10 s and stays slow
+    pub fn slow(target: &str) -> Value {
+        json!({ "duration": 60, "rps": 200, "events": [{ "at": 10, "action": { "type": "inject-latency", "id": target, "ms": 250 } }] })
+    }
+
+    /// users → api → db (Postgres M: 2000 req/s at 10 ms a query)
+    pub fn with_db() -> Value {
+        json!({ "components": [{ "id": "users", "kind": "client" }, { "id": "api", "kind": "server", "capacity": 1000 }, { "id": "db", "kind": "db", "tier": "M" }], "connections": ["users -> api", "api -> db"] })
+    }
+
+    /// the mean of the timeline's points in [from, to)
+    pub fn mean(tl: &[(f64, f64)], from: f64, to: f64) -> f64 {
+        let xs: Vec<f64> = tl.iter().filter(|p| p.0 >= from && p.0 < to).map(|p| p.1).collect();
+        xs.iter().sum::<f64>() / xs.len().max(1) as f64
+    }
+
+    /// hand check, with `threads: 20`: 2 × 20 threads, each held for the api's 25 ms, dep's 25 ms and
+    /// the injected 250 ms = 0.3 s, finish 40 ÷ 0.3 = 133.3 req/s (Little's law) of the 200 offered
+    pub const THREADED_LOSS: f64 = 1.0 - (40.0 / 0.3) / 200.0;
+
+    /// hand check, a slow database: its workers are busy 10 + 250 ms a query, so it finishes
+    /// 2000 × 10 ÷ 260 = 77 req/s of the 200 offered
+    pub const DB_LOSS: f64 = 1.0 - (2000.0 * 10.0 / 260.0) / 200.0;
+
+    fn run(spec: &Value, sc: &Value) -> (Vec<(f64, f64)>, Vec<(f64, f64)>) {
+        let r = simulate(spec, sc, &SimOptions::default()).unwrap();
+        (r.timeline.iter().map(|p| (p.t, p.error_rate)).collect(), r.timeline.iter().map(|p| (p.t, p.p99_ms)).collect())
+    }
+
+    #[test]
+    fn an_async_caller_waits_on_a_slow_dependency_without_losing_capacity() {
+        for target in ["dep", "api"] {
+            let (err, p99) = run(&board(None), &slow(target));
+            assert!(mean(&err, 25.0, 60.0) < 0.001, "{} slow: errors {}", target, mean(&err, 25.0, 60.0));
+            // the answers are 250 ms slower, nothing else
+            let rise = mean(&p99, 25.0, 60.0) - mean(&p99, 4.0, 10.0);
+            assert!((rise - 250.0).abs() <= 25.0, "{} slow: p99 rose {} ms", target, rise);
+        }
+    }
+
+    #[test]
+    fn a_thread_per_request_caller_runs_out_of_threads_by_littles_law() {
+        for target in ["dep", "api"] {
+            let (err, _) = run(&board(Some(20.0)), &slow(target));
+            assert!(mean(&err, 4.0, 10.0) < 0.001, "before: {}", mean(&err, 4.0, 10.0));
+            let e = mean(&err, 25.0, 60.0);
+            assert!((e - THREADED_LOSS).abs() <= 0.02, "{} slow: errors {}, want {}", target, e, THREADED_LOSS);
+        }
+    }
+
+    #[test]
+    fn a_slow_database_is_still_slow_work() {
+        let (err, _) = run(&with_db(), &slow("db"));
+        assert!((mean(&err, 25.0, 60.0) - DB_LOSS).abs() <= 0.03, "errors {}, want {}", mean(&err, 25.0, 60.0), DB_LOSS);
     }
 }

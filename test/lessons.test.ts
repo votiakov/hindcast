@@ -28,6 +28,29 @@ describe('lessons', () => {
 });
 
 /**
+ * The bulkheads lesson's slow provider costs the shop API its threads (`threads: 50`, a
+ * thread-per-request server): only a component with threads loses capacity to a slow dependency, so
+ * each level must fail as given and pass with its fix on the discrete-event engine too.
+ */
+describe('One Slow Dependency: both engines', () => {
+  const lesson = LESSONS.find((l) => l.id === 'bulkheads')!;
+  lesson.steps.forEach((s, i) => {
+    it(`${s.id}: fails as given and passes with its fix on the discrete-event engine`, () => {
+      expect(playLevelDes(referenceBoard(lesson, i - 1), s, lesson.readRatio, { trafficScale: MARGIN.fail }).passed).toBe(false);
+      expect(playLevelDes(referenceBoard(lesson, i), s, lesson.readRatio, { trafficScale: MARGIN.pass }).passed).toBe(true);
+    }, 60_000);
+  });
+
+  it('without threads the shop API waits on the slow provider without losing capacity: browsing never fails', () => {
+    const b = referenceBoard(lesson, -1);
+    const async = applyChangesToGraph(b.nodes, b.edges, [{ op: 'set', id: 'api', fields: { threads: undefined } }]);
+    // payments still answer (slowly, 2.1 s against a 3 s p99 goal): nothing fails on either engine
+    expect(playLevel(async, lesson.steps[0], lesson.readRatio).passed).toBe(true);
+    expect(playLevelDes(async, lesson.steps[0], lesson.readRatio).passed).toBe(true);
+  }, 60_000);
+});
+
+/**
  * The tracer lesson is read off the discrete-event engine (the one "trace" runs), so its levels must
  * fail and pass there too, not only on the fluid engine the lesson loop plays.
  */

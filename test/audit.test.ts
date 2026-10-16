@@ -17,7 +17,22 @@ describe('failure audit', () => {
     // engine's 0.3 s smoothing chain made it look like 4–5 s
     expect(r.findings.find((f) => f.id === 'component:db')!.impact.recoveryS).toBe(0);
     expect(r.findings.find((f) => f.id === 'component:lb')!.impact.recoveryS).toBe(0);
-    expect(r.findings.find((f) => f.id === 'slow:api')!.explanation).toMatch(/busy 11× as long.*sheds the rest/);
+    // a slow database's workers are busy longer: it sheds
+    expect(r.findings.find((f) => f.id === 'slow:db')!.explanation).toMatch(/busy 26× as long.*sheds the rest/);
+    // a slow async server (no `threads`) waits without holding a worker: slower, not failing
+    const api = r.findings.find((f) => f.id === 'slow:api')!;
+    expect(api.explanation).toMatch(/api has no thread limit, so slow calls wait without holding a worker: it adds 250 ms to every answer but keeps serving/);
+    expect(api.impact.errorRate).toBeLessThan(0.001);
+  });
+
+  it('a slow thread-per-request server runs out of threads, and its callers\' threads are held too', () => {
+    const threaded = { ...shop, components: shop.components.map((c) => (c.id === 'api' ? { ...c, threads: 20 } : c)) };
+    const t = audit(threaded, { rps: 500 });
+    const api = t.findings.find((f) => f.id === 'slow:api')!;
+    // 4 × 20 threads held 25 + 250 ms: at most 80 ÷ 0.275 = 291 req/s of the 500 offered
+    expect(api.explanation).toMatch(/api has threads: 20 \(80 in all\).*275 ms instead of 25, so at most about 291 req\/s get a thread/);
+    expect(api.impact.errorRate).toBeGreaterThan(0.3);
+    expect(t.findings.find((f) => f.id === 'slow:db')!.explanation).toMatch(/api \(threads: 20\) holds a thread through each call to it/);
   });
 
   it('absorbs the loss of one instance of a 4-instance fleet', () => {

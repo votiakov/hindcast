@@ -170,7 +170,16 @@ export function explain(d: SystemNodeData, st: NodeStats | undefined, v: NodeVie
   if (d.kind === 'client' && v.up && st.inRps > 0.5 && st.success < 0.99) return { tone: st.success < 0.9 ? 'bad' : 'warn', text: `${Math.round((1 - st.success) * 1000) / 10}% of these users' requests fail. Follow the red links to where they are lost.` };
   if (!v.up) return { tone: 'bad', text: 'Unavailable. Every request routed here fails unless an upstream load balancer can route around it.' };
   if (d.faultRate) return { tone: 'bad', text: `Injected fault: ${Math.round(d.faultRate * 100)}% of requests here fail — a bad deploy looks exactly like this. Callers with retries amplify it.` };
-  if (d.faultLatencyMs) return { tone: 'bad', text: `Gray failure: +${fmtMs(d.faultLatencyMs)} on every request. It is still "up", so health checks pass — but each worker is busy longer, so throughput drops too.` };
+  if (d.faultLatencyMs) {
+    // a server's or worker's injected latency is a wait (no worker held); other kinds' is work
+    const waits = d.kind === 'server' || d.kind === 'worker';
+    const text = !waits
+      ? `Gray failure: +${fmtMs(d.faultLatencyMs)} on every request. It is still "up", so health checks pass — but each worker is busy longer, so throughput drops too.`
+      : d.threads && d.threads > 0
+        ? `Gray failure: +${fmtMs(d.faultLatencyMs)} on every request, spent waiting. It is still "up", so health checks pass — but each request holds one of its ${d.threads * Math.max(1, st.reachable)} threads that much longer, so fewer get one.`
+        : `Gray failure: +${fmtMs(d.faultLatencyMs)} on every request, spent waiting. It is still "up", so health checks pass; it has no thread limit, so the waits hold no worker and it keeps serving, only slower.`;
+    return { tone: 'bad', text };
+  }
   if ((d.kind === 'cache' || d.kind === 'cdn') && st.warmth < 0.9) return { tone: 'bad', text: `Cold cache: only ${Math.round(st.warmth * 100)}% warm, so misses that used to be hits stampede the origin until it refills.` };
   if (st.scaling && st.scaling.pending > 0) return { tone: 'warn', text: `Scaling out: ${st.scaling.pending} instance${st.scaling.pending > 1 ? 's' : ''} booting (warm-up ${d.autoscale?.warmupS ?? 30}s). Capacity arrives after the demand did — that gap is where errors happen.` };
   if (st.breaker === 'open') return { tone: 'warn', text: `Circuit breaker open: calls to the failing dependency are cut off${d.fallback ? ' and a fallback response is served' : ' and fail fast'}, giving it room to recover.` };

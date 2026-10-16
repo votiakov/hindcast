@@ -126,7 +126,13 @@ pub fn explain(d: &NodeData, st: Option<&NodeStats>, v: &View) -> Option<String>
     } else if let Some(fr) = d.fault_rate.filter(|x| *x != 0.0) {
         format!("Injected fault: {}% of requests here fail — a bad deploy looks exactly like this. Callers with retries amplify it.", pct(fr))
     } else if let Some(fl) = d.fault_latency_ms.filter(|x| *x != 0.0) {
-        format!("Gray failure: +{} on every request. It is still \"up\", so health checks pass — but each worker is busy longer, so throughput drops too.", fmt_ms(fl))
+        if !fault_latency_waits(&d.kind) {
+            format!("Gray failure: +{} on every request. It is still \"up\", so health checks pass — but each worker is busy longer, so throughput drops too.", fmt_ms(fl))
+        } else if let Some(t) = d.threads.filter(|t| *t > 0.0) {
+            format!("Gray failure: +{} on every request, spent waiting. It is still \"up\", so health checks pass — but each request holds one of its {} threads that much longer, so fewer get one.", fmt_ms(fl), js_num(t * st.reachable.max(1.0)))
+        } else {
+            format!("Gray failure: +{} on every request, spent waiting. It is still \"up\", so health checks pass; it has no thread limit, so the waits hold no worker and it keeps serving, only slower.", fmt_ms(fl))
+        }
     } else if (d.kind == "cache" || d.kind == "cdn") && st.warmth < 0.9 {
         format!("Cold cache: only {}% warm, so misses that used to be hits stampede the origin until it refills.", pct(st.warmth))
     } else if let Some(sc) = st.scaling.as_ref().filter(|s| s.pending > 0.0) {

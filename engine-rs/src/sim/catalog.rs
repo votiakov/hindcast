@@ -490,6 +490,14 @@ pub fn capacity_of(d: &NodeData, reachable: Option<f64>) -> f64 {
     cap * d.degraded.unwrap_or(1.0)
 }
 
+/// injected latency (`faultLatencyMs`, the audit's "turns slow") on a server or worker is time spent
+/// waiting — on a call the model does not draw, a lock, a slow disk behind it — not work: the request
+/// holds no worker meanwhile, and holds one of the component's threads only when it has `threads`
+/// (thread-per-request). On every other kind it is work: each worker is busy that much longer.
+pub fn fault_latency_waits(kind: &str) -> bool {
+    kind == "server" || kind == "worker"
+}
+
 /// a cluster that spreads its requests over its own nodes (no load balancer needed in front)
 pub fn clustered(kind: &str) -> bool {
     kind == "search" || kind == "vector"

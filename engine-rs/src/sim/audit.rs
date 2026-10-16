@@ -355,6 +355,12 @@ fn explain_incident(inc: &Incident, i: &Impact, r: &SimResult, sev: &str, nm: &d
     parts.join(" ")
 }
 
+/// a slow server or worker: its slowness is a wait, which the audit explains even when it costs
+/// no requests (an async component keeps serving)
+fn slow_wait(inc: &Incident, a: &Architecture) -> bool {
+    inc.kind == "slow" && a.components.iter().find(|c| get_str(c, "id") == Some(inc.target.as_str())).map(|c| super::catalog::fault_latency_waits(get_str(c, "kind").unwrap_or("server"))).unwrap_or(false)
+}
+
 /// why an incident hurts as much as it does, where the model's mechanism is not obvious
 fn mechanism(inc: &Incident, a: &Architecture, base: &SimResult, nm: &dyn Fn(&str) -> String) -> Option<String> {
     let c = a.components.iter().find(|c| get_str(c, "id") == Some(inc.target.as_str()))?;
@@ -366,18 +372,48 @@ fn mechanism(inc: &Incident, a: &Architecture, base: &SimResult, nm: &dyn Fn(&st
             js_num(ttl)
         ));
     }
-    if inc.kind != "slow" || matches!(kind, "gateway" | "llmapi" | "external" | "kv" | "archive" | "client" | "queue" | "stream") {
+    if inc.kind != "slow" || matches!(kind, "client" | "queue" | "stream") {
         return None;
     }
+    // a provider's or a gateway's slowness costs it nothing: only its callers wait
+    let provider = matches!(kind, "gateway" | "llmapi" | "external" | "kv" | "archive");
     let ms = inc.events.first().and_then(|e| e["action"]["ms"].as_f64())?;
     let d = super::spec::component_data(c);
     let own = super::catalog::base_latency_of(&d).max(0.05);
     let cap = super::catalog::capacity_of(&d, None);
     let offered = base.components.get(&inc.target).map(|x| x.mean_util * cap).unwrap_or(0.0);
-    let slowed = cap * own / (own + ms);
+    let int = |x: f64| crate::strategy::locale_int(js_round(x));
     let mut out = vec![];
-    if offered > slowed * 1.02 {
-        let int = |x: f64| crate::strategy::locale_int(js_round(x));
+    if !provider && super::catalog::fault_latency_waits(kind) {
+        // a server's or worker's slowness is a wait (on a call the model does not draw, a lock, a slow
+        // disk): it holds no worker, only a thread when the component has them
+        match d.threads.filter(|t| *t > 0.0) {
+            None => out.push(format!(
+                "{} has no thread limit, so slow calls wait without holding a worker: it adds {} ms to every answer but keeps serving.",
+                nm(&inc.target),
+                js_num(ms)
+            )),
+            Some(t) => {
+                let n = t * super::catalog::instances_up(&d).max(1.0);
+                let held = cap.min(n / ((own + ms) / 1000.0));
+                if offered > held * 1.02 {
+                    out.push(format!(
+                        "{} has threads: {} ({} in all), and each request holds one while it waits: {} ms instead of {}, so at most about {} req/s get a thread (threads ÷ time held), under the {} req/s it is offered, and the rest fail.",
+                        nm(&inc.target),
+                        js_num(t),
+                        js_num(n),
+                        js_num(js_round(own + ms)),
+                        js_num(js_round(own)),
+                        int(held),
+                        int(offered)
+                    ));
+                } else {
+                    out.push(format!("{} has threads: {} ({} in all), and each request holds one {} ms longer while it waits.", nm(&inc.target), js_num(t), js_num(n), js_num(ms)));
+                }
+            }
+        }
+    } else if !provider && offered > cap * own / (own + ms) * 1.02 {
+        let slowed = cap * own / (own + ms);
         out.push(format!(
             "{} spends {} ms more on each request than its {} ms of work, so each worker is busy {}× as long: it serves about {} req/s instead of {}, under the {} req/s it is offered, and sheds the rest. The incident is a gray failure of the component itself; slowness in the network in front of it would be `latencyMs` on the connection.",
             nm(&inc.target),
@@ -390,6 +426,10 @@ fn mechanism(inc: &Incident, a: &Architecture, base: &SimResult, nm: &dyn Fn(&st
         ));
     }
     for (p, _, _) in a.connections.iter().filter(|(_, t, _)| *t == inc.target) {
+        // a thread-per-request caller waits holding a thread: the slowness is its capacity too
+        if let Some(t) = a.components.iter().find(|x| get_str(x, "id") == Some(p.as_str())).and_then(|x| get_num(x, "threads")) {
+            out.push(format!("{} (threads: {}) holds a thread through each call to it, so the {} ms are held by {}'s threads too.", nm(p), js_num(t), js_num(ms), nm(p)));
+        }
         if let Some(t) = a.components.iter().find(|x| get_str(x, "id") == Some(p.as_str())).and_then(|x| get_num(x, "timeoutMs")) {
             if t < own + ms {
                 out.push(format!("{}'s timeout ({} ms) is shorter than the slowed answer ({} ms): its calls time out.", nm(p), js_num(t), js_num(js_round(own + ms))));
@@ -566,7 +606,10 @@ fn candidate_fixes(inc: &Incident, a: &Architecture, nm: &dyn Fn(&str) -> String
             let fields = if inc.kind == "slow" { json!({ "timeoutMs": 200, "breaker": true, "fallback": true }) } else { json!({ "retries": 2, "retryPolicy": "budget", "breaker": true, "fallback": true }) };
             out.push(Cand {
                 title: if inc.kind == "slow" { format!("Timeout + circuit breaker with fallback on {} → {}", p, id) } else { format!("Retry budget + circuit breaker with fallback on {}", p) },
-                why: if inc.kind == "slow" { "Give up quickly on the slow dependency and serve a degraded answer instead of tying up workers.".into() } else { "Retry the occasional failure (within a 10 % budget so retries cannot snowball), cut off a dependency that keeps failing.".into() },
+                why: if inc.kind == "slow" {
+                    // only a thread-per-request caller ties anything up while it waits
+                    if by_id(p).and_then(|pc| get_num(pc, "threads")).is_some() { format!("Give up quickly on the slow dependency and serve a degraded answer instead of tying up {}'s threads.", nm(p)) } else { "Give up quickly on the slow dependency and serve a degraded answer instead of making every answer wait for it.".into() }
+                } else { "Retry the occasional failure (within a 10 % budget so retries cannot snowball), cut off a dependency that keeps failing.".into() },
                 changes: vec![set(p, fields)],
             });
             // a thread-per-request caller with other dependencies: the slow one must not take every thread
@@ -769,7 +812,7 @@ pub fn audit(input: &Architecture, o: &AuditOptions, progress: &mut dyn FnMut(f6
             title: inc.title.clone(),
             severity: severity.into(),
             blast_radius: blast(&r, &inc.target),
-            explanation: explain_incident(inc, &impact, &r, severity, nm, mechanism(inc, &spec, &base, nm).filter(|_| inc.kind != "slow" || impact.error_rate >= 0.01)),
+            explanation: explain_incident(inc, &impact, &r, severity, nm, mechanism(inc, &spec, &base, nm).filter(|_| inc.kind != "slow" || impact.error_rate >= 0.01 || slow_wait(inc, &spec))),
             // failed requests expressed as minutes of full outage, priced
             cost_at_risk: o.incident_cost_per_minute.filter(|x| *x != 0.0).map(|c| js_round((impact.failed_requests / (rps * 60.0)) * c)),
             fixes: vec![],

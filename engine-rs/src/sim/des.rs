@@ -327,6 +327,8 @@ enum Ev {
     Scenario { k: usize },
     /// a write-behind cache flushes one buffered write to its origin
     Flush { n: usize },
+    /// a server's or worker's injected latency has passed (it held no worker meanwhile)
+    Waited { n: usize, job: Job },
 }
 
 #[derive(Clone, Copy)]
@@ -1264,7 +1266,11 @@ impl<'a> Des<'a> {
                 svc += self.nodes[n].data.stall_ms.unwrap_or(0.0);
             }
         }
-        svc += self.nodes[n].data.fault_latency_ms.unwrap_or(0.0);
+        // injected latency is work, except a server's or worker's: that is a wait after the work
+        // (see `finish`), which holds a thread if it has them but no worker
+        if !fault_latency_waits(&self.nodes[n].data.kind) {
+            svc += self.nodes[n].data.fault_latency_ms.unwrap_or(0.0);
+        }
         if self.nodes[n].data.kind == "function" {
             let x = &mut self.nodes[n];
             if x.busy > x.warm.max(x.data.provisioned.unwrap_or(0.0)) {
@@ -1307,7 +1313,13 @@ impl<'a> Des<'a> {
             }
         }
         self.drain(n, bound);
-        self.after_service(n, job);
+        // a server's or worker's injected latency: the worker is free, the request (and its thread,
+        // if it holds one) waits
+        let wait = if fault_latency_waits(&self.nodes[n].data.kind) { self.nodes[n].data.fault_latency_ms.filter(|x| *x > 0.0) } else { None };
+        match wait {
+            Some(ms) if job.done.is_some() => self.at(ms, Ev::Waited { n, job }),
+            _ => self.after_service(n, job),
+        }
     }
 
     /// next in line while a worker (and a thread) is free; shed what waited past the queue bound
@@ -1871,6 +1883,7 @@ impl<'a> Des<'a> {
             Ev::Arrive { i, read, done } => self.arrive(i, read, done),
             Ev::Deliver { done, why } => self.deliver(done, why),
             Ev::Finish { n, job } => self.finish(n, job),
+            Ev::Waited { n, job } => self.after_service(n, job),
             Ev::ConnClose { n } => {
                 self.nodes[n].conns = (self.nodes[n].conns - 1.0).max(0.0);
             }
@@ -2422,5 +2435,70 @@ mod p99_names_tests {
         assert!(fa >= lo && fa <= hi, "fluid {} des {:?}", fa, des);
         // with nothing failing, the figure with failures is the answers' one
         assert_eq!(f.summary.p99_with_failures_ms, f.summary.p99_answers_ms);
+    }
+}
+
+/// the discrete-event engine on the fluid engine's slow-dependency boards (see
+/// `engine::slow_dependency_tests` for the hand checks): an async caller's request waits without a
+/// worker, a thread-per-request caller's holds its thread through the wait
+#[cfg(test)]
+mod slow_dependency_tests {
+    use super::super::engine::slow_dependency_tests::{board, mean, slow, with_db, DB_LOSS, THREADED_LOSS};
+    use super::*;
+    use serde_json::Value;
+
+    fn run(spec: &Value, sc: &Value) -> (Vec<(f64, f64)>, Vec<(f64, f64)>) {
+        let r = simulate_des(spec, sc, &DesConfig::default()).unwrap();
+        (r.timeline.iter().map(|p| (p.t, p.error_rate)).collect(), r.timeline.iter().map(|p| (p.t, p.p99_ms)).collect())
+    }
+
+    #[test]
+    fn an_async_caller_waits_on_a_slow_dependency_without_losing_capacity() {
+        for target in ["dep", "api"] {
+            let (err, p99) = run(&board(None), &slow(target));
+            assert!(mean(&err, 25.0, 60.0) < 0.001, "{} slow: errors {}", target, mean(&err, 25.0, 60.0));
+            let rise = mean(&p99, 25.0, 60.0) - mean(&p99, 4.0, 10.0);
+            assert!((rise - 250.0).abs() <= 25.0, "{} slow: p99 rose {} ms", target, rise);
+        }
+        // the slowed component's workers stay as busy as before: 200 req/s of 1000 (25 ms a request, not 275)
+        let r = simulate_des(&board(None), &slow("dep"), &DesConfig::default()).unwrap();
+        let u = r.components["dep"].mean_util;
+        assert!((u - 0.2).abs() < 0.03, "dep's utilisation {}", u);
+    }
+
+    #[test]
+    fn a_thread_per_request_caller_runs_out_of_threads_by_littles_law() {
+        for target in ["dep", "api"] {
+            let (err, _) = run(&board(Some(20.0)), &slow(target));
+            assert!(mean(&err, 4.0, 10.0) < 0.001, "before: {}", mean(&err, 4.0, 10.0));
+            let e = mean(&err, 25.0, 60.0);
+            assert!((e - THREADED_LOSS).abs() <= 0.03, "{} slow: errors {}, want {}", target, e, THREADED_LOSS);
+        }
+        // and the requests that fail are put down to the threads
+        let r = simulate_des(&board(Some(20.0)), &slow("dep"), &DesConfig::default()).unwrap();
+        assert!(r.failures.iter().any(|f| f.id == "api" && f.reason == reason_text(R_THREADS)), "{:?}", r.failures);
+    }
+
+    #[test]
+    fn a_slow_database_is_still_slow_work() {
+        let (err, _) = run(&with_db(), &slow("db"));
+        assert!((mean(&err, 25.0, 60.0) - DB_LOSS).abs() <= 0.03, "errors {}, want {}", mean(&err, 25.0, 60.0), DB_LOSS);
+    }
+
+    /// the two engines agree on every slow-dependency board, as scripts/engine-crosscheck.ts compares
+    /// them: the run's error rate within 2 points + 10%, the answers' p99 within 25% + 5 ms
+    #[test]
+    fn both_engines_agree_on_a_slow_dependency() {
+        let cases = [(board(None), "dep"), (board(None), "api"), (board(Some(20.0)), "dep"), (board(Some(20.0)), "api"), (board(Some(50.0)), "dep"), (with_db(), "db")];
+        for (spec, target) in cases {
+            let f = super::super::headless::simulate(&spec, &slow(target), &Default::default()).unwrap();
+            let d = simulate_des(&spec, &slow(target), &DesConfig::default()).unwrap();
+            let (fe, de) = (f.summary.mean_error_rate, d.summary.mean_error_rate);
+            assert!((fe - de).abs() <= 0.02 + 0.1 * fe.max(de), "{} slow: errors fluid {} des {}", target, fe, de);
+            if fe < 0.01 {
+                let (fp, dp) = (f.summary.p99_answers_ms.unwrap(), d.summary.p99_answers_ms.unwrap());
+                assert!(fp >= dp / 1.25 - 5.0 && fp <= dp * 1.25 + 5.0, "{} slow: p99 fluid {} des {}", target, fp, dp);
+            }
+        }
     }
 }
