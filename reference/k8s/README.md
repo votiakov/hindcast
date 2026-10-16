@@ -328,6 +328,29 @@ The calibration's foundation, CPU from traffic, holds up on real production tele
 [../alibaba](../alibaba). When traffic moved, its forecasts were off 5.9% on 44 of Alibaba's busiest
 services, against 11–13% for naive forecasts.
 
+## Retrodiction: callers that stay broken
+
+*A retrodiction, not a prediction.* The node kill above ran 3.5 minutes longer than the replay
+because the frontend's gRPC channel to cart stayed broken after cart was back. The engines now have
+a term for that, `reconnect` on a link (seconds, or `until-restart`), and `check_node_loss` reports a
+sensitivity beside its answer when a service the node takes is called over gRPC: the same loss with
+each such caller's calls to it failing 252 s more after the replacement is up. The 252 s were read
+off this same run (cart ready 348 s after the node stopped; the frontend's calls to it failing until
+the frontend restarted at 600 s), so matching the measurement here is in-sample by construction and
+says nothing about other clusters. It is one observation on one kind cluster, stated as an assumption.
+
+`npx tsx reference/k8s/retrodict-reconnect.ts` (after `evaluate.ts`), with the gRPC calls taken from
+`shop.yaml`'s `*_ADDR` settings that have no `http://` scheme:
+
+| `normal-nodeloss` | the answer | with every gRPC caller stuck 252 s | with frontend → cart alone stuck | measured |
+|---|---|---|---|---|
+| before the day (ordinary day, placement at the kill) | +7 min, +21,221 failed | +11 min, +32,386 failed | +11 min, +26,544 failed | +10.5 min, +32,886 failed |
+| on the day (the run's own traffic) | +7 min, +16,804 failed | +11 min, +22,689 failed | +11 min, +20,279 failed | |
+
+The sensitivity counts frontend → ad and the checkout's calls as stuck too; on the day only the
+frontend's channel to cart was. The verdicts and validation data above are unchanged: the answer is
+still +7 minutes, and the sensitivity sits beside it.
+
 ## Running it
 
 ```sh
