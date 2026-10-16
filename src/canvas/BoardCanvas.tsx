@@ -221,31 +221,58 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
 }
 
 type Spot = 'bottom-right' | 'top-right';
-const hits = (a: DOMRect | undefined, b: DOMRect) => !!a && !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom);
+const SPOTS: Spot[] = ['bottom-right', 'top-right'];
+type Box = { left: number; right: number; top: number; bottom: number };
+const hits = (a: Box, b: DOMRect) => !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
 
 /**
- * Where the minimap goes: bottom right, unless the card open for editing reaches under it; then top
- * right, and if the card reaches there too, nowhere until it is closed or moved
+ * Where the minimap goes: a corner where it covers no card (bottom right, else top right), and nowhere
+ * when both would cover one. A covered card is worse than a missing minimap. Each corner's place is
+ * learnt the first time the map is drawn there, kept relative to the board's right edge and to the
+ * edge it sits against, so it follows the board as panels open and the window resizes
  */
 function useMinimapSpot(id: BoardId, wrapper: React.RefObject<HTMLDivElement | null>, on: boolean): Spot | null {
   const [spot, setSpot] = useState<Spot | null>('bottom-right');
-  const seen = useRef<Partial<Record<Spot, DOMRect>>>({});
-  const open = useSim((s) => s.boards[id].nodes.find((n) => n.type === 'system' && n.selected)?.id ?? '');
+  const seen = useRef<Partial<Record<Spot, { dr: number; w: number; h: number; d: number }>>>({});
   const nodes = useSim((s) => s.boards[id].nodes);
   const view = useStore((s) => s.transform.join(','));
+  const [size, setSize] = useState(0);
+  useEffect(() => {
+    const el = wrapper.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setSize((x) => x + 1));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [wrapper]);
   useEffect(() => {
     if (!on) return;
     const raf = requestAnimationFrame(() => {
       const root = wrapper.current;
       if (!root) return;
-      const map = root.querySelector('.react-flow__minimap');
-      if (map && spot) seen.current[spot] = map.getBoundingClientRect();
-      const card = open ? root.querySelector('.ref-node.open')?.getBoundingClientRect() : undefined;
-      const next: Spot | null = !card || !hits(seen.current['bottom-right'], card) ? 'bottom-right' : !seen.current['top-right'] || !hits(seen.current['top-right'], card) ? 'top-right' : null;
+      const r = root.getBoundingClientRect();
+      const map = root.querySelector('.react-flow__minimap')?.getBoundingClientRect();
+      if (map && spot) seen.current[spot] = { dr: r.right - map.right, w: map.width, h: map.height, d: spot === 'top-right' ? map.top - r.top : r.bottom - map.bottom };
+      const box = (s: Spot): Box | null => {
+        const m = seen.current[s];
+        if (!m) return null;
+        const right = r.right - m.dr;
+        const top = s === 'top-right' ? r.top + m.d : r.bottom - m.d - m.h;
+        return { left: right - m.w, right, top, bottom: top + m.h };
+      };
+      const cards = [...root.querySelectorAll('.react-flow__node-system, .react-flow__node-note')].map((n) => n.getBoundingClientRect());
+      let next: Spot | null = null;
+      for (const s of SPOTS) {
+        const b = box(s);
+        // a corner not yet seen is tried, and judged once the map is drawn there
+        if (!b || !cards.some((c) => hits(b, c))) {
+          next = s;
+          break;
+        }
+      }
       if (next !== spot) setSpot(next);
     });
     return () => cancelAnimationFrame(raf);
-  }, [on, open, nodes, view, spot, wrapper]);
+  }, [on, nodes, view, spot, size, wrapper]);
   return spot;
 }
 

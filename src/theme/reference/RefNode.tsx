@@ -123,6 +123,11 @@ export function RefNode({ data, st, v, selected, showCost, running, motion = fal
           </div>
         </div>
         <span className="ref-status">{status}</span>
+        {spec.tiered && (
+          <abbr className="ref-tier term" title={sizeTip(data)}>
+            {data.tier}
+          </abbr>
+        )}
       </div>
 
       <dl className="ref-rows">

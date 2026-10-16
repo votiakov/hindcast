@@ -106,14 +106,16 @@
 .ref-node.sel { box-shadow: 0 0 0 2px var(--r-accent); }
 .ref-node.promoted { --s: var(--r-ok); box-shadow: 0 0 0 3px var(--r-ok-tint); }
 
-.ref-head { display: flex; align-items: center; gap: 9px; padding: 9px 11px 8px; border-bottom: 1px solid var(--r-line); }
+.ref-head { display: flex; align-items: center; gap: 7px; padding: 9px 11px 8px; border-bottom: 1px solid var(--r-line); }
 .ref-icon { color: var(--r-muted); flex: none; }
 .ref-titles { min-width: 0; flex: 1; }
-.ref-kind { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.7px; color: var(--r-muted); }
-.ref-kind span { color: var(--r-faint); }
-.ref-name { font-family: var(--mono); font-size: 13px; font-weight: 600; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* a header never ends in an ellipsis: a long kind or name wraps, the size letter stays with its kind */
+.ref-kind { overflow-wrap: anywhere; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--r-muted); }
+.ref-kind span { color: var(--r-faint); white-space: nowrap; }
+.ref-name { font-family: var(--mono); font-size: 13px; font-weight: 600; margin-top: 1px; overflow-wrap: anywhere; }
+.ref-tier { display: none; }
 .ref-mult { margin-left: 6px; font-weight: 500; color: var(--r-muted); }
-.ref-status { flex: none; font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 10px; background: var(--r-sunken); color: var(--r-muted); }
+.ref-status { flex: none; font-size: 10.5px; font-weight: 600; padding: 2px 6px; border-radius: 10px; background: var(--r-sunken); color: var(--r-muted); }
 .s-ok .ref-status { background: var(--r-ok-tint); color: var(--r-ok); }
 .s-warm .ref-status { background: var(--r-warn-tint); color: var(--r-warn); }
 .s-hot .ref-status { background: var(--r-bad-tint); color: var(--r-bad); }
@@ -397,8 +399,10 @@
    screen (--z is the zoom), and leaves the rest to a closer look */
 [data-theme] .board-canvas.legible .ref-node .ref-glyph, [data-theme] .board-canvas.legible .ref-node .ref-sku, [data-theme] .board-canvas.legible .ref-node .ref-tags, [data-theme] .board-canvas.legible .ref-node .ref-note, [data-theme] .board-canvas.legible .ref-node .ref-fleet, [data-theme] .board-canvas.legible .ref-node .tr-mark, [data-theme] .board-canvas.legible .ref-node .ref-kind span,
 [data-theme] .board-canvas.legible .ref-node .ref-rows > div:not(.bad), [data-theme] .board-canvas.legible .ref-node .ref-rows:not(:has(.bad)) { display: none; }
-[data-theme] .board-canvas.legible .ref-node .ref-head { flex-direction: column; align-items: flex-start; gap: calc(3px / var(--z)); padding: calc(5px / var(--z)) 10px calc(6px / var(--z)); }
-[data-theme] .board-canvas.legible .ref-node .ref-titles { width: 100%; }
+[data-theme] .board-canvas.legible .ref-node .ref-head { flex-wrap: wrap; gap: calc(3px / var(--z)) calc(6px / var(--z)); padding: calc(5px / var(--z)) 10px calc(6px / var(--z)); }
+[data-theme] .board-canvas.legible .ref-node .ref-titles { flex-basis: 100%; }
+/* the size letter leaves the kind line, which is too narrow for both, for the status line */
+[data-theme] .board-canvas.legible .ref-node .ref-tier { display: inline; font-size: calc(11px / var(--z)); font-weight: 600; color: var(--r-muted); }
 [data-theme] .board-canvas.legible .ref-node .ref-kind { font-size: calc(11px / var(--z)); letter-spacing: 0.2px; }
 [data-theme] .board-canvas.legible .ref-node .ref-name { font-size: calc(13px / var(--z)); }
 [data-theme] .board-canvas.legible .ref-node .ref-mult { font-size: calc(11px / var(--z)); }

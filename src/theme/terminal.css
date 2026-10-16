@@ -156,7 +156,7 @@
 [data-theme='terminal'] .ref-node { border-radius: 0; box-shadow: none; font-family: var(--sans); }
 [data-theme='terminal'] .ref-node.sel { box-shadow: 0 0 0 1px var(--r-accent); }
 [data-theme='terminal'] .ref-node.s-hot { box-shadow: 0 0 0 2px var(--r-bad-tint); }
-[data-theme='terminal'] .ref-kind { font: 10.5px var(--mono); letter-spacing: 0.08em; }
+[data-theme='terminal'] .ref-kind { font: 10.5px var(--mono); letter-spacing: 0.04em; }
 [data-theme='terminal'] .ref-status { border-radius: 0; font: 10.5px var(--mono); }
 [data-theme='terminal'] .ref-scale-track,
 [data-theme='terminal'] .ref-scale-fill,
