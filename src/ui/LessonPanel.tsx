@@ -37,7 +37,7 @@ export function LessonPanel() {
   const running = useSim((s) => s.running);
   const global = useSim((s) => s.boards.main.global);
   const showCost = useSim((s) => s.settings.cost);
-  const { nextStep, reset, showSolution, pickLesson } = useSim.getState();
+  const { nextStep, replayLevel, showSolution, pickLesson } = useSim.getState();
   const { lesson, stepIndex } = ls;
   const shownCount = useRef(0);
 
@@ -209,7 +209,7 @@ export function LessonPanel() {
         ) : (
           <>
             {(ls.stepT > 0 || ls.missed) && (
-              <button className="btn" onClick={reset} title="Replay this level with the design on the board">
+              <button className="btn" onClick={replayLevel} title="Play this level again from the start, with the design on the board">
                 <RotateCcw size={14} /> Replay level
               </button>
             )}

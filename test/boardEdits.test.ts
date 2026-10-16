@@ -64,3 +64,53 @@ describe('sections, edited on the board', () => {
     expect(S().copySelection('main')!.sections).toBeUndefined();
   });
 });
+
+describe('a palette click with a component selected', () => {
+  const links = () => board().edges.map((e) => `${e.source}>${e.target}`).sort();
+  it('puts a cache between the component and its database, the link keeping its latency', () => {
+    S().addNode('main', 'cache', { x: 0, y: 0 }, 'api-1');
+    const cache = board().nodes.find((n) => n.type === 'system' && n.data.kind === 'cache')!;
+    expect(links()).toEqual([`${cache.id}>db`, `api-1>${cache.id}`, 'api-1>jobs', 'lb>api-1', 'users>lb'].sort());
+    expect(board().edges.find((e) => e.source === cache.id)!.data).toEqual({ latencyMs: 2 });
+    S().undo('main');
+    expect(links()).toEqual(['api-1>db', 'api-1>jobs', 'lb>api-1', 'users>lb']);
+  });
+
+  it('puts a CDN between the users and what they call', () => {
+    S().addNode('main', 'cdn', { x: 0, y: 0 }, 'users');
+    const cdn = board().nodes.find((n) => n.type === 'system' && n.data.kind === 'cdn')!;
+    expect(links()).toContain(`users>${cdn.id}`);
+    expect(links()).toContain(`${cdn.id}>lb`);
+    expect(links()).not.toContain('users>lb');
+  });
+
+  it('appends any other kind after it, as before', () => {
+    S().addNode('main', 'worker', { x: 0, y: 0 }, 'api-1');
+    const w = board().nodes.find((n) => n.type === 'system' && n.data.kind === 'worker')!;
+    expect(links()).toEqual(['api-1>db', 'api-1>jobs', `api-1>${w.id}`, 'lb>api-1', 'users>lb'].sort());
+  });
+
+  it('appends a cache after a component that calls nothing', () => {
+    S().addNode('main', 'cache', { x: 0, y: 0 }, 'db');
+    const cache = board().nodes.find((n) => n.type === 'system' && n.data.kind === 'cache')!;
+    expect(links()).toContain(`db>${cache.id}`);
+    expect(links()).toContain('api-1>db');
+  });
+});
+
+describe('replaying a lesson level', () => {
+  it('starts the run again from zero, without the last run\'s readings', () => {
+    S().setMode('lesson');
+    S().setRunning(true);
+    for (let i = 0; i < 40; i++) S().tick(0.25);
+    expect(S().lesson.stepT).toBeGreaterThan(0);
+    expect(Object.keys(board().nodeStats).length).toBeGreaterThan(0);
+    S().setRunning(false);
+    S().replayLevel();
+    expect(S().lesson.stepT).toBe(0);
+    expect(S().simT).toBe(0);
+    expect(board().nodeStats).toEqual({});
+    expect(board().global.rps).toBe(0);
+    expect(S().running).toBe(true);
+  });
+});

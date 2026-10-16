@@ -278,6 +278,8 @@ interface State {
   setMode: (m: Mode) => void;
   reset: () => void;
   nextStep: () => void;
+  /** lessons: play the current level again from its start, with the design on the board */
+  replayLevel: () => void;
   pickLesson: (id: string) => void;
   pickScenario: (id: string | null) => void;
   toast: (tone: Toast['tone'], text: string) => void;
@@ -327,6 +329,26 @@ export interface Clip {
   /** sections whose members are all in the copy */
   sections?: { label: string; members: string[] }[];
 }
+
+/** what a cache keeps in front of first: the stores (a database, then the others) */
+const CACHED: Kind[] = ['db', 'kv', 'storage', 'search', 'vector', 'replica'];
+
+/**
+ * A cache or CDN added after a component goes between it and what it calls (api → cache → db), so it
+ * has an origin from the start; null when it has nothing to go in front of (or is not a cache)
+ */
+export function insertTarget(nodes: AppNode[], edges: SystemEdge[], from: string, kind: Kind): SystemEdge | null {
+  if (kind !== 'cache' && kind !== 'cdn') return null;
+  const kindOf = (id: string) => {
+    const n = nodes.find((x) => x.id === id);
+    return n && isSystem(n) ? n.data.kind : null;
+  };
+  const out = edges.filter((e) => e.source === from && kindOf(e.target));
+  if (!out.length) return null;
+  if (kind === 'cache') return [...out].sort((a, b) => rank(kindOf(a.target)!) - rank(kindOf(b.target)!))[0];
+  return out[0];
+}
+const rank = (k: Kind) => (CACHED.includes(k) ? CACHED.indexOf(k) : CACHED.length);
 
 function nextName(nodes: AppNode[], kind: Kind): string {
   const prefix = KINDS[kind].prefix;
@@ -552,7 +574,11 @@ export const useSim = create<State>()((set, get) => {
       const id = nodes.some((n) => n.id === name) ? `${name}-${Date.now().toString(36)}` : name;
       const node: SystemNode = { id, type: 'system', position, data: defaultData(kind, name), selected: true };
       const link = from && nodes.some((n) => n.id === from && isSystem(n)) ? [{ id: `e-${from}-${id}-${Date.now()}`, source: from, target: id, type: 'flow' } as SystemEdge] : [];
-      patch(b, { nodes: [...nodes.map((n) => ({ ...n, selected: false })), node], ...(link.length ? { edges: [...edges, ...link] } : {}) });
+      // a cache or CDN goes between the component and what it calls: the old link now runs from the
+      // cache (keeping its latency and the rest), so misses reach the origin
+      const via = from && link.length ? insertTarget(nodes, edges, from, kind) : null;
+      const rest = via ? edges.map((e) => (e.id === via.id ? { ...e, id: `e-${id}-${e.target}-${Date.now()}`, source: id, selected: false } : e)) : edges;
+      patch(b, { nodes: [...nodes.map((n) => ({ ...n, selected: false })), node], ...(link.length ? { edges: [...rest, ...link] } : {}) });
     },
     copySelection: (b) => {
       const { nodes, edges } = board(b);
@@ -754,7 +780,9 @@ export const useSim = create<State>()((set, get) => {
       // a lesson level replays with the design on the board: Reset never throws the player's work away
       if (s.mode === 'lesson' && !s.lesson.finished) {
         engines.main.reset();
-        patch('main', { nodes: undoChaos(board('main').nodes, s.lesson.chaosUndo) });
+        recorders.main.clear();
+        // the last run's readings go with it: no failing numbers left on the cards until the next tick
+        patch('main', { nodes: undoChaos(board('main').nodes, s.lesson.chaosUndo), nodeStats: {}, edgeStats: {}, global: emptyGlobal });
         get().apply('main', { type: 'revive-all' });
         set({ simT: 0, running: false, lesson: { ...s.lesson, stepT: 0, holdT: 0, failT: 0, passed: false, missed: false, firedChaos: [], chaosUndo: {}, costSum: 0, costN: 0, winReq: 0, winFail: 0 } });
         return;
@@ -768,6 +796,10 @@ export const useSim = create<State>()((set, get) => {
         }
         set({ simT: 0, running: false });
       } else get().setMode(s.mode);
+    },
+    replayLevel: () => {
+      get().reset();
+      if (get().mode === 'lesson' && !get().lesson.finished) set({ running: true });
     },
     pickLesson: (id) => {
       const lesson = lessonById(id);
