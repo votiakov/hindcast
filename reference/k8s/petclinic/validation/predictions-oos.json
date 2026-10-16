@@ -1,0 +1,136 @@
+{
+ "madeAt": "2026-10-16T15:27:38.393Z",
+ "commit": "8bfa7ac",
+ "models": {
+  "calm": {
+   "launch": {
+    "verdict": "pass",
+    "confidence": null,
+    "leans": null,
+    "minutesOutOfSlo": 0,
+    "peakP99Ms": null,
+    "monthlyDelta": null,
+    "reasons": [],
+    "warnings": [],
+    "ooms": {}
+   },
+   "launch-gw1": {
+    "verdict": "pass",
+    "confidence": "medium",
+    "leans": null,
+    "minutesOutOfSlo": 0,
+    "peakP99Ms": 15,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same, with no change in time out of SLO",
+     "frees 0.5 cores and 1024 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 33% of it (39% before)",
+     "headroom drops from 623.2 to 448.7 req/s (the replayed traffic peaks at 237.8)"
+    ],
+    "warnings": [
+     "api-gateway would run at 55% of capacity, past the history's 12%: its capacity there is extrapolated",
+     "customers-service would run at 40% of capacity, past the history's 18%: its capacity there is extrapolated",
+     "the model missed p99 (holdout, off by 58%) on data it never saw",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ],
+    "ooms": {}
+   },
+   "normal-gw1": {
+    "verdict": "pass",
+    "confidence": "medium",
+    "leans": null,
+    "minutesOutOfSlo": 0,
+    "peakP99Ms": 14,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same, with no change in time out of SLO",
+     "frees 0.5 cores and 1024 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 33% of it (39% before)",
+     "headroom drops from 623.2 to 448.7 req/s (the history peaked at 107.1)"
+    ],
+    "warnings": [
+     "api-gateway: fair fit (latency reproduced within 30%)",
+     "the model missed p99 (holdout, off by 58%) on data it never saw",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ],
+    "ooms": {}
+   },
+   "launch-cust125": {
+    "verdict": "inconclusive",
+    "confidence": "low",
+    "leans": "pass",
+    "minutesOutOfSlo": 0,
+    "peakP99Ms": 37,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same, with no change in time out of SLO",
+     "the backtest passes, but confidence is low (customers-service would run at 89% of a capacity the history never tested (peak 18%): the outcome rests on an extrapolated limit) — load-test before trusting it",
+     "frees 0.13 cores and 0 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 39% of it (39% before)",
+     "headroom drops from 623.2 to 274 req/s (the replayed traffic peaks at 237.8)"
+    ],
+    "warnings": [
+     "customers-service would run at 89% of a capacity the history never tested (peak 18%): the outcome rests on an extrapolated limit",
+     "the model missed p99 (holdout, off by 58%) on data it never saw",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ],
+    "ooms": {}
+   },
+   "normal-cust125": {
+    "verdict": "pass",
+    "confidence": "medium",
+    "leans": null,
+    "minutesOutOfSlo": 0,
+    "peakP99Ms": 15,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same, with no change in time out of SLO",
+     "frees 0.13 cores and 0 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 39% of it (39% before)",
+     "headroom drops from 623.2 to 274 req/s (the history peaked at 107.1)"
+    ],
+    "warnings": [
+     "customers-service would run at 40% of capacity, past the history's 18%: its capacity there is extrapolated",
+     "the model missed p99 (holdout, off by 58%) on data it never saw",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ],
+    "ooms": {}
+   },
+   "launch-hpa": {
+    "verdict": "pass",
+    "confidence": "medium",
+    "leans": null,
+    "minutesOutOfSlo": 0,
+    "peakP99Ms": 15,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same, with no change in time out of SLO",
+     "frees 0.42 cores and 853 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 34% of it (39% before)"
+    ],
+    "warnings": [
+     "api-gateway would run at 55% of capacity, past the history's 12%: its capacity there is extrapolated",
+     "customers-service would run at 40% of capacity, past the history's 18%: its capacity there is extrapolated",
+     "the model missed p99 (holdout, off by 58%) on data it never saw",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ],
+    "ooms": {}
+   }
+  }
+ }
+}
