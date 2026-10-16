@@ -13,7 +13,7 @@ use std::path::Path;
 pub const USAGE: &str = "hindcast verify-change --model model.json --dataset dataset.json (--base <dir> --head <dir> | --terraform-plan plan.json | <strategy.yaml …>)
     [--last 14d] [--draws 30] [--gate-minutes 0.5] [--p99 500] [--errors 0.01] [--scale 2 | --peak 400]
     [--comment comment.md] [--json result.json] [--md report.md] [--html report.html] [--outputs $GITHUB_OUTPUT]
-    [--title \"Hindcast backtest\"] [--run-url <url>] [--fail-on fail|inconclusive|never]";
+    [--title \"Hindcast backtest\"] [--comment-key <key>] [--run-url <url>] [--fail-on fail|inconclusive|never]";
 
 fn required(f: &Flags, k: &str) -> Result<String, String> {
     match f.opt.get(k) {
@@ -143,7 +143,7 @@ pub fn command(cmd: &str, f: &Flags, out: &mut Out) -> Result<Option<i32>, Strin
     let level = confidence(&res);
     let mut written = vec![];
     if let Some(p) = value(f, "comment") {
-        write(&p, &reports::verify_comment(&res, &rv, title.as_deref(), run_url.as_deref()))?;
+        write(&p, &reports::verify_comment(&res, &rv, &reports::comment_marker(value(f, "comment-key").as_deref()), title.as_deref(), run_url.as_deref()))?;
         written.push(p);
     }
     if let Some(p) = value(f, "json") {
@@ -173,6 +173,7 @@ pub fn command(cmd: &str, f: &Flags, out: &mut Out) -> Result<Option<i32>, Strin
             lines.push(format!("minutes-out-of-slo-delta={}", js_num(n(&first, &["reliability", "minutesOutOfSloDelta", "p50"]))));
             lines.push(format!("failed-requests-delta={}", js_num(n(&first, &["reliability", "failedRequestsDelta", "p50"]))));
         }
+        lines.push(format!("marker={}", reports::comment_marker(value(f, "comment-key").as_deref())));
         use std::io::Write;
         let mut fh = std::fs::OpenOptions::new().create(true).append(true).open(&p).map_err(|e| format!("{}: {}", p, e))?;
         writeln!(fh, "{}", lines.join("\n")).map_err(|e| format!("{}: {}", p, e))?;

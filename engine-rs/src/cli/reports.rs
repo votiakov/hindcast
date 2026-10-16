@@ -279,8 +279,16 @@ pub fn pr_comment(r: &Value, title: Option<&str>, run_url: Option<&str>) -> Stri
     l.join("\n") + "\n"
 }
 
-/// the hidden line that finds a check's own comment again, to update it in place
-pub const COMMENT_MARKER: &str = "<!-- hindcast-verify-change -->";
+/// the hidden line that finds a check's own comment again, to update it in place; a key tells apart
+/// several checks commenting on one pull request
+pub fn comment_marker(key: Option<&str>) -> String {
+    let k: String = key.unwrap_or("").chars().filter(|c| c.is_ascii_alphanumeric() || "._-".contains(*c)).collect();
+    if k.is_empty() {
+        "<!-- hindcast-verify-change -->".into()
+    } else {
+        format!("<!-- hindcast-verify-change:{} -->", k)
+    }
+}
 
 fn verdict_mark(v: &str) -> &'static str {
     match v {
@@ -293,9 +301,9 @@ fn verdict_mark(v: &str) -> &'static str {
 
 /// the pull-request comment and job summary of `hindcast verify-change`: verify_change's verdict and
 /// confidence per change, the backtest table it was judged on, why, and how far to trust it
-pub fn verify_comment(out: &Value, r: &Value, title: Option<&str>, run_url: Option<&str>) -> String {
+pub fn verify_comment(out: &Value, r: &Value, marker: &str, title: Option<&str>, run_url: Option<&str>) -> String {
     let verdict = s(out, &["verdict"]);
-    let mut l: Vec<String> = vec![COMMENT_MARKER.into()];
+    let mut l: Vec<String> = vec![marker.into()];
     l.push(format!("### {} {}: {}", verdict_mark(&verdict), title.unwrap_or("Hindcast backtest"), verdict));
     l.push(String::new());
     let results = arr(out, &["results"]);
@@ -307,7 +315,7 @@ pub fn verify_comment(out: &Value, r: &Value, title: Option<&str>, run_url: Opti
         }
         if let Some(u) = run_url {
             l.push(String::new());
-            l.push(format!("<sub>[Run]({})</sub>", u));
+            l.push(format!("<sub>[Workflow run]({})</sub>", u));
         }
         return l.join("\n") + "\n";
     }
@@ -380,7 +388,7 @@ pub fn verify_comment(out: &Value, r: &Value, title: Option<&str>, run_url: Opti
     l.push("</details>".into());
     l.push(String::new());
     if let Some(u) = run_url {
-        l.push(format!("<sub>[Full report]({})</sub>", u));
+        l.push(format!("<sub>[Workflow run]({})</sub>", u));
     }
     l.join("\n") + "\n"
 }
