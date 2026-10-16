@@ -617,7 +617,7 @@ fn summary_lines(r: &Value, app: bool) -> Vec<String> {
         let held = if h.is_null() {
             if app { " Its predictions were not checked on held-back history.".to_string() } else { " Its predictions were not checked on held-back history (see calibrate_model's warnings).".to_string() }
         } else {
-            format!(" On history it was not fitted to, it predicts p99 within {}% ({}).", js_num(js_round(n(h, &["error"]) * 100.0)), if g(h, &["pass"]).as_bool().unwrap_or(false) { "inside the 20% tolerance" } else { "outside the 20% tolerance: read every number as directional" })
+            format!(" On history it was not fitted to, its p99 was off by {}% ({}).", js_num(js_round(n(h, &["error"]) * 100.0)), if g(h, &["pass"]).as_bool().unwrap_or(false) { "inside the 20% tolerance" } else { "outside the 20% tolerance: read every number as directional" })
         };
         let cpu: Vec<String> = arr(t, &["cpuOnly"]).iter().map(|x| s(x, &[])).collect();
         let missing = g(t, &["withoutTraces"]).as_str().map(|w| format!(" {}.", cap(w))).unwrap_or_default();

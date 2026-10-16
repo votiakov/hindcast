@@ -31,14 +31,23 @@ fn range(r: &Value, f: &dyn Fn(f64) -> String) -> String {
         format!("{} ({} … {})", p50, lo, hi)
     }
 }
+/// minutes out of SLO: to the half minute a 30 s bucket gives under ten (so 0.5 min doesn't read as 1 beside a
+/// headline that says 0.5), whole minutes above
 fn mins(x: f64) -> String {
-    format!("{} min", js_num(js_round(x)))
+    format!("{} min", js_num(if x.abs() < 10.0 { js_round(x * 10.0) / 10.0 } else { js_round(x) }))
 }
 fn count(x: f64) -> String {
     loc(js_round(x))
 }
 
 pub use crate::review::judge::headline;
+
+/// an accuracy check whose error is not the gap between its two numbers: a holdout scored per bucket (no request
+/// log to pool), where predicted and measured are the buckets' averages and the error is the typical one per bucket
+fn per_bucket(c: &Value) -> bool {
+    let (p, m, e) = (n(c, &["predicted"]), n(c, &["measured"]), n(c, &["error"]));
+    m != 0.0 && p.is_finite() && e.is_finite() && ((p - m).abs() / m.abs() - e).abs() > 0.005
+}
 
 fn accuracy_block(acc: &[&Value]) -> Vec<String> {
     if acc.is_empty() {
@@ -60,7 +69,7 @@ fn accuracy_block(acc: &[&Value]) -> Vec<String> {
                 "breaking-point" => format!("{} req/s", js_to_fixed(x, 1)),
                 _ => format!("{} ms", js_num(js_round(x))),
             };
-            out.push(format!("| {} | {} | {} | {}% | ≤ {}% | {} |", metric, u(n(c, &["predicted"])), u(n(c, &["measured"])), js_to_fixed(n(c, &["error"]) * 100.0, 1), js_num(inf(c, &["tolerance"]) * 100.0), if g(c, &["pass"]).as_bool().unwrap_or(false) { "✅" } else { "⚠️" }));
+            out.push(format!("| {} | {} | {} | {}%{} | ≤ {}% | {} |", metric, u(n(c, &["predicted"])), u(n(c, &["measured"])), js_to_fixed(n(c, &["error"]) * 100.0, 1), if per_bucket(c) { " typical per bucket" } else { "" }, js_num(inf(c, &["tolerance"]) * 100.0), if g(c, &["pass"]).as_bool().unwrap_or(false) { "✅" } else { "⚠️" }));
         }
         out.push(String::new());
     }
@@ -412,9 +421,36 @@ pub fn accuracy_lines(rec: &Value) -> Vec<String> {
                 Some(Value::Number(t)) if t.as_f64().map(|x| x.is_finite()).unwrap_or(false) => format!(" (target ≤ {}%)", js_num(t.as_f64().unwrap() * 100.0)),
                 _ => String::new(),
             };
+            if per_bucket(c) {
+                // the two numbers are averages of per-bucket values; the error is the typical one per bucket, not their gap
+                return format!("{} {} typically off by {}% per bucket{} (averages: predicted {} vs measured {}) · {}", verdict, super::util::pad(&metric, 14), js_to_fixed(n(c, &["error"]) * 100.0, 1), target, unit(n(c, &["predicted"])), unit(n(c, &["measured"])), s(c, &["note"]));
+            }
             format!("{} {} predicted {} vs measured {} — off by {}%{} · {}", verdict, super::util::pad(&metric, 14), unit(n(c, &["predicted"])), unit(n(c, &["measured"])), js_to_fixed(n(c, &["error"]) * 100.0, 1), target, s(c, &["note"]))
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_per_bucket_holdout_does_not_read_as_the_gap_between_its_averages() {
+        // 296 against 199 is 49% apart; the 91% is the typical error per bucket
+        let rec = json!({ "checks": [
+            { "metric": "p99", "predicted": 296.43, "measured": 199.2, "error": 0.906, "tolerance": 0.2, "pass": false, "note": "typical error per 30s bucket 91% on the last 12 min" },
+            { "metric": "p99", "predicted": 176.0, "measured": 1023.0, "error": 0.828, "tolerance": 0.2, "pass": false, "note": "p99 of all requests" },
+        ] });
+        let l = accuracy_lines(&rec);
+        assert_eq!(l[0], "MISS p99            typically off by 90.6% per bucket (target ≤ 20%) (averages: predicted 296 ms vs measured 199 ms) · typical error per 30s bucket 91% on the last 12 min");
+        assert_eq!(l[1], "MISS p99            predicted 176 ms vs measured 1023 ms — off by 82.8% (target ≤ 20%) · p99 of all requests");
+    }
+
+    #[test]
+    fn minutes_keep_the_half_minute_under_ten() {
+        assert_eq!(mins(0.5), "0.5 min");
+        assert_eq!(mins(14.5), "15 min");
+    }
 }
 
 // ---- the HTML report ----
@@ -566,7 +602,7 @@ pub fn backtest_html(r: &Value, model: &Value) -> String {
     } else {
         format!(
             "<table><tr><th>check</th><th>predicted</th><th>measured</th><th>off by</th><th>target</th><th>what</th></tr>{}</table>",
-            checks.iter().map(|c| format!("<tr><td>{}</td><td class=\"num\">{}</td><td class=\"num\">{}</td><td class=\"num {}\">{}%</td><td class=\"num\">≤ {}%</td><td>{}</td></tr>", s(c, &["metric"]), unit_cell(c, "predicted"), unit_cell(c, "measured"), if g(c, &["pass"]).as_bool().unwrap_or(false) { "pass" } else { "miss" }, js_to_fixed(n(c, &["error"]) * 100.0, 1), js_num(inf(c, &["tolerance"]) * 100.0), esc(&s(c, &["note"])))).collect::<Vec<_>>().join("")
+            checks.iter().map(|c| format!("<tr><td>{}</td><td class=\"num\">{}</td><td class=\"num\">{}</td><td class=\"num {}\">{}%{}</td><td class=\"num\">≤ {}%</td><td>{}</td></tr>", s(c, &["metric"]), unit_cell(c, "predicted"), unit_cell(c, "measured"), if g(c, &["pass"]).as_bool().unwrap_or(false) { "pass" } else { "miss" }, js_to_fixed(n(c, &["error"]) * 100.0, 1), if per_bucket(c) { " typical per bucket" } else { "" }, js_num(inf(c, &["tolerance"]) * 100.0), esc(&s(c, &["note"])))).collect::<Vec<_>>().join("")
         )
     };
     let charts = [

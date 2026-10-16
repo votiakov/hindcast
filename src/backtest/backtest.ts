@@ -101,8 +101,9 @@ export function rankStrategies(results: StrategyResult[]): BacktestResult['ranki
     .map((r) => {
       const dm = r.delta.monthly.p50;
       const ds = r.delta.minutesOutOfSlo.p50;
+      const minutes = (k: number) => `minute${k === 1 ? '' : 's'}`;
       const verdict =
-        ds <= 0.5 && dm < 0 ? `saves $${Math.round(-dm).toLocaleString('en-US')}/month with no more time out of SLO` : ds < -0.5 && dm <= 0 ? 'cheaper and more reliable' : ds < -0.5 ? `$${Math.round(dm).toLocaleString('en-US')}/month buys ${Math.round(-ds)} fewer minutes out of SLO` : ds > 0.5 && dm < 0 ? `saves $${Math.round(-dm).toLocaleString('en-US')}/month but adds ${Math.round(ds)} minutes out of SLO` : ds > 0.5 ? 'worse on both' : `costs $${Math.round(dm).toLocaleString('en-US')}/month more for the same reliability`;
+        ds <= 0.5 && dm < 0 ? `saves $${Math.round(-dm).toLocaleString('en-US')}/month with no more time out of SLO` : ds < -0.5 && dm <= 0 ? 'cheaper and more reliable' : ds < -0.5 ? `$${Math.round(dm).toLocaleString('en-US')}/month buys ${Math.round(-ds)} fewer ${minutes(Math.round(-ds))} out of SLO` : ds > 0.5 && dm < 0 ? `saves $${Math.round(-dm).toLocaleString('en-US')}/month but adds ${Math.round(ds)} ${minutes(Math.round(ds))} out of SLO` : ds > 0.5 ? 'worse on both' : `costs $${Math.round(dm).toLocaleString('en-US')}/month more for the same reliability`;
       return { name: r.name, monthlyDelta: dm, minutesOutOfSloDelta: ds, verdict };
     })
     .sort((a, b) => a.minutesOutOfSloDelta - b.minutesOutOfSloDelta > 0.5 || b.minutesOutOfSloDelta - a.minutesOutOfSloDelta > 0.5 ? a.minutesOutOfSloDelta - b.minutesOutOfSloDelta : a.monthlyDelta - b.monthlyDelta);

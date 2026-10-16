@@ -656,9 +656,9 @@ pub fn rank_strategies(results: &[StrategyResult]) -> Vec<Ranking> {
             } else if ds < -0.5 && dm <= 0.0 {
                 "cheaper and more reliable".into()
             } else if ds < -0.5 {
-                format!("${}/month buys {} fewer minutes out of SLO", locale_int(js_round(dm)), js_num(js_round(-ds)))
+                format!("${}/month buys {} fewer minute{} out of SLO", locale_int(js_round(dm)), js_num(js_round(-ds)), if js_round(-ds) == 1.0 { "" } else { "s" })
             } else if ds > 0.5 && dm < 0.0 {
-                format!("saves ${}/month but adds {} minutes out of SLO", locale_int(js_round(-dm)), js_num(js_round(ds)))
+                format!("saves ${}/month but adds {} minute{} out of SLO", locale_int(js_round(-dm)), js_num(js_round(ds)), if js_round(ds) == 1.0 { "" } else { "s" })
             } else if ds > 0.5 {
                 "worse on both".into()
             } else {

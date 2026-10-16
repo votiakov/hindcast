@@ -56,7 +56,8 @@ pub fn headline(st: &Value, base: &Value) -> String {
         return format!("{} and removes {} minute{} out of SLO from the history{}", m, js_num(k), if k == 1.0 { "" } else { "s" }, failed.map(|f| format!(", with {}", f)).unwrap_or_default());
     }
     if ds > 0.5 {
-        return format!("{} and adds {} minutes out of SLO{}", m, js_num(js_round(ds)), failed.map(|f| format!(", with {}", f)).unwrap_or_default());
+        let k = js_round(ds);
+        return format!("{} and adds {} minute{} out of SLO{}", m, js_num(k), if k == 1.0 { "" } else { "s" }, failed.map(|f| format!(", with {}", f)).unwrap_or_default());
     }
     match failed {
         // the minutes out of SLO can stay put while far fewer (or more) requests fail inside them
@@ -423,6 +424,7 @@ mod tests {
         assert_eq!(headline(&st(0.0, 0.0, -31990.0), &base), "costs the same, with no change in time out of SLO but 31,990 fewer failed requests (over 99% fewer)");
         assert_eq!(headline(&st(0.0, 0.0, -32000.0), &base), "costs the same, with no change in time out of SLO but 32,000 fewer failed requests (all of them)");
         assert_eq!(headline(&st(0.0, 15.0, 400000.0), &base), "costs the same and adds 15 minutes out of SLO, with 400,000 more failed requests (from 32,000 as built)");
+        assert_eq!(headline(&st(-15.0, 1.0, 0.0), &base), "saves $15/month and adds 1 minute out of SLO");
         let few = json!({ "summary": { "failedRequests": { "p50": 50.0 } }, "incidents": [] });
         assert_eq!(headline(&st(0.0, 0.0, -40.0), &few), "costs the same, with no change in time out of SLO");
     }
