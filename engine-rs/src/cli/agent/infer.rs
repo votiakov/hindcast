@@ -163,27 +163,7 @@ fn label(m: &JMap<String, Value>, k: &str) -> String {
     m.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string()
 }
 
-/// "pkg.CartService/GetCart", "POST /oteldemo.CartService/AddItem", "Currency/Convert" → "cart/getcart":
-/// an RPC named the way gRPC names it, so a client span and the server span answering it meet
-pub fn rpc_key(name: &str) -> Option<String> {
-    let mut n = name.trim();
-    if let Some((verb, rest)) = n.split_once(' ') {
-        if verb == "POST" {
-            n = rest.trim();
-        } else {
-            return None;
-        }
-    }
-    let n = n.trim_start_matches('/');
-    let (svc, method) = n.split_once('/')?;
-    let svc = svc.rsplit('.').next().unwrap_or(svc);
-    let word = |s: &str| !s.is_empty() && s.chars().next().map(|c| c.is_ascii_uppercase()).unwrap_or(false) && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
-    if !word(svc) || !word(method) {
-        return None;
-    }
-    let base = svc.strip_suffix("Service").filter(|b| !b.is_empty()).unwrap_or(svc);
-    Some(format!("{}/{}", base.to_lowercase(), method.to_lowercase()))
-}
+pub use crate::import::traces::rpc_key;
 
 /// a monitoring or tracing UI behind the same ingress as the system: not where its users come in
 fn observability(svc: &str) -> bool {
@@ -959,8 +939,14 @@ pub fn grpc_provenance(d: &Value, servers: &IndexSet<String>, how: &[String]) ->
     let mut s: Vec<String> = servers.iter().cloned().collect();
     s.sort();
     let mut how: Vec<String> = how.to_vec();
-    if edges.iter().any(|e| e["grpc"].as_bool().unwrap_or(false)) && how.is_empty() {
-        how.push("the call metrics' protocol".into());
+    if edges.iter().any(|e| e["grpc"].as_bool().unwrap_or(false)) {
+        // edges from traces carry the flag where the spans said gRPC; inferred ones where the call metrics did
+        let traced = d.get("topology").and_then(|t| t.get("traces")).and_then(|x| x.as_f64()).unwrap_or(0.0) > 0.0;
+        if traced {
+            how.push("the traces' gRPC spans (rpc.system, grpc.* attributes or package.Service/Method names)".into());
+        } else if how.is_empty() {
+            how.push("the call metrics' protocol".into());
+        }
     }
     Some(json!({ "servers": s, "calls": calls, "from": how }))
 }
@@ -1077,6 +1063,24 @@ mod tests {
         assert_eq!(a.provenance["said"], json!("no traces: topology from istio metrics; no per-endpoint latency"));
         let g = grpc_provenance(&d, &IndexSet::new(), &[]).unwrap();
         assert_eq!(g["calls"], json!([["web", "api"]]));
+        assert_eq!(g["from"], json!(["the call metrics' protocol"]));
+    }
+
+    #[test]
+    fn traced_calls_are_grpc_where_their_spans_say_so() {
+        // trace files alone: no metric says who serves gRPC, the spans do
+        let d = json!({ "topology": { "traces": 20, "edges": [
+            { "from": "web", "to": "a", "callsPerS": 1, "grpc": true },
+            { "from": "web", "to": "b", "callsPerS": 1 },
+            { "from": "a", "to": "a", "callsPerS": 1, "grpc": true }
+        ] } });
+        let g = grpc_provenance(&d, &IndexSet::new(), &[]).unwrap();
+        assert_eq!(g["calls"], json!([["web", "a"]]));
+        assert_eq!(g["servers"], json!([]));
+        assert_eq!(g["from"], json!(["the traces' gRPC spans (rpc.system, grpc.* attributes or package.Service/Method names)"]));
+        // and none where no span said gRPC
+        let plain = json!({ "topology": { "traces": 20, "edges": [{ "from": "web", "to": "b", "callsPerS": 1 }] } });
+        assert!(grpc_provenance(&plain, &IndexSet::new(), &[]).is_none());
     }
 
     #[test]

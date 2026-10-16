@@ -83,7 +83,7 @@ impl Attrs {
     }
 }
 
-const KEEP_PREFIXES: [&str; 25] = [
+const KEEP_PREFIXES: [&str; 26] = [
     "url.path",
     "http.target",
     "http.route",
@@ -109,6 +109,7 @@ const KEEP_PREFIXES: [&str; 25] = [
     "error",
     "otel.status_code",
     "span.kind",
+    "grpc.",
 ];
 
 fn keep(k: &str) -> bool {
@@ -644,6 +645,37 @@ fn system_of(sp: &Span) -> Option<(&'static str, String)> {
     None
 }
 
+/// "pkg.CartService/GetCart", "POST /oteldemo.CartService/AddItem", "Currency/Convert" → "cart/getcart":
+/// an RPC named the way gRPC names it, so a client span and the server span answering it meet
+pub fn rpc_key(name: &str) -> Option<String> {
+    let mut n = name.trim();
+    if let Some((verb, rest)) = n.split_once(' ') {
+        if verb == "POST" {
+            n = rest.trim();
+        } else {
+            return None;
+        }
+    }
+    let n = n.trim_start_matches('/');
+    let (svc, method) = n.split_once('/')?;
+    let svc = svc.rsplit('.').next().unwrap_or(svc);
+    let word = |s: &str| !s.is_empty() && s.chars().next().map(|c| c.is_ascii_uppercase()).unwrap_or(false) && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+    if !word(svc) || !word(method) {
+        return None;
+    }
+    let base = svc.strip_suffix("Service").filter(|b| !b.is_empty()).unwrap_or(svc);
+    Some(format!("{}/{}", base.to_lowercase(), method.to_lowercase()))
+}
+
+/// a span of a gRPC call: `rpc.system = grpc`, an attribute under `grpc.`, or a name the way gRPC
+/// names its methods (rpc_key)
+fn is_grpc(sp: &Span) -> bool {
+    if sp.kind != "client" && sp.kind != "server" {
+        return false;
+    }
+    attr_str(sp, "rpc.system").map(|s| s.eq_ignore_ascii_case("grpc")).unwrap_or(false) || sp.attrs.0.iter().any(|(k, _)| k.starts_with("grpc.")) || rpc_key(&sp.name).is_some()
+}
+
 fn is_ip(s: &str) -> bool {
     let v4 = {
         let parts: Vec<&str> = s.split('.').collect();
@@ -695,6 +727,8 @@ struct Visit {
     method: Option<String>,
     span_kind: &'static str,
     bytes: Option<f64>,
+    /// the call into this visit was made over gRPC, as its client or server span says
+    grpc: bool,
     children: Vec<usize>,
     server_spans: f64,
     self_ms: f64,
@@ -805,6 +839,7 @@ fn visits_of(spans: &[Span], ignore: &IndexSet<String>, arena: &mut Arena) -> Ve
                     method: attr_str(sp, "http.request.method").or_else(|| attr_str(sp, "http.method")),
                     span_kind: sp.kind,
                     bytes: payload_bytes([via.map(|x| &spans[x]), Some(sp)]),
+                    grpc: is_grpc(sp) || via.map(|x| is_grpc(&spans[x])).unwrap_or(false),
                     children: vec![],
                     server_spans: 0.0,
                     self_ms: 0.0,
@@ -1071,6 +1106,7 @@ pub fn build_topology(spans: &mut [Span], b: Option<&mut DatasetBuilder>, o: &Tr
     }
     let mut svc: IndexMap<String, Svc> = IndexMap::new();
     let mut edges: IndexMap<String, (f64, f64, f64)> = IndexMap::new();
+    let mut grpc_edges: IndexSet<String> = IndexSet::new();
     let mut eps: IndexMap<String, Ep> = IndexMap::new();
     let step = o.step_s;
     let mut sb: IndexMap<String, IndexMap<u64, Cell>> = IndexMap::new();
@@ -1124,6 +1160,9 @@ pub fn build_topology(spans: &mut [Span], b: Option<&mut DatasetBuilder>, o: &Tr
                 if let Some(p) = parent {
                     let key = format!("{}>{}", arena.v[p].service, vv.service);
                     *ep.calls.entry(key.clone()).or_insert(0.0) += 1.0;
+                    if vv.grpc {
+                        grpc_edges.insert(key.clone());
+                    }
                     let e = edges.entry(key.clone()).or_insert((0.0, 0.0, 0.0));
                     e.0 += 1.0;
                     if let Some(bytes) = vv.bytes {
@@ -1268,7 +1307,12 @@ pub fn build_topology(spans: &mut [Span], b: Option<&mut DatasetBuilder>, o: &Tr
             let mut it = k.split('>');
             let from = it.next().unwrap_or("");
             let to = it.next().unwrap_or("");
-            serde_json::json!({ "from": from, "to": to, "callsPerS": if span != 0.0 { e.0 / span / sampling } else { 0.0 }, "bytesPerCall": if e.2 != 0.0 { Value::from(e.1 / e.2) } else { Value::Null } })
+            let mut o = serde_json::json!({ "from": from, "to": to, "callsPerS": if span != 0.0 { e.0 / span / sampling } else { 0.0 }, "bytesPerCall": if e.2 != 0.0 { Value::from(e.1 / e.2) } else { Value::Null } });
+            // the calls were made over gRPC, as their spans say: collection's provenance.grpc
+            if grpc_edges.contains(k) {
+                o["grpc"] = Value::Bool(true);
+            }
+            o
         })
         .collect();
     Topology {
@@ -1281,6 +1325,7 @@ pub fn build_topology(spans: &mut [Span], b: Option<&mut DatasetBuilder>, o: &Tr
         sampling: o.sampling.filter(|s| *s != 0.0),
         sampling_check: None,
         rate_corrected: None,
+        mix_from_traces: None,
     }
 }
 

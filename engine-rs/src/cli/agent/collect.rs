@@ -402,6 +402,9 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
     super::progress("importing", 3.0, 4.0);
     let mut fs = DiskFiles::for_manifest(&manifest_path);
     let (dataset, log) = crate::import::manifest::import_bundle(&manifest_v, &mut fs)?;
+    for l in log.iter().filter(|l| l.what.contains(": endpoint mix taken from the ")) {
+        warnings.push(format!("{}. Span metrics of a service with several replicas, exported without a label per replica, jump between the replicas' counters and rate() reads each drop as a reset", l.what));
+    }
     let mut d = crate::cli::util::to_json(&dataset);
     let rename = system.get("rename").and_then(|r| r.as_object()).cloned().unwrap_or_default();
     for id in strs(system.get("exclude")).unwrap_or_default() {
