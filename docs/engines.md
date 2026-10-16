@@ -102,8 +102,11 @@ Every tick (`dt` = 50 ms of simulated time):
    (`1 − f^(R+1)`, budget-limited), then the breaker, then the kind's `Behavior.fold()`:
    - own latency = service time + the M/M/c wait of a pool of capacity × service-time workers (as the
      DES runs it), scaled for lognormal service (Allen–Cunneen, cv 0.6) + backlog past saturation;
-   - each answer's latency is kept as a mixture of up to four (weight, mean, spread) parts — a cache's
-     hits and misses, a fast and a slow branch — combined down the call graph.
+   - each answer's latency is kept as a mixture of up to eight (weight, mean, spread) parts — a cache's
+     hits and misses, a fast and a slow branch, answers that needed k retries (a share ∝ fᵏ, later by
+     k failed attempts and, with backoff, k waits) — combined down the call graph;
+   - a failure takes the time it took: at once when shed, the component's own time when it fails a
+     request itself (`inject-errors`, as the DES fails it at the end of the work), the deadline when late.
 5. **Global**: error rate from client success; p99 from the users' latency mixture, and once errors reach 1 % it is at
    least the timeout (failed requests count as timeouts); cost; 0.25 s history samples.
 
@@ -181,6 +184,12 @@ icon in `canvas/icons.tsx`, colours in `theme/themes.ts`, and (if it has new kno
   Latency is compared too: on the 98 boards both engines serve healthily (under 5% errors, no
   component at ≥ 97% load), the fluid p50 and p99 of answers fall inside the DES's five-seed range
   ±25% + 5 ms on 97. The one outside is a cold-start cascade the per-tick fluid model can't stagger.
+  A third set of 100 boards exercises retries under failure: each retrying caller gets a policy
+  (immediate, backoff or budget), the users often a deadline and retries, one component fails 3% or
+  20% of its answers and another runs at 30% of its capacity for 10 s. Error rates agree within 5
+  points on all 100; latency on 50 of the 52 healthy ones. Outside: a function cold-start cascade (as
+  above, there without retries or faults too) and two stacked layers of retries with backoff, where
+  the fluid engine carries a failed call's time as a mean without its own spread.
   The summary p99s are not the same quantity: the fluid one counts failures as timeouts once they pass
   1%, the DES's is of successful answers only (see [What "p99" means](#what-p99-means-in-each-engine)).
 - **Metastable failure emerges.** 700 req/s with a 6 s spike to 1,600, client timeout 1 s, API queue 3 s:

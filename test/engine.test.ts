@@ -223,6 +223,17 @@ describe('latency of the successful answers, in both engines', () => {
     const a = both({ components: [{ id: 'users', kind: 'client' }, { id: 'c', kind: 'cache', hitRate: 0.4 }, { id: 'api', kind: 'server' }], connections: [['users', 'c'], ['c', 'api']] }, 100);
     for (const e of [a.f, a.d]) near(e.p50Ms, 16, 0.12);
   });
+
+  it('an answer that needed a retry is a slower mode of its own', () => {
+    // storage (lognormal 38 ms, cv 0.3) fails 20% at the end of its work, users retry once: 16 of
+    // every 96 answers took two attempts, so the p99 is that mode's 94th percentile, 2 × 38 ms ×
+    // (1 + 1.55 × 0.3 / √2) ≈ 101 ms (+ hops). Added to every answer's mean, the retry left the p99 at 76
+    const spec = { components: [{ id: 'users', kind: 'client', retries: 1 }, { id: 's', kind: 'storage' }], connections: [['users', 's']] };
+    const sc = { duration: 40, rps: 200, events: [{ at: 0, action: { type: 'inject-errors', id: 's', rate: 0.2 } }] };
+    const f = simulate(spec, sc, { answers: true }).answers!;
+    const d = simulateDes(spec, sc, { seed: 1 }).summary;
+    for (const p99 of [f.p99Ms, d.p99Ms]) near(p99, 105, 0.08);
+  });
 });
 
 describe('retry amplification', () => {
@@ -233,6 +244,21 @@ describe('retry amplification', () => {
   it('backoff delays retries without skipping any: as many attempts as immediate retries', () => {
     expect(retryAmp(0.5, 2, 'backoff')).toBeCloseTo(1.75);
     expect(retryAmp(0.5, 2, 'backoff')).toBe(retryAmp(0.5, 2, 'immediate'));
+  });
+  it('backoff does not save a stalled database from its retries: both engines stay down', () => {
+    // users 100/s with a 1 s deadline; a 250/s database with a 10 s queue at 30% from 8 s to 14 s,
+    // still about 3 s deep when it recovers. Two retries keep 300 attempts/s arriving, each waits past
+    // the deadline and fails, so the queue never drains, delays of 50–300 ms or not. One retry (200/s)
+    // drains it. The fluid engine counted 30% of backed-off retries (160/s) and recovered
+    const errorsAtEnd = (retries: number, retryPolicy: string) => {
+      const spec = { components: [{ id: 'users', kind: 'client', timeoutMs: 1000, retries, retryPolicy }, { id: 'db', kind: 'db', capacity: 250, queueS: 10 }], connections: [['users', 'db']] };
+      const sc = { duration: 50, rps: 100, events: [{ at: 8, action: { type: 'degrade', id: 'db', factor: 0.3 } }, { at: 14, action: { type: 'degrade', id: 'db', factor: 1 } }] };
+      const last = (tl: { t: number; errorRate: number }[]) => tl.filter((p) => p.t > 40).reduce((m, p) => Math.max(m, p.errorRate), 0);
+      return [last(simulate(spec, sc, { sampleEvery: 1 }).timeline), last(simulateDes(spec, sc, { seed: 1 }).timeline)];
+    };
+    for (const e of errorsAtEnd(2, 'backoff')) expect(e).toBeGreaterThan(0.9);
+    for (const e of errorsAtEnd(2, 'immediate')) expect(e).toBeGreaterThan(0.9);
+    for (const e of errorsAtEnd(1, 'backoff')) expect(e).toBeLessThan(0.01);
   });
   it('a retry budget caps extra load at 10%', () => {
     expect(retryAmp(0.9, 3, 'budget')).toBeCloseTo(1.1);

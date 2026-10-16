@@ -106,12 +106,57 @@ const describe = (spec: ReturnType<typeof generate>) =>
 // later when function00's own cold starts end and release their calls at once. The fluid engine passes
 // a request through a component within the tick, so both reach function10 together and it cold-starts
 // once: fewer cold answers, a p99 just inside the warm mode.
+//
+// The third set (retry policies, an injected error rate, a capacity dip) found, each checked by hand:
+//  - Backoff: the fluid engine counted 30% of backed-off retries as load (1 + 0.3 × (Σfᵏ − 1)) while
+//    crediting all of them with success. A 50% failing database behind 2 retries gets 1 + 0.5 + 0.25 =
+//    1.75 attempts per call whatever the delay (the DES: 1.81; the fluid engine had 1.225): backoff
+//    delays a retry, it does not skip it. Behind a 1 s deadline, users at 100/s and a 250/s database
+//    whose 10 s queue is still 3 s deep after a stall at 30%: two retries keep 300 attempts/s arriving,
+//    every one waits past the deadline, and the database never catches up — with or without backoff
+//    (the DES: 100% errors to the end; the fluid engine with backoff saw 160/s and recovered). Fixed.
+//  - Retried answers: a retry's time was added to every answer's mean, so the 16% of answers that took
+//    a second attempt (users > storage failing 20%, one retry: p99 ≈ the 94th percentile of two
+//    answers' time, 2 × 38 ms × 1.33 ≈ 101 ms; the DES 108) did not show: p99 76. DES right; fixed (now 106):
+//    an answer that took k retries is a mode of its own, after k failed attempts and backoff waits.
+//  - A component's own failures (inject-errors) were counted as failing at once (0.5 ms); the DES fails
+//    them at the end of the work, so a retry after one costs a whole answer's time. DES right; fixed.
+//  - Four mixture parts were too few once retries are modes (#10: cold starts × retries; the slowest
+//    mode merged into a faster one, p99 256 where the DES's five seeds give 329–513): eight. Fixed.
+// Still apart in the third set, as approximations: #12 is a cold-start cascade like #1 (it is as far
+// apart with every retry and fault removed: fluid 366 ms, DES 580–640). #5 (users with 2 retries and
+// backoff over a CDN with 1 retry and backoff, 2000/s: p99 fluid 278 ms, DES 391–410) stacks two layers
+// of retries: each layer alone agrees (users only: 236 against 298; CDN only: 162 against 169), but
+// the fluid engine carries a failed call's time as a mean with no spread of its own, so the slowest
+// answers — up to six attempts and their jittered waits — come out too fast.
 
 const SEEDS = 5;
 const TOLERANCE = 0.25;
 const FLOOR_MS = 5;
 const SATURATED = 0.97;
-function crosscheck(n: number, kinds: string[], label: string) {
+// The third set exercises retries under failure: every caller with retries gets a policy (immediate,
+// backoff or a 10% budget), the users a deadline half the time, one component fails a share of its
+// answers for the whole run, and another runs at 30% of its capacity from 10 s to 20 s (separately
+// seeded: the first two sets are unchanged).
+function withFaults(spec: ReturnType<typeof generate>) {
+  const callers = new Set(spec.connections.map((c) => c[0]));
+  for (const c of spec.components) {
+    if (c.kind !== 'client' && callers.has(c.id) && c.retries === undefined && rnd() < 0.4) c.retries = 1 + Math.floor(rnd() * 2);
+    if (c.retries) c.retryPolicy = pick(['immediate', 'backoff', 'budget']);
+  }
+  const users = spec.components[0];
+  if (rnd() < 0.5) users.timeoutMs = pick([500, 1000, 2000]);
+  if (rnd() < 0.6) { users.retries = 1 + Math.floor(rnd() * 2); users.retryPolicy = pick(['immediate', 'backoff', 'budget']); }
+  const rest = spec.components.slice(1);
+  const events: { at: number; action: Record<string, unknown> }[] = [{ at: 0, action: { type: 'inject-errors', id: pick(rest).id, rate: pick([0.03, 0.2]) } }];
+  const slow = pick(rest).id;
+  events.push({ at: 10, action: { type: 'degrade', id: slow, factor: 0.3 } }, { at: 20, action: { type: 'degrade', id: slow, factor: 1 } });
+  return events;
+}
+const describeFaults = (events: { action: Record<string, unknown> }[]) => events.length ? ` | errors ${events[0].action.id} ${events[0].action.rate}, ${events[1].action.id} at 30% 10–20 s` : '';
+const describeRetries = (spec: ReturnType<typeof generate>) => spec.components.filter((c: any) => c.retryPolicy).map((c: any) => `${c.id} ${c.retryPolicy}`).join(', ');
+
+function crosscheck(n: number, kinds: string[], label: string, faults = false) {
   const rows: string[] = [];
   const slow: string[] = [];
   let withNew = 0;
@@ -119,21 +164,23 @@ function crosscheck(n: number, kinds: string[], label: string) {
   let saturated = 0;
   for (let k = 0; k < n; k++) {
     const spec = generate(kinds);
+    const events = faults ? withFaults(spec) : [];
+    const scenario = (rps: number) => (faults ? { duration: 40, rps, events } : { duration: 40, rps });
     if (spec.components.some((c: any) => !KINDS.includes(c.kind) && c.kind !== 'client')) withNew++;
     const rps = pick([20, 200, 2000]);
     try {
-      const fr = simulate(spec, { duration: 40, rps }, { answers: true });
+      const fr = simulate(spec, scenario(rps), { answers: true });
       const f = fr.summary;
-      const d = simulateDes(spec, { duration: 40, rps }, { seed: 1 }).summary;
+      const d = simulateDes(spec, scenario(rps), { seed: 1 }).summary;
       const diff = Math.abs(f.meanErrorRate - d.meanErrorRate);
-      if (diff > 0.05) rows.push(`#${k} ${rps}/s fluid ${(f.meanErrorRate * 100).toFixed(1)}% des ${(d.meanErrorRate * 100).toFixed(1)}%  ${describe(spec)}`);
+      if (diff > 0.05) rows.push(`#${k} ${rps}/s fluid ${(f.meanErrorRate * 100).toFixed(1)}% des ${(d.meanErrorRate * 100).toFixed(1)}%  ${describe(spec)}${faults ? ` | ${describeRetries(spec)}${describeFaults(events)}` : ''}`);
       if (f.meanErrorRate >= 0.05 || d.meanErrorRate >= 0.05 || !fr.answers) continue;
       if (Object.values(fr.components).some((c) => c.meanUtil >= SATURATED && !c.async && !['client', 'queue', 'stream'].includes(c.kind))) {
         saturated++;
         continue;
       }
       healthy++;
-      const ds = [d, ...Array.from({ length: SEEDS - 1 }, (_, s) => simulateDes(spec, { duration: 40, rps }, { seed: s + 2 }).summary)];
+      const ds = [d, ...Array.from({ length: SEEDS - 1 }, (_, s) => simulateDes(spec, scenario(rps), { seed: s + 2 }).summary)];
       const out: string[] = [];
       for (const [q, fluid] of [['p50', fr.answers.p50Ms], ['p99', fr.answers.p99Ms]] as const) {
         const des = ds.map((x) => (q === 'p50' ? x.p50Ms : x.p99Ms));
@@ -141,7 +188,7 @@ function crosscheck(n: number, kinds: string[], label: string) {
         const hi = Math.max(...des) * (1 + TOLERANCE) + FLOOR_MS;
         if (fluid < lo || fluid > hi) out.push(`${q} fluid ${fluid} ms des ${Math.min(...des)}–${Math.max(...des)}`);
       }
-      if (out.length) slow.push(`#${k} ${rps}/s ${out.join(', ')}  ${describe(spec)}`);
+      if (out.length) slow.push(`#${k} ${rps}/s ${out.join(', ')}  ${describe(spec)}${faults ? ` | ${describeRetries(spec)}${describeFaults(events)}` : ''}`);
     } catch (e) { rows.push(`#${k} threw ${(e as Error).message}`); }
   }
   console.log(rows.length, `of ${n} disagree by >5 points${label}${kinds === KINDS ? '' : ` (${withNew} with a search, vector, archive or edge component)`}`);
@@ -152,3 +199,5 @@ function crosscheck(n: number, kinds: string[], label: string) {
 crosscheck(200, KINDS, '');
 rnd = lcg(29);
 crosscheck(100, NEW_KINDS, ' — the set with the new kinds');
+rnd = lcg(47);
+crosscheck(100, KINDS, ' — the set with retry policies, faults and a capacity dip', true);

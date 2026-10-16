@@ -582,11 +582,13 @@ pub fn mix_quantile(dist: &[[f64; 3]], q: f64) -> f64 {
     hi
 }
 
-/// at most four components: the two closest in mean merge until it fits
+/// at most eight components: the two closest in mean merge until it fits (four were too few once
+/// retried answers became modes of their own: retries × cold starts × a cache's hits and misses
+/// merged the slowest mode into a faster one and lost the p99)
 fn mix_merge(mut dist: Vec<[f64; 3]>) -> Vec<[f64; 3]> {
     dist.retain(|c| c[0] > 1e-12 && c[1].is_finite());
     dist.sort_by(|a, b| a[1].partial_cmp(&b[1]).unwrap_or(std::cmp::Ordering::Equal));
-    while dist.len() > 4 {
+    while dist.len() > 8 {
         let k = (0..dist.len() - 1).min_by(|&a, &b| (dist[a + 1][1] - dist[a][1]).partial_cmp(&(dist[b + 1][1] - dist[b][1])).unwrap_or(std::cmp::Ordering::Equal)).unwrap();
         let (x, y) = (dist[k], dist[k + 1]);
         let w = x[0] + y[0];
@@ -2118,9 +2120,31 @@ impl Engine {
                     }
                 }
                 if retries > 0.0 && !kids.is_empty() {
-                    let extra = (child_lat - lat).max(0.0);
-                    for c in kids.iter_mut() {
-                        c[1] += extra;
+                    // an answer that took k retries first spent k failed attempts (and, with backoff,
+                    // k waits): a slower mode of its own, not a little on every answer. Of the calls
+                    // answered, a share ∝ fᵏ needed k retries (with a budget, at most the retries it allows)
+                    let f = st.attempt_fail.clamp(0.0, 1.0);
+                    let policy = d.retry_policy.as_deref().unwrap_or("immediate");
+                    let fail_spread = if lat > 1e-9 { tail * (attempt_fail_ms / lat).min(1.0) } else { 0.0 };
+                    let base = std::mem::take(&mut kids);
+                    // a backoff wait is jittered ×0.5–1.5: its 99th percentile is 0.49 × its mean above it
+                    let (mut k, mut delay, mut jitter) = (0.0, 0.0, 0.0);
+                    while k <= retries {
+                        let w = match (policy, k) {
+                            (_, k) if k == 0.0 => 1.0,
+                            ("budget", k) if k == 1.0 => f.min(st.retry_amp - 1.0).max(0.0),
+                            ("budget", _) => 0.0,
+                            _ => f.js_pow(k),
+                        };
+                        if w > 1e-9 {
+                            for c in &base {
+                                kids.push([c[0] * w, c[1] + delay, (c[2] * c[2] + k * fail_spread * fail_spread + jitter).sqrt()]);
+                            }
+                        }
+                        let wait = if policy == "backoff" { backoff_ms(k) } else { 0.0 };
+                        delay += attempt_fail_ms + wait;
+                        jitter += (0.49 * wait).js_pow(2.0);
+                        k += 1.0;
                     }
                 }
                 let (own_share, kid_share) = match d.kind.as_str() {
@@ -2179,14 +2203,19 @@ impl Engine {
             st.latency_ms = ema(st.latency_ms, latency, dt, 0.3);
             let own_now = if l.up && d.kind != "client" { fold(&FoldCtx { d, keep, local_share: 1.0, child_succ: 1.0, child_lat: 0.0, has_kids: false, cfg }, st).1 + d.fault_latency_ms.filter(|x| !x.is_nan()).unwrap_or(0.0) } else { 0.0 };
             st.own_ms = ema(st.own_ms, own_now, dt, 0.3);
-            // its failures: what it sheds itself comes back at once; a call that failed downstream
-            // after its own work and the time the failed calls took
+            // its failures: what it sheds itself comes back at once; what it fails itself (a gray
+            // failure, `inject-errors`) after its own work, as the discrete-event engine fails it at the
+            // end of the service time; a call that failed downstream after its own work and the time the
+            // failed calls took
             let fail_now = {
-                let shed = 1.0 - keep;
+                // (what it failed is counted in its drops: of what it did not shed, a share fr)
+                let fr = if l.up && d.kind != "client" { d.fault_rate.filter(|x| !x.is_nan()).unwrap_or(0.0).clamp(0.0, 0.999) } else { 0.0 };
+                let shed = ((1.0 - keep - fr) / (1.0 - fr)).max(0.0);
+                let faulted = (1.0 - keep - shed).max(0.0);
                 let downstream = if matches!(d.kind.as_str(), "cache" | "cdn" | "edge" | "db") { 1.0 - l.local_share } else { 1.0 };
                 let calls = if has_kids && l.up { keep * (1.0 - child_succ).max(0.0) * downstream } else { 0.0 };
-                if calls > 1e-12 {
-                    (shed * FAST_FAIL_MS + calls * (own_now + call_fail_ms)) / (shed + calls)
+                if calls + faulted > 1e-12 {
+                    (shed * FAST_FAIL_MS + faulted * own_now + calls * (own_now + call_fail_ms)) / (shed + faulted + calls)
                 } else {
                     FAST_FAIL_MS
                 }
