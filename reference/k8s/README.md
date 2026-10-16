@@ -59,13 +59,40 @@ spends any minute out of SLO.
 
 ## Results
 
+**Recomputed on 2026-10-16, after an importer fix.** The frontend runs several replicas (three as
+built, two in `normal-2`, two to five under the HPA), and the collector wrote their span-metric
+counters into one Prometheus series per endpoint. Each time the series switched between replicas,
+`rate()` read the drop as a counter reset, so the frontend's mix of requests read from the metrics
+was wrong, by a different amount for each endpoint. The importer now takes the mix from the traces
+where the two disagree beyond sampling and the services behind the frontend side with the traces.
+Every collection below was imported again from the files it was collected with: nothing was
+re-recorded, no measurement changed, and the predictions committed before the runs, with every
+backtest verdict, are the same. Two collections were affected, `normal-2` (checkouts were 1.2% of
+its requests by the series, 4.2% by the traces) and `launch-x1.3-hpa`. What moved, before → after:
+
+- `normal-2`, model on the day's real traffic: ordinary-day model p99 81 → 83 ms, errors
+  0.00% → 0.03%, 0 → 1 min out of SLO; with the load test, errors 0.00% → 0.04%, 0 → 0.5 min.
+- `launch-x1.3-hpa`, same column: p99 268 → 265 ms, errors 0.05% → 0.06%, 1.5 → 1 min; with the
+  load test, p99 352 → 342 ms, errors 0.11% → 0.13%, 1 → 2 min.
+- Memory leak, model on the day: `normal-2` no kill → `email` killed at minute 36.3 (it wasn't, so
+  the kill-or-not call is right in 10 of 13 runs, before 11); `launch-x1.3-hpa` minute 21.3 → 19.5
+  (observed 22.0).
+- The accuracy record shipped with the model ([k8s-shop.json](../../public/reference/k8s-shop.json)):
+  p99 error `normal-2` 16.5% → 17.3%, `launch-x1.3-hpa` 9.8% → 6.5%; both still within 20%.
+
+Unchanged: the out-of-sample tally (3 right, 1 wrong, 5 inconclusive), the in-sample scores, p99
+within 20% on the day's traffic in 3 of 14 runs, and the node loss (+7 min and 21,221 failed
+predicted, +7 min and 16,804 on the day). The re-import also marks the gRPC calls and leaves
+timed-out requests out of the runs' quiet-time baselines; neither moves a number here, because the
+models are calibrated on the history collections.
+
 <!-- RESULTS -->
 **Calibrated on the ordinary day:**
 
 | run | question | measured (k6, every request) | backtest before the day | model on the day’s real traffic | naive CPU ratio |
 |---|---|---|---|---|---|
 | `launch` | As built (3 frontend replicas), on launch day? | **pass**: p99 419 ms, errors 0.00%, 0.5 min out of SLO | fail ❌, 1 min | p99 116 ms, errors 0.11%, 1 min | pass ✅ at 84% CPU |
-| `normal-2` | 2 frontend replicas instead of 3, on an ordinary day? | **pass**: p99 142 ms, errors 0.02%, 1 min out of SLO | pass ✅ (medium confidence), 0 min | p99 81 ms, errors 0.00%, 0 min | pass ✅ at 57% CPU |
+| `normal-2` | 2 frontend replicas instead of 3, on an ordinary day? | **pass**: p99 142 ms, errors 0.02%, 1 min out of SLO | pass ✅ (medium confidence), 0 min | p99 83 ms, errors 0.03%, 1 min | pass ✅ at 57% CPU |
 | `launch-2` | 2 frontend replicas instead of 3, on launch day? | **fail**: p99 5233 ms, errors 45.3%, 11.5 min out of SLO | fail ✅ (low confidence), 19.3 min | p99 5000 ms, errors 61.1%, 15.5 min | fail ✅ at 126% CPU |
 | `normal-1` | 1 frontend replica, on an ordinary day? | **fail**: p99 5007 ms, errors 27.9%, 19.5 min out of SLO | fail ✅ (low confidence), 10.5 min | p99 83 ms, errors 0.00%, 0 min | fail ✅ at 113% CPU |
 | `launch-hpa` | An HPA (1–3 replicas at 60% CPU) instead of 3 fixed, on launch day? | **fail**: p99 159 ms, errors 0.08%, 1.5 min out of SLO | fail ✅ (low confidence), 2.5 min | p99 3742 ms, errors 1.2%, 2.5 min | pass ❌ at 84% CPU |
@@ -88,7 +115,7 @@ Backtest verdicts: **3 right**, 1 inconclusive (it said to load-test; 0 of them 
 | run | question | measured (k6, every request) | backtest before the day | model on the day’s real traffic | naive CPU ratio |
 |---|---|---|---|---|---|
 | `launch-x1.3-4` | 4 frontend replicas, on a launch day with 30% more traffic? | **pass**: p99 321 ms, errors 0.14%, 1 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | p99 5000 ms, errors 5.5%, 7 min | pass ✅ at 82% CPU |
-| `launch-x1.3-hpa` | An HPA (2–5 replicas at 50% CPU), on a launch day with 30% more traffic? | **pass**: p99 327 ms, errors 0.10%, 0.5 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | p99 268 ms, errors 0.05%, 1.5 min | pass ✅ at 65% CPU |
+| `launch-x1.3-hpa` | An HPA (2–5 replicas at 50% CPU), on a launch day with 30% more traffic? | **pass**: p99 327 ms, errors 0.10%, 0.5 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | p99 265 ms, errors 0.06%, 1 min | pass ✅ at 65% CPU |
 | `launch-2-750` | 2 frontend replicas at 750m instead of 3 at half a core, on launch day? | **fail**: p99 293 ms, errors 0.54%, 4.5 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | p99 67 ms, errors 0.03%, 1 min | pass ❌ at 84% CPU |
 
 Backtest verdicts: **0 right**, 3 inconclusive (it said to load-test; 2 of them leaned the right way), 0 wrong, of 3. Naive CPU ratio: 2 right.
@@ -111,7 +138,7 @@ p99 of the model on each day's real traffic, against the measured p99: within 20
 | run | question | measured (k6, every request) | backtest before the day | model on the day’s real traffic | naive CPU ratio |
 |---|---|---|---|---|---|
 | `launch` | As built (3 frontend replicas), on launch day? | **pass**: p99 419 ms, errors 0.00%, 0.5 min out of SLO | pass ✅, 0.5 min | p99 150 ms, errors 0.13%, 1.5 min | pass ✅ at 84% CPU |
-| `normal-2` | 2 frontend replicas instead of 3, on an ordinary day? | **pass**: p99 142 ms, errors 0.02%, 1 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | p99 118 ms, errors 0.00%, 0 min | pass ✅ at 57% CPU |
+| `normal-2` | 2 frontend replicas instead of 3, on an ordinary day? | **pass**: p99 142 ms, errors 0.02%, 1 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | p99 118 ms, errors 0.04%, 0.5 min | pass ✅ at 57% CPU |
 | `launch-2` | 2 frontend replicas instead of 3, on launch day? | **fail**: p99 5233 ms, errors 45.3%, 11.5 min out of SLO | fail ✅ (low confidence), 4.5 min | p99 5000 ms, errors 21.7%, 10 min | fail ✅ at 126% CPU |
 | `normal-1` | 1 frontend replica, on an ordinary day? | **fail**: p99 5007 ms, errors 27.9%, 19.5 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | p99 212 ms, errors 0.00%, 0 min | fail ✅ at 113% CPU |
 | `launch-hpa` | An HPA (1–3 replicas at 60% CPU) instead of 3 fixed, on launch day? | **fail**: p99 159 ms, errors 0.08%, 1.5 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 1 min | p99 179 ms, errors 0.05%, 1 min | pass ❌ at 84% CPU |
@@ -134,7 +161,7 @@ Backtest verdicts: **0 right**, 3 inconclusive (it said to load-test; 2 of them 
 | run | question | measured (k6, every request) | backtest before the day | model on the day’s real traffic | naive CPU ratio |
 |---|---|---|---|---|---|
 | `launch-x1.3-4` | 4 frontend replicas, on a launch day with 30% more traffic? | **pass**: p99 321 ms, errors 0.14%, 1 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | p99 2887 ms, errors 0.28%, 2.5 min | pass ✅ at 82% CPU |
-| `launch-x1.3-hpa` | An HPA (2–5 replicas at 50% CPU), on a launch day with 30% more traffic? | **pass**: p99 327 ms, errors 0.10%, 0.5 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | p99 352 ms, errors 0.11%, 1 min | pass ✅ at 65% CPU |
+| `launch-x1.3-hpa` | An HPA (2–5 replicas at 50% CPU), on a launch day with 30% more traffic? | **pass**: p99 327 ms, errors 0.10%, 0.5 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | p99 342 ms, errors 0.13%, 2 min | pass ✅ at 65% CPU |
 | `launch-2-750` | 2 frontend replicas at 750m instead of 3 at half a core, on launch day? | **fail**: p99 293 ms, errors 0.54%, 4.5 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | p99 110 ms, errors 0.06%, 0.5 min | pass ❌ at 84% CPU |
 
 Backtest verdicts: **0 right**, 3 inconclusive (it said to load-test; 2 of them leaned the right way), 0 wrong, of 3. Naive CPU ratio: 2 right.
@@ -164,7 +191,7 @@ p99 of the model on each day's real traffic, against the measured p99: within 20
 |---|---|---|---|---|
 | `history` | email | — | none | none |
 | `launch` | email | — | 21.9 | 27.5 |
-| `normal-2` | email | — | none | none |
+| `normal-2` | email | — | 36.3 | none |
 | `launch-2` | email | — | 26.7 | none |
 | `normal-1` | email | — | none | none |
 | `launch-hpa` | email | — | 23.1 | 25.5 |
@@ -173,7 +200,7 @@ p99 of the model on each day's real traffic, against the measured p99: within 20
 | `normal-1-750` | email | — | 36.7 | none |
 | `launch-x1.3` | email | — | 17.5, 33.2 | 22.0 |
 | `launch-x1.3-4` | email | — | 18.0, 26.6 | 21.5 |
-| `launch-x1.3-hpa` | email | — | 21.3 | 22.0 |
+| `launch-x1.3-hpa` | email | — | 19.5 | 22.0 |
 | `launch-2-750` | email | — | 29.3 | 29.0 |
 | `normal-x1.5` | email | 29.5 | 35.9 | 35.0 |
 | `launch-email300` | email | none | none | none |
@@ -273,8 +300,10 @@ The first 2 minutes of every run are left out of the scoring, measured and predi
   does. The replay counts each container's requests and OOM-kills it at the limit.
 
   Across all thirteen runs (the table under the results): whether `email` is killed within the run,
-  right in 11 of 13 — it predicted kills in `launch-2`, where the frontend failed 45% of requests and
-  fewer checkouts reached `email`, and in `normal-1-750` at minute 36.7 of 40, and neither came. When:
+  right in 10 of 13 — it predicted kills in `launch-2`, where the frontend failed 45% of requests and
+  fewer checkouts reached `email`, in `normal-1-750` at minute 36.7 of 40 and in `normal-2` at
+  minute 36.3, and none came (recomputed after a fix on 2026-10-16; before: 11 of 13, `normal-2`
+  had no kill, because its metrics undercounted checkouts). When:
   a few minutes early, mostly. A second kill after the restart it predicts twice and never saw: the
   restarted container grows more slowly than the one rate the model has. What a kill costs is the
   uncertain part — the replay restarts it after CrashLoopBackOff (~0.5 min out of SLO), while the

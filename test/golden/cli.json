@@ -1064,8 +1064,8 @@
   "code": 0,
   "files": {
    "ws-n/reports/2026-10-08-22-53-20-frontend-3-spread.hindcast.json": {
-    "sha256": "baba2408ef0d1f41d5961dc5461228ef130ddfe64687863f2cb33c3346954b51",
-    "bytes": 292362
+    "sha256": "c9d4210e38010a541f9cbf4e23a122c8b396c774ebf42bd26064923f0d51ecfa",
+    "bytes": 292519
    },
    "ws-n/reports/2026-10-08-22-53-20-frontend-3-spread.html": {
     "sha256": "8792a5a63d6944c4097f7297d33ddacfca7eda02e16219ea81aba7e9dddb24c0",
