@@ -45,6 +45,9 @@ runs:
 evaluation:
   manifests: petclinic.yaml
   rounds: { 1: 'chosen after the ordinary day was recorded; every verdict was predicted from it alone and committed before any of these runs was recorded' }
+  # today's verdicts on the same runs, kept apart from the committed ones: the JVM warm-up the model
+  # learned since was fitted on the two customers-service runs at 125m
+  retrodiction: "what today's code says from the same ordinary day, after the model learned JIT warm-up. The warm-up's defaults (×5 CPU per request while cold, 30 core-seconds of compilation, 6% of the limit for the compiler under load) were fitted on `launch-cust125` and `normal-cust125` after they were recorded, so this is the model explaining runs it was shaped on, in sample"
   cases:
     - { run: launch, asBuilt: launch, scale: 2.22, oos: 1, question: 'As built (2 gateways), on launch day?' }
     - { run: launch-gw1, asBuilt: launch, head: variants/gateway-1.yaml, scale: 2.22, oos: 1, service: api-gateway, name: 'One gateway', question: '1 gateway instead of 2, on launch day?' }

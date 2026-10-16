@@ -86,6 +86,19 @@ export interface ServicePlan {
   cache?: { hitRate: number; latencyMs: number; costPerHour: number };
   zone?: string;
   region?: string;
+  /** a JIT runtime: pods that start during the replay serve at `cold`× CPU per request until `coreS`
+   *  core-seconds of compilation are done, paid from what the requests leave idle (at least `share` of the limit) */
+  warmup?: Warmup;
+  /** the change replaces the pods (a new pod template): they all start cold with the replay */
+  restart?: boolean;
+}
+
+export interface Warmup {
+  runtime: string;
+  cold: number;
+  coreS: number;
+  share: number;
+  source: 'calibrated' | 'assumed';
 }
 
 export interface EndpointPlan {

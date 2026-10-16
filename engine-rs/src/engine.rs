@@ -123,6 +123,65 @@ struct SvcState {
     pending_said: bool,
     /// requests each container has served since it last started (a leak grows with them)
     served: f64,
+    /// pods still warming up (a JIT runtime), newest last: (how many, core-seconds of compilation
+    /// each still owes, when they started)
+    cold: Vec<(f64, f64, f64)>,
+    /// what a request costs the average pod in CPU, against a warm one (1: every pod warm)
+    cost_x: f64,
+    /// replicas a node failure had taken, last substep (their replacements start cold)
+    lost_was: f64,
+}
+
+/// the CPU a pod's compiler may use when it has no CPU limit: a core of the node's
+const UNLIMITED_COMPILE_CORES: f64 = 1.0;
+
+/// pods that start now, cold: a cohort of their own (false: the service warms up at once)
+fn start_cold(ss: &mut SvcState, w: Option<&Warmup>, pods: f64, now: f64) -> bool {
+    match w {
+        Some(w) if pods > 0.0 && w.cold > 1.0 && w.core_s > 0.0 => {
+            ss.cold.push((pods, w.core_s, now));
+            true
+        }
+        _ => false,
+    }
+}
+
+/// "customers-service: 1 pod starts cold (a JVM): requests cost ×4 CPU until ~30 core-seconds of JIT
+/// compilation are done, with what the requests leave of its 0.125-core limit"
+fn cold_note(id: &str, s: &ServicePlan, pods: f64, how: &str) -> String {
+    let w = s.warmup.as_ref().unwrap();
+    format!(
+        "{}: {} pod{} {} cold (a {}) — requests cost ×{} CPU until ~{} core-seconds of JIT compilation are done, with {}",
+        id,
+        js_num(pods),
+        if pods == 1.0 { "" } else { "s" },
+        if pods == 1.0 { format!("{}s", how) } else { how.to_string() },
+        crate::model::runtime_label(&w.runtime),
+        js_num(w.cold),
+        js_num(w.core_s),
+        match truthy(s.cpu_limit) {
+            Some(l) => format!("the CPU its requests leave idle under its {}-core limit", js_num(l)),
+            None => "a core of the node (no CPU limit)".to_string(),
+        }
+    )
+}
+
+/// the cold pods among `live`: the newest go first when the deployment shrinks
+fn trim_cold(ss: &mut SvcState, live: f64) {
+    let mut over = ss.cold.iter().fold(0.0, |a, c| a + c.0) - live.max(0.0);
+    while over > 1e-9 {
+        match ss.cold.last_mut() {
+            Some(c) if c.0 > over => {
+                c.0 -= over;
+                over = 0.0;
+            }
+            Some(c) => {
+                over -= c.0;
+                ss.cold.pop();
+            }
+            None => break,
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -160,7 +219,12 @@ pub fn run_plan(plan: &Plan, traffic: &Traffic, opts: &Opts) -> RunResult {
                 Some(a) => a.min.max(a.max.min(live)),
                 None => live,
             };
-            SvcState { backlog: 0.0, live, pending: vec![], last_scale: f64::NEG_INFINITY, next_eval: 0.0, blocked_said: false, util: 0.0, collapsed: false, oom_until: f64::NEG_INFINITY, ooms: 0.0, pending_said: false, served: 0.0 }
+            let mut ss = SvcState { backlog: 0.0, live, pending: vec![], last_scale: f64::NEG_INFINITY, next_eval: 0.0, blocked_said: false, util: 0.0, collapsed: false, oom_until: f64::NEG_INFINITY, ooms: 0.0, pending_said: false, served: 0.0, cold: vec![], cost_x: 1.0, lost_was: 0.0 };
+            // a change that replaces the pods: every one of them starts with the replay
+            if s.restart && s.hosted_by.is_none() {
+                start_cold(&mut ss, s.warmup.as_ref(), live, 0.0);
+            }
+            ss
         })
         .collect();
     let mut ep_fail = vec![0.0; ne];
@@ -231,6 +295,11 @@ pub fn run_plan(plan: &Plan, traffic: &Traffic, opts: &Opts) -> RunResult {
     };
     let mut events: Vec<Event> = vec![];
     let mut say = |t: f64, what: String| events.push(Event { t, what });
+    for k in 0..ns {
+        if let Some(c) = st[k].cold.first() {
+            say(traffic.start, cold_note(svc_ids[k], svcs[k], c.0, "restart"));
+        }
+    }
 
     // transfer $ per request per endpoint (static)
     let transfer_per_req: Vec<f64> = (0..ne)
@@ -314,6 +383,11 @@ pub fn run_plan(plan: &Plan, traffic: &Traffic, opts: &Opts) -> RunResult {
             if s.autoscale.is_none() && s.replicas.is_none() {
                 if let Some(o) = &s.observed_replicas {
                     if let Some(Some(x)) = o.get(i) {
+                        // pods the history started (a whole one more, not an average's wobble) start cold
+                        let more = js_round(x.max(0.0) - st[k].live);
+                        if i > 0 && more >= 1.0 && s.hosted_by.is_none() && start_cold(&mut st[k], s.warmup.as_ref(), more, i as f64 * step_s) {
+                            say(traffic.start + i as f64 * step_s, cold_note(svc_ids[k], s, more, "start"));
+                        }
                         st[k].live = x.max(0.0);
                     }
                 }
@@ -390,7 +464,20 @@ pub fn run_plan(plan: &Plan, traffic: &Traffic, opts: &Opts) -> RunResult {
                 let live = (live_of(id, &svcs, &host_idx, &st) - lost_fx).max(0.0);
                 let per_rep = if live > 0.0 { svc_lam[id] / live } else if svc_lam[id] > 0.0 { f64::INFINITY } else { 0.0 };
                 let host_cap = if s.hosted_by.is_some() { host_idx[id].map(|h| fx[h].capacity).unwrap_or(1.0) } else { 1.0 };
-                let k_cap = s.per_replica_rps * fx[id].capacity * host_cap;
+                // the replacements of pods a node failure took start cold when they come back
+                let back = st[id].lost_was - lost_fx;
+                if back > 1e-9 && s.hosted_by.is_none() && start_cold(&mut st[id], s.warmup.as_ref(), back, now) {
+                    say(traffic.start + now, cold_note(svc_ids[id], s, back, "start"));
+                }
+                st[id].lost_was = lost_fx;
+                trim_cold(&mut st[id], live);
+                // cold pods serve a request at `cold`× its warm CPU: the balancer gives every pod the same
+                // share, so the deployment's capacity is the warm pods' and a cold one's at 1/cold
+                let cold_pods = st[id].cold.iter().fold(0.0, |a, c| a + c.0);
+                let wu = s.warmup.as_ref().filter(|_| cold_pods > 0.0 && live > 0.0);
+                let warm_f = wu.map(|w| (live - cold_pods + cold_pods / w.cold) / live).unwrap_or(1.0);
+                st[id].cost_x = wu.map(|w| (live - cold_pods + cold_pods * w.cold) / live).unwrap_or(1.0);
+                let k_cap = s.per_replica_rps * fx[id].capacity * host_cap * warm_f;
                 let ss = &mut st[id];
                 // OOM: every replica carries the same load, so the working set passes the limit on all
                 // of them; they are killed and come back after CrashLoopBackOff and a start
@@ -411,6 +498,9 @@ pub fn run_plan(plan: &Plan, traffic: &Traffic, opts: &Opts) -> RunResult {
                                 format!("at {} req/s per replica", js_num(js_round(per_rep)))
                             };
                             ss.served = 0.0;
+                            // a restarted JIT runtime has lost its compiled code
+                            ss.cold.clear();
+                            start_cold(ss, s.warmup.as_ref(), live, ss.oom_until);
                             say(
                                 traffic.start + now,
                                 format!(
@@ -433,6 +523,8 @@ pub fn run_plan(plan: &Plan, traffic: &Traffic, opts: &Opts) -> RunResult {
                 }
                 let mut wait_mean = 0.0;
                 let mut wait_p99 = 0.0;
+                // what each pod served this substep, req/s
+                let mut served_now = per_rep;
                 if down {
                     ss.backlog = 0.0;
                 } else if live <= 0.0 && svc_lam[id] > 0.0 {
@@ -451,6 +543,7 @@ pub fn run_plan(plan: &Plan, traffic: &Traffic, opts: &Opts) -> RunResult {
                         _ => k_cap,
                     };
                     let served = k_eff.min(per_rep + ss.backlog / dt);
+                    served_now = served;
                     ss.backlog = (ss.backlog + (per_rep - served) * dt).max(0.0);
                     let w = mmc_wait(per_rep.min(k_cap * RHO_MAX), s.servers, k_cap);
                     let drain = (ss.backlog / k_cap) * 1000.0;
@@ -466,6 +559,36 @@ pub fn run_plan(plan: &Plan, traffic: &Traffic, opts: &Opts) -> RunResult {
                 let q = s.tail * (wait_p99 - wait_mean).max(0.0);
                 let p99 = mean + (ex0 * ex0 + q * q).sqrt();
                 lat[id] = Lat { mean, p99, err: if down { 1.0 } else { fx[id].error_rate } };
+                // the compiler works with the CPU the requests leave idle under the limit, and gets its
+                // share of the limit when they take it all; a pod that is down compiles nothing
+                let mut compile_cores = 0.0;
+                if let (Some(w), false) = (wu, down) {
+                    let rate = match truthy(s.cpu_limit) {
+                        Some(lim) => {
+                            let cold_cap = (s.per_replica_rps * fx[id].capacity * host_cap) / w.cold;
+                            let busy = if cold_cap.is_finite() && cold_cap > 0.0 { (served_now / cold_cap).min(1.0) } else { 0.0 };
+                            lim * (1.0 - busy).max(w.share)
+                        }
+                        None => UNLIMITED_COMPILE_CORES,
+                    };
+                    compile_cores = rate * cold_pods;
+                    for c in ss.cold.iter_mut() {
+                        c.1 -= rate * dt;
+                    }
+                    while let Some(k) = ss.cold.iter().position(|c| c.1 <= 0.0) {
+                        let c = ss.cold.remove(k);
+                        say(
+                            traffic.start + now + dt,
+                            format!(
+                                "{}: warm — {} pod{} finished JIT compilation {} min after starting; requests back at their warm CPU cost",
+                                svc_ids[id],
+                                js_num(c.0),
+                                if c.0 == 1.0 { "" } else { "s" },
+                                js_to_fixed((now + dt - c.2) / 60.0, 1)
+                            ),
+                        );
+                    }
+                }
                 let o = &mut out.services[id];
                 let subf = sub_n;
                 o.rps[i] += svc_lam[id] / subf;
@@ -476,6 +599,10 @@ pub fn run_plan(plan: &Plan, traffic: &Traffic, opts: &Opts) -> RunResult {
                 o.self_p99_ms[i] += (if p99.is_finite() { p99 } else { 1e6 }) / subf;
                 o.backlog[i] += ss.backlog / subf;
                 o.cpu_cores[i] += (match &s.cpu {
+                    Some(c) if wu.is_some() => {
+                        let cores = live * (c.base + c.per_req * ss.cost_x * per_rep.min(k_cap)) + compile_cores;
+                        truthy(s.cpu_limit).map(|l| cores.min(live * l)).unwrap_or(cores)
+                    }
                     Some(c) => live * (c.base + c.per_req * per_rep.min(k_cap)),
                     None => 0.0,
                 }) / subf;
@@ -717,6 +844,9 @@ pub fn run_plan(plan: &Plan, traffic: &Traffic, opts: &Opts) -> RunResult {
                         ss.live += pn;
                         let live = ss.live;
                         say(traffic.start + t, format!("{}: {} new replica{} serving ({})", svc_ids[id], js_num(pn), if pn > 1.0 { "s" } else { "" }, js_num(live)));
+                        if start_cold(ss, s.warmup.as_ref(), pn, t) {
+                            say(traffic.start + t, cold_note(svc_ids[id], s, pn, "start"));
+                        }
                     }
                 }
                 // the HPA sees ready pods: replicas a node failure took aren't there until they're replaced
@@ -724,7 +854,8 @@ pub fn run_plan(plan: &Plan, traffic: &Traffic, opts: &Opts) -> RunResult {
                 let ready = st[id].live - lost;
                 let per_rep_now = if ready > 0.0 { svc_lam[id] / ready } else { 0.0 };
                 let util_now = match (&s.cpu, truthy(s.cpu_limit)) {
-                    (Some(c), Some(lim)) => (c.base + c.per_req * per_rep_now.min(s.per_replica_rps)) / lim,
+                    // cold pods spend more CPU on each request, up to their limit
+                    (Some(c), Some(lim)) => (c.base + c.per_req * st[id].cost_x * per_rep_now.min(s.per_replica_rps / st[id].cost_x)) / lim,
                     _ => {
                         if s.per_replica_rps.is_finite() {
                             per_rep_now.min(s.per_replica_rps) / s.per_replica_rps
@@ -824,4 +955,76 @@ pub fn run_plan(plan: &Plan, traffic: &Traffic, opts: &Opts) -> RunResult {
     }
     out.events = events;
     out
+}
+
+#[cfg(test)]
+mod warmup_tests {
+    use super::*;
+    use serde_json::json;
+
+    /// one service on a 0.125-core limit, 100 req/s warm (20 cold at ×5), 30 core-seconds to compile
+    fn plan(restart: bool, share: f64) -> Plan {
+        serde_json::from_value(json!({
+            "services": { "api": {
+                "id": "api", "replicas": 1, "perReplicaRps": 100, "servers": 1, "selfMean": 5, "selfP99": 10, "tail": 1,
+                "cpu": { "base": 0, "perReq": 0.00125 }, "cpuLimit": 0.125, "replicaHour": 0, "perRequest": 0,
+                "warmup": { "runtime": "jvm", "cold": 5, "coreS": 30, "share": share, "source": "assumed" }, "restart": restart
+            } },
+            "endpoints": { "api GET /x": { "id": "api GET /x", "service": "api", "visits": { "api": 1 }, "calls": {}, "weights": { "api": 1 }, "bytes": {}, "timeoutMs": 5000 } },
+            "transfer": {}
+        }))
+        .unwrap()
+    }
+    fn traffic(rps: f64, minutes: usize) -> Traffic {
+        Traffic { start: 0.0, step_s: 30.0, n: (minutes * 2) as f64, endpoints: [("api GET /x".to_string(), vec![Some(rps); minutes * 2])].into_iter().collect() }
+    }
+    fn warm_at(r: &RunResult) -> Option<f64> {
+        r.events.iter().find(|e| e.what.starts_with("api: warm")).map(|e| e.t / 60.0)
+    }
+
+    #[test]
+    fn an_idle_cold_pod_compiles_with_what_its_requests_leave() {
+        // 10 req/s on a cold capacity of 20: half the limit idle, 0.0625 cores → 30 core-s in 8 min
+        let r = run_plan(&plan(true, 0.06), &traffic(10.0, 20), &Default::default());
+        assert!(r.events[0].what.starts_with("api: 1 pod restarts cold (a JVM)"), "{}", r.events[0].what);
+        let at = warm_at(&r).unwrap();
+        assert!((at - 8.0).abs() < 0.1, "{}", at);
+        // ×5 the CPU per request while cold (and the compiler in what is left), the warm cost after
+        assert!(r.services["api"].cpu_cores[2] > 0.12 && r.services["api"].cpu_cores[30] < 0.02);
+        assert_eq!(r.error_rate.iter().fold(0.0_f64, |a, x| a.max(*x)), 0.0);
+    }
+
+    #[test]
+    fn a_saturated_cold_pod_barely_warms_and_fails_until_it_does() {
+        // 30 req/s on a cold capacity of 20: the compiler gets 6% of the limit, 30 / 0.0075 = 66.7 min
+        let r = run_plan(&plan(true, 0.06), &traffic(30.0, 40), &Default::default());
+        assert!(warm_at(&r).is_none());
+        assert!(r.error_rate[60] > 0.2);
+        let r = run_plan(&plan(true, 0.06), &traffic(30.0, 80), &Default::default());
+        let at = warm_at(&r).unwrap();
+        assert!((at - 66.7).abs() < 0.2, "{}", at);
+        // the same load on warm pods (no rollout) never fails
+        let r = run_plan(&plan(false, 0.06), &traffic(30.0, 40), &Default::default());
+        assert!(r.events.is_empty() && r.error_rate.iter().all(|x| *x == 0.0));
+    }
+
+    #[test]
+    fn pods_an_autoscaler_adds_start_cold() {
+        let mut p = plan(false, 0.06);
+        let s = p.services.get_mut("api").unwrap();
+        s.replicas = None;
+        s.autoscale = Some(AutoscalePolicy { min: 1.0, max: 4.0, target: 0.6, warmup_s: 30.0, cooldown_s: 300.0, interval_s: 15.0, metric_window_s: Some(30.0) });
+        // 10 minutes at 90 req/s, then 20 at 10
+        let mut t = traffic(90.0, 30);
+        for x in t.endpoints[0].iter_mut().skip(20) {
+            *x = Some(10.0);
+        }
+        let r = run_plan(&p, &t, &Default::default());
+        let cold: Vec<f64> = r.events.iter().filter(|e| e.what.contains("starts cold (a JVM)")).map(|e| e.t).collect();
+        assert!(!cold.is_empty() && cold.iter().all(|t| *t > 0.0), "{:?}", r.events);
+        // the balancer gives a cold pod the same share as the warm one: past its cold capacity it
+        // barely compiles while the load lasts, and warms once the load drops
+        let warm = warm_at(&r).unwrap() * 60.0;
+        assert!(warm > 600.0, "{:?}", r.events);
+    }
 }

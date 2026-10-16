@@ -109,6 +109,9 @@ pub struct ServiceShape {
     pub system: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub server_spans_per_visit: Option<f64>,
+    /// the language runtime its spans' resource names (telemetry.sdk.language, process.runtime.name)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, Default)]

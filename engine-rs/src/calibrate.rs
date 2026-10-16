@@ -62,6 +62,78 @@ fn vals(a: Option<&Vec<Num>>, i: usize) -> Option<f64> {
     a.and_then(|a| a.get(i).copied().flatten()).filter(|x| x.is_finite())
 }
 
+/// a JIT runtime's warm-up, read from the history where it shows a pod starting (the replica count
+/// rising by a whole pod): the CPU above the fitted line in the minutes after, per new pod. That is
+/// the compiler's work plus the cold requests' extra cost, so the core-seconds it reads are an upper
+/// bound; the cold multiplier and the compiler's share stay the runtime's defaults. A restart that
+/// keeps the count (a rollout) is not in the series, so calibration cannot see one
+fn warmup_of(runtime: Option<&str>, reps: &[Num], lam: &[Num], cpu_s: Option<&Vec<Num>>, cpu: Option<&CpuModel>, step: f64) -> (Option<crate::types::Warmup>, Option<String>) {
+    let mut w = match runtime.and_then(assumed_warmup) {
+        Some(w) => w,
+        None => return (None, None),
+    };
+    let label = runtime_label(&w.runtime);
+    let assumed = format!(
+        "a {} (named by its traces): pods that start during a replay start cold — ×{} CPU per request until ~{} core-seconds of JIT compilation are done (assumed: the history shows none of its pods starting)",
+        label,
+        js_num(w.cold),
+        js_num(w.core_s)
+    );
+    let c = match cpu {
+        Some(c) if cpu_s.is_some() => c,
+        _ => return (Some(w), Some(assumed)),
+    };
+    let mut est: Vec<f64> = vec![];
+    let mut prev: Option<f64> = None;
+    for i in 0..reps.len() {
+        let r = match reps[i] {
+            Some(r) if r > 0.0 => r,
+            _ => continue,
+        };
+        let added = prev.map(|p| js_round(r - p)).unwrap_or(0.0);
+        prev = Some(r);
+        if added < 1.0 {
+            continue;
+        }
+        // CPU above the line until it is back within 10% of it for a minute (at most 10 minutes)
+        let (mut sum, mut quiet) = (0.0, 0);
+        for k in i..reps.len().min(i + (600.0 / step).ceil() as usize) {
+            let (cc, l, rk) = match (vals(cpu_s, k), lam[k], reps[k]) {
+                (Some(cc), Some(l), Some(rk)) => (cc, l, rk),
+                _ => continue,
+            };
+            let line = rk * c.base + c.per_req * l;
+            let over = cc - line;
+            if over <= 0.1 * line.max(0.01) {
+                quiet += 1;
+                if quiet as f64 * step >= 60.0 {
+                    break;
+                }
+            } else {
+                quiet = 0;
+                sum += over * step;
+            }
+        }
+        if sum > 0.0 {
+            est.push(sum / added);
+        }
+    }
+    if est.is_empty() {
+        return (Some(w), Some(assumed));
+    }
+    w.core_s = js_round(median(&est) * 10.0) / 10.0;
+    w.source = "calibrated".into();
+    let note = format!(
+        "a {}: {} pod start{} in the history cost ~{} core-seconds of CPU each above its line (JIT warm-up, an upper bound: the cold requests' extra cost is in it); the ×{} cold cost per request is assumed",
+        label,
+        est.len(),
+        if est.len() == 1 { "" } else { "s" },
+        js_num(w.core_s),
+        js_num(w.cold)
+    );
+    (Some(w), Some(note))
+}
+
 fn median(xs: &[f64]) -> f64 {
     if xs.is_empty() {
         return f64::NAN;
@@ -1310,6 +1382,9 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
             }
             None => "lb".into(),
         });
+        let runtime = shape.and_then(|sh| sh.runtime.clone());
+        let (warmup, warm_note) = if hosted { (None, None) } else { warmup_of(runtime.as_deref(), &reps, &lam, s.cpu_cores.as_ref(), cpu.as_ref(), d.step_s) };
+        notes.extend(warm_note);
         let mut fit_notes = notes.clone();
         let st;
         if shape.is_none() && s.rps.is_none() {
@@ -1349,6 +1424,8 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
                 cost: CostModel { per_replica_hour: 0.0, per_request: 0.0, cpu_share: 0.8, arch: ov.and_then(|o| o.arch.clone()).unwrap_or_else(|| "x86".into()), source: "none".into() },
                 placement: d.placement.as_ref().and_then(|p| p.get(&host_id).cloned()),
                 fit: FitQuality { status: st, latency_mape, p99_mape, cpu_mape, cpu_r2: cpu.as_ref().map(|c| c.r2), samples: with_data.len() as f64, notes: fit_notes, regime },
+                runtime,
+                warmup,
             },
         );
     }
@@ -1722,4 +1799,28 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
         }
     }
     model
+}
+
+#[cfg(test)]
+mod warmup_tests {
+    use super::*;
+
+    #[test]
+    fn a_pod_start_in_the_history_measures_the_warm_up() {
+        // 2 → 3 pods at minute 5: 0.3 cores above the line for 2 minutes (36 core-seconds), then back on it
+        let c = CpuModel { base: 0.02, per_req: 0.001, r2: 0.9 };
+        let n = 30;
+        let reps: Vec<Num> = (0..n).map(|i| Some(if i < 10 { 2.0 } else { 3.0 })).collect();
+        let lam: Vec<Num> = vec![Some(60.0); n];
+        let cpu: Vec<Num> = (0..n).map(|i| Some(reps[i].unwrap() * c.base + c.per_req * 60.0 + if (10..14).contains(&i) { 0.3 } else { 0.0 })).collect();
+        let (w, note) = warmup_of(Some("jvm"), &reps, &lam, Some(&cpu), Some(&c), 30.0);
+        let w = w.unwrap();
+        assert_eq!((w.core_s, w.source.as_str(), w.cold), (36.0, "calibrated", JVM_COLD));
+        assert!(note.unwrap().contains("1 pod start in the history cost ~36 core-seconds"));
+        // no pod starts: the defaults, said to be assumed; not a JIT runtime: nothing
+        let (w, note) = warmup_of(Some("jvm"), &vec![Some(2.0); n], &lam, Some(&cpu), Some(&c), 30.0);
+        assert_eq!(w.unwrap().source, "assumed");
+        assert!(note.unwrap().contains("assumed"));
+        assert!(warmup_of(Some("go"), &reps, &lam, Some(&cpu), Some(&c), 30.0).0.is_none());
+    }
 }

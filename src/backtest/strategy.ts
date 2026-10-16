@@ -49,6 +49,7 @@ const ServiceChange = z
     readShare: z.number().min(0).max(1).optional().describe('share of the load that is reads (default 0.8)'),
     zone: z.string().optional(),
     region: z.string().optional(),
+    runtime: z.string().optional().describe('its language runtime, where the model does not know it (jvm, dotnet, node, go…): a JIT runtime’s new pods start cold'),
   })
   .strict();
 
@@ -72,7 +73,7 @@ export const StrategySpec = z.object({
         const schema = 'endpoint' in o && !('service' in o) ? EndpointChange : ServiceChange;
         const r = schema.safeParse(c);
         if (r.success) return r.data;
-        for (const i of r.error.issues) ctx.addIssue({ code: 'custom', message: `${schema === EndpointChange ? 'endpoint change' : 'service change'}: ${i.message}${schema === EndpointChange ? ' — an endpoint change takes endpoint, retries { attempts, budget? }, timeoutMs' : ' — a service change takes service plus replicas, autoscale, cpu, memoryGb, cpuRequest, memoryRequestGb, spread, arch, perf, capacityRps, cache, readReplicas, readShare, zone, region'}`, path: i.path });
+        for (const i of r.error.issues) ctx.addIssue({ code: 'custom', message: `${schema === EndpointChange ? 'endpoint change' : 'service change'}: ${i.message}${schema === EndpointChange ? ' — an endpoint change takes endpoint, retries { attempts, budget? }, timeoutMs' : ' — a service change takes service plus replicas, autoscale, cpu, memoryGb, cpuRequest, memoryRequestGb, spread, arch, perf, capacityRps, cache, readReplicas, readShare, zone, region, runtime'}`, path: i.path });
         return z.NEVER;
       }),
     )

@@ -84,6 +84,8 @@ interface Evaluation {
   readme: string;
   /** why each out-of-sample round was chosen, for the README */
   rounds: Record<number, string>;
+  /** a note under the out-of-sample tables: today's verdicts on those runs, labelled as retrodiction (in sample for whatever was learned from them) */
+  retrodiction?: string;
 }
 
 const LAUNCH = 2.22; // 13 July's busiest 10 minutes over 12 July's, from the log itself
@@ -449,6 +451,9 @@ async function score(label: string, ws: Workspace, base: string, evalDir: string
       question: c.question,
       oos: c.oos ?? 0,
       exAnte,
+      // today's verdict beside the committed one, where the system asks for it: in sample for whatever
+      // was learned from these runs since
+      ...(committed && EV.retrodiction ? { retrodiction: { verdict: now.verdict, confidence: now.confidence, leans: now.leans, minutesOutOfSlo: now.minutesOutOfSlo, reasons: now.reasons, warnings: now.warnings } } : {}),
       exPost: { p99Ms: Math.round(post.p99), errorRate: post.errorRate, minutesOutOfSlo: post.minutesOutOfSlo, [`${repKey()}Peak`]: post.replicasPeak },
       measured: { p99Ms: Math.round(actual.p99), errorRate: actual.errorRate, minutesOutOfSlo: actual.minutesOutOfSlo, requests: actual.requests, addedOverAsBuilt: Math.round(added * 10) / 10 },
       series: { predicted: post.series, measured: kept ? kept.series.measured : measuredSeries(log!, run.start, run.n), [repKey()]: run.services[watch]?.replicas ?? [] },
@@ -610,6 +615,27 @@ async function main() {
   const tally = (rows: Row[]) =>
     `Backtest verdicts: **${rows.filter((r) => r.agrees.backtest).length} right**, ${hedged(rows).length} inconclusive (it said to load-test${hedged(rows).length ? `; ${hedged(rows).filter((r) => leanOf(r) === r.truth).length} of them leaned the right way` : ''}), ${rows.filter((r) => !r.agrees.backtest && r.exAnte.verdict !== 'inconclusive').length} wrong, of ${rows.length}. Naive CPU ratio: ${rows.filter((r) => r.agrees.naive).length} right.`;
   const head = ['| run | question | measured (k6, every request) | backtest before the day | model on the day’s real traffic | naive CPU ratio |', '|---|---|---|---|---|---|'];
+  // today's code on the same runs, apart from the committed verdicts: never counted with them
+  type Retro = { verdict: string; confidence: string | null; leans: string | null; minutesOutOfSlo: number | null };
+  const retroOf = (r: Row) => (r as Row & { retrodiction?: Retro }).retrodiction;
+  const said = (v: { verdict?: string | null; confidence?: string | null; leans?: string | null; minutesOutOfSlo?: number | null }, truth: string) =>
+    `${mark(v.verdict, v.verdict === truth, v.leans ?? (v.verdict === 'inconclusive' && (v.minutesOutOfSlo ?? 0) <= 0.5 ? 'pass' : null))}${v.confidence ? ` (${v.confidence} confidence)` : ''}, ${v.minutesOutOfSlo ?? '—'} min`;
+  const retrodicted = (rows: Row[]) => {
+    const with_ = rows.filter((r) => retroOf(r));
+    if (!EV.retrodiction || !with_.length) return [];
+    const right = with_.filter((r) => retroOf(r)!.verdict === r.truth).length;
+    const hedgedNow = with_.filter((r) => retroOf(r)!.verdict === 'inconclusive').length;
+    return [
+      '',
+      `*Retrodiction, not a prediction* — ${EV.retrodiction}:`,
+      '',
+      '| run | measured | committed before the run (scored above) | today’s code on the ordinary day (retrodiction) |',
+      '|---|---|---|---|',
+      ...with_.map((r) => `| \`${r.run}\` | **${r.truth}**, ${r.measured.minutesOutOfSlo} min out of SLO | ${said(r.exAnte, r.truth)} | ${said(retroOf(r)!, r.truth)} |`),
+      '',
+      `Retrodiction: ${right} right, ${hedgedNow} inconclusive, ${with_.length - right - hedgedNow} wrong, of ${with_.length} — in sample, not a score. (The out-of-sample table's “model on the day’s real traffic” column is always today’s code, so it carries the same caveat.)`,
+    ];
+  };
   const md = models
     .map((mod) => {
       const ins = mod.rows.filter((r) => !r.oos);
@@ -621,7 +647,7 @@ async function main() {
           const oos = mod.rows.filter((r) => r.oos === k);
           const file = k === 1 ? 'predictions-oos.json' : `predictions-oos-${k}.json`;
           const why = EV.rounds[k] ?? `round ${k}, chosen after round ${k - 1} was scored`;
-          return ['', `*Out of sample* — ${why}; the verdicts are the ones committed in \`validation/${file}\` before each run was recorded:`, '', ...head, ...oos.map(row), '', tally(oos)];
+          return ['', `*Out of sample* — ${why}; the verdicts are the ones committed in \`validation/${file}\` before each run was recorded:`, '', ...head, ...oos.map(row), '', tally(oos), ...retrodicted(oos)];
         }),
         ...(rounds.length > 1 ? (() => {
           const all = mod.rows.filter((r) => r.oos);

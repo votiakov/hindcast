@@ -303,8 +303,8 @@
   "code": 0,
   "files": {
    "hotrod.dataset.json": {
-    "sha256": "c4322aaed31839a00f39c34e11fb271d820438c9e5fc6795e160b3ae21beb422",
-    "bytes": 72053
+    "sha256": "ad0f87eee6ae214ac1e9f77ad70d78ea6b6665d0c999394ee50af394fb207792",
+    "bytes": 72128
    }
   }
  },
@@ -314,8 +314,8 @@
   "code": 0,
   "files": {
    "k8s.dataset.json": {
-    "sha256": "39fc8c46331763ee5f4fd2d4e939a093e53de86de6778b515efe8c8e37d05f10",
-    "bytes": 186946
+    "sha256": "981cc4edfcb53cb9ed4342eea6bcf59ec5f0ba70dead010ce975f39ad94c0dae",
+    "bytes": 187134
    }
   }
  },
@@ -906,8 +906,8 @@
   "code": 0,
   "files": {
    "ws-k/dataset.json": {
-    "sha256": "42240b8500ea85b6d8c182fbaa50dbe93d57c31f1229b2a7e7a9d55db9d463a6",
-    "bytes": 157657
+    "sha256": "93afd27a3a811e134e9dec9bb30fb44bfafad4c78791d8306a11ed8f9e2f737c",
+    "bytes": 157732
    },
    "ws-k/sources.json": "{\n \"system\": {\n  \"name\": \"HotROD-ish\",\n  \"rename\": {\n   \"shop-worker\": \"worker\"\n  },\n  \"hostedBy\": {\n   \"redis\": \"api\"\n  },\n  \"exclude\": [\n   \"worker\"\n  ],\n  \"entry\": [\n   \"frontend\"\n  ]\n },\n \"prometheus\": {\n  \"url\": \"http://127.0.0.1:19091/prom\",\n  \"namespaces\": [\n   \"shop\"\n  ]\n },\n \"traceFiles\": [\n  \"test/cli-fixtures/traces/hotrod.jsonl\"\n ]\n}",
    "ws-k/telemetry/hindcast.import.yaml": "# Written by Hindcast collect_telemetry, 2026-10-08T22:53:20Z: 2026-10-08T12:00:00Z … 2026-10-08T14:00:00Z, 2026-10-08T17:20:00Z … 2026-10-08T20:06:40Z\nname: HotROD-ish\nstep: 60s\nwindow:\n  start: 2026-10-08T12:00:00Z\n  end: 2026-10-08T20:06:40Z\nrename:\n  shop-worker: worker\nmetrics:\n  - prometheus: metrics/*/otel-spanmetrics-rps.json\n    metric: rps\n    by: service_name\n  - prometheus: metrics/*/otel-spanmetrics-errors.json\n    metric: errorRate\n    by: service_name\n    unit: ratio\n  - prometheus: metrics/*/otel-spanmetrics-p50.json\n    metric: p50Ms\n    by: service_name\n    unit: ms\n  - prometheus: metrics/*/otel-spanmetrics-p99.json\n    metric: p99Ms\n    by: service_name\n    unit: ms\n  - prometheus: metrics/*/otel-spanmetrics-mean.json\n    metric: meanMs\n    by: service_name\n    unit: ms\n  - prometheus: metrics/*/otel-spanmetrics-endpoint-rps.json\n    metric: rps\n    by: service_name\n    endpointBy: span_name\n    template: true\n  - prometheus: metrics/*/otel-spanmetrics-endpoint-errors.json\n    metric: errorRate\n    unit: ratio\n    by: service_name\n    endpointBy: span_name\n    template: true\n    combine: ratio\n  - prometheus: metrics/*/otel-spanmetrics-endpoint-latency.json\n    metric: p99Ms\n    unit: ms\n    by: service_name\n    endpointBy: span_name\n    template: true\n    combine: histogram\n  - prometheus: metrics/*/otel-spanmetrics-endpoint-mean.json\n    metric: meanMs\n    unit: ms\n    by: service_name\n    endpointBy: span_name\n    template: true\n    combine: ratio\n  - prometheus: metrics/*/cadvisor-cpu.json\n    metric: cpuCores\n    by: container_label_com_docker_compose_service\n  - prometheus: metrics/*/cadvisor-cpu-limit.json\n    metric: cpuLimitCores\n    by: container_label_com_docker_compose_service\n  - prometheus: metrics/*/cadvisor-replicas.json\n    metric: replicas\n    by: container_label_com_docker_compose_service\n  - prometheus: metrics/*/cadvisor-net-tx.json\n    metric: netTxBps\n    by: container_label_com_docker_compose_service\n  - prometheus: metrics/*/cadvisor-memory.json\n    metric: memoryBytes\n    by: container_label_com_docker_compose_service\n  - prometheus: metrics/*/cadvisor-memory-max.json\n    metric: memoryMaxBytes\n    by: container_label_com_docker_compose_service\n  - prometheus: metrics/*/cadvisor-memory-limit.json\n    metric: memoryLimitBytes\n    by: container_label_com_docker_compose_service\n  - prometheus: metrics/*/kubernetes-cpu.json\n    metric: cpuCores\n    by: workload\n  - prometheus: metrics/*/kubernetes-cpu-limit.json\n    metric: cpuLimitCores\n    by: workload\n  - prometheus: metrics/*/kubernetes-replicas.json\n    metric: replicas\n    by: workload\n  - prometheus: metrics/*/kubernetes-net-tx.json\n    metric: netTxBps\n    by: workload\n  - prometheus: metrics/*/kubernetes-memory.json\n    metric: memoryBytes\n    by: workload\n  - prometheus: metrics/*/kubernetes-memory-max.json\n    metric: memoryMaxBytes\n    by: workload\n  - prometheus: metrics/*/kubernetes-memory-limit.json\n    metric: memoryLimitBytes\n    by: workload\n  - prometheus: metrics/*/kubernetes-cpu-request.json\n    metric: cpuRequestCores\n    by: workload\n  - prometheus: metrics/*/kubernetes-memory-request.json\n    metric: memoryRequestBytes\n    by: workload\n  - prometheus: metrics/*/kubernetes-cluster-nodes.json\n    metric: clusterNodes\n  - prometheus: metrics/*/kubernetes-cluster-node-cpu.json\n    metric: clusterNodeCpu\n  - prometheus: metrics/*/kubernetes-cluster-node-memory.json\n    metric: clusterNodeMemoryBytes\n  - prometheus: metrics/*/kubernetes-cluster-requested-cpu.json\n    metric: clusterRequestedCpu\n  - prometheus: metrics/*/kubernetes-cluster-requested-memory.json\n    metric: clusterRequestedMemoryBytes\n  - prometheus: metrics/*/kubernetes-throttled.json\n    metric: cpuThrottled\n    by: workload\n    unit: ratio\ntraces:\n  - file: …$CWD/test/cli-fixtures/traces/hotrod.jsonl\n    series:\n      rps: false\n      latency: false\n      endpoints: false\nbilling: []\nmodel:\n  hostedBy:\n    redis: api\n",
@@ -1067,7 +1067,7 @@
   "files": {}
  },
  "agent verify_change {\"workspace\":\"$OUT/OUT/ws-v\",\"changes\":[{\"strategy\":{\"name\":\"customer ×3\",\"changes\":[{\"service\":\"customer\",\"replicas\":3,\"extra\":1}]}}],\"draws\":4}": {
-  "stdout": "{\n  \"error\": \"invalid input:\\n- changes.0: service change: Unrecognized key: \\\"extra\\\" — a service change takes service plus replicas, autoscale, cpu, memoryGb, cpuRequest, memoryRequestGb, spread, arch, perf, capacityRps, cache, readReplicas, readShare, zone, region\"\n}\n",
+  "stdout": "{\n  \"error\": \"invalid input:\\n- changes.0: service change: Unrecognized key: \\\"extra\\\" — a service change takes service plus replicas, autoscale, cpu, memoryGb, cpuRequest, memoryRequestGb, spread, arch, perf, capacityRps, cache, readReplicas, readShare, zone, region, runtime\"\n}\n",
   "stderr": "",
   "code": 1,
   "files": {}

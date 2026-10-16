@@ -138,9 +138,30 @@ pub fn slice_last(d: &Value, buckets: usize) -> Value {
     out
 }
 
+/// the load a plan sustains once its pods are warm: a change's restart (pods starting cold) is said apart
 pub fn breaking(m: &crate::model::Model, plan: &crate::types::Plan) -> (f64, Option<String>) {
-    let b = crate::accuracy::model_breaking_point(m, Some(plan), None, None, None);
+    let mut warm = plan.clone();
+    for s in warm.services.values_mut() {
+        s.restart = false;
+    }
+    let b = crate::accuracy::model_breaking_point(m, Some(&warm), None, None, None);
     (b.rps, b.limited_by)
+}
+
+/// the load a change sustains from the moment it rolls out, its restarted pods still cold (None: it
+/// restarts nothing that starts cold)
+fn breaking_cold(m: &crate::model::Model, spec: &Value) -> Option<f64> {
+    let mut plan = crate::strategy::apply_strategy(m, &crate::backtest::base_plan(m, None), &crate::strategy::parse_strategy(spec).ok()?).ok()?.plan;
+    if !plan.services.values().any(|s| s.restart && s.warmup.is_some()) {
+        return None;
+    }
+    // held cold: the ramp to the breaking point must not warm them on its way up
+    for s in plan.services.values_mut() {
+        if let (true, Some(w)) = (s.restart, s.warmup.as_mut()) {
+            w.core_s = f64::INFINITY;
+        }
+    }
+    Some(crate::accuracy::model_breaking_point(m, Some(&plan), None, None, None).rps)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -259,6 +280,12 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
             reasons.push(format!("confidence {}: {}", if *to == "low" { "low" } else { "medium at most" }, why));
         }
     }
+    for (why, assumed) in warmup_reasons(mv, st, spec) {
+        reasons.push(why.clone());
+        if let Some(a) = assumed {
+            lower("medium", a, &mut warnings, &mut level);
+        }
+    }
     let fb = n(base, &["summary", "failedRequests", "p50"]);
     let fd = n(st, &["delta", "failedRequests", "p50"]);
     if fb > 0.0 && fd.abs() > 0.1 * fb {
@@ -357,6 +384,15 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
         verdict = "inconclusive";
         reasons.push(format!("after the change the system sustains {} req/s, below the peak it has to serve ({})", js_num(r1(after.0)), js_num(r1(peak))));
     }
+    // the replay rolls the change out at its first moment; at a busier one the restarted pods meet it cold
+    if let Some(cold) = breaking_cold(m, spec).filter(|c| *c < after.0 * 0.9) {
+        if cold < peak && verdict == "pass" {
+            verdict = "inconclusive";
+            reasons.push(format!("while its restarted pods are still cold the system sustains {} req/s, below the peak it has to serve ({}): rolled out at a busy moment, it would not warm up. Roll it out when traffic is low, or warm the pods before they take traffic", js_num(r1(cold)), js_num(r1(peak))));
+        } else {
+            reasons.push(format!("while its restarted pods are still cold the system sustains {} req/s ({} once warm)", js_num(r1(cold)), js_num(r1(after.0))));
+        }
+    }
     let basis = cost_basis.iter().map(|b| match b.as_str() {
         "bill" => "your bill",
         "pricing" => "list price",
@@ -395,6 +431,88 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
     o.insert("notes".into(), g(st, &["notes"]).clone());
     o.insert("howToRead".into(), json!(format!("{}/month; {}; confidence {}", money(n(st, &["delta", "monthly", "p50"])), match verdict { "pass" => "safe on this history", "fail" => "would have broken the SLO", _ => "not proven either way" }, level)));
     Ok(Value::Object(o))
+}
+
+/// "125m", "1.5 cores"
+fn cores(x: f64) -> String {
+    if x < 1.0 {
+        format!("{}m", js_num(js_round(x * 1000.0)))
+    } else {
+        format!("{} core{}", js_num(x), if x == 1.0 { "" } else { "s" })
+    }
+}
+
+/// what a JIT runtime's warm-up did in the replay, for each service the change touches whose pods
+/// start cold: the reason, and the warning when its warm-up is assumed and mattered (cold for minutes)
+fn warmup_reasons(mv: &Value, st: &Value, spec: &Value) -> Vec<(String, Option<String>)> {
+    let mut out = vec![];
+    let events = arr(st, &["events"]);
+    for c in arr(spec, &["changes"]) {
+        let svc = s(c, &["service"]);
+        if svc.is_empty() {
+            continue;
+        }
+        let w: Option<crate::types::Warmup> = match g(mv, &["services", &svc, "warmup"]) {
+            Value::Null => c.get("runtime").and_then(|r| r.as_str()).and_then(crate::model::assumed_warmup),
+            x => serde_json::from_value(x.clone()).ok(),
+        };
+        let w = match w {
+            Some(w) => w,
+            None => continue,
+        };
+        let mine = |e: &&Value| s(e, &["what"]).starts_with(&format!("{}: ", svc));
+        let starts: Vec<&Value> = events.iter().copied().filter(mine).filter(|e| s(e, &["what"]).contains(" cold (a ")).collect();
+        if starts.is_empty() {
+            continue;
+        }
+        let warm: Vec<&Value> = events.iter().copied().filter(mine).filter(|e| s(e, &["what"]).starts_with(&format!("{}: warm", svc))).collect();
+        let label = crate::model::runtime_label(&w.runtime);
+        let restarted = starts.iter().any(|e| s(e, &["what"]).contains("restart"));
+        let source = if w.source == "calibrated" { "calibrated on a pod start in the history" } else { "assumed" };
+        // minutes the first cohort stayed cold: until its warm event, or the end of the window
+        let first = n(starts[0], &["t"]);
+        let cold_min = match warm.first() {
+            Some(e) => (n(e, &["t"]) - first) / 60.0,
+            None => f64::INFINITY,
+        };
+        let outcome = match warm.first() {
+            Some(_) if starts.len() == 1 => format!("in the replay it is warm {} min after it starts", js_num(r1(cold_min))),
+            Some(_) => format!("in the replay {} cold starts, the first warm after {} min", starts.len(), js_num(r1(cold_min))),
+            None => format!(
+                "in the replay it never warms up — its requests leave the compiler too little of its CPU, so it stays slow because it is slow{}",
+                if w.share > 0.0 { format!(" ({}% of the limit when they take it all)", js_num(js_round(w.share * 100.0))) } else { String::new() }
+            ),
+        };
+        let what = if restarted {
+            match c.get("cpu").and_then(|x| x.as_f64()) {
+                Some(cpu) => format!("{} restarts on its new {} CPU limit", svc, cores(cpu)),
+                None => format!("{} restarts with the change", svc),
+            }
+        } else {
+            format!("{}: the pods its autoscaler adds start cold", svc)
+        };
+        let why = format!(
+            "{} and a {} needs ~{} core-seconds of JIT compilation to warm up ({}): until then a request costs ×{} its warm CPU; {}",
+            what,
+            label,
+            js_num(w.core_s),
+            source,
+            js_num(w.cold),
+            outcome
+        );
+        let assumed = (w.source != "calibrated" && cold_min >= 2.0).then(|| {
+            format!(
+                "{}'s warm-up is assumed, not measured on it: the {} defaults (×{} CPU while cold, {} core-seconds of compilation, {}% of the limit for the compiler under load), fitted on one Spring Boot service; nothing in the history shows one of its pods starting",
+                svc,
+                label,
+                js_num(w.cold),
+                js_num(w.core_s),
+                js_num(js_round(w.share * 100.0))
+            )
+        });
+        out.push((why, assumed));
+    }
+    out
 }
 
 pub fn grpc_calls(mv: &Value) -> Option<Vec<(String, String)>> {

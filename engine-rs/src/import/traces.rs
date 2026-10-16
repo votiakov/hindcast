@@ -59,6 +59,8 @@ pub struct Span {
     pub end: f64,
     pub error: bool,
     pub attrs: Attrs,
+    /// the language runtime its resource names ("jvm", "dotnet", "go", "nodejs"…), shared like `service`
+    pub runtime: Option<Rc<str>>,
 }
 
 /// the few attributes kept from a span, in the order first seen (a later value replaces an earlier one)
@@ -374,6 +376,7 @@ fn spans_of<'a>(resource_spans: Option<Vec<ResourceSpans<'a>>>, batches: Option<
             .map(|a| a.as_str())
             .unwrap_or_else(|| "unknown".into());
         let service: Rc<str> = service.into();
+        let runtime = runtime_of(r.resource.as_ref().and_then(|x| x.attributes.as_ref()).map(|a| a.iter().filter_map(|x| Some((x.key.as_deref()?, x.value.as_ref()?.attr()?.as_str()))).collect()).unwrap_or_default());
         for ss in r.scope_spans.or(r.instrumentation_library_spans).unwrap_or_default() {
             for sp in ss.spans.unwrap_or_default() {
                 let mut attrs = Attrs::default();
@@ -403,6 +406,7 @@ fn spans_of<'a>(resource_spans: Option<Vec<ResourceSpans<'a>>>, batches: Option<
                     end: ns_of(&sp.end_time_unix_nano),
                     error,
                     attrs,
+                    runtime: runtime.clone(),
                 });
             }
         }
@@ -452,6 +456,16 @@ struct JaegerSpan<'a> {
 struct JaegerProcess<'a> {
     #[serde(default, borrow)]
     service_name: Scalar<'a>,
+    #[serde(default, borrow)]
+    tags: Option<Vec<JaegerTag<'a>>>,
+}
+
+/// the language runtime a resource names: telemetry.sdk.language ("java", "dotnet", "nodejs", "go"), or
+/// process.runtime.name ("OpenJDK Runtime Environment") where the SDK does not say
+fn runtime_of(attrs: Vec<(&str, String)>) -> Option<Rc<str>> {
+    let get = |k: &str| attrs.iter().find(|x| x.0 == k).map(|x| x.1.as_str());
+    let name = get("telemetry.sdk.language").filter(|x| !x.is_empty()).or(get("process.runtime.name")).filter(|x| !x.is_empty())?;
+    Some(Rc::from(crate::model::jit_runtime(name).unwrap_or(name)))
 }
 
 #[derive(Deserialize)]
@@ -478,6 +492,7 @@ fn num_of(s: &Scalar) -> f64 {
 fn jaeger_spans(data: Vec<JaegerTrace>, out: &mut Vec<Span>) {
     for tr in data {
         let mut names: HashMap<String, Rc<str>> = HashMap::new();
+        let mut runtimes: HashMap<String, Option<Rc<str>>> = HashMap::new();
         for sp in tr.spans {
             let mut attrs = Attrs::default();
             let mut kind = "internal";
@@ -533,6 +548,16 @@ fn jaeger_spans(data: Vec<JaegerTrace>, out: &mut Vec<Span>) {
                 end: (start + dur) / 1000.0,
                 error,
                 attrs,
+                runtime: runtimes
+                    .entry(pid.to_string())
+                    .or_insert_with(|| {
+                        let tags = tr.processes.get(pid).and_then(|p| p.tags.as_ref());
+                        runtime_of(tags.map(|t| t.iter().filter_map(|t| match (&t.key, &t.value) {
+                            (Scalar::Str(k), Scalar::Str(v)) => Some((k.as_ref(), v.to_string())),
+                            _ => None,
+                        }).collect()).unwrap_or_default())
+                    })
+                    .clone(),
             });
         }
     }
@@ -1068,6 +1093,15 @@ pub fn build_topology(spans: &mut [Span], b: Option<&mut DatasetBuilder>, o: &Tr
             s.service = r.as_str().into();
         }
     }
+    // each service's runtime, from the first of its spans whose resource names one
+    let mut runtimes: IndexMap<String, String> = IndexMap::new();
+    for s in spans.iter() {
+        if let Some(r) = &s.runtime {
+            if !runtimes.contains_key(s.service.as_ref()) {
+                runtimes.insert(s.service.to_string(), r.to_string());
+            }
+        }
+    }
     let sampling = o.sampling.unwrap_or(1.0);
     let mut by_trace: IndexMap<String, Vec<Span>> = IndexMap::new();
     for s in spans.iter() {
@@ -1213,6 +1247,7 @@ pub fn build_topology(spans: &mut [Span], b: Option<&mut DatasetBuilder>, o: &Tr
                 kind: s.kind.into(),
                 system: s.system.clone().filter(|x| !x.is_empty()),
                 server_spans_per_visit: if s.server_spans > s.n * 1.05 { Some(s.server_spans / s.n) } else { None },
+                runtime: runtimes.get(id).cloned(),
             },
         );
     }
@@ -1363,5 +1398,17 @@ mod tests {
         assert!(e.p99_ms >= 4999.0);
         // the quiet-time baseline is what a completed request takes
         assert!(e.low_p99_ms.unwrap() < 20.0, "{:?}", e.low_p99_ms);
+    }
+
+    #[test]
+    fn a_service_runtime_comes_from_its_resource() {
+        // Jaeger: the process's tags; OTLP: the resource's attributes
+        let jaeger = trace(0, 15.0, 10.0).replace("{\"serviceName\":\"checkout\"}", "{\"serviceName\":\"checkout\",\"tags\":[{\"key\":\"telemetry.sdk.language\",\"type\":\"string\",\"value\":\"java\"}]}");
+        let otlp = r#"{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"cart"}},{"key":"telemetry.sdk.language","value":{"stringValue":"dotnet"}}]},"scopeSpans":[{"spans":[{"traceId":"t9","spanId":"c","name":"GET /cart","kind":2,"startTimeUnixNano":"1790000000000000000","endTimeUnixNano":"1790000000005000000"}]}]}]}"#;
+        let mut spans = vec![];
+        parse_trace_lines([jaeger.as_str(), otlp].iter(), &mut spans).unwrap();
+        let t = build_topology(&mut spans, None, &TraceImportOptions { step_s: 30.0, ..Default::default() });
+        let rt = |s: &str| t.services.get(s).and_then(|x| x.runtime.clone());
+        assert_eq!((rt("checkout"), rt("cart"), rt("frontend")), (Some("jvm".to_string()), Some("dotnet".to_string()), None));
     }
 }

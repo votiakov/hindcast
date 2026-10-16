@@ -230,6 +230,58 @@ pub struct ServiceModel {
     pub placement: Option<Placement>,
     #[serde(default)]
     pub fit: FitQuality,
+    /// the language runtime the telemetry names (telemetry.sdk.language, process.runtime.name)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<String>,
+    /// a JIT runtime's warm-up, for pods that start during a replay
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub warmup: Option<crate::types::Warmup>,
+}
+
+/// the runtime a name points at, where its pods start cold: "jvm" (Java, Kotlin, Scala, Clojure) or
+/// "dotnet". Node's V8 compiles too, but its tiers warm the hot paths within seconds, and Go, Rust and
+/// C++ are compiled ahead of time: none of them is modelled cold
+pub fn jit_runtime(name: &str) -> Option<&'static str> {
+    let l = name.trim().to_lowercase();
+    if l.contains("javascript") || l.contains("node") {
+        return None;
+    }
+    if ["java", "jdk", "jre", "jvm", "kotlin", "scala", "clojure", "groovy", "hotspot", "openj9", "graalvm", "temurin", "corretto", "zulu", "liberica", "semeru", "spring"].iter().any(|k| l.contains(k)) {
+        return Some("jvm");
+    }
+    if ["dotnet", ".net", "csharp", "c#", "fsharp", "f#", "aspnet"].iter().any(|k| l.contains(k)) {
+        return Some("dotnet");
+    }
+    None
+}
+
+/// a JIT runtime's warm-up when nothing measured it ("assumed"). The JVM's: a request costs ×5 the CPU
+/// it costs warm (on top of the pod's idle CPU) and the compiler owes 30 core-seconds, of which it
+/// gets 6% of the limit while the requests take the rest. Fitted on the one JVM watched starting
+/// under a throttled limit (reference/k8s/petclinic, customers-service, Spring Boot 3.4 with the
+/// OpenTelemetry agent, at 125m), its 5-minute warm-up ramp replayed first: cold it served 26–39 req/s
+/// against the model's 200 warm (×5–7.7), and the three numbers put the switch to warm at minute 29.1
+/// on launch day and 8.5 on the ordinary day (measured: 30.5 and 8.5). The same runs, so in sample.
+/// .NET's tiered compilation runs methods on quick tier-0 code first and recompiles the hot ones in
+/// the background: a smaller gap, ×2 and 10 core-seconds, a guess not measured here
+pub fn assumed_warmup(runtime: &str) -> Option<crate::types::Warmup> {
+    let (cold, core_s, share) = match jit_runtime(runtime)? {
+        "jvm" => (JVM_COLD, JVM_CORE_S, JVM_SHARE),
+        _ => (2.0, 10.0, JVM_SHARE),
+    };
+    Some(crate::types::Warmup { runtime: jit_runtime(runtime)?.to_string(), cold, core_s, share, source: "assumed".into() })
+}
+pub const JVM_COLD: f64 = 5.0;
+pub const JVM_CORE_S: f64 = 30.0;
+pub const JVM_SHARE: f64 = 0.06;
+
+/// "JVM", ".NET"
+pub fn runtime_label(runtime: &str) -> &'static str {
+    match runtime {
+        "jvm" => "JVM",
+        "dotnet" => ".NET runtime",
+        _ => "runtime",
+    }
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]

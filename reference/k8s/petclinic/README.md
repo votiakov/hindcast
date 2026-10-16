@@ -29,16 +29,29 @@ any of these runs was recorded. Each change is a manifest variant ([variants/](v
 
 | run | question | measured (k6, every request) | backtest before the day | model on the day’s real traffic | naive CPU ratio |
 |---|---|---|---|---|---|
-| `launch` | As built (2 gateways), on launch day? | **pass**: p99 8 ms, errors 0.00%, 0 min out of SLO | pass ✅, 0 min | p99 9 ms, errors 0.00%, 0 min | pass ✅ at 62% CPU |
-| `launch-gw1` | 1 gateway instead of 2, on launch day? | **pass**: p99 8 ms, errors 0.00%, 0 min out of SLO | pass ✅ (medium confidence), 0 min | p99 9 ms, errors 0.00%, 0 min | pass ✅ at 81% CPU |
-| `normal-gw1` | 1 gateway instead of 2, on an ordinary day? | **pass**: p99 9 ms, errors 0.00%, 0 min out of SLO | pass ✅ (medium confidence), 0 min | p99 9 ms, errors 0.00%, 0 min | pass ✅ at 37% CPU |
-| `launch-cust125` | customers-service at 125m instead of 250m, on launch day? | **fail**: p99 5003 ms, errors 64.5%, 29.5 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | p99 13 ms, errors 0.00%, 0 min | fail ✅ at 125% CPU |
-| `normal-cust125` | customers-service at 125m instead of 250m, on an ordinary day? | **fail**: p99 5001 ms, errors 2.2%, 4 min out of SLO | pass ❌ (medium confidence), 0 min | p99 9 ms, errors 0.00%, 0 min | pass ❌ at 56% CPU |
-| `launch-hpa` | An HPA (1–3 gateways at 60% CPU) instead of 2 fixed, on launch day? | **pass**: p99 7 ms, errors 0.00%, 0 min out of SLO | pass ✅ (medium confidence), 0 min | p99 9 ms, errors 0.00%, 0 min | pass ✅ at 62% CPU |
+| `launch` | As built (2 gateways), on launch day? | **pass**: p99 8 ms, errors 0.00%, 0 min out of SLO | pass ✅, 0 min | p99 14 ms, errors 0.00%, 0 min | pass ✅ at 62% CPU |
+| `launch-gw1` | 1 gateway instead of 2, on launch day? | **pass**: p99 8 ms, errors 0.00%, 0 min out of SLO | pass ✅ (medium confidence), 0 min | p99 14 ms, errors 0.00%, 0 min | pass ✅ at 81% CPU |
+| `normal-gw1` | 1 gateway instead of 2, on an ordinary day? | **pass**: p99 9 ms, errors 0.00%, 0 min out of SLO | pass ✅ (medium confidence), 0 min | p99 14 ms, errors 0.00%, 0 min | pass ✅ at 37% CPU |
+| `launch-cust125` | customers-service at 125m instead of 250m, on launch day? | **fail**: p99 5003 ms, errors 64.5%, 29.5 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | p99 5000 ms, errors 65.7%, 29.5 min | fail ✅ at 125% CPU |
+| `normal-cust125` | customers-service at 125m instead of 250m, on an ordinary day? | **fail**: p99 5001 ms, errors 2.2%, 4 min out of SLO | pass ❌ (medium confidence), 0 min | p99 21 ms, errors 0.00%, 0 min | pass ❌ at 56% CPU |
+| `launch-hpa` | An HPA (1–3 gateways at 60% CPU) instead of 2 fixed, on launch day? | **pass**: p99 7 ms, errors 0.00%, 0 min out of SLO | pass ✅ (medium confidence), 0 min | p99 14 ms, errors 0.00%, 0 min | pass ✅ at 62% CPU |
 
 Backtest verdicts: **4 right**, 1 inconclusive (it said to load-test; 0 of them leaned the right way), 1 wrong, of 6. Naive CPU ratio: 5 right.
 
-p99 of the model on each day's real traffic, against the measured p99: within 20% in **3 of 6** runs; the others off by 29–100%.
+*Retrodiction, not a prediction* — what today's code says from the same ordinary day, after the model learned JIT warm-up. The warm-up's defaults (×5 CPU per request while cold, 30 core-seconds of compilation, 6% of the limit for the compiler under load) were fitted on `launch-cust125` and `normal-cust125` after they were recorded, so this is the model explaining runs it was shaped on, in sample:
+
+| run | measured | committed before the run (scored above) | today’s code on the ordinary day (retrodiction) |
+|---|---|---|---|
+| `launch` | **pass**, 0 min out of SLO | pass ✅, 0 min | pass ✅, 0 min |
+| `launch-gw1` | **pass**, 0 min out of SLO | pass ✅ (medium confidence), 0 min | pass ✅ (medium confidence), 0 min |
+| `normal-gw1` | **pass**, 0 min out of SLO | pass ✅ (medium confidence), 0 min | pass ✅ (medium confidence), 0 min |
+| `launch-cust125` | **fail**, 29.5 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | fail ✅ (low confidence), 38.5 min |
+| `normal-cust125` | **fail**, 4 min out of SLO | pass ❌ (medium confidence), 0 min | inconclusive ⚠️ leans pass (medium confidence), 0 min |
+| `launch-hpa` | **pass**, 0 min out of SLO | pass ✅ (medium confidence), 0 min | pass ✅ (medium confidence), 0 min |
+
+Retrodiction: 5 right, 1 inconclusive, 0 wrong, of 6 — in sample, not a score. (The out-of-sample table's “model on the day’s real traffic” column is always today’s code, so it carries the same caveat.)
+
+p99 of the model on each day's real traffic, against the measured p99: within 20% in **1 of 6** runs; the others off by 56–100%.
 
 
 
@@ -89,7 +102,46 @@ model predicted was right; the cold start it never modelled was what failed. The
 show this, because its pods were already warm.
 
 This is a known trap: Java services on Kubernetes with tight CPU limits that never warm up. The
-model does not know about it yet, and it is the next thing it learns.
+model did not know about it when it made the verdicts above.
+
+## What the model learned from the miss (in sample)
+
+The model now knows JIT warm-up. A pod of a JIT runtime that starts during a replay starts cold.
+That covers a rollout of the change itself (a new pod template replaces the pods), pods an
+autoscaler adds, replacements after a node is lost, and restarts after an OOM kill. While cold, a
+request costs ×*m* the CPU it costs warm, until the pod has done *D* core-seconds of compilation.
+The compiler gets only the CPU the requests leave idle under the limit, plus a share *g* of the
+limit when they take all of it. Nothing else drives the spiral: a saturated pod barely compiles, so
+it stays slow because it is slow. An idle one is warm in minutes.
+
+The JVM's defaults are *m* = 5, *D* = 30 core-seconds and *g* = 6%. They were fitted on
+`launch-cust125` and `normal-cust125` (engine-rs `model.rs`, `assumed_warmup`). Each run was
+replayed from its 5-minute warm-up ramp onwards, on its own traffic, and a grid search looked for
+the minute each run turned warm. With these numbers the replay turns warm at minute 29.1 on launch
+day and 8.5 on the ordinary day (measured: 30.5 and 8.5), with 29 and 1.5 minutes out of SLO
+(measured: 29.5 and 4). Cold, the pod served 26–39 req/s against the model's 200 when warm, which is
+×5 to ×7.7. Nearby values fit as well along a ridge: *D*/*g* is what sets the launch day, so *D* = 35 with
+*g* = 8% fits about as well. These are two runs of one service, so the parameters are in sample.
+Where a history shows a pod starting, calibration measures *D* instead. This history shows none.
+
+The runtime comes from the traces (`telemetry.sdk.language`, `process.runtime.name`) or, in a
+Kubernetes diff, from the pod template: an image named for a JVM, or `JAVA_TOOL_OPTIONS` with the
+OpenTelemetry agent, as here. A JVM's verdict now reads like this (`normal-cust125`, today's code):
+*"customers-service restarts on its new 125m CPU limit and a JVM needs ~30 core-seconds of JIT
+compilation to warm up (assumed): until then a request costs ×5 its warm CPU; in the replay it is warm
+7.8 min after it starts"*, followed by *"while its restarted pods are still cold the system sustains
+53.4 req/s, below the peak it has to serve (107.1): rolled out at a busy moment, it would not warm
+up"*. The verdict is inconclusive, leaning pass, at medium confidence, and the warning says the
+warm-up is assumed. On launch day it says fail.
+
+The retrodiction table under the results shows today's verdicts beside the committed ones. It is
+not a score: the warm-up was designed on these two runs. The ordinary day is still not called a
+fail. The model rolls the change out at the first moment of the replayed day, about 25 req/s at
+customers-service, and at that load the pod warms. The run failed because its rollout met a
+5-minute ramp to 100 req/s at the gateway, which left a backlog the cold pod could not clear. The
+model can't know when a team will deploy. What it can do is say how much load a cold pod takes and
+leave the verdict open. The next out-of-sample round should test the warm-up on runs it was not
+fitted on.
 
 ## What the repository keeps
 

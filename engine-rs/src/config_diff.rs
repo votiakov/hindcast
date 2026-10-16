@@ -39,6 +39,27 @@ pub struct WorkloadConfig {
     pub arch: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub autoscale: Option<Autoscale>,
+    /// a JIT runtime the pod template shows ("jvm", "dotnet"): its image, or the options it is given
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<String>,
+}
+
+/// the JIT runtime a container runs, from what its spec gives away: an image named for it (openjdk,
+/// eclipse-temurin, spring-…, dotnet/aspnet) or the environment a JVM or .NET reads (JAVA_TOOL_OPTIONS,
+/// JAVA_OPTS, a -javaagent; DOTNET_*, ASPNETCORE_*)
+fn runtime_of(c: &JMap<String, Value>) -> Option<String> {
+    let image = c.get("image").map(js_string).unwrap_or_default();
+    let image = image.rsplit('/').next().unwrap_or("").split([':', '@']).next().unwrap_or("").to_string();
+    let env: Vec<(String, String)> = arr(c.get("env")).iter().map(|e| (o(Some(e)).get("name").map(js_string).unwrap_or_default(), o(Some(e)).get("value").map(js_string).unwrap_or_default())).collect();
+    let jvm_env = env.iter().any(|(k, v)| ["JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JAVA_OPTS", "JDK_JAVA_OPTIONS", "JAVA_HOME"].contains(&k.as_str()) || v.contains("-javaagent") || v.contains("-Xmx"));
+    let dotnet_env = env.iter().any(|(k, _)| k.starts_with("DOTNET_") || k.starts_with("ASPNETCORE_") || k.starts_with("COMPlus_"));
+    if jvm_env {
+        return Some("jvm".into());
+    }
+    if dotnet_env {
+        return Some("dotnet".into());
+    }
+    crate::model::jit_runtime(&image).map(String::from)
 }
 
 fn o(v: Option<&Value>) -> &JMap<String, Value> {
@@ -171,6 +192,7 @@ pub fn read_workloads(documents: &[Value]) -> IndexMap<String, WorkloadConfig> {
             memory_request_gb: mem_quantity(coalesce(requests.get("memory"), limits.get("memory"))),
             arch: Some(if arch_label.as_ref().and_then(|a| a.as_str()) == Some("arm64") { "arm" } else { "x86" }.into()),
             autoscale: None,
+            runtime: runtime_of(c),
         };
         out.insert(service.clone(), w);
         by_name.insert(name, service);
@@ -321,6 +343,10 @@ pub fn strategy_from_diff(before: &IndexMap<String, WorkloadConfig>, after: &Ind
             said.push(format!("{} → {}", svc, if b.arch.as_deref() == Some("arm") { "Graviton (arm64)" } else { "x86" }));
         }
         if ch.len() > 1 {
+            // a JIT runtime: the pods the change starts (a new template, an autoscaler's) start cold
+            if let Some(r) = &b.runtime {
+                ch.insert("runtime".into(), json!(r));
+            }
             changes.push(Value::Object(ch));
         }
     }
@@ -334,4 +360,31 @@ pub fn strategy_from_diff(before: &IndexMap<String, WorkloadConfig>, after: &Ind
     }
     let name = name.map(String::from).unwrap_or_else(|| said.join("; "));
     DiffResult { strategy: Some(json!({ "name": name, "description": "from the pull request diff", "changes": changes })), ignored }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn deploy(name: &str, image: &str, env: Value, cpu: &str) -> Value {
+        json!({ "kind": "Deployment", "metadata": { "name": name }, "spec": { "replicas": 1, "template": { "spec": { "containers": [{ "image": image, "env": env, "resources": { "limits": { "cpu": cpu } } }] } } } })
+    }
+
+    #[test]
+    fn the_runtime_is_read_from_the_image_or_its_options() {
+        let w = read_workloads(&[
+            deploy("customers", "springcommunity/spring-petclinic-customers-service:3.4.1@sha256:ab", json!([]), "250m"),
+            deploy("ad", "ghcr.io/open-telemetry/demo:2.0.2-ad", json!([{ "name": "_JAVA_OPTIONS", "value": "-Xmx400m" }]), "250m"),
+            deploy("api", "registry/api:1", json!([{ "name": "JAVA_TOOL_OPTIONS", "value": "-javaagent:/otel/agent.jar" }]), "250m"),
+            deploy("cart", "mcr.microsoft.com/dotnet/aspnet:8.0", json!([]), "250m"),
+            deploy("frontend", "ghcr.io/open-telemetry/demo:2.0.2-frontend", json!([{ "name": "NODE_OPTIONS", "value": "--max-old-space-size=200" }]), "250m"),
+            deploy("tools", "eclipse-temurin:21-jre", json!([]), "250m"),
+        ]);
+        let rt: Vec<Option<&str>> = w.values().map(|x| x.runtime.as_deref()).collect();
+        assert_eq!(rt, vec![Some("jvm"), Some("jvm"), Some("jvm"), Some("dotnet"), None, Some("jvm")]);
+        // a changed JVM workload carries its runtime into the strategy; an unchanged one isn't there
+        let after = read_workloads(&[deploy("customers", "springcommunity/spring-petclinic-customers-service:3.4.1", json!([]), "125m"), deploy("frontend", "ghcr.io/open-telemetry/demo:2.0.2-frontend", json!([]), "125m")]);
+        let r = strategy_from_diff(&w, &after, None, None);
+        assert_eq!(r.strategy.unwrap()["changes"], json!([{ "service": "customers", "cpu": 0.125, "runtime": "jvm" }, { "service": "frontend", "cpu": 0.125 }]));
+    }
 }

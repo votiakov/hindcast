@@ -46,6 +46,8 @@ pub struct ServiceChange {
     pub read_share: Option<f64>,
     pub zone: Option<String>,
     pub region: Option<String>,
+    /// the service's language runtime, where the model doesn't know it: a JIT runtime's new pods start cold
+    pub runtime: Option<String>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -168,7 +170,7 @@ impl<'a> Checker<'a> {
     }
 }
 
-const SERVICE_KEYS: &[&str] = &["service", "replicas", "autoscale", "cpu", "memoryGb", "spread", "cpuRequest", "memoryRequestGb", "arch", "perf", "capacityRps", "cache", "readReplicas", "readShare", "zone", "region"];
+const SERVICE_KEYS: &[&str] = &["service", "replicas", "autoscale", "cpu", "memoryGb", "spread", "cpuRequest", "memoryRequestGb", "arch", "perf", "capacityRps", "cache", "readReplicas", "readShare", "zone", "region", "runtime"];
 const ENDPOINT_KEYS: &[&str] = &["endpoint", "retries", "timeoutMs"];
 
 fn parse_service(o: &JMap<String, Value>) -> Result<ServiceChange, Vec<Issue>> {
@@ -253,9 +255,10 @@ fn parse_service(o: &JMap<String, Value>) -> Result<ServiceChange, Vec<Issue>> {
     let read_share = c.number("readShare", Some((0.0, true)), Some(1.0), false);
     let zone = c.string("zone", false);
     let region = c.string("region", false);
+    let runtime = c.string("runtime", false);
     c.strict(SERVICE_KEYS);
     if c.issues.is_empty() {
-        Ok(ServiceChange { service, replicas, autoscale, cpu, memory_gb, spread, cpu_request, memory_request_gb, arch, perf, capacity_rps, cache, read_replicas, read_share, zone, region })
+        Ok(ServiceChange { service, replicas, autoscale, cpu, memory_gb, spread, cpu_request, memory_request_gb, arch, perf, capacity_rps, cache, read_replicas, read_share, zone, region, runtime })
     } else {
         Err(c.issues)
     }
@@ -335,7 +338,7 @@ pub fn parse_strategy(v: &Value) -> Result<StrategySpec, String> {
                             let hint = if is_endpoint {
                                 " — an endpoint change takes endpoint, retries { attempts, budget? }, timeoutMs"
                             } else {
-                                " — a service change takes service plus replicas, autoscale, cpu, memoryGb, cpuRequest, memoryRequestGb, spread, arch, perf, capacityRps, cache, readReplicas, readShare, zone, region"
+                                " — a service change takes service plus replicas, autoscale, cpu, memoryGb, cpuRequest, memoryRequestGb, spread, arch, perf, capacityRps, cache, readReplicas, readShare, zone, region, runtime"
                             };
                             issues.push(Issue { path, message: format!("{}: {}{}", if is_endpoint { "endpoint change" } else { "service change" }, i.message, hint) });
                         }
@@ -614,6 +617,25 @@ pub fn apply_strategy(model: &Model, base: &Plan, spec: &StrategySpec) -> Result
                 js_num(1.0 + n)
             ));
         }
+        // a JIT runtime (the model's warm-up, or the runtime the change names): a change to the pod
+        // template replaces the pods, and every pod that starts serves cold until it has compiled
+        if let Some(w) = s.warmup.clone().or_else(|| ch.runtime.as_deref().and_then(crate::model::assumed_warmup)) {
+            let restarts = ch.cpu.is_some() || ch.memory_gb.is_some() || ch.cpu_request.is_some() || ch.memory_request_gb.is_some() || ch.spread || ch.arch.as_ref().is_some_and(|a| *a != m.cost.arch);
+            let how = format!(
+                "requests cost ×{} CPU until ~{} core-seconds of JIT compilation are done, with the CPU the requests leave idle under its limit ({}{})",
+                js_num(w.cold),
+                js_num(w.core_s),
+                if w.source == "calibrated" { "calibrated on a pod start in the history" } else { "assumed" },
+                if w.source == "calibrated" { String::new() } else { format!(", the {}'s defaults: nothing in the history shows one of its pods starting", crate::model::runtime_label(&w.runtime)) }
+            );
+            if restarts && hosted.is_none() {
+                s.restart = true;
+                notes.push(format!("{}: a {}; the change replaces its pods, which start cold with the replay: {}", id, crate::model::runtime_label(&w.runtime), how));
+            } else if ch.autoscale.is_some() {
+                notes.push(format!("{}: a {}; pods the autoscaler adds start cold: {}", id, crate::model::runtime_label(&w.runtime), how));
+            }
+            s.warmup = Some(w);
+        }
         if let Some(z) = ch.zone.as_ref().filter(|z| !z.is_empty()) {
             s.zone = Some(z.clone());
             notes.push(format!("{}: placed in {}", id, z));
@@ -672,7 +694,7 @@ pub fn normalize_strategy(v: &Value) -> Result<Value, String> {
                 }
                 return Value::Object(x);
             }
-            let mut x = pick(&m, &["service", "replicas", "autoscale", "cpu", "memoryGb", "spread", "cpuRequest", "memoryRequestGb", "arch", "perf", "capacityRps", "cache", "readReplicas", "readShare", "zone", "region"]);
+            let mut x = pick(&m, &["service", "replicas", "autoscale", "cpu", "memoryGb", "spread", "cpuRequest", "memoryRequestGb", "arch", "perf", "capacityRps", "cache", "readReplicas", "readShare", "zone", "region", "runtime"]);
             if let Some(Value::Object(a)) = x.get("autoscale").cloned() {
                 x.insert("autoscale".into(), Value::Object(pick(&a, &["min", "max", "targetCpu", "warmupS", "cooldownS", "intervalS", "metricWindowS"])));
             }
@@ -738,5 +760,26 @@ mod tests {
         // a CPU-bound service with a latency fit still takes its width from the cores
         let a = resize(&shop(false), 2.0);
         assert_eq!(a.plan.services["frontend"].servers, 2.0);
+    }
+
+    #[test]
+    fn a_jit_runtime_restarts_cold_when_the_pod_template_changes() {
+        let m = shop(false);
+        let base = crate::backtest::base_plan(&m, None);
+        let apply = |change: Value| apply_strategy(&m, &base, &parse_strategy(&json!({ "name": "x", "changes": [change] })).unwrap()).unwrap();
+        // a new limit replaces the pods: a JVM's start cold, with the assumed defaults said
+        let a = apply(json!({ "service": "frontend", "cpu": 0.25, "runtime": "jvm" }));
+        let s = &a.plan.services["frontend"];
+        assert!(s.restart);
+        assert_eq!(s.warmup.as_ref().map(|w| (w.cold, w.core_s, w.source.as_str())), Some((crate::model::JVM_COLD, crate::model::JVM_CORE_S, "assumed")));
+        assert!(a.notes.iter().any(|n| n.contains("a JVM; the change replaces its pods") && n.contains("assumed")), "{:?}", a.notes);
+        // more replicas keep the running pods: only the new ones start cold, and nothing restarts
+        let a = apply(json!({ "service": "frontend", "replicas": 4, "runtime": "jvm" }));
+        assert!(!a.plan.services["frontend"].restart && a.plan.services["frontend"].warmup.is_some());
+        // Node (V8) and Go aren't modelled cold
+        for rt in ["node", "go", "javascript"] {
+            let a = apply(json!({ "service": "frontend", "cpu": 0.25, "runtime": rt }));
+            assert!(a.plan.services["frontend"].warmup.is_none() && !a.plan.services["frontend"].restart, "{}", rt);
+        }
     }
 }

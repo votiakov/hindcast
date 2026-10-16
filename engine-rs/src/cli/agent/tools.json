@@ -486,7 +486,7 @@
             "additionalProperties": {}
            }
           ],
-          "description": "a strategy object or YAML: { name, changes: [{ service, replicas | autoscale | cpu | memoryGb | cpuRequest | memoryRequestGb | arch | perf | capacityRps | cache | readReplicas | zone | region } | { endpoint, retries, timeoutMs }] }"
+          "description": "a strategy object or YAML: { name, changes: [{ service, replicas | autoscale | cpu | memoryGb | cpuRequest | memoryRequestGb | arch | perf | capacityRps | cache | readReplicas | zone | region | runtime } | { endpoint, retries, timeoutMs }] }"
          }
         },
         "required": [

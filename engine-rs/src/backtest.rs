@@ -197,6 +197,8 @@ pub fn base_plan(model: &Model, observed: Option<&Map<Option<Vec<Num>>>>) -> Pla
                 cache: None,
                 zone: s.placement.as_ref().and_then(|p| p.zone.clone()),
                 region: s.placement.as_ref().and_then(|p| p.region.clone()),
+                warmup: s.warmup.clone(),
+                restart: false,
             },
         );
     }

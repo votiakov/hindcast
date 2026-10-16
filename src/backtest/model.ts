@@ -1,4 +1,5 @@
 import type { Placement } from './dataset';
+import type { Warmup } from './engine';
 
 /**
  * The calibrated model: what Hindcast believes about each component, fitted from real data,
@@ -87,6 +88,10 @@ export interface ServiceModel {
   };
   placement?: Placement;
   fit: FitQuality;
+  /** the language runtime the telemetry names (telemetry.sdk.language, process.runtime.name) */
+  runtime?: string;
+  /** a JIT runtime's warm-up, for pods that start during a replay */
+  warmup?: Warmup;
 }
 
 export interface EndpointModel {

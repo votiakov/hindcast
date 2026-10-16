@@ -91,6 +91,25 @@ pub struct Memory {
     pub leak: f64,
 }
 
+/// a JIT runtime's warm-up (a JVM, .NET): a pod that starts serves each request at `cold`× its warm
+/// CPU cost until it has done `core_s` core-seconds of compilation. The compiler gets the CPU the
+/// requests leave idle under the pod's limit, and `share` of the limit when they take it all: a
+/// saturated pod barely warms, and stays slow because it is slow
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Warmup {
+    pub runtime: String,
+    #[serde(default, deserialize_with = "num")]
+    pub cold: f64,
+    #[serde(default, deserialize_with = "num")]
+    pub core_s: f64,
+    #[serde(default, deserialize_with = "num")]
+    pub share: f64,
+    /// "calibrated" from a pod start in the history, or "assumed" (the runtime's defaults)
+    #[serde(default)]
+    pub source: String,
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Requests {
@@ -154,6 +173,12 @@ pub struct ServicePlan {
     pub zone: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub region: Option<String>,
+    /// a JIT runtime: pods that start during the replay (scale-outs, restarts, replacements) start cold
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub warmup: Option<Warmup>,
+    /// the change replaces the pods (a new pod template): they all start at the beginning of the replay
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub restart: bool,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
