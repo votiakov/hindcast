@@ -95,7 +95,12 @@ pub fn connect_telemetry(ws: &Workspace, input: &Value) -> Result<Value, String>
     // without traces, who calls whom comes from a topology file or the metrics: not a problem, a loss
     let mut calls_report: Option<Value> = None;
     let mut no_file = false;
-    if traces_report.is_none() && files_report.is_none() {
+    // a trace backend that answers with nothing to read the topology from (no traces, or a corner of the system):
+    // collect reads the calls from the metrics, unless system.entry says to use the traces anyway
+    let given_entry = next.get("system").and_then(|s| s.get("entry")).and_then(|e| e.as_array()).map(|a| !a.is_empty()).unwrap_or(false);
+    let metered = prom_report.as_ref().or(dd_report.as_ref()).map(super::collect::metered_services).unwrap_or(0);
+    let unusable = traces_report.as_ref().filter(|t| !given_entry && t.get("ok") != Some(&json!(false))).and_then(|t| super::collect::traces_unusable(t, metered));
+    if (traces_report.is_none() || unusable.is_some()) && files_report.is_none() {
         let file = next.get("topologyFile").and_then(|x| x.as_str()).map(String::from);
         let from: Vec<String> = prom_report.as_ref().and_then(|p| p.get("calls")).and_then(|c| c.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
         // span metrics name calls only where their preset is used
@@ -132,10 +137,14 @@ pub fn connect_telemetry(ws: &Workspace, input: &Value) -> Result<Value, String>
             None if dd_report.is_some() => "nowhere: Datadog's APM service dependencies named no calls, so each service with request metrics is its own entry and the others are read against the entry traffic (a topologyFile can name the calls)".into(),
             None => "nowhere: no metric here names both ends of a call, so each service with request metrics is its own entry and the others are read against the entry traffic (a topologyFile can name the calls)".into(),
         };
-        calls_report = Some(json!({
+        let mut c = json!({
             "from": how,
             "lost": "no traces: each endpoint's own path and measured self times (self time is estimated as a service's latency less its callees'). Connect Jaeger or Tempo, or give traceFiles, for them",
-        }));
+        });
+        if let Some(why) = &unusable {
+            c["why"] = json!(why);
+        }
+        calls_report = Some(c);
     }
 
     if let Some(b) = next.get("bill") {
@@ -238,7 +247,7 @@ pub fn connect_telemetry(ws: &Workspace, input: &Value) -> Result<Value, String>
     let mut sys = obj(next.get("system").unwrap_or(&Value::Null));
     let has_entry = sys.get("entry").and_then(|e| e.as_array()).map(|a| !a.is_empty()).unwrap_or(false);
     if let Some(e) = traces_report.as_ref().and_then(|t| t.get("entry")).filter(|e| e.as_array().map(|a| !a.is_empty()).unwrap_or(false)) {
-        if !has_entry {
+        if !has_entry && unusable.is_none() {
             sys.insert("entry".into(), e.clone());
         }
     }

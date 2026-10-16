@@ -298,12 +298,19 @@ It probes before anything is collected:
 - **Jaeger/Tempo**: the services, which ones requests *enter through*, which ones only start
   traces as clients (load generators, which it then ignores), and the call edges. Without them,
   `calls` says where who-calls-whom will come from ([Without traces](#without-traces)), and what is
-  lost.
+  lost. A trace backend that answers but can't give the topology counts as no traces, and
+  `calls.why` says so: one with no traces showing where requests enter (retention ran out, or
+  nothing exports to it), or one that knows under half of the services with request metrics (one
+  service exporting traces, the rest not). Give `system.entry` to use its traces anyway.
 - **Renames**: container metrics often spell services differently from traces (`shop-worker` vs
   `worker`). Unambiguous renames are applied; a load balancer is never folded into its backend.
 - **Namespaces**: a cluster's Prometheus sees every namespace (coredns, the monitoring stack, other
   teams). Kubernetes metrics are kept to the namespaces the traced services run in; pass
-  `prometheus.namespaces` to choose them yourself.
+  `prometheus.namespaces` to choose them yourself. Request metrics carry no namespace, so
+  `collect_telemetry` also leaves out the services whose pods run only outside those namespaces,
+  and says which. Where the history still holds groups of services that never call each other
+  (another team's app on the same Prometheus), its first warning names them, with the namespace to
+  collect each from: read as one system, their SLO, headroom and risks would mix.
 - **Broken traces**: real traces lose spans (an exporter drops a batch, a hop isn't instrumented).
   A span whose parent never arrived is a broken link, not an entry service; only true roots (or, in
   a trace that lost its root, its earliest span) count.

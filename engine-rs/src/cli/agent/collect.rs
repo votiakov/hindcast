@@ -110,6 +110,141 @@ pub fn coverage_of(d: &Value) -> Vec<Value> {
         .unwrap_or_default()
 }
 
+/// services whose workloads run only in namespaces outside the ones chosen: request metrics (span metrics, HTTP
+/// server metrics) carry no namespace, so another team's app on the same Prometheus shows up beside this one
+/// unless it is left out by where its pods run. Services with no workload found are kept.
+fn outside_namespaces(workload_namespaces: &Value, chosen: &[String], rename: &JMap<String, Value>) -> Vec<String> {
+    if chosen.is_empty() {
+        return vec![];
+    }
+    let mut out: Vec<String> = workload_namespaces
+        .as_object()
+        .map(|w| w.iter().filter(|(_, ns)| strs(Some(*ns)).map(|n| !n.is_empty() && !n.iter().any(|x| chosen.contains(x))).unwrap_or(false)).map(|(id, _)| rename.get(id).and_then(|x| x.as_str()).unwrap_or(id).to_string()).collect())
+        .unwrap_or_default();
+    out.sort();
+    out
+}
+
+/// the services with request metrics in a metrics probe (Prometheus or Datadog), counted on the preset that sees most
+pub(crate) fn metered_services(probe: &Value) -> usize {
+    ["otel-spanmetrics", "http-server", "http-server-legacy", "spring", "datadog-apm"].iter().map(|k| strs(probe.get("services").and_then(|s| s.get(*k))).unwrap_or_default().len()).max().unwrap_or(0)
+}
+
+/// why a trace probe (probe_jaeger, probe_tempo) can't give the topology, if it can't: it found no service requests
+/// enter through, or it knows under half of the services with request metrics — one service exporting traces and
+/// the rest not, where a topology from the traces would leave the rest uncalled. Then who calls whom is read from
+/// the metrics, as without traces.
+pub(crate) fn traces_unusable(shape: &Value, metered: usize) -> Option<String> {
+    let kind = if shape.get("kind").and_then(|k| k.as_str()) == Some("tempo") { "Tempo" } else { "Jaeger" };
+    let services = strs(shape.get("services")).unwrap_or_default();
+    if strs(shape.get("entry")).map(|e| e.is_empty()).unwrap_or(true) {
+        Some(empty_traces_said(kind, &services))
+    } else if services.len() * 2 < metered {
+        Some(partial_traces_said(kind, &services, metered))
+    } else {
+        None
+    }
+}
+
+/// the warning when a connected Jaeger or Tempo holds no traces to read the topology from
+fn empty_traces_said(kind: &str, services: &[String]) -> String {
+    format!(
+        "{} has no traces of this system before the window's end ({}): who calls whom is read from the metrics instead, as without traces. Check that the services export traces to it and that its retention covers the window",
+        kind,
+        if services.is_empty() { "it knows no services".to_string() } else { format!("only {}, which start no requests", services.join(", ")) }
+    )
+}
+
+/// the warning when a connected Jaeger or Tempo traces under half of the services the metrics see
+fn partial_traces_said(kind: &str, services: &[String], metered: usize) -> String {
+    format!(
+        "{} traces {} of the {} services with request metrics ({}): a topology from it would leave the rest uncalled, so who calls whom is read from the metrics instead, as without traces. Check that every service exports traces to it, or give system.entry to use the traces anyway",
+        kind,
+        services.len(),
+        metered,
+        services.join(", ")
+    )
+}
+
+/// groups of services that call each other and never anyone outside the group: two systems (another team's
+/// app on the same Prometheus) read as one, whose SLO, headroom and risks would then mix. None for one group.
+/// `namespaces` is the probe's workloadNamespaces (workload → namespaces).
+fn separate_systems(d: &Value, namespaces: &Value, source: &str) -> Option<String> {
+    let edges = d.get("topology").and_then(|t| t.get("edges")).and_then(|e| e.as_array())?;
+    let known = d.get("services").and_then(|s| s.as_object())?;
+    let ids: Vec<String> = known.keys().cloned().collect();
+    let mut group: Vec<usize> = (0..ids.len()).collect();
+    fn root(g: &mut Vec<usize>, mut i: usize) -> usize {
+        while g[i] != i {
+            g[i] = g[g[i]];
+            i = g[i];
+        }
+        i
+    }
+    let mut linked = vec![false; ids.len()];
+    for e in edges {
+        let (a, b) = (ids.iter().position(|x| *x == sval(e.get("from"))), ids.iter().position(|x| *x == sval(e.get("to"))));
+        if let (Some(a), Some(b)) = (a, b) {
+            if a == b {
+                continue;
+            }
+            let (ra, rb) = (root(&mut group, a), root(&mut group, b));
+            group[ra] = rb;
+            linked[a] = true;
+            linked[b] = true;
+        }
+    }
+    let mut groups: Vec<Vec<String>> = vec![];
+    let mut of: Vec<usize> = vec![];
+    for i in (0..ids.len()).filter(|i| linked[*i]) {
+        let r = root(&mut group, i);
+        match of.iter().position(|x| *x == r) {
+            Some(k) => groups[k].push(ids[i].clone()),
+            None => {
+                of.push(r);
+                groups.push(vec![ids[i].clone()]);
+            }
+        }
+    }
+    if groups.len() < 2 {
+        return None;
+    }
+    groups.sort_by(|a, b| b.len().cmp(&a.len()));
+    let ns_of = |g: &[String]| -> Vec<String> {
+        let mut v: Vec<String> = g.iter().flat_map(|id| strs(namespaces.get(id)).unwrap_or_default()).collect();
+        v.sort();
+        v.dedup();
+        v
+    };
+    let said: Vec<String> = groups
+        .iter()
+        .map(|g| {
+            let names = if g.len() > 4 { format!("{} and {} more", g[..3].join(", "), g.len() - 3) } else { g.join(", ") };
+            let ns = ns_of(g);
+            if ns.is_empty() { names } else { format!("{} (namespace {})", names, ns.join(", ")) }
+        })
+        .collect();
+    // one namespace per group, a different one each: the namespace is the way to pick one
+    let by_ns: Vec<Vec<String>> = groups.iter().map(|g| ns_of(g)).collect();
+    let apart = by_ns.iter().all(|n| n.len() == 1) && {
+        let mut all: Vec<&String> = by_ns.iter().map(|n| &n[0]).collect();
+        all.sort();
+        all.dedup();
+        all.len() == by_ns.len()
+    };
+    let how = if apart {
+        format!("collect one at a time: connect_telemetry with {}.namespaces [\"{}\"] (quickstart: --namespace {})", source, by_ns[0][0], by_ns[0][0])
+    } else {
+        "if one of them is another system, connect_telemetry with system.exclude for its services (quickstart: --exclude)".to_string()
+    };
+    Some(format!(
+        "the history holds {} groups of services that never call each other: {}. Read as one system, their SLO, headroom and risks mix — {}",
+        groups.len(),
+        said.join("; "),
+        how
+    ))
+}
+
 pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
     let mut src = ws.sources()?.as_object().cloned().unwrap_or_default();
     // the metrics come from Prometheus, or from Datadog where that is what is connected
@@ -205,24 +340,33 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
     let tempo = src.get("tempo").cloned();
     let rename_map = system.get("rename").and_then(|r| r.as_object()).cloned().unwrap_or_default();
     let rename_of = |x: &str| rename_map.get(x).and_then(|v| v.as_str()).unwrap_or(x).to_string();
+    let outside = outside_namespaces(&probe["workloadNamespaces"], &strs(dd.as_ref().unwrap_or(&prom).get("namespaces")).unwrap_or_default(), &rename_map);
     let infer_prom = super::infer::Prom::new(&prom, &rename_map)?;
     let mut inferred: Option<super::infer::Calls> = None;
-    if jaeger.is_some() || tempo.is_some() {
-        let kind = if jaeger.is_some() { "jaeger" } else { "tempo" };
-        if entry.as_ref().map(|e| e.is_empty()).unwrap_or(true) {
-            let shape = match &jaeger {
-                Some(j) => probe_jaeger(j, end)?,
-                None => probe_tempo(tempo.as_ref().unwrap(), end)?,
-            };
-            entry = strs(shape.get("entry"));
-            if ignore.is_none() {
-                ignore = strs(shape.get("clientsOnly"));
+    // a trace backend that holds no traces of this system (retention ran out, or nothing exports to it)
+    // says nothing about who calls whom: the metrics are read for it, as without traces
+    let mut traced = jaeger.is_some() || tempo.is_some();
+    if traced && entry.as_ref().map(|e| e.is_empty()).unwrap_or(true) {
+        let shape = match &jaeger {
+            Some(j) => probe_jaeger(j, end)?,
+            None => probe_tempo(tempo.as_ref().unwrap(), end)?,
+        };
+        match traces_unusable(&shape, metered_services(&probe)) {
+            Some(why) => {
+                traced = false;
+                warnings.push(why);
+            }
+            None => {
+                entry = strs(shape.get("entry"));
+                if ignore.is_none() {
+                    ignore = strs(shape.get("clientsOnly"));
+                }
             }
         }
+    }
+    if traced {
+        let kind = if jaeger.is_some() { "jaeger" } else { "tempo" };
         let ent = entry.clone().unwrap_or_default();
-        if ent.is_empty() {
-            return Err(format!("could not tell which services requests enter through from {}: give system.entry in connect_telemetry", kind));
-        }
         super::progress("fetching traces", 1.0, 4.0);
         let (mut traces, mut requests) = (0usize, 0usize);
         let max_traces = o.get("maxTraces").and_then(|x| x.as_f64()).unwrap_or(3000.0);
@@ -275,12 +419,12 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
     } else {
         // no traces: the calls the metrics name, read before the export so the entry's endpoints are queried
         super::progress("reading calls from the metrics (no traces)", 1.0, 4.0);
-        let known: Vec<String> = ["otel-spanmetrics", "http-server", "http-server-legacy", "spring"].iter().flat_map(|k| strs(probe.get("services").and_then(|s| s.get(*k))).unwrap_or_default()).map(|x| rename_of(&x)).collect();
+        let known: Vec<String> = ["otel-spanmetrics", "http-server", "http-server-legacy", "spring"].iter().flat_map(|k| strs(probe.get("services").and_then(|s| s.get(*k))).unwrap_or_default()).map(|x| rename_of(&x)).filter(|x| !outside.contains(x)).collect();
         // workloads a client span's peer address can name (a database with no request metrics of its own)
         let workloads: Vec<String> = ["kubernetes", "cadvisor"].iter().flat_map(|k| strs(probe.get("services").and_then(|s| s.get(*k))).unwrap_or_default()).map(|x| rename_of(&x)).collect();
         let mut c = match &dd {
             Some(d) => {
-                let known: Vec<String> = strs(probe.get("services").and_then(|s| s.get("datadog-apm"))).unwrap_or_default().iter().map(|x| rename_of(x)).collect();
+                let known: Vec<String> = strs(probe.get("services").and_then(|s| s.get("datadog-apm"))).unwrap_or_default().iter().map(|x| rename_of(x)).filter(|x| !outside.contains(x)).collect();
                 match src.get("topologyFile").and_then(|x| x.as_str()) {
                     // a topology file names the calls as it does with Prometheus (no metric is queried for them)
                     Some(f) => super::infer::read_calls(&infer_prom, &[], &[], &parts, Some(f), &known, &[])?,
@@ -471,7 +615,17 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
     }
     let mut d = crate::cli::util::to_json(&dataset);
     let rename = system.get("rename").and_then(|r| r.as_object()).cloned().unwrap_or_default();
-    for id in strs(system.get("exclude")).unwrap_or_default() {
+    if !outside.is_empty() {
+        let gone: Vec<&String> = outside.iter().filter(|id| d["services"].get(id.as_str()).is_some()).collect();
+        if !gone.is_empty() {
+            warnings.push(format!(
+                "left out {}: their workloads run outside the namespaces collected ({}), though their request metrics are in the same Prometheus",
+                gone.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", "),
+                strs(dd.as_ref().unwrap_or(&prom).get("namespaces")).unwrap_or_default().join(", ")
+            ));
+        }
+    }
+    for id in strs(system.get("exclude")).unwrap_or_default().into_iter().chain(outside.iter().cloned()) {
         if let Some(Value::Object(s)) = d.get_mut("services") {
             s.shift_remove(&id);
         }
@@ -570,6 +724,9 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
     if inferred.is_some() || prov.get("grpc").is_some() {
         d["provenance"] = prov.clone();
     }
+    if let Some(w) = separate_systems(&d, &probe["workloadNamespaces"], if dd.is_some() { "datadog" } else { "prometheus" }) {
+        warnings.insert(0, w);
+    }
     ws.write_json("dataset.json", &d, false)?;
     let _ = std::fs::remove_file(ws.path("model.json"));
     let _ = std::fs::remove_file(ws.path("calibration.json"));
@@ -628,4 +785,69 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
     out.insert("files".into(), json!({ "manifest": manifest_path, "dataset": ws.path("dataset.json") }));
     out.insert("next".into(), json!("calibrate_model"));
     Ok(Value::Object(out))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dataset(services: &[&str], edges: &[(&str, &str)]) -> Value {
+        json!({
+            "services": services.iter().map(|s| (s.to_string(), json!({}))).collect::<JMap<String, Value>>(),
+            "topology": { "edges": edges.iter().map(|(a, b)| json!({ "from": a, "to": b })).collect::<Vec<_>>() },
+        })
+    }
+
+    #[test]
+    fn two_apps_on_one_prometheus_are_named_apart() {
+        let d = dataset(&["frontend", "cart", "checkout", "api-gateway", "vets", "jaeger"], &[("frontend", "cart"), ("frontend", "checkout"), ("api-gateway", "vets")]);
+        let ns = json!({ "frontend": ["shop"], "cart": ["shop"], "checkout": ["shop"], "api-gateway": ["petclinic"], "vets": ["petclinic"], "jaeger": ["shop"] });
+        let w = separate_systems(&d, &ns, "prometheus").unwrap();
+        assert!(w.starts_with("the history holds 2 groups of services that never call each other: frontend, cart, checkout (namespace shop); api-gateway, vets (namespace petclinic)."), "{}", w);
+        assert!(w.ends_with("prometheus.namespaces [\"shop\"] (quickstart: --namespace shop)"), "{}", w);
+        // a service no edge names (jaeger) is not a system of its own
+        assert!(!w.contains("jaeger"));
+    }
+
+    #[test]
+    fn one_connected_system_says_nothing() {
+        let d = dataset(&["frontend", "cart", "currency"], &[("frontend", "cart"), ("cart", "currency")]);
+        assert_eq!(separate_systems(&d, &Value::Null, "prometheus"), None);
+    }
+
+    #[test]
+    fn groups_sharing_a_namespace_are_told_to_exclude() {
+        let d = dataset(&["a", "b", "c", "d", "e", "f", "g"], &[("a", "b"), ("b", "c"), ("c", "d"), ("d", "e"), ("f", "g")]);
+        let w = separate_systems(&d, &Value::Null, "prometheus").unwrap();
+        assert!(w.contains(": a, b, c and 2 more; f, g."), "{}", w);
+        assert!(w.contains("system.exclude"), "{}", w);
+    }
+
+    #[test]
+    fn a_trace_backend_with_a_corner_of_the_system_is_not_its_topology() {
+        let probe = json!({ "services": { "otel-spanmetrics": ["ad", "cart", "checkout", "frontend", "quote"], "kubernetes": ["ad", "cart"] } });
+        assert_eq!(metered_services(&probe), 5);
+        let one = json!({ "kind": "jaeger", "services": ["frontend"], "entry": ["frontend"] });
+        assert!(traces_unusable(&one, 5).unwrap().starts_with("Jaeger traces 1 of the 5 services with request metrics (frontend): "));
+        let most = json!({ "kind": "tempo", "services": ["ad", "cart", "frontend"], "entry": ["frontend"] });
+        assert_eq!(traces_unusable(&most, 5), None);
+        let none = json!({ "kind": "tempo", "services": [], "entry": [] });
+        assert!(traces_unusable(&none, 5).unwrap().starts_with("Tempo has no traces of this system"));
+    }
+
+    #[test]
+    fn services_running_outside_the_chosen_namespaces_are_left_out() {
+        let wns = json!({ "frontend": ["shop"], "api-gateway": ["petclinic"], "shop-worker": ["shop", "petclinic"], "coredns": ["kube-system"] });
+        let rename: JMap<String, Value> = [("coredns".to_string(), json!("dns"))].into_iter().collect();
+        assert_eq!(outside_namespaces(&wns, &["shop".to_string()], &rename), vec!["api-gateway".to_string(), "dns".to_string()]);
+        assert!(outside_namespaces(&wns, &[], &rename).is_empty());
+    }
+
+    #[test]
+    fn empty_trace_backend_says_what_it_falls_back_to() {
+        assert_eq!(
+            empty_traces_said("Jaeger", &[]),
+            "Jaeger has no traces of this system before the window's end (it knows no services): who calls whom is read from the metrics instead, as without traces. Check that the services export traces to it and that its retention covers the window"
+        );
+    }
 }

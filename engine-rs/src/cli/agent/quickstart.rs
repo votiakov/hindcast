@@ -148,12 +148,17 @@ pub fn quickstart(f: &Flags, out: &mut Out) -> Result<i32, String> {
     let presets = strs(&c[source]["presets"]).join(", ");
     let hours = c[source]["data"]["hoursFound"].as_f64();
     say(&format!("      metrics: {}{}", presets, hours.map(|h| format!("; {} h of request history found", crate::math::js_num((h * 10.0).round() / 10.0))).unwrap_or_default()));
-    if c["traces"].is_null() {
+    if c["traces"].is_null() || !c["calls"].is_null() {
         let from = c["calls"]["from"].as_str().unwrap_or("the metrics").replace("a topologyFile", "--topology");
+        // a trace backend that answered with nothing to read
+        let none = if c["traces"].is_null() { "no traces".to_string() } else { format!("no traces in {}", if c["traces"]["kind"] == "tempo" { "Tempo" } else { "Jaeger" }) };
         say(&match from.strip_prefix("nowhere: ") {
-            Some(rest) => format!("      no traces, and {}", rest),
-            None => format!("      no traces: who calls whom from {}", from),
+            Some(rest) => format!("      {}, and {}", none, rest),
+            None => format!("      {}: who calls whom from {}", none, from),
         });
+        if let Some(why) = c["calls"]["why"].as_str() {
+            say(&format!("      ! {}", why));
+        }
     } else {
         say(&format!("      traces: {} services, entering through {}", strs(&c["traces"]["services"]).len(), strs(&c["traces"]["entry"]).join(", ")));
     }
@@ -185,7 +190,11 @@ pub fn quickstart(f: &Flags, out: &mut Out) -> Result<i32, String> {
     let col = phase(2, &format!("collecting {}", span), || super::run_tool("collect_telemetry", &with_ws(co.clone())))?;
     let num = |v: &Value| crate::math::js_num(v.as_f64().unwrap_or(0.0));
     say(&format!("      {} services, {} endpoints, {} h in {} s buckets; {}", num(&col["services"]), col["endpoints"].as_array().map(|a| a.len()).unwrap_or(0), num(&col["window"]["hours"]), num(&col["window"]["stepS"]), col["traces"].as_str().map(String::from).or_else(|| col["withoutTraces"]["said"].as_str().map(String::from)).unwrap_or_else(|| "no traces".into())));
-    let mut warnings = strs(&col["warnings"]);
+    // what changes how to read the whole review, said where it happens rather than among the telemetry fixes
+    let (urgent, mut warnings): (Vec<String>, Vec<String>) = strs(&col["warnings"]).into_iter().partition(|w| w.contains("never call each other"));
+    for w in &urgent {
+        say(&format!("      ! {}", w));
+    }
 
     let cal = phase(3, "calibrating the model", || super::run_tool("calibrate_model", &with_ws(JMap::new())))?;
     warnings.extend(strs(&cal["warnings"]));
@@ -217,6 +226,9 @@ pub fn quickstart(f: &Flags, out: &mut Out) -> Result<i32, String> {
     out.log("");
     for l in summary_lines(md) {
         out.log(&l);
+    }
+    for w in urgent.iter().filter(|w| w.contains("never call each other")) {
+        out.log(&format!("- Read with care: {}", w));
     }
     out.log("");
     out.log(&format!("Full report: {}", rev["report"].as_str().unwrap_or("")));
