@@ -6,6 +6,7 @@ These pages are the reference behind it.
 
 | document | what's in it |
 |---|---|
+| [install.md](install.md) | Release binaries, building from source, the npm scripts, and backtesting the recorded reference systems with no cluster |
 | [capabilities.md](capabilities.md) | Everything Hindcast does, in one list, with where to find it |
 | [agents.md](agents.md) | For AI agents: connect to Prometheus and Jaeger/Tempo, collect, calibrate, verify changes (strategies, Kubernetes diffs, Terraform plans) with a verdict and a confidence; setup for Claude Code, other MCP hosts and shell agents |
 | [guide.md](guide.md) | The app, view by view: Backtest, Live, Lessons, Sandbox, Compare, Studio, settings, shortcuts |
