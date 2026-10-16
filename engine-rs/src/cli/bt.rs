@@ -307,7 +307,8 @@ pub fn command(cmd: &str, f: &Flags, out: &mut Out) -> Result<Option<i32>, Strin
             for w in written {
                 out.log(&dim(&format!("  written {}", w)));
             }
-            // exit 2 when a strategy adds time out of SLO (CI gate)
+            // exit 2 when a strategy adds time out of SLO, or fails more requests than the error budget
+            // over the window allows (CI gate: verify_change's)
             let gate = match f.opt.get("gate") {
                 None => None,
                 Some(None) => Some(0.5),
@@ -315,7 +316,7 @@ pub fn command(cmd: &str, f: &Flags, out: &mut Out) -> Result<Option<i32>, Strin
                 Some(Some(v)) => Some(crate::import::js_number(v)),
             };
             match gate {
-                Some(t) if arr(&rv, &["strategies"]).iter().any(|x| n(x, &["delta", "minutesOutOfSlo", "p50"]) > t) => 2,
+                Some(t) if arr(&rv, &["strategies"]).iter().any(|x| n(x, &["delta", "minutesOutOfSlo", "p50"]) > t || n(x, &["delta", "failedRequests", "p50"]) > crate::review::judge::window_budget(&rv) * crate::review::judge::BUDGET_GATE) => 2,
                 _ => 0,
             }
         }

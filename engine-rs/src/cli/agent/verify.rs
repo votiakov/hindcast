@@ -487,8 +487,8 @@ pub fn verify_with(ws: &Workspace, mv: Value, dv: Value, cal: Option<Value>, inp
     out.insert("model".into(), json!({ "name": g(&mv, &["name"]), "fittedOn": { "start": iso(n(fitted, &["start"])), "end": iso(n(fitted, &["end"])) }, "ageDays": num(r1((now_s() - n(fitted, &["end"])) / 86400.0)), "accuracy": accuracy_of(&mv) }));
     out.insert("window".into(), json!({ "start": iso(n(&rv, &["window", "start"])), "end": iso(n(&rv, &["window", "end"])), "hours": num(r1((n(&rv, &["window", "end"]) - n(&rv, &["window", "start"])) / 3600.0)) }));
     out.insert("slo".into(), g(&rv, &["slo"]).clone());
-    out.insert("gate".into(), json!(format!("fails if it adds more than {} min out of SLO over the window", js_num(gate))));
-    out.insert("asBuilt".into(), json!({ "monthly": num(r2(n(bsum, &["monthly", "p50"]))), "minutesOutOfSlo": num(r1(n(bsum, &["minutesOutOfSlo", "p50"]))), "failedRequests": num(js_round(n(bsum, &["failedRequests", "p50"]))) }));
+    out.insert("gate".into(), json!(crate::review::judge::gate_words(gate, &rv)));
+    out.insert("asBuilt".into(), json!({ "monthly": num(r2(n(bsum, &["monthly", "p50"]))), "minutesOutOfSlo": num(r1(n(bsum, &["minutesOutOfSlo", "p50"]))), "failedRequests": num(js_round(n(bsum, &["failedRequests", "p50"]))), "requests": num(js_round(n(bsum, &["requests", "p50"]))) }));
     out.insert("results".into(), json!(results));
     out.insert("ranking".into(), g(&rv, &["ranking"]).clone());
     out.insert("notes".into(), json!(notes));
@@ -679,5 +679,36 @@ mod tests {
         assert!(reasons(&v).contains("past the history's peak of 50%"), "{}", reasons(&v));
         // an unexplained fit that is not CPU-only stays low however gently it is changed
         assert_eq!(s(&judged(false, 0.52), &["confidence", "level"]), "low");
+    }
+
+    /// judge a change that adds `minutes` out of SLO and `failed` requests (90th percentile `failed_hi`)
+    /// on a day of 500,000 requests at a 1% SLO, 44,000 of them failed as built: a budget of 5,000
+    fn on_a_bad_day(minutes: f64, failed: f64, failed_hi: f64) -> Value {
+        let mv = json!({ "services": {}, "accuracy": [{ "method": "holdout", "checks": [] }], "traffic": { "peak": 50 } });
+        let m: crate::model::Model = serde_json::from_str(include_str!("../../../../reference/shop/model.json")).unwrap();
+        let r = json!({ "window": { "start": 0, "end": 86400 }, "slo": { "p99Ms": 1000, "errorRate": 0.01 }, "baseline": { "peakUtil": {}, "summary": { "requests": { "p50": 500000.0 }, "failedRequests": { "p50": 44000.0 } } } });
+        let st = json!({ "peakUtil": {}, "delta": { "minutesOutOfSlo": { "p50": minutes, "lo": minutes, "hi": minutes }, "failedRequests": { "p50": failed, "lo": failed, "hi": failed_hi }, "monthly": { "p50": 0 } } });
+        let spec = json!({ "name": "frontend ×2", "changes": [{ "service": "frontend", "replicas": 2 }] });
+        judge(&mv, &m, &r, &st, &spec, None, 0.5, (100.0, None), (100.0, None), None).unwrap()
+    }
+
+    #[test]
+    fn a_change_that_spends_the_error_budget_fails_without_adding_minutes() {
+        // the trial's case: +1 min only, because the day is already out of SLO, but 252,352 more failed
+        let v = on_a_bad_day(0.5, 252352.0, 260000.0);
+        assert_eq!(s(&v, &["verdict"]), "fail");
+        assert!(reasons(&v).contains("fails 252,352 more requests than as built (+574% of 44,000), more than the SLO's error budget over the whole window (1% of 500,000 requests: 5,000): it fails on them even though it adds only 0.5 min out of SLO"), "{}", reasons(&v));
+        // within the budget at the median, past it in the worst draws: not proven either way, leaning pass
+        let v = on_a_bad_day(0.0, 4000.0, 6000.0);
+        assert_eq!(s(&v, &["verdict"]), "inconclusive");
+        assert_eq!(s(&v, &["leans"]), "pass");
+        assert!(reasons(&v).contains("but 6,000 more in the worst 10% of capacity draws, past the window's budget (1% of 500,000 requests: 5,000)"), "{}", reasons(&v));
+        // within it everywhere: the minutes decide, as before
+        assert_eq!(s(&on_a_bad_day(0.0, 4000.0, 4500.0), &["verdict"]), "pass");
+        assert_eq!(s(&on_a_bad_day(1.0, 0.0, 0.0), &["verdict"]), "fail");
+        // without a request count there is no budget to hold it to
+        let r = json!({ "slo": { "errorRate": 0.01 }, "baseline": { "summary": {} } });
+        assert!(crate::review::judge::window_budget(&r).is_nan());
+        assert_eq!(crate::review::judge::gate_words(0.5, &r), "fails if it adds more than 0.5 min out of SLO over the window");
     }
 }

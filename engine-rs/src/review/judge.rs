@@ -18,6 +18,38 @@ fn range(x: &Value, f: &dyn Fn(f64) -> f64) -> Value {
 /// the share of capacity at which the history counts as having reached a service's limit
 pub const LIMIT_SEEN: f64 = 0.85;
 
+/// a change also fails when the requests it fails beyond the as-built replay exceed this share of the
+/// SLO's error budget over the replayed window (its requests × the SLO's error rate). At 1 the change
+/// alone spends the whole budget: a burn rate of 1, which by itself exhausts the budget over any
+/// period that looks like this window. The minutes can't see it on a day already out of SLO at its
+/// peak (no minute there can be added), but the requests that fail inside those minutes still count
+/// against the SLO. check_node_loss gates the same way, on the budget over the outage
+pub const BUDGET_GATE: f64 = 1.0;
+
+/// the SLO's error budget over a backtest's replayed window, in requests (NaN without a request count)
+pub fn window_budget(r: &Value) -> f64 {
+    let b = n(r, &["baseline", "summary", "requests", "p50"]) * n(r, &["slo", "errorRate"]);
+    if b.is_finite() {
+        b.max(1.0)
+    } else {
+        f64::NAN
+    }
+}
+
+/// the gate a change is judged on, in words
+pub fn gate_words(gate: f64, r: &Value) -> String {
+    let b = window_budget(r);
+    if !b.is_finite() {
+        return format!("fails if it adds more than {} min out of SLO over the window", js_num(gate));
+    }
+    format!("fails if it adds more than {} min out of SLO over the window, or more failed requests than the SLO's error budget over it ({})", js_num(gate), budget_words(r, b * BUDGET_GATE))
+}
+
+/// the budget a change's failed requests are held to, e.g. "1% of 2,103,000 requests: 21,030"
+fn budget_words(r: &Value, allowed: f64) -> String {
+    format!("{}% of {} requests: {}", js_num(r2(n(r, &["slo", "errorRate"]) * 100.0)), js_locale(js_round(n(r, &["baseline", "summary", "requests", "p50"]))), js_locale(js_round(allowed)))
+}
+
 /// one-sentence verdict, e.g. "saves $410/month; on Sep 14 at 12:03 UTC it would have caused 9 minutes out of SLO (…)"
 pub fn headline(st: &Value, base: &Value) -> String {
     let dm = n(st, &["delta", "monthly", "p50"]);
@@ -264,7 +296,12 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
     }
     // ---- verdict
     let (p50, lo, hi) = (n(dm, &["p50"]), n(dm, &["lo"]), n(dm, &["hi"]));
-    let mut verdict = if p50 > gate { "fail" } else if hi > gate || level == "low" { "inconclusive" } else { "pass" };
+    // the requests it fails beyond as built, against the error budget over the window
+    let allowed = window_budget(r) * BUDGET_GATE;
+    let (fd, fd_hi) = (n(st, &["delta", "failedRequests", "p50"]), n(st, &["delta", "failedRequests", "hi"]));
+    let fails = p50 > gate || fd > allowed;
+    let doubt = hi > gate || fd_hi > allowed;
+    let mut verdict = if fails { "fail" } else if doubt || level == "low" { "inconclusive" } else { "pass" };
     let base = g(r, &["baseline"]);
     let mut reasons: Vec<String> = vec![headline(st, base)];
     if p50 > gate {
@@ -272,7 +309,25 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
     } else if hi > gate {
         reasons.push(format!("no added time out of SLO at the median, but {} min in the worst 10% of capacity draws", js_num(r1(hi))));
     }
-    if verdict == "inconclusive" && level == "low" && hi <= gate {
+    let fb = n(base, &["summary", "failedRequests", "p50"]);
+    if fd > allowed {
+        reasons.push(format!(
+            "fails {} more requests than as built{}, more than the SLO's error budget over the whole window ({}){}",
+            js_locale(js_round(fd)),
+            if fb >= 1.0 { format!(" (+{}% of {})", js_num(js_round(fd / fb * 100.0)), js_locale(js_round(fb))) } else { String::new() },
+            budget_words(r, allowed),
+            if p50 > gate {
+                String::new()
+            } else if p50 < 0.05 {
+                ": it fails on them even though it adds no time out of SLO, because the window was already out of SLO where they fail".to_string()
+            } else {
+                format!(": it fails on them even though it adds only {} min out of SLO, because the window was already out of SLO where they fail", js_num(r1(p50)))
+            }
+        ));
+    } else if fd_hi > allowed && !fails {
+        reasons.push(format!("fails no more requests than the error budget allows at the median, but {} more in the worst 10% of capacity draws, past the window's budget ({})", js_locale(js_round(fd_hi)), budget_words(r, allowed)));
+    }
+    if verdict == "inconclusive" && level == "low" && !doubt {
         reasons.push(format!("the backtest passes, but confidence is low ({}) — load-test before trusting it", warnings.first().cloned().unwrap_or_else(|| "undefined".into())));
     }
     for (to, why) in &cpu_said {
@@ -286,9 +341,7 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
             lower("medium", a, &mut warnings, &mut level);
         }
     }
-    let fb = n(base, &["summary", "failedRequests", "p50"]);
-    let fd = n(st, &["delta", "failedRequests", "p50"]);
-    if fb > 0.0 && fd.abs() > 0.1 * fb {
+    if fb > 0.0 && fd.abs() > 0.1 * fb && !(fd > allowed) {
         reasons.push(format!(
             "{} {} failed requests ({}{}% of {}){}",
             if fd < 0.0 { "cuts" } else { "adds" },
@@ -404,7 +457,7 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
     o.insert("verdict".into(), json!(verdict));
     // which way an inconclusive verdict leans: what the median replay says, before confidence
     if verdict == "inconclusive" {
-        o.insert("leans".into(), json!(if p50 > gate { "fail" } else { "pass" }));
+        o.insert("leans".into(), json!(if fails { "fail" } else { "pass" }));
     }
     o.insert("summary".into(), json!(headline(st, base)));
     o.insert("reasons".into(), json!(reasons));

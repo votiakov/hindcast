@@ -54,8 +54,17 @@ For each run, three answers are compared with what k6 measured:
    (3/2, 3/1) and by the forecast. "Under 100% is fine."
 
 Reality's verdict uses the same gate as `verify_change`. A change fails if it adds more than
-half a minute out of SLO over the as-built system on the same day; the as-built system fails if it
-spends any minute out of SLO.
+half a minute out of SLO over the as-built system on the same day, or if more of its requests fail
+than failed as built by more than the SLO's error budget over the day (1% of its requests); the
+as-built system fails if it spends any minute out of SLO or fails more than 1% of its requests.
+
+**The gate changed on 2026-10-17** to count failed requests as well as minutes: a change on a day
+already out of SLO at its peak can't add minutes there, however many more requests it fails.
+Every verdict below was recomputed with it, reality's and the backtest's, and none moved; nor did
+any of PetClinic's (scored from the request counts its validation record keeps, as its request logs
+are not in the repository): on every run the change either already failed on the minutes or stayed well within
+the budget (the closest, `launch-2-750`, fails 1,606 more requests than launch day as built against
+a budget of 3,001, and fails on its 4 minutes anyway).
 
 ## Results
 

@@ -456,7 +456,12 @@ And for a human:
 
 #### How the verdict is decided
 
-- **fail**: the median adds more than `gateMinutes` (default 0.5) minutes out of SLO over the window.
+- **fail**: the median adds more than `gateMinutes` (default 0.5) minutes out of SLO over the window,
+  *or* fails more requests beyond the as-built replay than the SLO's error budget over the window
+  (its requests × the SLO's error rate). At that point the change alone burns the budget at rate 1:
+  every period like this window would exhaust it. The second rule catches a change on a day that is
+  already out of SLO at its peak, where no minutes can be added but far more requests fail inside
+  them (the reason names the count and the budget). `gate` in the answer states both.
 - **inconclusive**: the median passes but the worst 10% of capacity draws don't, *or* confidence is
   low, *or* the change cuts headroom below traffic the system has already seen. `leans` says which
   way the median replay went (`pass` or `fail`): what the backtest would say if it trusted itself.

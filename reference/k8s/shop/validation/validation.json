@@ -1813,7 +1813,7 @@
       "reasons": [
        "costs the same and adds 15 minutes out of SLO, with 238,843 more failed requests (from 283 as built)",
        "adds 14.8 min out of SLO (10–90%: 0 … 21.6)",
-       "adds 238,843 failed requests (+84309% of 283)",
+       "fails 238,843 more requests than as built (+84309% of 283), more than the SLO's error budget over the whole window (1% of 462,605 requests: 4,626)",
        "worst at 2026-10-13T17:04:30Z: frontend at 103% of capacity (275.2 req/s on 2 × 134.1 req/s), 32.4 s queue",
        "worse for frontend GET /, frontend GET /api/cart, frontend GET /api/data, frontend GET /api/products/{id}, frontend GET /api/recommendations, frontend POST /api/cart, frontend POST /api/checkout against their own SLOs",
        "frees 0.5 cores and 512 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 26% of it (30% before)",
@@ -2699,6 +2699,7 @@
       "reasons": [
        "costs the same; on Oct 13 at 17:02 UTC it would have caused 11 minutes out of SLO (frontend at 107% of capacity (142.9 req/s on 1 × 134.1 req/s), 1.2 s queue)",
        "adds 10.5 min out of SLO (10–90%: 7.4 … 15.5)",
+       "fails 56,787 more requests than as built, more than the SLO's error budget over the whole window (1% of 208,381 requests: 2,084)",
        "worst at 2026-10-13T17:09:30Z: frontend at 114% of capacity (153.0 req/s on 1 × 134.1 req/s), 29.9 s queue",
        "worse for frontend GET /, frontend GET /api/cart, frontend GET /api/data, frontend GET /api/products/{id}, frontend GET /api/recommendations, frontend POST /api/cart, frontend POST /api/checkout against their own SLOs",
        "frees 1 cores and 1024 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 23% of it (30% before)",
@@ -25606,5 +25607,5 @@
    }
   }
  ],
- "evaluatedAt": "2026-10-16T17:36:52.349Z"
+ "evaluatedAt": "2026-10-16T23:44:07.437Z"
 }

@@ -94,7 +94,7 @@ your own; each is judged on its own and the step's verdict is the worst of them.
 | `base-manifests` | | files to use as the manifests before the change, instead of reading `base-ref` |
 | `last` | `14d` | replay only the most recent part of the history; empty replays all of it |
 | `draws` | `30` | capacity draws behind the 10–90% bands |
-| `gate-minutes` | `0.5` | minutes out of SLO a change may add over the window before it fails |
+| `gate-minutes` | `0.5` | minutes out of SLO a change may add over the window before it fails (it also fails on more failed requests than the SLO's error budget over the window, whatever this is) |
 | `slo-p99-ms` | the model's | override the p99 SLO, for the system and every endpoint |
 | `slo-error-rate` | the model's | override the error-rate SLO (`0.01` = 1%), for the system and every endpoint |
 | `fail-on` | `fail` | `fail`, `inconclusive` (fail on either), or `never` |
@@ -169,7 +169,7 @@ It saves $23/month; it would have caused 18 minutes out of SLO, the longest new 
 
 Why:
 - adds 18 min out of SLO (10–90%: 14 … 19.5)
-- adds 7,212 failed requests (+510% of 1,413)
+- fails 7,212 more requests than as built (+510% of 1,413), more than the SLO's error budget over the whole window (3% of 11,657 requests: 350)
 - worst at 2026-10-07T16:49:30Z: frontend at 202% of capacity (11.2 req/s on 1 × 5.5 req/s), 203.5 s queue
 - worse for frontend GET /dispatch against their own SLOs
 - headroom drops from 6.1 to 3.9 req/s (the history peaked at 11.2)
@@ -187,7 +187,7 @@ Confidence low:
 | As built | $95.56 | 14 min (14 min … 15 min) | 1,413 (748 … 2,125) | Oct 7 at 16:51 UTC · mysql at 84% of capacity (7.5 req/s on 1 × 8.9 req/s), still draining a 18.0 s backlog |
 | frontend CPU 1 → 0.05 | −$23.03 | 32 min (28 min … 33 min) | 8,755 (7,866 … 9,225) | Oct 7 at 16:49 UTC · frontend at 202% of capacity (11.2 req/s on 1 × 5.5 req/s), 203.5 s queue |
 
-<sub>SLO: p99 ≤ 1000 ms, errors ≤ 3% · fails if it adds more than 0.5 min out of SLO over the window</sub>
+<sub>SLO: p99 ≤ 1000 ms, errors ≤ 3% · fails if it adds more than 0.5 min out of SLO over the window, or more failed requests than the SLO's error budget over it (3% of 11,657 requests: 350)</sub>
 
 <details><summary>Model accuracy: 5/6 checks within target</summary>
 

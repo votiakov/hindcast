@@ -235,7 +235,7 @@ the trust report lowers the confidence to match.
   moment to open it on the board as a replay. *Card ↗* makes a Studio card of the focused strategy.
 - **CLI** — `import`, `calibrate`, `backtest`, `headroom` (model breaking point), `accuracy`,
   `outage`, `diff-strategy`, `verify-change`, `export-prometheus`; Markdown / HTML reports; `--comment` writes the PR
-  comment; `--gate` exits 2 if a strategy adds time out of SLO.
+  comment; `--gate` exits 2 if a strategy adds time out of SLO, or fails more requests than the SLO's error budget over the window (verify_change's gate).
 - **PR check** — the GitHub Action (`uses: votiakov/hindcast@v1`, [ci.md](ci.md)): the manifest
   diff or Terraform plan backtested with `hindcast verify-change`, one comment updated in place, the
   check failed on the verdict. The hand-written workflow it replaces is in

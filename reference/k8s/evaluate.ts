@@ -46,6 +46,13 @@ const STEP = 30;
  *  pods restarted minutes earlier and carts filled during the warm-up — the recording's own
  *  transient, not the day's */
 const SETTLE_S = 120;
+/** verify_change's gate (review/judge.rs), which reality's verdict uses too: a change fails if it adds
+ *  more than half a minute out of SLO over the as-built system on the same day, or fails more requests
+ *  beyond it than this share of the SLO's error budget over the day (its requests × the SLO's error
+ *  rate); the as-built system fails on the same two counted from nothing */
+const GATE_MINUTES = 0.5;
+const BUDGET_GATE = 1;
+const gateFails = (minutes: number, failed: number, requests: number, slo: Model['slo']) => minutes > GATE_MINUTES || failed > Math.max(1, requests * slo.errorRate) * BUDGET_GATE;
 
 interface Case {
   run: string;
@@ -258,7 +265,7 @@ function measured(log: RequestLog, slo: Model['slo']) {
     if (quantile(x.ms, 0.99) > slo.p99Ms || x.failed / x.ms.length > slo.errorRate) out++;
   }
   const failed = log.failed.filter(Boolean).length;
-  return { requests: log.t.length, p99: quantile(ms, 0.99), errorRate: failed / Math.max(1, log.t.length), minutesOutOfSlo: (out * STEP) / 60 };
+  return { requests: log.t.length, failed, p99: quantile(ms, 0.99), errorRate: failed / Math.max(1, log.t.length), minutesOutOfSlo: (out * STEP) / 60 };
 }
 
 /** what k6 measured per bucket of the run's grid, for the charts */
@@ -389,7 +396,7 @@ function forecast(c: Case, ws: Workspace, base: string) {
   }
   const asBuiltMin = exAnte.asBuilt?.minutesOutOfSlo ?? 0;
   return {
-    verdict: asBuilt ? (asBuiltMin > 0.5 ? 'fail' : 'pass') : res?.verdict,
+    verdict: asBuilt ? (gateFails(asBuiltMin, exAnte.asBuilt?.failedRequests ?? 0, exAnte.asBuilt?.requests ?? Infinity, m.slo) ? 'fail' : 'pass') : res?.verdict,
     confidence: asBuilt ? null : (res?.confidence.level ?? null),
     leans: asBuilt ? null : ((res?.leans as string | undefined) ?? null),
     minutesOutOfSlo: asBuilt ? asBuiltMin : (res?.reliability.minutesOutOfSlo ?? null),
@@ -441,10 +448,17 @@ async function score(label: string, ws: Workspace, base: string, evalDir: string
     // an autoscaler, to the spreadsheet, is its maximum
     const hpaMax = c.head ? /hpa-\d-(\d)/.exec(c.head) : null;
     const nv = EV.naive === 'all' ? naiveAll(history, base, head, c.scale) : naive(history, !c.head ? 3 : hpaMax ? Number(hpaMax[1]) : c.head.includes('hpa') ? 'hpa' : replicasOfHead(c.head), c.scale, c.cpu);
-    // reality's verdict, judged like verify_change's gate: more than 0.5 min out of SLO added over
-    // the as-built system on the same day (for the as-built system itself: more than 0.5 min)
-    const added = kept ? kept.measured.addedOverAsBuilt : c.run === c.asBuilt ? actual.minutesOutOfSlo : actual.minutesOutOfSlo - actualBase!.minutesOutOfSlo;
-    const truth = added > 0.5 ? 'fail' : 'pass';
+    // reality's verdict, judged by verify_change's gate: more than 0.5 min out of SLO added over the
+    // as-built system on the same day, or more requests failed beyond it than the error budget over
+    // that day (for the as-built system itself: counted from nothing)
+    const self = c.run === c.asBuilt;
+    const added = kept ? kept.measured.addedOverAsBuilt : self ? actual.minutesOutOfSlo : actual.minutesOutOfSlo - actualBase!.minutesOutOfSlo;
+    // a run without its log: the failed requests and the as-built's requests from the earlier evaluation
+    const failedOf = (x: { requests: number; errorRate: number }) => Math.round(x.requests * x.errorRate);
+    const baseKept = kept && !self ? EARLIER[label]?.[c.asBuilt] : undefined;
+    const addedFailed = kept ? (self ? failedOf(kept.measured) : failedOf(kept.measured) - (baseKept ? failedOf(baseKept.measured) : 0)) : self ? actual.failed : actual.failed - actualBase!.failed;
+    const baseRequests = kept ? (baseKept ?? kept).measured.requests : self ? actual.requests : actualBase!.requests;
+    const truth = gateFails(added, addedFailed, baseRequests, m.slo) ? 'fail' : 'pass';
     const verdict = exAnte.verdict;
     const row = {
       run: c.run,
