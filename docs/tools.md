@@ -151,9 +151,11 @@ a steady-state number: zones, failover seconds and load are what the replayed in
 
 For every major/critical incident, candidate fixes are generated (N+1 instances, a load balancer in
 front, a read replica, a standby, a cache bypass, timeouts + breakers with fallback, retry budgets,
-capacity, autoscaling, a bigger origin for cold caches), **each verified by re-running the same incident
+capacity, autoscaling, a bigger origin for cold caches, and — where a surge or a lost instance overloads
+a component and the users send best-effort requests — a 20% reserve for critical ones), **each verified by re-running the same incident
 on the changed design**, and priced in $/month against the current design. Fixes that do not help are
-dropped. In the app: shield button in Sandbox → risk register, risk marks on the board, *Replay on the
+dropped. The reserve is graded on the critical requests alone, which is what it protects; its *why*
+says how many best-effort requests the re-run shed. In the app: shield button in Sandbox → risk register, risk marks on the board, *Replay on the
 board* plays an incident live, *Apply* applies a fix (undoable), *Copy report* gives Markdown.
 
 ### In CI

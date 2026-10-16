@@ -234,10 +234,19 @@ fn get_num(c: &JMap<String, Value>, k: &str) -> Option<f64> {
 /// `fade`: how long this model takes to show a cleared fault as cleared (see `fade_of`), taken off
 /// the recovery and self-healing times
 fn measure(r: &SimResult, slo: (f64, f64), base: &SimResult, fade: f64) -> Impact {
-    let ok = |x: &super::headless::Point| x.error_rate <= slo.0 && x.p99_ms <= slo.1;
+    measure_by(r, slo, base, fade, false)
+}
+
+/// `critical`: judged on the critical requests alone (their rate and errors), as a priority reserve is
+/// meant to protect them — the best-effort ones it sheds are reported beside it, not graded
+fn measure_by(r: &SimResult, slo: (f64, f64), base: &SimResult, fade: f64, critical: bool) -> Impact {
+    let er = |x: &super::headless::Point| if critical { x.critical.map(|c| c.1).unwrap_or(x.error_rate) } else { x.error_rate };
+    let rate = |x: &super::headless::Point| if critical { x.critical.map(|c| c.0).unwrap_or(x.rps) } else { x.rps };
+    let p99 = |x: &super::headless::Point| if critical { x.critical.map(|c| c.2).unwrap_or(x.p99_ms) } else { x.p99_ms };
+    let ok = |x: &super::headless::Point| er(x) <= slo.0 && p99(x) <= slo.1;
     // incidents are judged relative to normal: a design already out of SLO only counts what got worse
     let bt = &base.timeline;
-    let base_err = avg(&bt[bt.len().saturating_sub(10)..].iter().map(|x| x.error_rate).collect::<Vec<_>>());
+    let base_err = avg(&bt[bt.len().saturating_sub(10)..].iter().map(|x| er(x)).collect::<Vec<_>>());
     let during: Vec<&super::headless::Point> = r.timeline.iter().filter(|x| x.t > FAULT_AT && x.t <= CLEAR_AT).collect();
     let after: Vec<&super::headless::Point> = r.timeline.iter().filter(|x| x.t > CLEAR_AT).collect();
     let window: Vec<&super::headless::Point> = r.timeline.iter().filter(|x| x.t > FAULT_AT).collect();
@@ -265,10 +274,10 @@ fn measure(r: &SimResult, slo: (f64, f64), base: &SimResult, fade: f64) -> Impac
         i += 1;
     }
     Impact {
-        error_rate: r3((avg(&during.iter().map(|x| x.error_rate).collect::<Vec<_>>()) - base_err).max(0.0)),
-        peak_error_rate: r3(js_max(0.0, window.iter().map(|x| x.error_rate))),
-        peak_p99_ms: js_round(js_max(0.0, window.iter().map(|x| x.p99_ms))),
-        failed_requests: js_round(window.iter().fold(0.0, |s, x| s + x.rps * (x.error_rate - base_err).max(0.0))),
+        error_rate: r3((avg(&during.iter().map(|x| er(x)).collect::<Vec<_>>()) - base_err).max(0.0)),
+        peak_error_rate: r3(js_max(0.0, window.iter().map(|x| er(x)))),
+        peak_p99_ms: js_round(js_max(0.0, window.iter().map(|x| p99(x)))),
+        failed_requests: js_round(window.iter().fold(0.0, |s, x| s + rate(x) * (er(x) - base_err).max(0.0))),
         breach_s: window.iter().filter(|x| !ok(x)).count() as f64,
         self_heal_s: self_heal.map(|h| if h > 0.0 { (h - fade).max(1.0) } else { h }),
         recovery_s: recovery.map(|x| (x - fade).max(0.0)),
@@ -659,6 +668,25 @@ fn candidate_fixes(inc: &Incident, a: &Architecture, nm: &dyn Fn(&str) -> String
     out
 }
 
+/// where a component overloads and the users send best-effort requests: keep a fifth of its capacity
+/// for the critical ones. Verified on the critical requests alone (see `measure_by`)
+fn priority_fix(inc: &Incident, a: &Architecture, nm: &dyn Fn(&str) -> String) -> Option<Cand> {
+    if inc.kind != "surge" && inc.kind != "instance" {
+        return None;
+    }
+    let best_effort = a.components.iter().any(|c| get_str(c, "kind") == Some("client") && get_num(c, "lowPriorityShare").unwrap_or(0.0) > 0.0);
+    let c = a.components.iter().find(|c| get_str(c, "id") == Some(inc.target.as_str()))?;
+    let kind = get_str(c, "kind").unwrap_or("server");
+    if !best_effort || !super::engine::priority_kind(kind) || get_num(c, "priorityReserve").unwrap_or(0.0) > 0.0 {
+        return None;
+    }
+    Some(Cand {
+        title: format!("Reserve 20% of {} for critical requests", nm(&inc.target)),
+        why: format!("Once {} is 80% busy it sheds best-effort requests first, so the critical ones keep the rest of its capacity. Graded on the critical requests.", nm(&inc.target)),
+        changes: vec![set(&inc.target, json!({ "priorityReserve": 0.2 }))],
+    })
+}
+
 fn now_ms() -> f64 {
     #[cfg(target_arch = "wasm32")]
     {
@@ -850,12 +878,19 @@ pub fn audit(input: &Architecture, o: &AuditOptions, progress: &mut dyn FnMut(f6
             f.if_callers_stay_broken = Some(StuckCallers { reconnect_s: secs, links, failed_requests: im.failed_requests, breach_s: im.breach_s, recovery_s: im.recovery_s });
         }
         if fixes_on && sev_rank(severity) >= 2.0 {
-            for cand in candidate_fixes(inc, &spec, nm) {
+            let cands = candidate_fixes(inc, &spec, nm).into_iter().map(|c| (c, false)).chain(priority_fix(inc, &spec, nm).map(|c| (c, true)));
+            for (mut cand, critical) in cands {
                 let variant = match apply_variant(&spec, &json!({ "name": cand.title, "changes": cand.changes })) {
                     Ok(v) => v,
                     Err(_) => continue,
                 };
-                let after = measure(&sim(&variant, scenario_for(inc))?, slo, &base, fade);
+                let ran = sim(&variant, scenario_for(inc))?;
+                let after = measure_by(&ran, slo, &base, fade, critical);
+                if critical {
+                    if let Some(b) = &ran.summary.best_effort {
+                        cand.why = format!("{} In the re-run {} best-effort requests were shed, of {}.", cand.why, crate::strategy::locale_int(b.shed), crate::strategy::locale_int(b.requests));
+                    }
+                }
                 let sev_after = grade(&after, inc.kind);
                 let better = sev_rank(sev_after) < sev_rank(severity) || after.failed_requests < f.impact.failed_requests * 0.5;
                 if !better {
@@ -991,5 +1026,26 @@ mod tests {
         assert!(fs.iter().filter(|f| f.id != "component:cart").all(|f| f.if_callers_stay_broken.is_none()));
         let fs = findings(spec(json!({ "from": "frontend", "to": "cart", "reconnect": 30 })));
         assert!(fs.iter().all(|f| f.if_callers_stay_broken.is_none()));
+    }
+
+    #[test]
+    fn a_surge_with_best_effort_traffic_is_fixed_by_a_reserve_for_critical_requests() {
+        // half the users' requests best-effort; the surge (3× half the breaking point) overloads api.
+        // A reserve of 20% sheds best-effort past 80% busy: the critical half (0.75 of the capacity)
+        // still fits, so the critical requests stay within SLO
+        let spec = |share: f64| json!({ "components": [{ "id": "users", "kind": "client", "lowPriorityShare": share }, { "id": "api", "kind": "server", "capacity": 500, "latencyMs": 40 }], "connections": [["users", "api"]] });
+        let a = super::super::spec::parse_architecture(&spec(0.5)).unwrap();
+        let r = audit(&a, &AuditOptions::default(), &mut |_, _, _| {}).unwrap();
+        let surge = r.findings.iter().find(|f| f.id == "surge").unwrap();
+        assert_ne!(surge.severity, "ok");
+        let fix = surge.fixes.iter().find(|x| x.title == "Reserve 20% of api for critical requests").expect("the reserve is offered");
+        assert_eq!(fix.changes, vec![json!({ "op": "set", "id": "api", "fields": { "priorityReserve": 0.2 } })]);
+        assert!(fix.after.severity == "ok" || fix.after.severity == "minor", "{:?}", fix.after);
+        assert!(fix.why.contains("best-effort requests were shed"), "{}", fix.why);
+        assert_eq!(fix.monthly_delta, 0.0);
+        // every request critical: nothing to shed, so it is not offered
+        let a = super::super::spec::parse_architecture(&spec(0.0)).unwrap();
+        let r = audit(&a, &AuditOptions::default(), &mut |_, _, _| {}).unwrap();
+        assert!(r.findings.iter().flat_map(|f| f.fixes.iter()).all(|x| !x.title.starts_with("Reserve")));
     }
 }

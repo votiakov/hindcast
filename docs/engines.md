@@ -290,7 +290,8 @@ Shared code keeps the engines consistent (`src/sim/autoscale.ts`, `cacheWarmth` 
   times in a row leaves the balancing for `ejectForS`, unless (ejected + 1) ÷ instances would pass
   `maxEjectedPercent` (Envoy's rule); while out it serves nothing, so the rest carry its share. DES:
   each answer from an instance is counted (any failure: its own fault, an overload, a failed
-  dependency), and the run of failures ejects it. Fluid, as a duty cycle: an instance failing a
+  dependency; not a best-effort request shed for priority, refused before it reaches one), and the run
+  of failures ejects it. Fluid, as a duty cycle: an instance failing a
   share p of its requests answers on average (1 − pᵏ) / ((1 − p) pᵏ) requests before k fail in a row
   (586.5 at p = 0.3, k = 5); each tick it gets its share of the traffic and moves that far towards the
   run, and is ejected when it gets there — in for the expected run, out for `ejectForS`. The

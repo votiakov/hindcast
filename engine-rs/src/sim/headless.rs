@@ -523,6 +523,10 @@ pub struct Point {
     pub error_rate: f64,
     pub p99_ms: f64,
     pub cost_per_hour: f64,
+    /// with best-effort traffic: the critical requests' rate, error rate and p99 (the audit grades a
+    /// priority reserve on them); not part of the output
+    #[serde(skip)]
+    pub critical: Option<(f64, f64, f64)>,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -794,7 +798,7 @@ pub fn simulate_parsed(spec: &Architecture, sc: &Scenario, o: &SimOptions) -> Si
         since_sample += dt;
         if since_sample >= sample_every - 1e-9 {
             since_sample = 0.0;
-            timeline.push(Point { t: round(t + dt, 2), rps: round(gl.rps, 1), error_rate: round(gl.error_rate, 4), p99_ms: round(gl.p99, 0), cost_per_hour: round(gl.cost, 3) });
+            timeline.push(Point { t: round(t + dt, 2), rps: round(gl.rps, 1), error_rate: round(gl.error_rate, 4), p99_ms: round(gl.p99, 0), cost_per_hour: round(gl.cost, 3), critical: gl.critical.as_ref().map(|c| (c.rps, c.error_rate, c.p99)) });
         }
     }
     let mut components: IndexMap<String, ComponentReport> = IndexMap::new();

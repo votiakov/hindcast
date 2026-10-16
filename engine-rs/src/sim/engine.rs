@@ -1593,7 +1593,9 @@ impl Engine {
             // it gets its share of the traffic and goes that far towards the run; there it is ejected,
             // if the share already ejected allows (a duty cycle: in for the run, out for ejectForS)
             if let Some(kk) = d.eject_after.filter(|k| *k >= 1.0 && lb) {
-                let s0 = (st.success / (1.0 - st.inst_fr).max(1e-9)).clamp(0.0, 1.0);
+                // what fails besides its own fault (an overload, a failed dependency); best-effort requests
+                // shed for priority are refused on purpose and do not count, as in the DES
+                let s0 = (st.success / ((1.0 - st.inst_fr) * (1.0 - st.shed_ratio)).max(1e-9)).clamp(0.0, 1.0);
                 let vol = st.in_rps * dt / rot.len() as f64;
                 let mut ejected = (up_n - rot.len()) as f64;
                 for &k in &rot {
