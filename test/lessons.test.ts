@@ -41,12 +41,15 @@ describe('Follow One Request: both engines', () => {
     }, 60_000);
   });
 
-  it('retries: immediate retries turn the stall into an outage on both engines', () => {
+  it('retries: immediate retries turn the stall into an outage on both engines, and backoff does not save them', () => {
     const i = step('retries');
     const b = referenceBoard(lesson, i - 1);
-    const immediate = applyChangesToGraph(b.nodes, b.edges, [{ op: 'set', id: 'users', fields: { retries: 2, retryPolicy: 'immediate' } }]);
-    expect(playLevel(immediate, lesson.steps[i], lesson.readRatio).passed).toBe(false);
-    expect(playLevelDes(immediate, lesson.steps[i], lesson.readRatio).passed).toBe(false);
+    // backoff delays each retry by 50–100 ms but still sends it: the load still triples
+    for (const retryPolicy of ['immediate', 'backoff'] as const) {
+      const board = applyChangesToGraph(b.nodes, b.edges, [{ op: 'set', id: 'users', fields: { retries: 2, retryPolicy } }]);
+      expect(playLevel(board, lesson.steps[i], lesson.readRatio).passed, retryPolicy).toBe(false);
+      expect(playLevelDes(board, lesson.steps[i], lesson.readRatio).passed, `${retryPolicy} (discrete-event)`).toBe(false);
+    }
   }, 60_000);
 
   it('the timeouts cannot be bought out of: a large database is over budget, a cache barely helps', () => {

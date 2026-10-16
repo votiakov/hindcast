@@ -59,7 +59,7 @@ export const deadlines: Lesson = {
       hintAfter: 8,
       hint:
         'With immediate retries the stall does not end for the users. Pause (Space) within 6 s of the "orders db stalls" notice, select orders db and press "trace": the database refuses the first call ("overloaded"), then "retry 1" and "retry 2" go straight back in, wait behind everyone else\'s retries in the API\'s queue, and are refused the same way. ' +
-        'Every failure becomes three requests, so after the database recovers the load is still more than the API and the database can take. Keep the retries and cap them: set the users\' retry policy to "budget 10%". ' +
+        'Every failure becomes three requests, so after the database recovers the load is still more than the API and the database can take. Backoff does not change that: it waits 50–100 ms before each retry, but still sends it. Keep the retries and cap them: set the users\' retry policy to "budget 10%". ' +
         'Retries then stay within a tenth of the calls: enough for the 3% the network drops, too few to triple the load.',
       solution: { note: 'Two retries within a 10% retry budget', changes: [{ op: 'set', id: 'users', fields: { retries: 2, retryPolicy: 'budget' } }] },
       takeaway: 'An immediate retry lands in the queue that just refused the call. Retries fix rare, independent failures; when the failures come from load, a retry budget keeps them from multiplying it.',
@@ -72,8 +72,6 @@ export const deadlines: Lesson = {
         'Trace a failed request through orders db and compare how long it waited with how long the user waited.',
       objective: 'Answer at least 70% of requests in time (errors < 30%) with p99 < 1s for 10s, under $1.60/h.',
       traffic: { from: 420, to: 700, rampSeconds: 4 },
-      // the network path is still flaky (the level before left it so; replaying a level clears faults)
-      chaos: [{ at: 0, action: { type: 'inject-errors', id: 'db', rate: 0.03 }, message: 'The network path to orders db still drops 3% of calls' }],
       goal: { maxErrorRate: 0.3, maxP99: 1000, maxCost: 1.6, holdSeconds: 10, startAfter: 8 },
       hintAfter: 8,
       hint:

@@ -7,6 +7,7 @@ import { lesson1 } from '../lessons/lesson1';
 import { goalStart, trafficAt, type Lesson } from '../lessons/types';
 import { lessonById } from '../lessons';
 import { jobErrorRate, maxLag, referenceBoard } from '../lessons/verify';
+import { recordChaos, undoChaos, type ChaosUndo } from '../lessons/chaos';
 import { nodesInZone } from './zones';
 import { SCENARIOS, findScenario, scenarioDuration, scenarioTraffic, type Scenario, type ScenarioAction } from '../scenarios/scenarios';
 import type { Graph } from '../scenarios/build';
@@ -85,6 +86,8 @@ export interface LessonState {
   /** the level's deadline passed without the goal held: replay it */
   missed: boolean;
   firedChaos: number[];
+  /** what this level's chaos changed on the board, put back when the level is replayed or left */
+  chaosUndo: ChaosUndo;
   finished: boolean;
   /** "show me" was used on this level */
   shown: boolean;
@@ -300,7 +303,7 @@ export const systemNodes = (nodes: AppNode[]) => nodes.filter(isSystem);
 export const scenarioById = (id: string | null): Scenario | undefined => findScenario(id);
 
 function freshLesson(lesson: Lesson): LessonState {
-  return { lesson, stepIndex: 0, stepT: 0, holdT: 0, failT: 0, passed: false, missed: false, firedChaos: [], finished: false, shown: false, costSum: 0, costN: 0, winReq: 0, winFail: 0 };
+  return { lesson, stepIndex: 0, stepT: 0, holdT: 0, failT: 0, passed: false, missed: false, firedChaos: [], chaosUndo: {}, finished: false, shown: false, costSum: 0, costN: 0, winReq: 0, winFail: 0 };
 }
 
 function freshStudio(episodeId: string, aspect: Aspect, brandId: string): StudioState {
@@ -722,8 +725,9 @@ export const useSim = create<State>()((set, get) => {
       // a lesson level replays with the design on the board: Reset never throws the player's work away
       if (s.mode === 'lesson' && !s.lesson.finished) {
         engines.main.reset();
+        patch('main', { nodes: undoChaos(board('main').nodes, s.lesson.chaosUndo) });
         get().apply('main', { type: 'revive-all' });
-        set({ simT: 0, running: false, lesson: { ...s.lesson, stepT: 0, holdT: 0, failT: 0, passed: false, missed: false, firedChaos: [], costSum: 0, costN: 0, winReq: 0, winFail: 0 } });
+        set({ simT: 0, running: false, lesson: { ...s.lesson, stepT: 0, holdT: 0, failT: 0, passed: false, missed: false, firedChaos: [], chaosUndo: {}, costSum: 0, costN: 0, winReq: 0, winFail: 0 } });
         return;
       }
       if (s.mode === 'studio') get().loadEpisode(s.studio.episodeId);
@@ -747,7 +751,11 @@ export const useSim = create<State>()((set, get) => {
         set({ lesson: { ...ls, finished: true }, running: false });
         return;
       }
-      set({ lesson: { ...ls, stepIndex: ls.stepIndex + 1, stepT: 0, holdT: 0, failT: 0, passed: false, missed: false, firedChaos: [], shown: false, costSum: 0, costN: 0, winReq: 0, winFail: 0 } });
+      // the next level starts from its own declared state, as the headless check plays it: the
+      // player's design without the faults this level injected, and nothing queued from this one
+      patch('main', { nodes: undoChaos(board('main').nodes, ls.chaosUndo) });
+      engines.main.reset();
+      set({ lesson: { ...ls, stepIndex: ls.stepIndex + 1, stepT: 0, holdT: 0, failT: 0, passed: false, missed: false, firedChaos: [], chaosUndo: {}, shown: false, costSum: 0, costN: 0, winReq: 0, winFail: 0 } });
     },
     pickScenario: (id) => {
       if (id === null) {
@@ -803,7 +811,9 @@ export const useSim = create<State>()((set, get) => {
             if (!ls.firedChaos.includes(ci) && ls.stepT >= c.at) {
               ls = { ...ls, firedChaos: [...ls.firedChaos, ci] };
               get().toast('bad', `🔥 ${c.message}`);
+              const before = board('main').nodes;
               get().apply('main', c.action);
+              ls = { ...ls, chaosUndo: recordChaos(ls.chaosUndo, before, board('main').nodes) };
             }
           }
         } else if (ep) {
