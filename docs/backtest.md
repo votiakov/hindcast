@@ -217,10 +217,12 @@ the trust report lowers the confidence to match.
   "replayed at" runs it at ×0.5–×3; the changes tested, verdict first; Overview / Incidents / Endpoints / Changes (edit the YAML live) / Model tabs. Click any
   moment to open it on the board as a replay. *Card ↗* makes a Studio card of the focused strategy.
 - **CLI** — `import`, `calibrate`, `backtest`, `headroom` (model breaking point), `accuracy`,
-  `outage`, `diff-strategy`, `export-prometheus`; Markdown / HTML reports; `--comment` writes the PR
+  `outage`, `diff-strategy`, `verify-change`, `export-prometheus`; Markdown / HTML reports; `--comment` writes the PR
   comment; `--gate` exits 2 if a strategy adds time out of SLO.
-- **PR check** — [examples/backtest-ci](../examples/backtest-ci) (workflow, manifests);
-  `scripts/make-backtest-demo.sh` assembles a ready repository.
+- **PR check** — the GitHub Action (`uses: votiakov/hindcast@v1`, [ci.md](ci.md)): the manifest
+  diff or Terraform plan backtested with `hindcast verify-change`, one comment updated in place, the
+  check failed on the verdict. The hand-written workflow it replaces is in
+  [examples/backtest-ci](../examples/backtest-ci); `scripts/make-backtest-demo.sh` assembles a ready repository.
 - **Studio** — `hindcast backtest … --card card.json`, then `npm run record -- --card card.json`
   renders the clip (chart drawing itself, then the verdict) to MP4 with PNG stills.
 

@@ -19,3 +19,6 @@ model's accuracy against runs it never saw is part of every comment.
 
 Try it: open a pull request that sets `customer` to 2 replicas, or adds
 `nodeSelector: { kubernetes.io/arch: arm64 }` to a deployment.
+
+The same check as a reusable GitHub Action, without a binary in the repository:
+`uses: votiakov/hindcast@v1` with `model`, `dataset` and `manifests` (see [docs/ci.md](../../docs/ci.md)).

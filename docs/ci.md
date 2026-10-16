@@ -1,0 +1,254 @@
+# Hindcast in CI
+
+Every pull request that changes how a system is deployed can be backtested before it merges: the
+change is replayed over recorded production traffic through the calibrated model, and the check
+says what it would have cost and whether it would have broken the SLO. The verdicts are the ones
+the agent tool `verify_change` gives (pass, fail or inconclusive, with a confidence); the CI path
+and the agent path run the same function.
+
+Two ways to run it:
+
+- **The GitHub Action** (`uses: votiakov/hindcast@v1`), below. It fetches the binary, reads the
+  base version of the manifests from git, comments on the pull request and fails the check.
+- **The CLI in any CI system**: `hindcast verify-change` (see [the command](#the-command)), or the
+  older `diff-strategy` + `backtest --gate` pair in [examples/backtest-ci](../examples/backtest-ci).
+
+What the repository needs either way: a calibrated model and a recorded history, e.g.
+`.hindcast/model.json` (`hindcast calibrate`) and `.hindcast/dataset.json` (`hindcast import`).
+Refresh them on a schedule from a runner that can reach your Prometheus; the pull-request check
+itself needs nothing but the repository.
+
+## GitHub Action
+
+```yaml
+name: Backtest infrastructure changes
+on:
+  pull_request:
+    paths: ['deploy/**', '.hindcast/**']
+permissions:
+  contents: read
+  pull-requests: write      # for the comment; without it the result is in the job summary only
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: votiakov/hindcast@v1
+        with:
+          model: .hindcast/model.json
+          dataset: .hindcast/dataset.json
+          manifests: deploy/
+```
+
+On a pull request it:
+
+1. downloads the Hindcast release binary for the runner (Linux x64, macOS arm64 and x64, Windows
+   x64), checks that it runs, and caches it;
+2. writes out the manifests as they are at the pull request's base commit (`git show
+   <base>:<path>`, fetching that one commit if the checkout is shallow), to compare with the
+   working tree's;
+3. runs `hindcast verify-change`: the manifest diff becomes a strategy (replicas, CPU and memory
+   limits and requests, HorizontalPodAutoscalers, `kubernetes.io/arch`), backtested over the
+   dataset;
+4. appends the result to the job summary and posts it as one pull-request comment, which later
+   pushes update in place (the comment carries a hidden marker it is found by);
+5. fails the step when the verdict is `fail` (configurable with `fail-on`).
+
+A Terraform plan works the same way, without a base: the plan holds before and after itself.
+
+```yaml
+      - run: terraform plan -out plan.out && terraform show -json plan.out > plan.json
+      - uses: votiakov/hindcast@v1
+        with:
+          model: .hindcast/model.json
+          dataset: .hindcast/dataset.json
+          terraform-plan: plan.json
+```
+
+`manifests` and `terraform-plan` can be given together, and `strategies` adds strategy files of
+your own; each is judged on its own and the step's verdict is the worst of them.
+
+### Inputs
+
+| input | default | what |
+|---|---|---|
+| `model` | (required) | the calibrated model, `hindcast calibrate` |
+| `dataset` | (required) | the recorded history, `hindcast import` |
+| `manifests` | | Kubernetes manifests, a directory or a file; the base version comes from git |
+| `terraform-plan` | | `terraform show -json` output |
+| `strategies` | | strategy files to backtest as well, space- or newline-separated |
+| `base-ref` | the pull request's base commit; elsewhere `HEAD^` | the commit to compare the manifests with |
+| `head-ref` | the working tree | read the head manifests from this commit instead |
+| `base-manifests` | | files to use as the manifests before the change, instead of reading `base-ref` |
+| `last` | `14d` | replay only the most recent part of the history; empty replays all of it |
+| `draws` | `30` | capacity draws behind the 10–90% bands |
+| `gate-minutes` | `0.5` | minutes out of SLO a change may add over the window before it fails |
+| `slo-p99-ms` | the model's | override the p99 SLO, for the system and every endpoint |
+| `slo-error-rate` | the model's | override the error-rate SLO (`0.01` = 1%), for the system and every endpoint |
+| `fail-on` | `fail` | `fail`, `inconclusive` (fail on either), or `never` |
+| `comment` | `true` | post the pull-request comment |
+| `comment-key` | | tells apart several Hindcast checks on one pull request (e.g. one per system) |
+| `title` | `Hindcast backtest` | the comment's heading |
+| `version` | the action's tag | the release to run, e.g. `v1.2.0`. At `@v1` it is the newest `v1.x` release; at a branch or a commit, the latest release |
+| `binary` | | a `hindcast` binary to run instead of downloading one (relative to `working-directory`) |
+| `working-directory` | `.` | the directory the other paths are relative to |
+| `github-token` | `github.token` | for the download and the comment |
+
+### Outputs
+
+| output | what |
+|---|---|
+| `verdict` | `pass`, `fail`, `inconclusive`, or `nothing to verify` (no change the model can backtest) |
+| `confidence` | `high`, `medium` or `low`, the lowest over the changes |
+| `gate` | `failed` when the verdict is one `fail-on` names, else `passed` |
+| `monthly-delta` | $ per month the first change adds (negative: saves), median |
+| `minutes-out-of-slo-delta` | minutes out of SLO it adds over the window, median |
+| `failed-requests-delta` | failed requests it adds over the window, median |
+| `summary` | path of the Markdown comment |
+| `result` | path of the full `verify_change` result (JSON) |
+| `report` | path of the HTML report |
+
+To keep the HTML report with the run:
+
+```yaml
+      - uses: votiakov/hindcast@v1
+        id: hindcast
+        with: { model: .hindcast/model.json, dataset: .hindcast/dataset.json, manifests: deploy/ }
+      - if: always() && steps.hindcast.outputs.report != ''
+        uses: actions/upload-artifact@v4
+        with: { name: hindcast-report, path: '${{ steps.hindcast.outputs.report }}' }
+```
+
+### Permissions and secrets
+
+- `contents: read` to check out the repository; `pull-requests: write` for the comment. Without
+  the second, the comment step warns and the result stays in the job summary.
+- No secrets beyond `GITHUB_TOKEN`. The action reads the repository and the release, and writes
+  only its one pull-request comment.
+- Pull requests from forks get a read-only token on the `pull_request` event: the check runs and
+  fails as usual, and the comment is skipped with a warning.
+- The comment goes through the `gh` CLI, which every GitHub-hosted runner has. On a self-hosted
+  runner without it, the result is in the job summary only.
+
+### Versions
+
+`uses: votiakov/hindcast@v1` works once a `v1` tag in the repository points at a release; until
+then pin a full release tag (`@v1.2.0`) or a commit. The action needs a release that has
+`hindcast verify-change` (newer than v1.1.0); with an older one it stops and says so. With
+`version` set, that release's binary runs, whichever tag the action itself was taken from.
+
+### What the comment looks like
+
+The backtest-ci example's HotROD model, on a pull request that cuts the frontend's CPU limit from 1
+to 50 millicores (`test/cli-fixtures/hotrod-frontend-50m.yaml`), as the action writes it:
+
+````markdown
+<!-- hindcast-verify-change -->
+### ❌ Hindcast backtest: fail
+
+**frontend CPU 1 → 0.05** — **fail** · confidence **low**
+
+It saves $23/month; it would have caused 18 minutes out of SLO, the worst on Oct 7 at 16:28 UTC (frontend at 71% of capacity (3.9 req/s on 1 × 5.5 req/s), 132 ms wait).
+
+- **$ / month:** −$23.03/month (your bill)
+- **minutes out of SLO:** +18 min (+14 min … +19.5 min), 32 min in all with the change
+- **failed requests:** +7,212 (+6,611 … +8,151)
+- **worst moment:** Oct 7 at 16:49 UTC — p99 5000 ms, 100% errors; frontend at 202% of capacity (11.2 req/s on 1 × 5.5 req/s), 203.5 s queue
+
+Why:
+- adds 18 min out of SLO (10–90%: 14 … 19.5)
+- adds 7,212 failed requests (+510% of 1,413)
+- worst at 2026-10-07T16:49:30Z: frontend at 202% of capacity (11.2 req/s on 1 × 5.5 req/s), 203.5 s queue
+- worse for frontend GET /dispatch against their own SLOs
+- headroom drops from 6.1 to 3.9 req/s (the history peaked at 11.2)
+
+Confidence low:
+- frontend would run at 150% of a capacity the history never tested (peak 7%): the outcome rests on an extrapolated limit
+- mysql fits not at all and runs near its limit; the change leaves it as it was, so the comparison holds better than the absolute numbers
+- the model missed p99 (holdout, off by 72%) on data it never saw
+- only 0.7 h of history: daily and weekly peaks may be missing
+
+<sub>Replayed the last 41 minutes of production traffic through the calibrated model · 30 draws · ranges are 10th–90th percentiles</sub>
+
+| | $/month | minutes out of SLO | failed requests | worst moment |
+|---|---|---|---|---|
+| As built | $95.56 | 14 min (14 min … 15 min) | 1,413 (748 … 2,125) | Oct 7 at 16:51 UTC · mysql at 84% of capacity (7.5 req/s on 1 × 8.9 req/s), still draining a 18.0 s backlog |
+| frontend CPU 1 → 0.05 | −$23.03 | 32 min (28 min … 33 min) | 8,755 (7,866 … 9,225) | Oct 7 at 16:49 UTC · frontend at 202% of capacity (11.2 req/s on 1 × 5.5 req/s), 203.5 s queue |
+
+<sub>SLO: p99 ≤ 1000 ms, errors ≤ 3% · fails if it adds more than 0.5 min out of SLO over the window</sub>
+
+<details><summary>Model accuracy: 5/6 checks within target</summary>
+
+```
+PASS p99            predicted 641 ms vs measured 659 ms — off by 2.6% (target ≤ 20%) · replicas-2: p99 of all 11,590 requests of the run; per 5-minute window the typical error is 3%, worst 6%
+PASS cost           predicted $0.102 vs measured $0.102 — off by 0.2% (target ≤ 10%) · replicas-2: predicted cost vs the run's bill
+PASS breaking-point predicted 6.6 req/s vs measured 7.6 req/s — off by 13.5% (target ≤ 15%) · stress: step load test, p99 and errors over every request of each plateau (SLO p99 ≤ 1000 ms, errors ≤ 3%)
+PASS breaking-point predicted 7.7 req/s vs measured 7.7 req/s — off by 0.0% (target ≤ 15%) · stress-replicas-2: step load test, p99 and errors over every request of each plateau (SLO p99 ≤ 1000 ms, errors ≤ 3%)
+MISS p99            predicted 1384 ms vs measured 5022 ms — off by 72.4% (target ≤ 20%) · p99 of all 3,443 requests on the last 13 min, calibrated on the 28 min before; per 5-minute window the typical error is 37%, and the measurement fell inside the model's 10–90% band in 1 of 2 windows
+PASS cost           predicted $0.027 vs measured $0.027 — off by 1.1% (target ≤ 10%) · model cost vs the bill over the held-out window
+```
+</details>
+
+<details><summary>What was backtested</summary>
+
+```yaml
+name: frontend CPU 1 → 0.05
+description: from the pull request diff
+changes:
+  - service: frontend
+    cpu: 0.05
+```
+</details>
+
+<sub>[Workflow run](https://github.com/your-org/your-repo/actions/runs/123)</sub>
+````
+
+The check failed, as it should: the cut saves $23 a month and would have added 18 minutes out of
+SLO. Confidence is low because the frontend would run past anything the 41-minute history showed,
+and the comment says so. A change the model cannot backtest (an image tag, a label) posts "nothing
+to verify" and passes.
+
+### Testing the action without a pull request
+
+`base-ref`, `head-ref` and `base-manifests` make it run anywhere. This repository's CI runs the
+action from the checkout with a binary built in the job (`.github/workflows/ci.yml`, job `action`),
+since no release holds the current commit's binary:
+
+```yaml
+      - run: cp test/cli-fixtures/hotrod-frontend-50m.yaml examples/backtest-ci/deploy/hotrod.yaml
+      - uses: ./
+        id: cut
+        continue-on-error: true
+        with:
+          model: reference/hotrod/model.json
+          dataset: reference/hotrod/dataset.json
+          manifests: examples/backtest-ci/deploy
+          base-ref: HEAD                         # the committed manifests are the base
+          binary: engine-rs/target/release/hindcast
+          comment: 'false'
+```
+
+The script behind it runs locally too:
+
+```sh
+HINDCAST_BIN=engine-rs/target/release/hindcast INPUT_MODEL=reference/hotrod/model.json \
+INPUT_DATASET=reference/hotrod/dataset.json INPUT_MANIFESTS=test/cli-fixtures/hotrod-frontend-50m.yaml \
+INPUT_BASE_MANIFESTS=examples/backtest-ci/deploy bash action/verify.sh
+```
+
+## The command
+
+```
+hindcast verify-change --model model.json --dataset dataset.json
+    (--base <dir> --head <dir> | --terraform-plan plan.json | <strategy.yaml …>)
+    [--last 14d] [--draws 30] [--gate-minutes 0.5] [--p99 500] [--errors 0.01] [--scale 2 | --peak 400]
+    [--comment comment.md] [--json result.json] [--md report.md] [--html report.html] [--outputs $GITHUB_OUTPUT]
+    [--title "Hindcast backtest"] [--comment-key <key>] [--run-url <url>] [--fail-on fail|inconclusive|never]
+```
+
+It is `verify_change` on files named on the command line: the same strategies, verdict and
+confidence. `--comment` writes the pull-request comment above, `--json` the tool's full result,
+`--outputs` appends `verdict=…`, `confidence=…`, `gate=…`, the first change's deltas and the
+comment's `marker=…` as `key=value` lines. The exit code is 0, or 2 when the verdict is one
+`--fail-on` names (default `fail`), and 1 on an error. Without `--draws`, the number of draws is
+fitted to a time budget, so pass it in CI for repeatable bands.

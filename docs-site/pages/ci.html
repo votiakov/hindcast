@@ -8,7 +8,8 @@ hindcast backtest  model.json dataset.json graviton.yaml autoscale.yaml --last 1
 hindcast headroom  model.json [strategy.yaml]
 hindcast accuracy  model.json
 hindcast outage    model.json slack-2021-01-04 [strategy.yaml]
-hindcast diff-strategy --base old/deploy --head deploy --model model.json --out strategy.yaml</code></pre>
+hindcast diff-strategy --base old/deploy --head deploy --model model.json --out strategy.yaml
+hindcast verify-change --model model.json --dataset dataset.json --base old/deploy --head deploy --comment pr.md</code></pre>
 <p>In the repository: <code>npm run sim -- &lt;command&gt;</code>. Anywhere else: the native binary, <code>npm run cli:build</code> → <code>engine-rs/target/release/hindcast</code> (no runtime needed). Every command takes <code>--json</code>.</p>
 <p>The terminal output of a backtest, HotROD with three strategies:</p>
 <pre><code>Backtest — HotROD · 0.7 h of history · 30 draws
@@ -39,17 +40,27 @@ hindcast diff-strategy --base old/deploy --head deploy --model model.json --out 
 
 <section class="prose">
 <h2>The pull-request check</h2>
-<p>A GitHub Actions workflow, ready to copy (<code>examples/backtest-ci</code> in the repository). On a pull request that touches the deployment manifests it:</p>
+<p>A GitHub Action. In the workflow of the repository that holds your manifests:</p>
+<pre><code>permissions: { contents: read, pull-requests: write }
+steps:
+  - uses: actions/checkout@v4
+  - uses: votiakov/hindcast@v1
+    with:
+      model: .hindcast/model.json
+      dataset: .hindcast/dataset.json
+      manifests: deploy/            # or terraform-plan: plan.json</code></pre>
+<p>On a pull request it:</p>
 <ul>
-<li>turns the manifest diff into a strategy: replicas, CPU and memory limits, HPAs, <code>kubernetes.io/arch</code>;</li>
-<li>backtests it against the last 14 days of recorded traffic;</li>
-<li>posts the result on the pull request and uploads the HTML report;</li>
-<li>fails the check (<code>--gate</code>) if the change would have added time out of SLO.</li>
+<li>reads the manifests as they were at the pull request's base commit and turns the diff into a strategy: replicas, CPU and memory limits, HPAs, <code>kubernetes.io/arch</code> (a Terraform plan needs no base);</li>
+<li>backtests it against the last 14 days of recorded traffic with <code>hindcast verify-change</code>, the same verdict and confidence an agent gets from <code>verify_change</code>;</li>
+<li>writes the result to the job summary and to one pull-request comment, updated in place on every push;</li>
+<li>fails the check when the verdict is <code>fail</code> (<code>fail-on: inconclusive</code> is stricter, <code>never</code> only reports).</li>
 </ul>
-<p>The repository holds the CLI file, the calibrated model and the recent history in <code>.hindcast/</code>. <code>scripts/make-backtest-demo.sh</code> assembles a working example repository.</p>
-<p>What it posted on a real pull request that trimmed a frontend to 50 millicores:</p>
-<p class="verdict"><b>frontend CPU 1 → 0.05</b> saves $23/month; it would have caused 20 minutes out of SLO, the worst on Oct 7 at 16:26 UTC (frontend at 59% of capacity (3.3 req/s on 1 × 5.5 req/s), 78 ms wait).</p>
-<p>The check failed, as it should. The comment also carries a table with $/month, minutes out of SLO, failed requests and the worst moment for each strategy, and the model's accuracy.</p>
+<p>The repository holds the calibrated model and the recent history in <code>.hindcast/</code>; the action downloads the binary for the runner. No secrets beyond <code>GITHUB_TOKEN</code>. Every input and output, and a full comment: <code>docs/ci.md</code> in the repository. <code>@v1</code> resolves once the repository has a <code>v1</code> tag; until then pin a release.</p>
+<p>What it posts on a pull request that trims the HotROD frontend to 50 millicores:</p>
+<p class="verdict"><b>frontend CPU 1 → 0.05</b> — fail · confidence low. It saves $23/month; it would have caused 18 minutes out of SLO, the worst on Oct 7 at 16:28 UTC (frontend at 71% of capacity (3.9 req/s on 1 × 5.5 req/s), 132 ms wait).</p>
+<p>The check fails, as it should. Under the verdict the comment lists $/month with its basis (your bill, or list prices), the minutes out of SLO and failed requests with their 10–90% bands, the worst moment, why the confidence is what it is, a table of as built against the change, and the model's accuracy record.</p>
+<p>A hand-written workflow doing the same with the CLI, and a script that assembles a demo repository, are in <code>examples/backtest-ci</code>.</p>
 </section>
 
 <section class="screen" data-shot="card">

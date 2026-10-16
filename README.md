@@ -157,6 +157,23 @@ hindcast agent verify_change '<json>' # or call any tool from a shell
 Setup for each host, the workflow and every tool: [docs/agents.md](docs/agents.md).
 [Video: an agent checks a replica cut on the kind cluster](docs/media/agent-k8s.mp4).
 
+### In CI
+
+The same verdict on every pull request: the GitHub Action reads the manifests before and after,
+backtests the diff over the recorded history, comments once (updated on each push) and fails the
+check when the change would have broken the SLO.
+
+```yaml
+- uses: votiakov/hindcast@v1
+  with:
+    model: .hindcast/model.json
+    dataset: .hindcast/dataset.json
+    manifests: deploy/            # or terraform-plan: plan.json
+```
+
+It needs `pull-requests: write` for the comment. Inputs, outputs and a real comment:
+[docs/ci.md](docs/ci.md).
+
 ## Also in the app
 
 The app runs entirely in the browser (the engine is WebAssembly) and uploads nothing.
@@ -200,6 +217,7 @@ files, AWS CUR and GCP billing exports. Datadog and New Relic metrics go in as C
 | install or build it | [install.md](docs/install.md) |
 | test a change against your own data | [backtest.md](docs/backtest.md) |
 | hand the work to an agent | [agents.md](docs/agents.md) |
+| backtest every pull request in CI | [ci.md](docs/ci.md) |
 | learn the app, view by view | [guide.md](docs/guide.md) |
 | find your question | [use-cases.md](docs/use-cases.md) |
 | see everything it does | [capabilities.md](docs/capabilities.md) |
