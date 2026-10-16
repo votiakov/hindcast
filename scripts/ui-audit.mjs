@@ -69,6 +69,16 @@ for (const theme of THEMES) {
           await btn.click();
         } else problems.push({ theme, where: 'sandbox', kind: 'missing', text: `no "${t}" button` });
       }
+      // the request tracer: a component's card → trace, drawn on the board and read out below it
+      at('sandbox-trace');
+      await p.locator('.react-flow__node .ref-head').nth(1).click();
+      await wait(p, 400);
+      await p.click('.nc-act:has-text("trace")');
+      await p.waitForSelector('.trace-strip .ts-path, .trace-strip .ts-msg.bad', { timeout: 30000 }).catch(() => problems.push({ theme, where: 'sandbox-trace', kind: 'missing', text: 'no traced request' }));
+      await wait(p, 600);
+      await shot(p, `${theme}-sandbox-trace`);
+      if (await p.locator('.trace-strip .ts-msg.bad').count()) problems.push({ theme, where: 'sandbox-trace', kind: 'trace', text: await p.locator('.trace-strip .ts-msg.bad').innerText() });
+      await p.keyboard.press('Escape');
       await p.keyboard.press('Space');
     }
     if (name === 'backtest') {

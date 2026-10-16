@@ -1,0 +1,61 @@
+/* The request tracer: a readout docked at the foot of the board, and the journey drawn on it. */
+.trace-strip {
+  position: absolute; z-index: 6; left: 16px; right: 232px; bottom: 16px; max-width: 1100px;
+  background: var(--r-surface); border: 1px solid var(--r-line); border-left: 2px solid var(--r-accent);
+  color: var(--r-ink-2); font-family: var(--mono); font-size: 11.5px; cursor: default;
+  box-shadow: 0 2px 8px rgba(var(--r-shadow-rgb), 0.3);
+}
+.app:has(.palette) .trace-strip { left: 256px; }
+.app:has(.controlbar) .trace-strip { bottom: 70px; }
+.app:has(.controlbar .tl) .trace-strip { bottom: 128px; }
+.ts-head { display: flex; align-items: center; gap: 10px; padding: 6px 10px 5px; border-bottom: 1px solid var(--r-line); white-space: nowrap; min-width: 0; }
+.ts-title { color: var(--r-muted); text-transform: lowercase; letter-spacing: 0.4px; }
+.ts-title b { color: var(--r-accent); font-weight: 500; }
+.ts-step { display: inline-flex; align-items: center; border: 1px solid var(--r-line-strong); }
+.ts-step button, .ts-toggle, .ts-act { background: none; border: 0; color: var(--r-ink-2); font: 11px var(--mono); padding: 1px 7px; cursor: pointer; }
+.ts-step button:hover:not(:disabled), .ts-act:hover, .ts-toggle:hover:not(:disabled) { color: var(--r-ink); }
+.ts-step button:disabled, .ts-toggle:disabled { color: var(--r-faint); cursor: default; }
+.ts-step b { font-weight: 500; color: var(--r-ink); padding: 0 7px; border-left: 1px solid var(--r-line); border-right: 1px solid var(--r-line); min-width: 44px; text-align: center; }
+.ts-toggle, .ts-act { border: 1px solid var(--r-line-strong); }
+.ts-toggle.on { color: var(--r-accent); border-color: var(--r-accent-line); background: var(--r-accent-tint); }
+.ts-verdict { color: var(--r-ok); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.ts-verdict.bad { color: var(--r-bad); }
+.ts-gap { flex: 1; }
+.ts-x { background: none; border: 0; color: var(--r-muted); padding: 2px; display: grid; place-items: center; cursor: pointer; }
+.ts-x:hover { color: var(--r-ink); }
+.ts-msg { padding: 9px 10px; color: var(--r-muted); }
+.ts-msg.bad { color: var(--r-bad); }
+.ts-path { margin: 0; padding: 8px 10px 7px; font: 12px/1.6 var(--mono); color: var(--r-ink-2); overflow-x: auto; max-height: 132px; overflow-y: auto; scrollbar-width: thin; white-space: pre; }
+.ts-path .c-name { color: var(--r-ink); }
+.ts-path .c-focus { color: var(--r-accent); }
+.ts-path .c-arrow { color: var(--r-muted); }
+.ts-path .c-q { color: var(--r-warn); }
+.ts-path .c-bad { color: var(--r-bad); }
+.ts-path .c-ok { color: var(--r-ok); }
+.ts-path .c-dim { color: var(--r-faint); }
+.ts-foot { display: flex; flex-wrap: wrap; gap: 2px 14px; padding: 5px 10px 6px; border-top: 1px dotted var(--r-line); font-size: 10.5px; color: var(--r-faint); }
+.ts-foot.stale { color: var(--r-warn); }
+.ts-key { margin-left: auto; white-space: nowrap; }
+.ts-key i { font-style: normal; color: var(--r-muted); margin: 0 4px 0 10px; }
+.ts-key i:first-child { margin-left: 0; }
+.ts-key i.q { color: var(--r-warn); }
+
+/* on the board: the journey's components and links lit, the rest stepped back */
+[data-theme='terminal'] .ref-node.ref-node.tr-off { opacity: 0.32; transition: opacity 0.2s; }
+[data-theme='terminal'] .ref-node.ref-node.tr-on { box-shadow: 0 0 0 1px var(--r-accent-line); }
+[data-theme='terminal'] .ref-node.ref-node.tr-failed, [data-theme='terminal'] .ref-node.ref-node.tr-timeout { box-shadow: 0 0 0 2px var(--r-bad); }
+[data-theme='terminal'] .ref-node.ref-node.tr-focus { box-shadow: 0 0 0 2px var(--r-accent); }
+[data-theme='terminal'] .ref-node.ref-node.tr-focus.tr-failed, [data-theme='terminal'] .ref-node.ref-node.tr-focus.tr-timeout { box-shadow: 0 0 0 2px var(--r-bad), 0 0 0 5px var(--r-accent-line); }
+.tr-mark {
+  position: absolute; top: -21px; left: -1px; z-index: 3; pointer-events: none; white-space: nowrap;
+  font: 500 10.5px var(--mono); padding: 2px 6px; color: var(--r-on-ink); background: var(--r-bad);
+}
+.tr-mark.ok { background: var(--r-ok); }
+.tr-off-edge { opacity: 0.25; }
+[data-theme='terminal'] .ref-edge.tr-on { stroke: var(--r-accent) !important; stroke-dasharray: none; }
+[data-theme='terminal'] .ref-edge.tr-on.tr-q { stroke: var(--r-warn) !important; }
+[data-theme='terminal'] .ref-edge.tr-on.tr-bad { stroke: var(--r-bad) !important; }
+.tr-label { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.tr-label span { font: 10.5px var(--mono); color: var(--r-accent); background: var(--r-surface); border: 1px solid var(--r-accent-line); padding: 1px 5px; white-space: nowrap; }
+.tr-label span.q { color: var(--r-warn); border-color: var(--r-warn-line); }
+.tr-label span.bad { color: var(--r-bad); border-color: var(--r-bad-line); }

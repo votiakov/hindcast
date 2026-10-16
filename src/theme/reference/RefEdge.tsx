@@ -2,6 +2,7 @@ import { memo } from 'react';
 import { LinkLatency } from '../../canvas/LinkLatency';
 import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, type EdgeProps } from '@xyflow/react';
 import { X } from 'lucide-react';
+import type { EdgeMark } from '../../ui/journey';
 
 export interface RefEdgeData {
   rps: number;
@@ -11,6 +12,8 @@ export interface RefEdgeData {
   onRemove: () => void;
   /** max particles per edge (board-wide budget) */
   cap?: number;
+  /** a traced request: its hops over this link, or 'off' when it did not take it */
+  trace?: EdgeMark | 'off' | null;
 }
 
 /** Small, quiet request dots — present, not decorative. */
@@ -39,6 +42,8 @@ const Dots = memo(function Dots({ path, count, dur, fail }: { path: string; coun
 function RefEdgeImpl({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, selected, data }: EdgeProps & { data: RefEdgeData }) {
   const [path, lx, ly] = getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, borderRadius: 6, offset: 20 });
   const { rps, err, util, running, onRemove } = data;
+  const tr = data.trace && data.trace !== 'off' ? data.trace : null;
+  const trOff = data.trace === 'off';
   const live = rps >= 0.5;
   const failing = err > 0.05;
   const width = live ? 1.5 + Math.min(2, Math.log10(rps + 1) * 0.6) : 1.25;
@@ -50,20 +55,29 @@ function RefEdgeImpl({ id, sourceX, sourceY, targetX, targetY, sourcePosition, t
   const dur = Math.round(pace * (1 + Math.min(0.8, util * 0.6)) * 4) / 4;
 
   return (
-    <>
+    <g className={trOff ? 'tr-off-edge' : undefined}>
       <BaseEdge
         id={id}
         path={path}
         interactionWidth={22}
-        markerEnd={failing ? 'url(#ref-arrow-bad)' : 'url(#ref-arrow)'}
-        className={`ref-edge ${failing ? 'bad' : ''} ${live ? 'live' : ''} ${selected ? 'sel' : ''}`}
-        style={{ strokeWidth: width }}
+        markerEnd={failing || tr?.bad ? 'url(#ref-arrow-bad)' : 'url(#ref-arrow)'}
+        className={`ref-edge ${failing ? 'bad' : ''} ${live ? 'live' : ''} ${selected ? 'sel' : ''} ${tr ? `tr-on ${tr.bad ? 'tr-bad' : tr.queued ? 'tr-q' : ''}` : ''}`}
+        style={{ strokeWidth: tr ? Math.max(width, 2.5) : width }}
       />
-      {running && okN > 0 && <Dots path={path} count={okN} dur={dur} />}
-      {running && failN > 0 && <Dots path={path} count={failN} dur={dur} fail />}
+      {running && !tr && okN > 0 && <Dots path={path} count={okN} dur={dur} />}
+      {running && !tr && failN > 0 && <Dots path={path} count={failN} dur={dur} fail />}
       <EdgeLabelRenderer>
-        <div className="edge-label nodrag nopan" style={{ transform: `translate(-50%, -50%) translate(${lx}px, ${ly}px)` }}>
-          {live && (
+        <div className={`edge-label nodrag nopan ${trOff ? 'tr-off-edge' : ''}`} style={{ transform: `translate(-50%, -50%) translate(${lx}px, ${ly}px)`, zIndex: tr ? 2 : undefined }}>
+          {tr && (
+            <span className="tr-label">
+              {tr.lines.map((l, i) => (
+                <span key={i} className={l.c}>
+                  {l.t}
+                </span>
+              ))}
+            </span>
+          )}
+          {live && !tr && (
             <span className={`ref-rate ${failing ? 'bad' : ''}`}>
               {rps >= 1000 ? `${(rps / 1000).toFixed(1)}k` : rps.toFixed(0)} req/s
               {failing && <b> · {Math.round(err * 100)}% err</b>}
@@ -77,7 +91,7 @@ function RefEdgeImpl({ id, sourceX, sourceY, targetX, targetY, sourcePosition, t
           )}
         </div>
       </EdgeLabelRenderer>
-    </>
+    </g>
   );
 }
 

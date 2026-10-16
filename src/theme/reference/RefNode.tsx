@@ -77,7 +77,7 @@ function Fleet({ name, states, util, motion }: { name: string; states: InstanceS
  * A component as a figure in an engineering reference: a spec card with a status strip,
  * key/value readings, a utilisation scale, and a plain-English callout when something is happening.
  */
-export function RefNode({ data, st, v, selected, showCost, running, motion = false, each = false, explainOn, controls }: { data: SystemNodeData; st: NodeStats | undefined; v: NodeView; selected: boolean; showCost: boolean; running: boolean; motion?: boolean; each?: boolean; explainOn: boolean; controls?: React.ReactNode }) {
+export function RefNode({ data, st, v, selected, showCost, running, motion = false, each = false, explainOn, controls, trace }: { data: SystemNodeData; st: NodeStats | undefined; v: NodeView; selected: boolean; showCost: boolean; running: boolean; motion?: boolean; each?: boolean; explainOn: boolean; controls?: React.ReactNode; trace?: { state: 'on' | 'failed' | 'timeout' | 'off'; note: string | null; focus: boolean } | null }) {
   const spec = KINDS[data.kind];
   const Icon = KIND_ICONS[data.kind];
   const note = explainOn ? explain(data, st, v) : null;
@@ -89,7 +89,8 @@ export function RefNode({ data, st, v, selected, showCost, running, motion = fal
 
   const fleet = spec.scalable && each && v.instances + v.booting > 1 && v.instances + v.booting <= FLEET_MAX;
   return (
-    <div className={`ref-node s-${v.health} ${fleet ? 'fleet' : ''} ${selected ? 'sel' : ''} ${controls ? 'open' : ''} ${v.promotedReplica ? 'promoted' : ''} ${motion ? 'live' : ''}`}>
+    <div className={`ref-node s-${v.health} ${fleet ? 'fleet' : ''} ${selected ? 'sel' : ''} ${controls ? 'open' : ''} ${v.promotedReplica ? 'promoted' : ''} ${motion ? 'live' : ''} ${trace ? `tr-${trace.state} ${trace.focus ? 'tr-focus' : ''}` : ''}`}>
+      {trace?.note && <div className={`tr-mark ${trace.state === 'on' ? 'ok' : ''}`}>{trace.state === 'on' ? trace.note : `✕ ${trace.note}`}</div>}
       {data.kind !== 'client' && <Handle type="target" position={Position.Left} className="ref-handle" />}
       <div className="ref-head">
         <span className="ref-glyph" style={{ ['--kind' as string]: spec.color }}>

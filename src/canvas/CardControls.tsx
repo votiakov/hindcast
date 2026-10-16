@@ -6,6 +6,7 @@ import { useSim } from '../sim/store';
 import { useBoardId } from './BoardContext';
 import { fmt } from './nodeModel';
 import { Calibrate } from './Calibrate';
+import { useTracer } from '../ui/tracer';
 
 /** nodes that make outgoing calls and can therefore retry / break */
 const CALLERS = new Set(['client', 'server', 'worker', 'function', 'gateway', 'lb']);
@@ -33,6 +34,7 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
   // routing only means something with more than one component to route to
   const outgoing = useSim((s) => s.boards[b].edges.filter((e) => e.source === id).length);
   const as = data.autoscale;
+  const tracing = useTracer((s) => s.board === b && s.node === id && s.status !== 'idle');
   const pick = (v: number, list: number[]) => [...new Set([...list, v])].sort((x, y) => x - y);
 
   // an opened card can grow under the play bar: pan the board up just enough to show all of it
@@ -585,6 +587,16 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
         {calibratable && (
           <button className={`nc-act ${cal || data.capacity !== undefined || data.latencyMs !== undefined ? 'on' : ''}`} onClick={() => setCal(!cal)} title="Calibrate from production numbers: req/s at CPU %, p50, $/h">
             calibrate
+          </button>
+        )}
+        {b === 'main' && (
+          <button className={`nc-act ${tracing ? 'on' : ''}`} onClick={() => {
+              if (tracing) return useTracer.getState().close();
+              useTracer.getState().start(b, id);
+              // the card folds away: the board shows the request's path
+              useSim.getState().onNodesChange(b, [{ type: 'select', id, selected: false }]);
+            }} title="Follow a sampled request through it: each hop's queue wait and work on the board, and where it failed">
+            trace
           </button>
         )}
         <span className="nc-gap" />
