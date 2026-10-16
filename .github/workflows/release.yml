@@ -14,7 +14,7 @@ jobs:
         include:
           - { os: ubuntu-latest, target: x86_64-unknown-linux-musl }
           - { os: macos-14, target: aarch64-apple-darwin }
-          - { os: macos-13, target: x86_64-apple-darwin }
+          - { os: macos-14, target: x86_64-apple-darwin, cross: true }  # Intel Mac, cross-built: GitHub retired its macos-13 runners
           - { os: windows-latest, target: x86_64-pc-windows-msvc, ext: .exe }
     runs-on: ${{ matrix.os }}
     steps:
@@ -27,7 +27,7 @@ jobs:
       - run: cargo build --release --bin hindcast --target ${{ matrix.target }}
         working-directory: engine-rs
       - name: golden outputs
-        if: matrix.os != 'windows-latest'
+        if: matrix.os != 'windows-latest' && !matrix.cross
         run: |
           npm ci
           mkdir -p engine-rs/target/release
