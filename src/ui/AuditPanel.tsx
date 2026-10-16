@@ -105,7 +105,7 @@ function FindingRow({ f, open, names }: { f: Finding; open: boolean; names: Map<
             {f.kind !== 'headroom' && (
               <>
                 <span>
-                  p99 <b>{ms(f.impact.peakP99Ms)}</b>
+                  peak p99 incl. failures <b>{ms(f.impact.peakP99Ms)}</b>
                 </span>
                 <span>
                   out of SLO <b>{f.impact.breachS}s</b>
@@ -147,7 +147,7 @@ function FindingRow({ f, open, names }: { f: Finding; open: boolean; names: Map<
                     <div className="au-fix-why">{x.why}</div>
                     {f.kind !== 'headroom' && (
                       <div className="au-fix-delta">
-                        errors <s>{pct(f.impact.errorRate)}</s> → <b>{pct(x.after.errorRate)}</b> · p99 <s>{ms(f.impact.peakP99Ms)}</s> → <b>{ms(x.after.peakP99Ms)}</b>
+                        errors <s>{pct(f.impact.errorRate)}</s> → <b>{pct(x.after.errorRate)}</b> · p99 incl. failures <s>{ms(f.impact.peakP99Ms)}</s> → <b>{ms(x.after.peakP99Ms)}</b>
                       </div>
                     )}
                   </div>

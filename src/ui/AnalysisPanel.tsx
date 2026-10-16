@@ -78,7 +78,7 @@ function Result({ a, title }: { a: Analysis; title?: string }) {
             </td>
           </tr>
           <tr>
-            <th>p99</th>
+            <th>p99 (answers)</th>
             <td>
               {ms(m.p99Ms.mean)} <i>± {ms(m.p99Ms.ci95)}</i>
             </td>
@@ -269,7 +269,7 @@ export function AnalysisPanel() {
               </ul>
               {opt.verification && (
                 <div className="an-foot">
-                  verified: SLO met in {pct(opt.verification.pSloMet)} of {opt.verification.runs} discrete-event runs · p99 {ms(opt.verification.metrics.p99Ms.mean)}
+                  verified: SLO met in {pct(opt.verification.pSloMet)} of {opt.verification.runs} discrete-event runs · p99 (answers) {ms(opt.verification.metrics.p99Ms.mean)}
                 </div>
               )}
               {opt.changes.length > 0 && (

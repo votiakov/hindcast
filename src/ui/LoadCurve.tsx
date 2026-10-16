@@ -60,7 +60,7 @@ export function LoadCurve({ curve, now, limit, sloP99 }: { curve: CurvePoint[]; 
       <div className="lc-read">
         {h ? (
           <>
-            <b>{h.rps.toLocaleString('en-US')} req/s</b> · p99 {h.p99Ms} ms · {(h.errorRate * 100).toFixed(1)}% errors · ${h.perMillion.toFixed(2)}/M req{h.bottleneck ? ` · ${h.bottleneck} saturated` : ''}
+            <b>{h.rps.toLocaleString('en-US')} req/s</b> · p99 incl. failures {h.p99Ms} ms · {(h.errorRate * 100).toFixed(1)}% errors · ${h.perMillion.toFixed(2)}/M req{h.bottleneck ? ` · ${h.bottleneck} saturated` : ''}
           </>
         ) : (
           <>
