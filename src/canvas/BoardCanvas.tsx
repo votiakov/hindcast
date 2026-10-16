@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Background, BackgroundVariant, MiniMap, NodeToolbar, Panel, Position, ReactFlow, useReactFlow, useStore, type NodeTypes, type EdgeTypes, type XYPosition } from '@xyflow/react';
+import { Background, BackgroundVariant, MiniMap, NodeToolbar, Position, ReactFlow, useReactFlow, useStore, type NodeTypes, type EdgeTypes, type XYPosition } from '@xyflow/react';
 import { SquareDashed } from 'lucide-react';
 import { insertTarget, useSim, type BoardId } from '../sim/store';
 import { KINDS, isSystem, isUp, type AppNode, type Kind, type SystemNodeData } from '../sim/catalog';
@@ -193,7 +193,7 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
         >
           <Background variant={BackgroundVariant.Dots} gap={24} size={1.4} color="#1e293b" />
           {children}
-          {minimap && <ReplicaToggle id={id} />}
+          {minimap && <ReplicaToggle id={id} wrapper={wrapper} padding={padding} />}
           {interactive && <GroupBar id={id} />}
           {minimap && mapAt && (
             <MiniMap
@@ -297,13 +297,19 @@ function GroupBar({ id }: { id: BoardId }) {
 }
 
 /** grouped: a pip per instance; each: a row per instance with the traffic fanned out */
-function ReplicaToggle({ id }: { id: BoardId }) {
+function ReplicaToggle({ id, wrapper, padding }: { id: BoardId; wrapper: React.RefObject<HTMLDivElement | null>; padding: Props['padding'] }) {
   const view = useSim((s) => s.settings.replicaView);
   const setSetting = useSim((s) => s.setSetting);
   const fleet = useSim((s) => s.boards[id].nodes.some((n) => n.type === 'system' && KINDS[(n.data as SystemNodeData).kind].scalable && ((n.data as SystemNodeData).instances ?? 1) > 1));
+  const self = useRef<HTMLDivElement>(null);
+  const at = useFreeSpot(id, wrapper, self, padding, fleet);
   if (!fleet) return null;
   return (
-    <Panel position="top-center" className="replica-toggle">
+    <div
+      ref={self}
+      className="react-flow__panel replica-toggle"
+      style={{ position: 'absolute', margin: 0, left: at?.left ?? '50%', top: at?.top ?? 10, transform: at ? undefined : 'translateX(-50%)', visibility: at ? 'visible' : 'hidden' }}
+    >
       <span>replicas</span>
       <div className="seg">
         <button className={view === 'grouped' ? 'on' : ''} onClick={() => setSetting('replicaView', 'grouped')} title="One block per component, a pip per instance">
@@ -313,6 +319,62 @@ function ReplicaToggle({ id }: { id: BoardId }) {
           each
         </button>
       </div>
-    </Panel>
+    </div>
   );
+}
+
+/**
+ * Where the replica toggle sits: on the board's top edge, centred, when that covers no card; else the
+ * nearest place along that edge, then further down, that covers nothing (cards, notes, the minimap,
+ * the trace strip, toolbars). It stays within the board's padding, which keeps clear of the palette, the
+ * side panels and the control bar. Re-judged as the board pans, zooms, resizes and the cards grow
+ */
+function useFreeSpot(id: BoardId, wrapper: React.RefObject<HTMLDivElement | null>, self: React.RefObject<HTMLDivElement | null>, padding: Props['padding'], on: boolean): { left: number; top: number } | null {
+  const [at, setAt] = useState<{ left: number; top: number } | null>(null);
+  const nodes = useSim((s) => s.boards[id].nodes);
+  const view = useStore((s) => s.transform.join(','));
+  useEffect(() => {
+    if (!on) return;
+    const place = () => {
+      const root = wrapper.current;
+      const me = self.current;
+      if (!root || !me) return;
+      const r = root.getBoundingClientRect();
+      const w = me.offsetWidth || 180;
+      const h = me.offsetHeight || 28;
+      const gap = 4;
+      const obstacles = [...root.querySelectorAll('.react-flow__node-system, .react-flow__node-note, .react-flow__minimap, .react-flow__panel:not(.replica-toggle), .node-toolbar, .trace-strip')].map((n) => n.getBoundingClientRect());
+      const free = (left: number, top: number) => {
+        const b = { left: r.left + left - gap, right: r.left + left + w + gap, top: r.top + top - gap, bottom: r.top + top + h + gap };
+        return !obstacles.some((c) => c.width > 0 && hits(b, c));
+      };
+      const minX = Math.min(parseFloat(padding.left), Math.max(8, r.width / 2 - w / 2));
+      const maxX = Math.max(minX, r.width - Math.min(parseFloat(padding.right), r.width / 2 - w / 2) - w);
+      const maxY = Math.max(10, r.height - parseFloat(padding.bottom) - h);
+      const centre = Math.round(Math.min(maxX, Math.max(minX, r.width / 2 - w / 2)));
+      let next: { left: number; top: number } | null = null;
+      for (let top = 8; top <= maxY && !next; top += 12) {
+        for (let k = 0; ; k++) {
+          const xs = k === 0 ? [centre] : [centre - k * 16, centre + k * 16].filter((x) => x >= minX && x <= maxX);
+          if (k > 0 && !xs.length) break;
+          const x = xs.find((x) => free(x, top));
+          if (x !== undefined) {
+            next = { left: x, top };
+            break;
+          }
+        }
+      }
+      // nowhere free (zoomed in until the cards fill the board): the top edge, centred, as before
+      next ??= { left: centre, top: 8 };
+      setAt((cur) => (cur && cur.left === next.left && cur.top === next.top ? cur : next));
+    };
+    const raf = requestAnimationFrame(place);
+    // the cards grow and shrink as the run goes (an explanation, the each-replica rows)
+    const timer = setInterval(place, 400);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearInterval(timer);
+    };
+  }, [on, nodes, view, wrapper, self, padding.left, padding.right, padding.bottom]);
+  return at;
 }

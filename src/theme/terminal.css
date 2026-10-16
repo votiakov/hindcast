@@ -217,6 +217,33 @@
 [data-theme='terminal'] .dm-title { max-width: 320px; padding: 3px 6px; font-size: 13px; }
 @media (max-width: 1440px) { [data-theme='terminal'] .dm-title { max-width: 240px; } }
 @media (max-width: 1280px) { [data-theme='terminal'] .dm-title { max-width: 170px; } }
+/* with the critical / best-effort cell as well: a shorter name, then tighter tabs and cells, so the bar
+   still keeps to one row down to 1280 px */
+@media (max-width: 1680px) {
+  [data-theme='terminal'] .topbar:has(.class-metric) { gap: 6px; }
+  [data-theme='terminal'] .topbar:has(.class-metric) .dm-title { max-width: 170px; }
+}
+@media (max-width: 1560px) {
+  [data-theme='terminal'] .topbar:has(.class-metric) .mode-tabs button { padding: 3px 7px; }
+  [data-theme='terminal'] .class-metric .metric-sub { display: none; }
+}
+@media (max-width: 1440px) {
+  [data-theme='terminal'] .topbar:has(.class-metric) .mode-tabs { margin-right: 6px; }
+  [data-theme='terminal'] .topbar:has(.class-metric) .dm-title { max-width: 240px; }
+  [data-theme='terminal'] .topbar:has(.class-metric) .metric { min-width: 74px; padding: 2px 8px 3px; }
+}
+/* and should the numbers grow (100% err / 100% shed), the design name gives way, not the row */
+@media (min-width: 1100px) {
+  [data-theme='terminal'] .topbar:has(.class-metric) { flex-wrap: nowrap; }
+  [data-theme='terminal'] .topbar:has(.class-metric) > :not(.dm) { flex-shrink: 0; }
+  [data-theme='terminal'] .topbar:has(.class-metric) .dm { display: flex; min-width: 64px; flex-shrink: 1; }
+  [data-theme='terminal'] .topbar:has(.class-metric) .dm-title { min-width: 0; }
+}
+@media (max-width: 1366px) {
+  [data-theme='terminal'] .topbar:has(.class-metric) .mode-tabs button { padding: 3px 6px; }
+  [data-theme='terminal'] .topbar:has(.class-metric) .dm-title { max-width: 170px; }
+  [data-theme='terminal'] .topbar:has(.class-metric) .metric { min-width: 64px; padding: 2px 7px 3px; }
+}
 
 /* ---- the board's motion (after the Neon board): only what is in trouble moves at rest ---- */
 [data-theme='terminal'] .ref-glyph { width: 22px; height: 22px; flex: none; display: flex; align-items: center; justify-content: center; border: 1px solid var(--kind); color: var(--kind); }

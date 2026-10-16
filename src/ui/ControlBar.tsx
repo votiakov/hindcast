@@ -1,4 +1,5 @@
 import { Pause, Play, RotateCcw, Skull, TrendingUp, HeartPulse, X } from 'lucide-react';
+import { useState } from 'react';
 import { activeBoards, useSim, type Pattern } from '../sim/store';
 import { isSystem } from '../sim/catalog';
 import { Timeline } from './Timeline';
@@ -20,9 +21,14 @@ export function ControlBar() {
     const c = s.boards.main.nodes.find((n) => isSystem(n) && n.data.kind === 'client' && n.data.everyS === undefined);
     return c && isSystem(c) ? 1 - (c.data.lowPriorityShare ?? 0) : 1;
   });
-  // the slider shows once priority is in play: a reserve somewhere, or best-effort traffic already
-  const prioritized = useSim((s) => s.boards.main.nodes.some((n) => isSystem(n) && (!!n.data.priorityReserve || !!n.data.lowPriorityShare)));
+  // the slider shows once priority is in play: a reserve somewhere, or best-effort traffic already;
+  // and once moved it stays for this board, even when it is back at 100% critical with no reserve
+  const inPlay = useSim((s) => s.boards.main.nodes.some((n) => isSystem(n) && (!!n.data.priorityReserve || !!n.data.lowPriorityShare)));
+  const version = useSim((s) => s.boards.main.version);
+  const [touchedAt, setTouchedAt] = useState<number | null>(null);
+  const prioritized = inPlay || touchedAt === version;
   const setCritical = (share: number) => {
+    setTouchedAt(version);
     const s = useSim.getState();
     for (const b of activeBoards(s.mode, s.studio.episodeId))
       for (const n of s.boards[b].nodes) if (isSystem(n) && n.data.kind === 'client' && n.data.everyS === undefined) s.updateNode(b, n.id, { lowPriorityShare: share < 1 ? +(1 - share).toFixed(2) : undefined });

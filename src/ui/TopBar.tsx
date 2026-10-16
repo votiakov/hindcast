@@ -26,8 +26,8 @@ function Metric({ label, value, sub, tone, values, max, color }: { label: string
 
 const pctOf = (x: number) => `${x < 0.1 ? +(x * 100).toFixed(1) : Math.round(x * 100)}%`;
 
-/** each priority class on its own, once the users send best-effort requests: critical's errors and
- *  p99 against the SLO, and the share of best-effort shed on its way */
+/** the two priority classes in one cell, once the users send best-effort requests: critical's errors
+ *  (p99 beside, where there is room) against the SLO, and the share of best-effort shed on its way */
 function ClassMetric({ g, maxErr, maxP99 }: { g: GlobalStats; maxErr: number; maxP99: number }) {
   const c = g.critical;
   const be = g.bestEffort;
@@ -35,23 +35,20 @@ function ClassMetric({ g, maxErr, maxP99 }: { g: GlobalStats; maxErr: number; ma
   const tone = c.rps < 0.5 ? undefined : c.errorRate > maxErr || c.p99 > maxP99 ? 'bad' : c.errorRate > maxErr / 2 || c.p99 > maxP99 * 0.7 ? 'warn' : 'good';
   const shed = be.rps > 0.5 ? Math.min(1, be.shedRps / be.rps) : 0;
   const p99 = c.p99 >= 1000 ? `${(c.p99 / 1000).toFixed(1)}s` : `${c.p99.toFixed(0)}ms`;
+  const beText = shed > 0.001 ? `${pctOf(shed)} shed` : `${pctOf(be.errorRate)} err`;
   return (
-    <>
-      <div className={`metric ${tone ?? ''}`} title="The users' critical requests: their errors and p99, against the SLO">
-        <div className="metric-top">
-          <span className="metric-label">critical</span>
-        </div>
-        <div className="metric-value">
-          {pctOf(c.errorRate)} err <span className="metric-aside">p99 {p99}</span>
-        </div>
+    <div
+      className={`metric class-metric ${tone ?? ''}`}
+      title={`Critical requests: ${pctOf(c.errorRate)} errors, p99 ${p99}, against the SLO. Best-effort requests: ${beText}; they are shed first, so that critical ones keep capacity`}
+    >
+      <div className="metric-top">
+        <span className="metric-label">critical / best-effort</span>
+        <span className="metric-sub">p99 {p99}</span>
       </div>
-      <div className="metric" title="The users' best-effort requests: the share shed on their way, so that critical ones keep capacity">
-        <div className="metric-top">
-          <span className="metric-label">best-effort</span>
-        </div>
-        <div className="metric-value">{shed > 0.001 ? `${pctOf(shed)} shed` : `${pctOf(be.errorRate)} err`}</div>
+      <div className="metric-value">
+        {pctOf(c.errorRate)} err <span className="metric-aside">/ {beText}</span>
       </div>
-    </>
+    </div>
   );
 }
 
