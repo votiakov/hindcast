@@ -250,15 +250,19 @@ describe('retry amplification', () => {
     // still about 3 s deep when it recovers. Two retries keep 300 attempts/s arriving, each waits past
     // the deadline and fails, so the queue never drains, delays of 50–300 ms or not. One retry (200/s)
     // drains it. The fluid engine counted 30% of backed-off retries (160/s) and recovered
-    const errorsAtEnd = (retries: number, retryPolicy: string) => {
+    const errorsAfter = (retries: number, retryPolicy: string, from = 40) => {
       const spec = { components: [{ id: 'users', kind: 'client', timeoutMs: 1000, retries, retryPolicy }, { id: 'db', kind: 'db', capacity: 250, queueS: 10 }], connections: [['users', 'db']] };
       const sc = { duration: 50, rps: 100, events: [{ at: 8, action: { type: 'degrade', id: 'db', factor: 0.3 } }, { at: 14, action: { type: 'degrade', id: 'db', factor: 1 } }] };
-      const last = (tl: { t: number; errorRate: number }[]) => tl.filter((p) => p.t > 40).reduce((m, p) => Math.max(m, p.errorRate), 0);
-      return [last(simulate(spec, sc, { sampleEvery: 1 }).timeline), last(simulateDes(spec, sc, { seed: 1 }).timeline)];
+      const worst = (tl: { t: number; errorRate: number }[]) => tl.filter((p) => p.t > from).reduce((m, p) => Math.max(m, p.errorRate), 0);
+      return [worst(simulate(spec, sc, { sampleEvery: 1 }).timeline), worst(simulateDes(spec, sc, { seed: 1 }).timeline)];
     };
-    for (const e of errorsAtEnd(2, 'backoff')) expect(e).toBeGreaterThan(0.9);
-    for (const e of errorsAtEnd(2, 'immediate')) expect(e).toBeGreaterThan(0.9);
-    for (const e of errorsAtEnd(1, 'backoff')) expect(e).toBeLessThan(0.01);
+    for (const e of errorsAfter(2, 'backoff')) expect(e).toBeGreaterThan(0.9);
+    for (const e of errorsAfter(2, 'immediate')) expect(e).toBeGreaterThan(0.9);
+    for (const e of errorsAfter(1, 'backoff')) expect(e).toBeLessThan(0.01);
+    // one immediate retry: the queue (about 450 waiting, 1.8 s) drains at 250 − 200 = 50/s and is
+    // under the 1 s deadline by about 18 s (the DES: 19–20 s). A late attempt is retried when its
+    // deadline fires, 1 s later: retrying it at once kept the fluid engine down until 24 s
+    for (const e of errorsAfter(1, 'immediate', 23)) expect(e).toBeLessThan(0.01);
   });
   it('a retry budget caps extra load at 10%', () => {
     expect(retryAmp(0.9, 3, 'budget')).toBeCloseTo(1.1);

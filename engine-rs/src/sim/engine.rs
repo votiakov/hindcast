@@ -241,6 +241,11 @@ pub struct NodeState {
     pub cost_per_hour: f64,
     pub failover: Failover,
     pub attempt_fail: f64,
+    /// a caller's recent attempt failure rates (when, rate) and how long a failed attempt takes before
+    /// it is retried, ms: a retry goes out when its attempt has failed (at its deadline, if late), so
+    /// the retries sent now are of the attempts that went out that long ago
+    pub fail_hist: VecDeque<(f64, f64)>,
+    pub retry_after_ms: f64,
     pub retry_amp: f64,
     pub breaker: Breaker,
     pub breaker_t: f64,
@@ -314,6 +319,8 @@ fn fresh() -> NodeState {
         cost_per_hour: 0.0,
         failover: Failover::None,
         attempt_fail: 0.0,
+        fail_hist: VecDeque::new(),
+        retry_after_ms: 0.0,
         retry_amp: 1.0,
         breaker: Breaker::Closed,
         breaker_t: 0.0,
@@ -1628,7 +1635,14 @@ impl Engine {
             let targets: Vec<Route> = r.routes.take().unwrap_or_else(|| routes.clone());
             st.breaker_pass = if targets.is_empty() { 1.0 } else { Self::breaker_pass(d, &mut st, dt, &mut events, id) };
             let retries = d.retries.unwrap_or(0.0);
-            st.retry_amp = if retries > 0.0 && !targets.is_empty() { retry_amp(st.attempt_fail, retries, d.retry_policy.as_deref().unwrap_or("immediate")) } else { 1.0 };
+            st.retry_amp = if retries > 0.0 && !targets.is_empty() {
+                // the failure rate of the attempts whose retries go out now
+                let at = now - st.retry_after_ms / 1000.0;
+                let f = st.fail_hist.iter().rev().find(|x| x.0 <= at + 1e-9).map(|x| x.1).unwrap_or(st.fail_hist.front().map_or(st.attempt_fail, |x| x.1));
+                retry_amp(f, retries, d.retry_policy.as_deref().unwrap_or("immediate"))
+            } else {
+                1.0
+            };
             let forward = r.forward * st.breaker_pass * st.retry_amp * d.fanout.unwrap_or(1.0).max(1.0);
             let fwd_r = r.fwd_read_share.unwrap_or(read_ratio);
 
@@ -1975,6 +1989,9 @@ impl Engine {
                 lat = lat.min(t);
             }
             st.attempt_fail = if has_kids { 1.0 - attempt } else { 0.0 };
+            if d.retries.unwrap_or(0.0) > 0.0 && has_kids {
+                st.fail_hist.push_back((now, st.attempt_fail));
+            }
             // retries, then breaker (blocked calls fail fast or get the fallback)
             let mut child_succ = attempt;
             let (mut child_r, mut child_w) = (attempt_r, attempt_w);
@@ -2013,6 +2030,12 @@ impl Engine {
                     k += 1.0;
                 }
                 call_fail_ms = tries * attempt_fail_ms + all_waits;
+                // the first retry goes out a failed attempt's time (and a wait) after its attempt
+                st.retry_after_ms = attempt_fail_ms + wait(0.0);
+                let keep_from = now - st.retry_after_ms / 1000.0 - 1.0;
+                while st.fail_hist.len() > 1 && st.fail_hist[1].0 <= keep_from {
+                    st.fail_hist.pop_front();
+                }
             }
             if st.breaker_pass < 1.0 {
                 let p = st.breaker_pass;

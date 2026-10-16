@@ -11,7 +11,8 @@ import * as wasm from '../backtest/wasm/hindcast_engine.js';
  * The engine is generic. Per-kind behaviour lives in ./components (one Behavior per kind);
  * this file owns everything that applies to any node:
  *   - routing policy across children: split | fanout | failover
- *   - retries (immediate | backoff | budget), driven by last tick's downstream failure rate
+ *   - retries (immediate | backoff | budget), driven by the failure rate of the attempts whose
+ *     retries go out now (a late attempt is retried when its deadline fires)
  *   - circuit breakers with optional fallback responses
  *   - caller deadlines (responses slower than `timeoutMs` count as failures)
  *   - utilisation, history, alerts, cost and global SLO numbers

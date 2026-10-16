@@ -87,7 +87,8 @@ Every tick (`dt` = 50 ms of simulated time):
    - **breaker**: closed → open when last tick's downstream attempt failure > 50 % for ≥ 1 s;
      open lets 2 % through for 5 s; half-open lets 20 % through; closes when failure < 10 %.
      Blocked calls fail fast or, with `fallback`, succeed with a degraded response.
-   - **retries**: forwarded volume × amplification, from last tick's failure rate `f`:
+   - **retries**: forwarded volume × amplification, from the failure rate `f` of the attempts whose
+     retries go out now (sent a failed attempt's time earlier: the deadline for a late one, at once for a rejection):
      immediate and backoff `Σₖ fᵏ (k = 0…R)` (backoff delays a retry, it does not skip it: over any
      stretch longer than the delays it sends as many attempts); budget `min(Σ, 1.1)` (≤ 10 % extra
      load). A retry costs the failed attempt's time plus, with backoff, the DES's mean wait

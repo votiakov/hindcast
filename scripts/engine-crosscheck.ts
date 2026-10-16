@@ -115,6 +115,10 @@ const describe = (spec: ReturnType<typeof generate>) =>
 //    whose 10 s queue is still 3 s deep after a stall at 30%: two retries keep 300 attempts/s arriving,
 //    every one waits past the deadline, and the database never catches up — with or without backoff
 //    (the DES: 100% errors to the end; the fluid engine with backoff saw 160/s and recovered). Fixed.
+//    With one retry (200/s) the queue drains at 50/s and is under the deadline by about 18 s (DES
+//    19–20 s); the fluid engine retried a late attempt at once instead of when its deadline fired, 1 s
+//    later, and stayed down until 24 s. Fixed: retries follow the failure rate of the attempts sent a
+//    failed attempt's time earlier (now 21 s).
 //  - Retried answers: a retry's time was added to every answer's mean, so the 16% of answers that took
 //    a second attempt (users > storage failing 20%, one retry: p99 ≈ the 94th percentile of two
 //    answers' time, 2 × 38 ms × 1.33 ≈ 101 ms; the DES 108) did not show: p99 76. DES right; fixed (now 106):
