@@ -3,6 +3,7 @@ name = "hindcast-engine"
 version = "0.1.0"
 edition = "2021"
 description = "Hindcast's replay engine: real traffic through a calibrated model, bucket by bucket"
+license = "Apache-2.0"
 publish = false
 
 [lib]

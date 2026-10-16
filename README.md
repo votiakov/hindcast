@@ -244,3 +244,8 @@ Several lessons, comparisons and the back-of-the-envelope presets are built on t
 of [The System Design Primer](https://github.com/donnemartin/system-design-primer) by Donne Martin,
 licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The wording and the simulations
 are our own; each lesson based on it says so under its picker.
+
+## License
+
+Apache-2.0: see [LICENSE](LICENSE). Copyright 2026 Andrii Votiakov; redistributions keep [NOTICE](NOTICE).
+The lessons built on The System Design Primer keep its CC BY 4.0 credit (above).

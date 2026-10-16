@@ -39,6 +39,9 @@
 <h2>"Why Rust and WebAssembly?"</h2>
 <p>So one engine runs everywhere it is used: in the browser for the app, which needs no server and works on your data without uploading it, and as one native binary for the CLI, the MCP server and the agent tools. Speed is the other reason: the discrete-event engine simulates every request (the shop example's 90 seconds of Black Friday is about a million events, in a tenth of a second), and the fluid one runs a simulated second in about a millisecond, which is what makes Monte Carlo runs, the failure audit and 30 draws per strategy over weeks of history practical on a laptop. The cost is a Rust toolchain to build the binary from source.</p>
 
+<h2>Is it open source?</h2>
+<p>Yes: Apache-2.0, the engine, the CLI, the MCP server, the app, the lessons and the reference data alike. Everything on these pages can be run and checked from a clone.</p>
+
 <h2>What it touches in your systems</h2>
 <p>Nothing, beyond reading. It queries Prometheus, and Jaeger or Tempo if you have them (traces are optional), reads exported files and the bill, and runs <code>kubectl get</code> only when asked. Every answer is computed on your machine or in your browser. There is no analytics or telemetry. When an AI agent runs the tools, their output goes to that agent's model provider, as with any tool it uses.</p>
 
