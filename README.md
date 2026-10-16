@@ -81,8 +81,8 @@ How it differs from the system-design simulators you may have seen, and what it 
 
 ## Install
 
-Needs Node 20+. The CLI, the MCP server and the agent tools are one native binary: `bin/hindcast`
-builds it on first use (about two minutes, once), which needs a Rust toolchain
+Needs Node 22.12 or newer. The CLI, the MCP server and the agent tools are one native binary:
+`bin/hindcast` builds it on first use (about two minutes, once), which needs a Rust toolchain
 ([rustup](https://rustup.rs)). The app doesn't: the engine is committed as WebAssembly (rebuilding
 it with `npm run engine:build` needs the `wasm32-unknown-unknown` target and `wasm-bindgen-cli`).
 A clone is about 470 MB, most of it the recorded reference runs that the accuracy tables are
