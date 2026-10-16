@@ -88,8 +88,10 @@ Every tick (`dt` = 50 ms of simulated time):
      open lets 2 % through for 5 s; half-open lets 20 % through; closes when failure < 10 %.
      Blocked calls fail fast or, with `fallback`, succeed with a degraded response.
    - **retries**: forwarded volume × amplification, from last tick's failure rate `f`:
-     immediate `Σₖ fᵏ (k = 0…R)`; backoff `1 + 0.3 × (Σ − 1)` (spread over time);
-     budget `min(Σ, 1.1)` (≤ 10 % extra load).
+     immediate and backoff `Σₖ fᵏ (k = 0…R)` (backoff delays a retry, it does not skip it: over any
+     stretch longer than the delays it sends as many attempts); budget `min(Σ, 1.1)` (≤ 10 % extra
+     load). A retry costs the failed attempt's time plus, with backoff, the DES's mean wait
+     (`50 ms × 2ᵏ`, capped at 2 s).
    - **routing**: `split` (even), `fanout` (every child gets the full volume), `failover`
      (children in order; what one failed last tick spills to the next).
 4. **Backward pass** (reverse topological order) — aggregate the children per routing mode

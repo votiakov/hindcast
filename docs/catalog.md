@@ -156,7 +156,7 @@ better.
 | failover with no automatic election | 1,800 s | guess: someone is paged and promotes a replica by hand. The Kubernetes import sets it for a Postgres or MySQL StatefulSet with more than one pod and no CloudNativePG, Patroni, Zalando or Crunchy operator |
 | circuit breaker | trips past 50 % failures held for 1 s, open 5 s, closes under 10 % | 50 % and 5 s are [Hystrix's defaults](https://github.com/Netflix/Hystrix/wiki/Configuration) (`errorThresholdPercentage`, `sleepWindowInMilliseconds`); the 1 s window (Hystrix: a 10 s rolling window) and the 10 % to close are guesses |
 | retry budget (`retryPolicy: budget`) | ≤ 10 % extra calls | cited: [Google SRE book, Handling Overload](https://sre.google/sre-book/handling-overload/) (a per-client retry budget of 10 %) |
-| retry backoff | retries spread to 30 %, 200 ms base delay | guess |
+| retry backoff | 50 ms × 2ᵏ before retry k + 1, at most 2 s, jittered ×0.5–1.5; every failed attempt is still retried | guess |
 | cold start | 400 ms generic; by runtime 40 ms (Rust) to 1,800 ms (Java) | guess, in the order public Lambda cold-start measurements put them; not fitted |
 | service-time spread (DES `serviceCv`) | 0.6, lognormal | guess, between deterministic (0) and exponential (1); the fluid engine's p99 factor (3.11) and queueing scale (0.68) follow from it analytically |
 | cache hit rate on import | 85 % (cache), 60 % (CDN) | guess; the importers list it among their assumptions. Set `hitRate` from CacheHits / (CacheHits + CacheMisses) |

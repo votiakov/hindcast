@@ -40,8 +40,10 @@ const OPEN_S: f64 = 5.0;
 const PROBE_OPEN: f64 = 0.02;
 const PROBE_HALF: f64 = 0.2;
 const CLOSE_FAIL: f64 = 0.1;
-const BACKOFF_SPREAD: f64 = 0.3;
-const BACKOFF_DELAY_MS: f64 = 200.0;
+/// retry backoff, as the discrete-event engine draws it: 50 ms × 2ᵏ before retry k + 1, at most 2 s,
+/// jittered ×0.5–1.5 (so these are the means)
+pub const BACKOFF_BASE_MS: f64 = 50.0;
+pub const BACKOFF_CAP_MS: f64 = 2000.0;
 const RETRY_BUDGET: f64 = 0.1;
 const AUTOSCALE_TARGET: f64 = 0.6;
 const AUTOSCALE_WARMUP_S: f64 = 30.0;
@@ -355,7 +357,14 @@ pub fn dynamic_data(d: &NodeData, scaler: Option<&ScalerState>) -> NodeData {
     e
 }
 
-/// outgoing attempts per original call, given per-attempt failure rate f
+/// the mean wait before the (k + 1)th retry with backoff (k = 0: the first)
+pub fn backoff_ms(k: f64) -> f64 {
+    BACKOFF_CAP_MS.min(BACKOFF_BASE_MS * 2f64.js_pow(k))
+}
+
+/// outgoing attempts per original call, given per-attempt failure rate f. Backoff delays a retry but
+/// does not skip it: every failed attempt with retries left is retried, sooner or later, so over any
+/// stretch longer than the delays (50 ms to 2 s) backoff sends as many attempts as immediate retries.
 pub fn retry_amp(f: f64, retries: f64, policy: &str) -> f64 {
     let mut sum = 0.0;
     let mut k = 0.0;
@@ -364,7 +373,6 @@ pub fn retry_amp(f: f64, retries: f64, policy: &str) -> f64 {
         k += 1.0;
     }
     match policy {
-        "backoff" => 1.0 + (sum - 1.0) * BACKOFF_SPREAD,
         "budget" => sum.min(1.0 + RETRY_BUDGET),
         _ => sum,
     }
@@ -1983,11 +1991,26 @@ impl Engine {
                 child_succ = retry_success(attempt, retries, policy, st.retry_amp);
                 child_r = retry_success(attempt_r, retries, policy, st.retry_amp);
                 child_w = retry_success(attempt_w, retries, policy, st.retry_amp);
-                let backoff = if policy == "backoff" { BACKOFF_DELAY_MS * 4.0 } else { 0.0 };
-                child_lat = lat + (st.retry_amp - 1.0) * (attempt_fail_ms + backoff);
+                // retry k happens when the k attempts before it failed (chance f^k), after a failed
+                // attempt's time and, with backoff, its wait
+                let f = st.attempt_fail;
+                let wait = |k: f64| if policy == "backoff" { backoff_ms(k) } else { 0.0 };
+                let mut waits = 0.0;
+                let mut k = 1.0;
+                while k <= retries {
+                    waits += f.js_pow(k) * wait(k - 1.0);
+                    k += 1.0;
+                }
+                child_lat = lat + (st.retry_amp - 1.0) * attempt_fail_ms + waits;
                 // a call that fails in the end failed every attempt it was allowed
                 let tries = if policy == "budget" { st.retry_amp } else { retries + 1.0 };
-                call_fail_ms = tries * attempt_fail_ms + (tries - 1.0) * backoff;
+                let mut all_waits = 0.0;
+                let mut k = 0.0;
+                while k + 1.0 < tries {
+                    all_waits += wait(k);
+                    k += 1.0;
+                }
+                call_fail_ms = tries * attempt_fail_ms + all_waits;
             }
             if st.breaker_pass < 1.0 {
                 let p = st.breaker_pass;

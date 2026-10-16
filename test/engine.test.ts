@@ -230,6 +230,10 @@ describe('retry amplification', () => {
     expect(retryAmp(0, 3, 'immediate')).toBe(1);
     expect(retryAmp(0.5, 3, 'immediate')).toBeCloseTo(1.875);
   });
+  it('backoff delays retries without skipping any: as many attempts as immediate retries', () => {
+    expect(retryAmp(0.5, 2, 'backoff')).toBeCloseTo(1.75);
+    expect(retryAmp(0.5, 2, 'backoff')).toBe(retryAmp(0.5, 2, 'immediate'));
+  });
   it('a retry budget caps extra load at 10%', () => {
     expect(retryAmp(0.9, 3, 'budget')).toBeCloseTo(1.1);
   });

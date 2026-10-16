@@ -30,7 +30,6 @@ export interface EngineConfig {
 
 export const DEFAULT_ENGINE_CONFIG: EngineConfig = { timeoutS: 1, failoverS: 60, coldStartMs: 400 };
 
-const BACKOFF = { spread: 0.3, delayMs: 200 };
 const RETRY_BUDGET = 0.1;
 
 export type BreakerState = 'closed' | 'open' | 'half';
@@ -102,11 +101,11 @@ export interface SimEvent {
   detail?: string;
 }
 
-/** outgoing attempts per original call, given per-attempt failure rate f */
+/** outgoing attempts per original call, given per-attempt failure rate f (engine-rs retry_amp). Backoff
+ *  delays retries without skipping any, so it sends as many attempts as immediate retries */
 export function retryAmp(f: number, retries: number, policy: RetryPolicy): number {
   let sum = 0;
   for (let k = 0; k <= retries; k++) sum += f ** k;
-  if (policy === 'backoff') return 1 + (sum - 1) * BACKOFF.spread; // retries spread out over time
   if (policy === 'budget') return Math.min(sum, 1 + RETRY_BUDGET); // at most +10% extra load
   return sum;
 }
