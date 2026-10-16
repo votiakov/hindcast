@@ -55,6 +55,7 @@ export function validateSpec(input: unknown): { ok: boolean; issues: Issue[]; sp
     if (c.kind === 'replica' && !parents.includes('db')) issues.push({ level: 'warning', message: `replica "${c.id}" is not connected from a db — it will be treated as a plain server`, path: at(c) });
     if (c.kind !== 'client' && !(into.get(c.id) ?? []).length) issues.push({ level: 'warning', message: `"${c.id}" receives no traffic (nothing connects to it)`, path: at(c) });
     if (c.fallback && !c.breaker) issues.push({ level: 'warning', message: `"${c.id}" has fallback without breaker — fallback only applies while a breaker is open`, path: at(c) });
+    if ((c.bulkheadWaitMs ?? 0) > 0 && c.bulkhead === undefined) issues.push({ level: 'warning', message: `"${c.id}" has bulkheadWaitMs without bulkhead — the wait only applies to calls past a bulkhead`, path: at(c) });
   }
   for (const [zi, z] of (spec.zones ?? []).entries()) for (const [mi, m] of z.members.entries()) if (!ids.has(m)) issues.push({ level: 'error', message: `zone "${z.id}" lists unknown member "${m}"`, path: ['zones', zi, 'members', mi] });
 

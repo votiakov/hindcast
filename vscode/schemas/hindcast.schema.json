@@ -322,6 +322,12 @@
             "minimum": 1,
             "maximum": 10000
           },
+          "bulkheadWaitMs": {
+            "description": "with a bulkhead: how long a call past it waits for a slot before it fails, ms (default 0: fails at once, as Resilience4j's maxWaitDuration; a connection pool's acquire timeout is one, HikariCP's connectionTimeout 30,000) — the wait holds the caller's thread",
+            "type": "number",
+            "minimum": 0,
+            "maximum": 60000
+          },
           "provisioned": {
             "description": "function: provisioned concurrency — executions kept warm, so no cold start up to it; billed by the hour whether used or not ($0.0000041667 per GB-s)",
             "type": "integer",

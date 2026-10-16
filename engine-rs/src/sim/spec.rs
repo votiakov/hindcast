@@ -7,7 +7,7 @@ use crate::math::js_num;
 use serde_json::{json, Map as JMap, Value};
 
 const KINDS: [&str; 22] = ["client", "cdn", "lb", "gateway", "server", "worker", "function", "cache", "db", "replica", "storage", "queue", "llm", "llmapi", "external", "kv", "dns", "stream", "search", "vector", "archive", "edge"];
-const DATA_KEYS: [&str; 50] = ["tier", "instances", "runtime", "hitRate", "limit", "batching", "retries", "retryPolicy", "timeoutMs", "breaker", "fallback", "routing", "fanout", "stallRate", "stallMs", "queueS", "capacity", "latencyMs", "costPerHour", "autoscale", "warmupS", "writePolicy", "workingSetGb", "skew", "shards", "hotKeyShare", "ttlS", "healthCheckS", "partitions", "threads", "bulkhead", "provisioned", "prefixes", "hotRowShare", "failoverS", "burst", "maxReceives", "visibilityS", "maxConnections", "connectionS", "everyS", "batch", "batchS", "refreshS", "recall", "vectorsM", "retrieval", "edgeShare", "cpuMs", "cpuLimitMs"];
+const DATA_KEYS: [&str; 51] = ["tier", "instances", "runtime", "hitRate", "limit", "batching", "retries", "retryPolicy", "timeoutMs", "breaker", "fallback", "routing", "fanout", "stallRate", "stallMs", "queueS", "capacity", "latencyMs", "costPerHour", "autoscale", "warmupS", "writePolicy", "workingSetGb", "skew", "shards", "hotKeyShare", "ttlS", "healthCheckS", "partitions", "threads", "bulkhead", "bulkheadWaitMs", "provisioned", "prefixes", "hotRowShare", "failoverS", "burst", "maxReceives", "visibilityS", "maxConnections", "connectionS", "everyS", "batch", "batchS", "refreshS", "recall", "vectorsM", "retrieval", "edgeShare", "cpuMs", "cpuLimitMs"];
 
 #[derive(Clone, Debug, Default)]
 pub struct Issue {
@@ -179,6 +179,7 @@ fn check_component(c: &JMap<String, Value>, path: Vec<Value>, issues: &mut Vec<I
     v.number("partitions", false, Some((1.0, true)), Some(1024.0), true);
     v.number("threads", false, Some((1.0, true)), Some(10000.0), true);
     v.number("bulkhead", false, Some((1.0, true)), Some(10000.0), true);
+    v.number("bulkheadWaitMs", false, Some((0.0, true)), Some(60000.0), false);
     v.number("provisioned", false, Some((0.0, true)), Some(10000.0), true);
     v.number("prefixes", false, Some((1.0, true)), Some(100000.0), true);
     v.number("hotRowShare", false, Some((0.0, true)), Some(1.0), false);

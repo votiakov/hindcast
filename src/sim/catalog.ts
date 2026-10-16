@@ -127,6 +127,8 @@ export interface SystemNodeData extends Record<string, unknown> {
   threads?: number;
   /** calls that may wait on any one dependency at once, per instance; past it a call fails at once */
   bulkhead?: number;
+  /** with a bulkhead: how long a call past it waits for a slot before it fails, ms (unset: at once) */
+  bulkheadWaitMs?: number;
   /** function: provisioned concurrency — executions kept warm (no cold start up to it), billed hourly */
   provisioned?: number;
   /** storage: key prefixes (default 10) — each takes 5,500 reads or 3,500 writes a second */

@@ -502,6 +502,18 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
               )}
             </div>
           )}
+          {(data.kind === 'server' || data.kind === 'worker') && caller && !!data.bulkhead && (
+            <div className="nc-row" title="How long a call past the bulkhead waits for a slot before it fails — a connection pool's acquire timeout (HikariCP's default is 30 s). none: it fails at once. The wait holds the thread">
+              <span className="nc-l">bulkhead wait</span>
+              <select value={data.bulkheadWaitMs ?? 0} onChange={(e) => set({ bulkheadWaitMs: +e.target.value || undefined })}>
+                {[...new Set([0, 100, 1000, 5000, 30000, data.bulkheadWaitMs ?? 0])].sort((x, y) => x - y).map((n) => (
+                  <option key={n} value={n}>
+                    {n === 0 ? 'none — fail at once' : n >= 1000 ? `${n / 1000} s` : `${n} ms`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           {data.kind !== 'client' && (outgoing > 1 || (data.routing ?? 'split') !== 'split' || data.kind === 'server' || data.kind === 'worker' || data.kind === 'function') && (
             <div className="nc-row" title="How calls spread over the components this one calls">
               <span className="nc-l">routing</span>

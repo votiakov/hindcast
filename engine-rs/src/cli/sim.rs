@@ -434,7 +434,7 @@ impl Validated {
     }
 }
 
-const COMPONENT_KEYS: [&str; 54] = ["id", "kind", "name", "tier", "instances", "runtime", "hitRate", "limit", "batching", "retries", "retryPolicy", "timeoutMs", "breaker", "fallback", "routing", "stallRate", "stallMs", "fanout", "queueS", "autoscale", "warmupS", "writePolicy", "workingSetGb", "skew", "shards", "hotKeyShare", "ttlS", "healthCheckS", "partitions", "threads", "bulkhead", "provisioned", "prefixes", "hotRowShare", "failoverS", "burst", "maxReceives", "visibilityS", "maxConnections", "connectionS", "everyS", "batch", "batchS", "refreshS", "recall", "vectorsM", "retrieval", "edgeShare", "cpuMs", "cpuLimitMs", "capacity", "latencyMs", "costPerHour", ""];
+const COMPONENT_KEYS: [&str; 55] = ["id", "kind", "name", "tier", "instances", "runtime", "hitRate", "limit", "batching", "retries", "retryPolicy", "timeoutMs", "breaker", "fallback", "routing", "stallRate", "stallMs", "fanout", "queueS", "autoscale", "warmupS", "writePolicy", "workingSetGb", "skew", "shards", "hotKeyShare", "ttlS", "healthCheckS", "partitions", "threads", "bulkhead", "bulkheadWaitMs", "provisioned", "prefixes", "hotRowShare", "failoverS", "burst", "maxReceives", "visibilityS", "maxConnections", "connectionS", "everyS", "batch", "batchS", "refreshS", "recall", "vectorsM", "retrieval", "edgeShare", "cpuMs", "cpuLimitMs", "capacity", "latencyMs", "costPerHour", ""];
 
 /// the spec as the schema returns it: its keys in schema order, unknown keys dropped, "a -> b" as a pair
 pub fn canonical_spec(v: &Value) -> Value {
@@ -687,6 +687,9 @@ pub fn validate(input: &Value) -> Validated {
         let t = |key: &str| c.get(key).and_then(|x| x.as_bool()).unwrap_or(false);
         if t("fallback") && !t("breaker") {
             out.push(("warning", format!("\"{}\" has fallback without breaker — fallback only applies while a breaker is open", cid)));
+        }
+        if c.get("bulkheadWaitMs").and_then(|x| x.as_f64()).unwrap_or(0.0) > 0.0 && c.get("bulkhead").is_none() {
+            out.push(("warning", format!("\"{}\" has bulkheadWaitMs without bulkhead — the wait only applies to calls past a bulkhead", cid)));
         }
     }
     for (zid, _, members) in &arch.zones {

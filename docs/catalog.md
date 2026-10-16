@@ -143,6 +143,7 @@ GB (except `archive`) are not included; 1- and 3-year commitments are a setting 
 | cold start | 400 ms (runtime-specific when set) | Settings → Serverless cold starts |
 | breaker | trip > 50 % failures, open 5 s, close < 10 % | engine constants |
 | retry budget | ≤ 10 % extra calls | engine constants |
+| bulkhead wait | 0: a call past the bulkhead fails at once, as [Resilience4j's `maxWaitDuration`](https://resilience4j.readme.io/docs/bulkhead) defaults to 0. A connection pool waits instead: [HikariCP's `connectionTimeout`](https://github.com/brettwooldridge/HikariCP) defaults to 30,000 ms | per caller `bulkheadWaitMs` |
 
 ## Where the audit's numbers come from
 

@@ -228,10 +228,14 @@ pub fn explain(d: &NodeData, st: Option<&NodeStats>, v: &View) -> Option<String>
         format!("{}% of invocations hit a cold start while new instances spin up.{}", pct(st.cold_frac), if d.provisioned.is_some() { "" } else { " Provisioned concurrency keeps some warm, for a price by the hour." })
     } else if let Some(t) = d.threads.filter(|_| st.drop_rps > 1.0 && super::engine::threads_capacity(d, st.reachable, st.hold_ms) < cap * 0.95) {
         format!(
-            "Out of threads: {} threads, one per request in flight, each held {} — mostly waiting on its calls — so only {} req/s get one. A slow dependency is holding them: a timeout gives them back sooner; a bulkhead stops one dependency from taking them all.",
+            "Out of threads: {} threads, one per request in flight, each held {} — mostly waiting on its calls — so only {} req/s get one. {}",
             js_num(t * st.reachable.max(1.0)),
             fmt_ms(base_latency_of(d) + st.hold_ms),
-            fmt(super::engine::threads_capacity(d, st.reachable, st.hold_ms))
+            fmt(super::engine::threads_capacity(d, st.reachable, st.hold_ms)),
+            match super::engine::bulkhead_wait(d) {
+                w if w > 0.0 => format!("Its bulkhead makes a call past it wait up to {} for a slot, and the wait holds the thread: refusing at once keeps the threads for the other calls.", fmt_ms(w)),
+                _ => "A slow dependency is holding them: a timeout gives them back sooner; a bulkhead stops one dependency from taking them all.".into(),
+            }
         )
     } else if v.health == "hot" && st.drop_rps > 1.0 {
         format!("Overloaded: {} req/s offered vs {} req/s capacity. The excess queues, then gets dropped.", fmt(st.in_rps), fmt(cap))

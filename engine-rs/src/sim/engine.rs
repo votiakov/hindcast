@@ -709,6 +709,27 @@ pub fn bulkhead_admit(d: &NodeData, reachable: f64, rps: f64, latency_ms: f64) -
     }
 }
 
+/// a bulkhead with a wait (`bulkheadWaitMs`): how long a call past it waits for a slot before it fails,
+/// ms; 0 when it has none (refused at once)
+pub fn bulkhead_wait(d: &NodeData) -> f64 {
+    match (d.bulkhead.filter(|b| *b > 0.0), d.bulkhead_wait_ms.filter(|w| *w > 0.0)) {
+        (Some(_), Some(w)) => w,
+        _ => 0.0,
+    }
+}
+
+/// past a bulkhead with a wait the calls queue for a slot: while more are offered than its slots can
+/// hold (admitted share below 1) the queue is never empty, so a call that gets a slot has waited about
+/// the whole wait (a fluid queue with patience W: its virtual waiting time is W), and one that does
+/// not fails after it; below that nobody waits
+pub fn bulkhead_waited(wait_ms: f64, admit: f64) -> f64 {
+    if wait_ms > 0.0 && admit < 1.0 {
+        wait_ms
+    } else {
+        0.0
+    }
+}
+
 /// thread-per-request: a thread is held for the work and every call it waits on, so the instances'
 /// threads finish at most threads ÷ hold time requests a second (Little's law). Unlimited when async
 pub fn threads_capacity(d: &NodeData, reachable: f64, hold_ms: f64) -> f64 {
@@ -1841,6 +1862,7 @@ impl Engine {
                 // a link that makes N calls per request: all must succeed, the caller waits for the slowest
                 let timeout_ms = cfg.timeout_s * 1000.0;
                 let bulk_reach = self.nodes[sidx[i]].reachable;
+                let bulk_wait = bulkhead_wait(d);
                 let kid = |k: &Route| {
                     let s = &self.nodes[sidx[k.t]];
                     let f = l.flows.iter().find(|x| x.0 == k.e).map(|x| x.1).unwrap_or(0.0);
@@ -1850,9 +1872,25 @@ impl Engine {
                         return (0.0, if edge_broken[k.e] { FAST_FAIL_MS } else { timeout_ms }, f, 0.0);
                     }
                     let (ks, kl, kt) = if n > 1.0 { (s.success.js_pow(n), s.latency_ms * fanout_tail(n) + edge_lat[k.e], s.tail_ms * fanout_tail(n)) } else { (s.success, s.latency_ms + edge_lat[k.e], s.tail_ms) };
-                    // a bulkhead: past its share of waiting calls, the rest fail at once
+                    // a bulkhead: past its share of waiting calls, the rest fail at once — or, with a wait,
+                    // queue for a slot and fail when the wait is up
                     let admit = bulkhead_admit(d, bulk_reach, f / dt, kl);
+                    if bulk_wait > 0.0 {
+                        let waited = bulkhead_waited(bulk_wait, admit);
+                        return (ks * admit, admit * (kl + waited) + (1.0 - admit) * bulk_wait, f, kt);
+                    }
                     (ks * admit, admit * kl + (1.0 - admit) * 0.5, f, kt)
+                };
+                // a call that got a slot after waiting for one: its wait, ms (0 without a bulkhead wait)
+                let slot_wait = |k: &Route| -> f64 {
+                    if bulk_wait <= 0.0 || edge_cut[k.e] {
+                        return 0.0;
+                    }
+                    let s = &self.nodes[sidx[k.t]];
+                    let f = l.flows.iter().find(|x| x.0 == k.e).map(|x| x.1).unwrap_or(0.0);
+                    let n = edge_calls[k.e];
+                    let kl = if n > 1.0 { s.latency_ms * fanout_tail(n) + edge_lat[k.e] } else { s.latency_ms + edge_lat[k.e] };
+                    bulkhead_waited(bulk_wait, bulkhead_admit(d, bulk_reach, f / dt, kl))
                 };
                 {
                     let (mut w, mut ms) = (0.0, 0.0);
@@ -1860,7 +1898,19 @@ impl Engine {
                         let (ks, _, f, _) = kid(k);
                         let wk = f.max(1e-9) * (1.0 - ks).max(1e-9);
                         w += wk;
-                        ms += wk * if edge_broken[k.e] { FAST_FAIL_MS } else if edge_cut[k.e] { timeout_ms } else { self.nodes[sidx[k.t]].fail_ms + edge_lat[k.e] };
+                        let callee = if edge_broken[k.e] { FAST_FAIL_MS } else if edge_cut[k.e] { timeout_ms } else { self.nodes[sidx[k.t]].fail_ms + edge_lat[k.e] };
+                        if bulk_wait > 0.0 && !edge_cut[k.e] {
+                            // with a bulkhead wait: the calls that got no slot failed after the whole wait,
+                            // the rest after their wait and the dependency's own failure time
+                            let s = &self.nodes[sidx[k.t]];
+                            let n = edge_calls[k.e];
+                            let kl = if n > 1.0 { s.latency_ms * fanout_tail(n) + edge_lat[k.e] } else { s.latency_ms + edge_lat[k.e] };
+                            let admit = bulkhead_admit(d, bulk_reach, f / dt, kl);
+                            let refused = (f.max(1e-9) * (1.0 - admit)).min(wk);
+                            ms += refused * bulk_wait + (wk - refused) * (callee + bulkhead_waited(bulk_wait, admit));
+                        } else {
+                            ms += wk * callee;
+                        }
                     }
                     kid_fail = ms / w;
                 }
@@ -1871,13 +1921,15 @@ impl Engine {
                     if edge_cut[k.e] {
                         return vec![[1.0, if edge_broken[k.e] { FAST_FAIL_MS } else { timeout_ms }, 0.0]];
                     }
+                    // the answers that waited for a bulkhead slot first
+                    let sw = slot_wait(k);
                     if n > 1.0 {
-                        return vec![[1.0, s.latency_ms * fanout_tail(n) + edge_lat[k.e], s.tail_ms * fanout_tail(n)]];
+                        return vec![[1.0, s.latency_ms * fanout_tail(n) + edge_lat[k.e] + sw, s.tail_ms * fanout_tail(n)]];
                     }
                     if s.dist.is_empty() {
-                        vec![[1.0, s.latency_ms + edge_lat[k.e], s.tail_ms]]
+                        vec![[1.0, s.latency_ms + edge_lat[k.e] + sw, s.tail_ms]]
                     } else {
-                        mix_then(&s.dist, edge_lat[k.e], 0.0, 1.0)
+                        mix_then(&s.dist, edge_lat[k.e] + sw, 0.0, 1.0)
                     }
                 };
                 let kid_rw = |k: &Route| {
@@ -2492,6 +2544,39 @@ pub(crate) mod tests {
         let (tl, _) = fluid(spec, sc);
         assert!(errors(&tl, 13.0, 19.0) > 0.95, "timed out: {}", errors(&tl, 13.0, 19.0));
         assert!(errors(&tl, 24.0, 30.0) < 0.01, "healed: {}", errors(&tl, 24.0, 30.0));
+    }
+
+    /// users → api → {slow (2 s), fast}: api has a bulkhead of 10 calls per dependency, and `threads`
+    /// and `bulkheadWaitMs` as given
+    pub fn bulkhead_wait_board(threads: Option<f64>, wait: Option<f64>) -> Value {
+        let mut api = json!({ "id": "api", "kind": "server", "capacity": 5000, "bulkhead": 10 });
+        if let Some(t) = threads {
+            api["threads"] = json!(t);
+        }
+        if let Some(w) = wait {
+            api["bulkheadWaitMs"] = json!(w);
+        }
+        json!({ "components": [{ "id": "users", "kind": "client" }, api, { "id": "slow", "kind": "external", "latencyMs": 2000 }, { "id": "fast", "kind": "server", "capacity": 5000 }], "connections": ["users -> api", "api -> slow", "api -> fast"] })
+    }
+
+    #[test]
+    fn a_bulkhead_that_waits_for_a_slot_holds_the_callers_threads() {
+        let run = |threads: Option<f64>, wait: Option<f64>| simulate(&bulkhead_wait_board(threads, wait), &json!({ "duration": 60, "rps": 200 }), &SimOptions::default()).unwrap().summary;
+        // refused at once: the slow half fails, the fast half is untouched
+        let at_once = run(Some(40.0), None);
+        assert!((at_once.mean_error_rate - 0.47).abs() < 0.03, "at once: {}", at_once.mean_error_rate);
+        // waiting a second for a slot holds a thread that long: 40 threads run out and the fast half fails too
+        let waits = run(Some(40.0), Some(1000.0));
+        assert!(waits.mean_error_rate > 0.75, "waits: {}", waits.mean_error_rate);
+        // the slow calls that got a slot waited for it: their answers take the wait plus the call
+        assert!(waits.p99_answers_ms.unwrap() > at_once.p99_answers_ms.unwrap() + 900.0, "{:?} vs {:?}", waits.p99_answers_ms, at_once.p99_answers_ms);
+        // asynchronous, the wait holds nothing: only the slow half fails, as at once
+        let async_waits = run(None, Some(1000.0));
+        assert!((async_waits.mean_error_rate - at_once.mean_error_rate).abs() < 0.02, "async: {}", async_waits.mean_error_rate);
+        // under the bulkhead nobody waits: at 4 req/s the slow half's 4 calls in flight fit in its 10 slots
+        let quiet = |wait: Option<f64>| simulate(&bulkhead_wait_board(Some(40.0), wait), &json!({ "duration": 60, "rps": 4 }), &SimOptions::default()).unwrap().summary;
+        let (q, q0) = (quiet(Some(1000.0)), quiet(None));
+        assert!(q.mean_error_rate < 0.01 && q.p99_answers_ms == q0.p99_answers_ms, "quiet: {} {:?} vs {:?}", q.mean_error_rate, q.p99_answers_ms, q0.p99_answers_ms);
     }
 
     #[test]

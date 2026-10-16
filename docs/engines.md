@@ -244,7 +244,16 @@ Shared code keeps the engines consistent (`src/sim/autoscale.ts`, `cacheWarmth` 
   injected wait) holds a thread only when the component has `threads` (thread-per-request: Tomcat,
   a Java or Rails server). Then the pool finishes at most `threads × instances ÷ hold time` requests a
   second (Little's law), the hold time being the work plus every call it waits on; the rest wait for a
-  thread and are shed ("out of threads"). A `bulkhead` caps the calls that may wait on one dependency.
+  thread and are shed ("out of threads"). A `bulkhead` caps the calls that may wait on one dependency;
+  past it a call fails at once, or with `bulkheadWaitMs` queues for a slot (DES: first come, first
+  served, failing when the wait is up; fluid: while more calls are offered than the slots hold, the
+  queue is never empty, so a call that gets a slot waited the whole wait and one that does not fails
+  after it). The wait holds the caller's thread. Hand check (`bulkhead_wait_tests`): a caller with
+  40 threads and a bulkhead of 10 calls a 2 s dependency and a fast one, 200 req/s split evenly. At
+  once, 10 of the 200 slow calls in flight get a slot and the rest fail: 47 % of requests fail
+  (fluid 47.3 %, DES 46.9 %) and the fast half is untouched. With a 1 s wait every slow call holds a
+  thread about a second longer, the 40 threads run out, and the fast half fails too
+  (fluid 82.4 %, DES 83.6 %). Asynchronous, the same wait costs nothing beyond the slow half.
   Without `threads` (async: Node, Go, Envoy) waiting holds nothing: a slow dependency adds its latency
   to the caller's answers, and fails requests only through deadlines (`timeoutMs`, which still
   trigger retries). Hand check: a caller of 2 × 150 req/s offered 200 req/s, whose dependency turns

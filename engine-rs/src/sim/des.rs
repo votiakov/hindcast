@@ -256,6 +256,7 @@ const R_LOCK: u8 = 13;
 const R_CONN: u8 = 14;
 const R_CPU: u8 = 15;
 const R_RECONNECT: u8 = 16;
+const R_BULKHEAD_WAIT: u8 = 17;
 
 fn why(n: usize, r: u8) -> Why {
     ((n as u32 + 1) << 8) | r as u32
@@ -280,6 +281,7 @@ pub(super) fn reason_text(r: u8) -> &'static str {
         R_CONN => "connection refused (all connections in use)",
         R_CPU => "killed at its CPU time limit",
         R_RECONNECT => "connection still broken after its dependency came back",
+        R_BULKHEAD_WAIT => "bulkhead full (waited for a slot until its wait ran out)",
         _ => "failed",
     }
 }
@@ -329,6 +331,8 @@ enum Ev {
     Flush { n: usize },
     /// a server's or worker's injected latency has passed (it held no worker meanwhile)
     Waited { n: usize, job: Job },
+    /// a call waiting for a slot in n's bulkhead to its k-th child has waited `bulkheadWaitMs`
+    BulkGiveUp { n: usize, k: usize, token: u64 },
 }
 
 #[derive(Clone, Copy)]
@@ -437,6 +441,11 @@ struct DNode {
     /// a bulkhead: calls that may wait on each dependency (∞: none), and those waiting, by child position
     bulk_cap: f64,
     bulk_inflight: Vec<f64>,
+    /// a bulkhead with a wait (`bulkheadWaitMs`, ms; 0: none): the calls waiting for a slot, by child
+    /// position — (token, callee, read, continuation), first come first served
+    bulk_wait_ms: f64,
+    bulk_waiting: Vec<VecDeque<(u64, usize, bool, ContId)>>,
+    bulk_seq: u64,
     queue: VecDeque<Job>,
     queue_max: f64,
     last_busy_t: f64,
@@ -780,6 +789,7 @@ impl<'a> Des<'a> {
             _ => f64::INFINITY,
         };
         n.bulk_cap = d.bulkhead.filter(|b| *b > 0.0).map(|b| b * reach.max(1.0)).unwrap_or(f64::INFINITY);
+        n.bulk_wait_ms = super::engine::bulkhead_wait(d);
         // serverless throttles instead of queueing; unlimited pools never queue
         n.queue_max = if kind == "function" || !n.workers.is_finite() { 0.0 } else { (cap * d.queue_s.or(spec(kind).queue_s).unwrap_or(cfg_queue)).floor().max(1.0) };
         // a sharded database: a pool and a queue per shard
@@ -910,6 +920,7 @@ impl<'a> Des<'a> {
             Cont::Bulk { n, k, done } => {
                 self.release(id);
                 self.nodes[n].bulk_inflight[k] -= 1.0;
+                self.bulk_next(n, k);
                 self.deliver(done, why);
             }
             Cont::Free => {}
@@ -1147,7 +1158,8 @@ impl<'a> Des<'a> {
                 return self.fail(None, why(i, R_PARTITION), done, 1000.0);
             }
         }
-        // a bulkhead: past the dependency's share of waiting calls, refuse at once
+        // a bulkhead: past the dependency's share of waiting calls, refuse at once — or, with a wait,
+        // queue for a slot (the caller's thread held meanwhile) and fail when the wait is up
         let mut done = done;
         if let Some(f) = from {
             if self.nodes[f].bulk_cap.is_finite() {
@@ -1157,18 +1169,59 @@ impl<'a> Des<'a> {
                         x.bulk_inflight.resize(x.children.len(), 0.0);
                     }
                     if x.bulk_inflight[k] >= x.bulk_cap {
+                        if x.bulk_wait_ms > 0.0 {
+                            if x.bulk_waiting.len() < x.children.len() {
+                                x.bulk_waiting.resize(x.children.len(), VecDeque::new());
+                            }
+                            x.bulk_seq += 1;
+                            let (token, wait) = (x.bulk_seq, x.bulk_wait_ms);
+                            x.bulk_waiting[k].push_back((token, i, read, done));
+                            return self.at(wait, Ev::BulkGiveUp { n: f, k, token });
+                        }
                         self.tr_hop(done, i);
                         return self.fail(Some(f), why(f, R_BULKHEAD), done, 0.5);
                     }
-                    x.bulk_inflight[k] += 1.0;
-                    let inner = done;
-                    done = self.cont(Cont::Bulk { n: f, k, done });
-                    if let Some(t) = self.tr.as_mut() {
-                        t.wrap(done, inner);
-                    }
+                    done = self.take_slot(f, k, done);
                 }
             }
         }
+        self.send(i, read, done, from);
+    }
+
+    /// a call takes a slot in n's bulkhead to its k-th child: freed when the call settles
+    fn take_slot(&mut self, n: usize, k: usize, done: ContId) -> ContId {
+        self.nodes[n].bulk_inflight[k] += 1.0;
+        let wrapped = self.cont(Cont::Bulk { n, k, done });
+        if let Some(t) = self.tr.as_mut() {
+            t.wrap(wrapped, done);
+        }
+        wrapped
+    }
+
+    /// a slot in n's bulkhead to its k-th child came free: the call that has waited longest takes it
+    fn bulk_next(&mut self, n: usize, k: usize) {
+        let next = self.nodes[n].bulk_waiting.get_mut(k).and_then(|q| q.pop_front());
+        if let Some((_, i, read, done)) = next {
+            let done = self.take_slot(n, k, done);
+            self.send(i, read, done, Some(n));
+        }
+    }
+
+    /// a waiting call's wait is up: if it is still waiting, it fails
+    fn bulk_give_up(&mut self, n: usize, k: usize, token: u64) {
+        let q = match self.nodes[n].bulk_waiting.get_mut(k) {
+            Some(q) => q,
+            None => return,
+        };
+        if let Some(pos) = q.iter().position(|w| w.0 == token) {
+            let (_, i, _, done) = q.remove(pos).unwrap();
+            self.tr_hop(done, i);
+            self.fail(Some(n), why(n, R_BULKHEAD_WAIT), done, 0.0);
+        }
+    }
+
+    /// the call goes over the link (its round trip, N calls in parallel when the link makes N)
+    fn send(&mut self, i: usize, read: bool, done: ContId, from: Option<usize>) {
         let link = from.map(|f| self.link_lat(f, i)).unwrap_or(0.0);
         let ms = self.cfg.hop_ms + link;
         // a link that makes N calls per request: N in parallel, done when all have answered
@@ -1927,6 +1980,7 @@ impl<'a> Des<'a> {
                 self.deliver(done, OK)
             }
             Ev::Attempt { call, k } => self.attempt(call, k),
+            Ev::BulkGiveUp { n, k, token } => self.bulk_give_up(n, k, token),
             Ev::Timeout { settle } => self.settle(settle, OK, true),
             Ev::Sample => self.sample(),
             Ev::Scenario { k } => self.scenario(k),
@@ -1987,6 +2041,9 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
             held: 0.0,
             bulk_cap: f64::INFINITY,
             bulk_inflight: vec![],
+            bulk_wait_ms: 0.0,
+            bulk_waiting: vec![],
+            bulk_seq: 0,
             queue: VecDeque::new(),
             queue_max: 0.0,
             last_busy_t: 0.0,
@@ -2416,6 +2473,64 @@ mod slow_link_tests {
             let d = simulate_des(&spec, &sc, &DesConfig::default()).unwrap();
             let (fe, de) = (f.summary.mean_error_rate, d.summary.mean_error_rate);
             assert!((fe - de).abs() <= 0.02 + 0.1 * fe.max(de), "{:?} {}: fluid {} des {}", tmo, ms, fe, de);
+        }
+    }
+}
+
+#[cfg(test)]
+mod bulkhead_wait_tests {
+    use super::super::engine::tests::bulkhead_wait_board;
+    use super::*;
+    use serde_json::json;
+
+    fn des(threads: Option<f64>, wait: Option<f64>, rps: f64) -> DesResult {
+        simulate_des(&bulkhead_wait_board(threads, wait), &json!({ "duration": 60, "rps": rps }), &DesConfig::default()).unwrap()
+    }
+
+    #[test]
+    fn a_bulkhead_that_waits_for_a_slot_holds_the_callers_threads() {
+        let at_once = des(Some(40.0), None, 200.0);
+        assert!((at_once.summary.mean_error_rate - 0.47).abs() < 0.03, "at once: {}", at_once.summary.mean_error_rate);
+        assert!(at_once.failures.iter().all(|f| f.reason == "bulkhead full (call refused at once)"), "{:?}", at_once.failures);
+        let waits = des(Some(40.0), Some(1000.0), 200.0);
+        assert!(waits.summary.mean_error_rate > 0.75, "waits: {}", waits.summary.mean_error_rate);
+        // put down to the threads running out, and to calls that waited in vain
+        assert!(waits.failures.iter().any(|f| f.id == "api" && f.reason == "out of threads (all waiting on calls)"), "{:?}", waits.failures);
+        assert!(waits.failures.iter().any(|f| f.id == "api" && f.reason == "bulkhead full (waited for a slot until its wait ran out)"), "{:?}", waits.failures);
+        assert!(waits.summary.p99_ms > at_once.summary.p99_ms + 900.0, "{} vs {}", waits.summary.p99_ms, at_once.summary.p99_ms);
+        let async_waits = des(None, Some(1000.0), 200.0);
+        assert!((async_waits.summary.mean_error_rate - at_once.summary.mean_error_rate).abs() < 0.02, "async: {}", async_waits.summary.mean_error_rate);
+        let quiet = des(Some(40.0), Some(1000.0), 4.0);
+        assert!(quiet.summary.mean_error_rate < 0.01, "quiet: {}", quiet.summary.mean_error_rate);
+    }
+
+    /// a call that waits gets the next free slot: with a wait longer than the dependency's answers,
+    /// a burst past the bulkhead is served late instead of refused
+    #[test]
+    fn a_waiting_call_takes_the_next_free_slot() {
+        // 10 slots, 2 s calls: 5 calls a second fit; at 6 a second (async) the sixth waits for a slot
+        let spec = json!({ "components": [{ "id": "users", "kind": "client" }, { "id": "api", "kind": "server", "capacity": 5000, "bulkhead": 10, "bulkheadWaitMs": 30000 }, { "id": "slow", "kind": "external", "latencyMs": 2000 }], "connections": ["users -> api", "api -> slow"] });
+        let cfg = DesConfig { service_cv: 0.0, ..Default::default() };
+        let r = simulate_des(&spec, &json!({ "duration": 20, "rps": 4 }), &cfg).unwrap();
+        assert!(r.summary.mean_error_rate < 0.01, "{}", r.summary.mean_error_rate);
+        let spec_at_once = json!({ "components": [{ "id": "users", "kind": "client" }, { "id": "api", "kind": "server", "capacity": 5000, "bulkhead": 10 }, { "id": "slow", "kind": "external", "latencyMs": 2000 }], "connections": ["users -> api", "api -> slow"] });
+        let a = simulate_des(&spec_at_once, &json!({ "duration": 20, "rps": 4 }), &cfg).unwrap();
+        // at once, the random bunching past 10 in flight is refused; with a wait it is served late
+        assert!(a.summary.mean_error_rate > r.summary.mean_error_rate, "{} vs {}", a.summary.mean_error_rate, r.summary.mean_error_rate);
+    }
+
+    /// the two engines agree on the error rate with and without a wait, threads or not, at two loads
+    #[test]
+    fn both_engines_agree_on_a_bulkhead_wait() {
+        for (threads, wait) in [(Some(40.0), None), (Some(40.0), Some(200.0)), (Some(40.0), Some(1000.0)), (Some(40.0), Some(5000.0)), (None, Some(1000.0))] {
+            for rps in [40.0, 200.0] {
+                let spec = bulkhead_wait_board(threads, wait);
+                let sc = json!({ "duration": 60, "rps": rps });
+                let f = super::super::headless::simulate(&spec, &sc, &Default::default()).unwrap();
+                let d = simulate_des(&spec, &sc, &DesConfig::default()).unwrap();
+                let (fe, de) = (f.summary.mean_error_rate, d.summary.mean_error_rate);
+                assert!((fe - de).abs() <= 0.02 + 0.1 * fe.max(de), "threads {:?} wait {:?} at {}: fluid {} des {}", threads, wait, rps, fe, de);
+            }
         }
     }
 }

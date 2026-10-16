@@ -110,6 +110,11 @@ pub struct NodeData {
     /// instead of taking another thread (a bulkhead)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bulkhead: Option<f64>,
+    /// with a bulkhead: how long a call past it waits for a slot before it fails, ms (None or 0: fails at
+    /// once, as Resilience4j's maxWaitDuration 0; a connection pool's acquire timeout, e.g. HikariCP's
+    /// 30,000). The wait holds the caller's thread
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bulkhead_wait_ms: Option<f64>,
     /// function: provisioned concurrency — executions kept warm (no cold start up to it), billed
     /// by the hour whether used or not
     #[serde(skip_serializing_if = "Option::is_none")]
