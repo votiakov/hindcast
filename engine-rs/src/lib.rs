@@ -364,6 +364,13 @@ mod wasm {
         Ok(Out { ranked, results: results.into_iter().map(|(name, a, result)| Run { name, spec: crate::sim::spec::to_value(&a), result }).collect() }.serialize(&ser())?)
     }
 
+    /// toMermaid(spec) → a Mermaid flowchart of the architecture
+    #[wasm_bindgen(js_name = toMermaid)]
+    pub fn to_mermaid(spec: JsValue) -> Result<String, JsValue> {
+        let spec: serde_json::Value = from(spec)?;
+        crate::convert::mermaid::spec_to_mermaid(&spec).map_err(jerr)
+    }
+
     /// breakingPoint(spec, opts) → { maxRps, firstFailingRps?, limitedBy, note, slo }
     #[wasm_bindgen(js_name = breakingPoint)]
     pub fn breaking_point(spec: JsValue, opts: JsValue) -> Result<JsValue, JsValue> {

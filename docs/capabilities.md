@@ -61,7 +61,7 @@ and where it is documented.
 | Live failing system with next moves | A | [guide.md](guide.md#live) |
 | Eighteen lessons, 54 levels with engine-checked objectives; every level proven winnable by a test; show me, debriefs, saved progress | A | [guide.md](guide.md#lessons) |
 | Sandbox: 22 component kinds (incl. a key-value store, DNS with TTL-lagged failover, a pub/sub stream, a search index, a vector database, cold archive and edge functions), zones, link latency, templates, per-component runtimes, autoscaling, retries, timeouts, breakers, bounded queues, routing, fan-out, batching, calibration from production numbers | A | [guide.md](guide.md#sandbox), [catalog.md](catalog.md) |
-| Chaos: kill, faults (errors, latency, capacity), cache flush, zone failure; traffic patterns and spikes; real traffic from a CSV | A C | [guide.md](guide.md#sandbox) |
+| Chaos: kill, faults (errors, latency, capacity), cache flush, zone failure, cut or slow one link; traffic patterns and spikes; real traffic from a CSV | A C | [guide.md](guide.md#sandbox) |
 | Flight recorder: rewind the whole board; incident timeline as Markdown | A | [tools.md](tools.md#app) |
 | Architecture as code: YAML spec, two-way synced; validate and lint | A C M | [spec.md](spec.md) |
 | Import from Terraform (`terraform show -json`) and Kubernetes manifests, with assumptions | A C M | [tools.md](tools.md) |
@@ -70,7 +70,7 @@ and where it is documented.
 | Monte Carlo with confidence intervals, breaking-point search, cost optimizer | A C M | [analysis.md](analysis.md) |
 | Two engines: fluid (fast, live) and discrete-event (every request; real tails, retry storms) | A C M | [engines.md](engines.md) |
 | Pricing: illustrative, AWS us-east-1, GCP us-central1 | A C | [catalog.md](catalog.md) |
-| Present mode, embeds (`?embed=1`), share links (`#spec=`, `#compare=`) | A | [tools.md](tools.md#app-links) |
+| Present mode, embeds (`?embed=1`), share links (`#spec=`, `#compare=`), PNG/SVG of the board, a Mermaid flowchart of it (`mermaid`) | A C | [tools.md](tools.md#app-links) |
 | One look (Terminal) with live motion; replicas grouped or each | A | [content.md](content.md#themes-srctheme) |
 
 ## Content

@@ -164,6 +164,19 @@ pub fn command(cmd: &str, f: &Flags, out: &mut Out, scenario: &dyn Fn(Option<&st
             }
             0
         }
+        "mermaid" => {
+            // a Mermaid flowchart of the architecture, for a README, a design doc or a pull request
+            let input = load(&pos(0))?;
+            let m = crate::convert::mermaid::spec_to_mermaid(&input)?;
+            match f.get("out").filter(|_| super::sim::truthy_flag(f, "out")) {
+                Some(p) => {
+                    write(&p, &m)?;
+                    out.log(&dim(&format!("Mermaid flowchart written to {}", p)));
+                }
+                None => out.log(m.trim_end()),
+            }
+            0
+        }
         "catalog" => {
             let c: Value = serde_json::from_str(include_str!("catalog.json")).map_err(|e| e.to_string())?;
             out.log(&pretty(&c));

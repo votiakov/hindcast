@@ -2,6 +2,7 @@
 //! Specs are built as ordered JSON maps: key order and in-place changes match the TypeScript objects.
 
 pub mod kubernetes;
+pub mod mermaid;
 pub mod terraform;
 
 use serde::Serialize;

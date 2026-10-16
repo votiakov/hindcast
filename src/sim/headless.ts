@@ -112,6 +112,11 @@ export function compare(baseInput: unknown, variants: VariantSpec[], scenario: u
  * Exponential search for an upper bound, then binary search.
  */
 type BreakingOpts = { readRatio?: number; slo?: { maxErrorRate?: number; maxP99Ms?: number }; holdS?: number; maxRps?: number; cfg?: Partial<EngineConfig> };
+/** the architecture as a Mermaid flowchart, for a README, a design doc or a pull request (the CLI's `mermaid`) */
+export function toMermaid(specInput: unknown): string {
+  return wasm.toMermaid(specInput) as string;
+}
+
 export function breakingPoint(specInput: unknown, opts: BreakingOpts = {}): BreakingPoint {
   return wasm.breakingPoint(specInput, opts) as BreakingPoint;
 }

@@ -1,7 +1,7 @@
 import { specToYaml } from './yaml';
 import { decodePayload, graphToSpec, specToGraph } from './convert';
 import { ArchitectureSpec, ScenarioSpec } from './schema';
-import { simulate } from '../sim/headless';
+import { simulate, toMermaid } from '../sim/headless';
 import { registerScenario, type Scenario } from '../scenarios/scenarios';
 import { useSim } from '../sim/store';
 
@@ -82,4 +82,10 @@ export function currentSpecYaml(): string {
   const { nodes, edges, title } = boards.main;
   const spec = graphToSpec(nodes, edges, title !== 'Main' ? title : undefined);
   return specToYaml(settings.pricing !== 'illustrative' ? { ...spec, pricing: settings.pricing } : spec);
+}
+
+/** Current main board as a Mermaid flowchart (shapes by kind, link latency and calls, zones as subgraphs). */
+export function currentSpecMermaid(): string {
+  const { nodes, edges, title } = useSim.getState().boards.main;
+  return toMermaid(graphToSpec(nodes, edges, title !== 'Main' ? title : undefined));
 }

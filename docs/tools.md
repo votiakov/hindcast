@@ -15,6 +15,7 @@
 | `import-terraform <terraform-show.json> [--name …] [--out arch.yaml]` | Terraform state/plan JSON → spec (AWS-priced) + assumptions to review |
 | `import-k8s <manifests.yaml …> [--name …] [--out arch.yaml]` | Kubernetes manifests → spec (HPAs become autoscaling) + assumptions to review |
 | `link <arch> [variants]` | URL that opens the architecture (or a comparison) in the app |
+| `mermaid <arch> [--out diagram.mmd]` | the architecture as a Mermaid flowchart for a README, a design doc or a pull request: shapes by kind, link latency and calls, zones as subgraphs (the app's *Copy as Mermaid* draws the same) |
 | `catalog` | component catalogue as JSON |
 | `demo [--workspace dir] [--json]` | a recorded system built into the binary, no network or files: the Astronomy Shop's capacity review (with losing a node), four strategies backtested over its recorded day, and the accuracy record; `--workspace` writes the models, recorded days and strategies to a directory so every other command runs on them |
 | `agent <tool> '<json>' \| @file \| -` | any agent tool from a shell, JSON in and out (`agent list`); see [agents.md](agents.md) |
@@ -199,7 +200,7 @@ menu produces the snippet.
 | `#spec=<base64url(JSON spec)>` | Sandbox with the spec auto-laid-out |
 | `#compare=<base64url({ a: {title, spec}, b: {title, spec}, scenario? })>` | Compare mode; with a scenario it plays like a built-in comparison and ends with a takeaway computed by the engine |
 
-The design menu's *Copy spec* / *Copy share link* export the current board (`graphToSpec`).
+The design menu's *Copy spec* / *Copy as Mermaid* / *Copy share link* export the current board (`graphToSpec`).
 
 ## Analysis panel (app)
 

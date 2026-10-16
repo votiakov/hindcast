@@ -63,6 +63,10 @@ export function simulate(spec: any, scenario: any, opts: any): any;
  */
 export function compareVariants(base: any, variants: any, scenario: any, opts: any): any;
 /**
+ * toMermaid(spec) → a Mermaid flowchart of the architecture
+ */
+export function toMermaid(spec: any): string;
+/**
  * breakingPoint(spec, opts) → { maxRps, firstFailingRps?, limitedBy, note, slo }
  */
 export function breakingPoint(spec: any, opts: any): any;
@@ -204,6 +208,7 @@ export interface InitOutput {
   readonly simengine_snapshot: (a: number, b: any, c: any) => [number, number, number];
   readonly simulate: (a: any, b: any, c: any) => [number, number, number];
   readonly compareVariants: (a: any, b: any, c: any, d: any) => [number, number, number];
+  readonly toMermaid: (a: any) => [number, number, number, number];
   readonly breakingPoint: (a: any, b: any) => [number, number, number];
   readonly loadCurve: (a: any, b: any) => [number, number, number];
   readonly simulateDes: (a: any, b: any, c: any) => [number, number, number];

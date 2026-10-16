@@ -6,6 +6,7 @@ import { validateSpec } from '../src/spec/validate';
 import { ArchitectureSpec } from '../src/spec/schema';
 import { importTerraform } from '../src/spec/terraform';
 import { shop } from './fixtures';
+import { toMermaid } from '../src/sim/headless';
 
 describe('spec', () => {
   it('round-trips spec → graph → spec', () => {
@@ -14,6 +15,14 @@ describe('spec', () => {
     expect(back.components.map((c) => c.id)).toEqual(shop.components.map((c) => c.id));
     expect(back.connections).toHaveLength(3);
     expect(back.components.find((c) => c.id === 'api')?.instances).toBe(4);
+  });
+
+  it('draws a board as a Mermaid flowchart (the app\'s Copy as Mermaid, the CLI\'s mermaid)', () => {
+    const g = specToGraph(shop);
+    const m = toMermaid(graphToSpec(g.nodes, g.edges, 'Web shop'));
+    expect(m.split('\n')[0]).toBe('flowchart LR');
+    for (const c of shop.components) expect(m).toContain(`${c.id}<br/>`);
+    expect(m.match(/-->/g)).toHaveLength(3);
   });
 
   it('validates the bundled examples', () => {

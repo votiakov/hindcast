@@ -3,7 +3,7 @@ import { ChevronDown, Trash2 } from 'lucide-react';
 import { useSim } from '../sim/store';
 import { TEMPLATES, templateGroups } from '../scenarios/templates';
 import { deleteDesign, listDesigns, saveDesign, type SavedDesign } from '../sim/designs';
-import { currentSpecYaml } from '../spec/links';
+import { currentSpecMermaid, currentSpecYaml } from '../spec/links';
 import { encodePayload, graphToSpec } from '../spec/convert';
 import { openFile } from '../spec/openFile';
 import './designMenu.css';
@@ -128,6 +128,18 @@ export function DesignMenu() {
               })}
             >
               Copy spec
+            </button>
+            <button
+              onClick={act(() => {
+                try {
+                  navigator.clipboard?.writeText(currentSpecMermaid());
+                  s.toast('good', 'Mermaid diagram copied — paste it into a README, a design doc or a pull request');
+                } catch (e) {
+                  s.toast('bad', `Could not draw the diagram: ${e instanceof Error ? e.message : String(e)}`);
+                }
+              })}
+            >
+              Copy as Mermaid <span>for Markdown docs</span>
             </button>
             <button
               onClick={act(() => {

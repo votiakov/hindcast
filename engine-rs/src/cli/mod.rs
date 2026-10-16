@@ -32,6 +32,7 @@ Start here, on a running system (read-only; one command → a capacity review):
   hindcast breaking-point  <arch.yaml> [--p99 300] [--errors 0.01]
   hindcast audit           <arch.yaml> [--rps 500] [--cost-per-min 1000] [--md report.md] [--html report.html]   (what breaks first, and what it costs)
   hindcast link            <arch.yaml> [variants.yaml]     → open in the app
+  hindcast mermaid         <arch.yaml> [--out diagram.mmd]  → a Mermaid flowchart for docs and pull requests
   hindcast import-terraform <terraform-show.json> [--name "My system"] [--out arch.yaml]
   hindcast import-k8s      <manifests.yaml …> [--name "My system"] [--out arch.yaml]      (Deployments, HPAs, StatefulSets, Services, Ingress)
   hindcast catalog
