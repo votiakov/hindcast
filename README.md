@@ -132,7 +132,7 @@ saying the change goes past what the history showed, and to load-test it instead
 | Out of sample, PetClinic: 6 runs, committed the same way | 4 right, 1 wrong, 1 inconclusive (leaned wrong): a JVM whose CPU limit was halved never finished warming up, a cold start the model doesn't know about yet |
 | A plain CPU-ratio rule on the same 15 runs | 11 right, 4 wrong |
 | In sample: 5 decisions from an ordinary day (the throttle rules were designed on these) | 4 right, 1 wrong |
-| p99 on each day's own traffic within 20% of measured | Shop: 3 of 14 runs, it underestimates busy days. PetClinic: 0 of 6, 14 ms predicted against 7–9 ms measured on healthy days |
+| p99 on each day's own traffic within 20% of measured | Shop: 3 of 14 runs, it underestimates busy days. PetClinic: 0 of 6, 14 ms predicted against 7–9 ms measured on healthy days. Recomputed with today's model (in sample): PetClinic 3 of 6, 9 ms on healthy days, its baseline no longer read from the quietest (and slowest) minutes; the Shop unchanged |
 | A node stopped at the peak (replayed afterwards, not committed before) | Kubernetes' recovery timed right (348 s measured, 380 s allowed); +10.5 min out of SLO measured against +7 replayed, because a client's gRPC channel stayed broken: the replay times the platform's recovery, not the clients' |
 | Three Docker demo systems, a change really applied | p99 within 10%, breaking points within 14% |
 | Same demos, asked for an overload their history never reached | p99 off by 72–99% |

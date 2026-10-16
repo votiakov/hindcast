@@ -54,6 +54,18 @@ on this round the rule beat it. Its p99 is pessimistic on healthy days: 14 ms pr
 off by more than 20% in every run, but the absolute error is a few milliseconds, against a 500 ms
 SLO.
 
+*Recomputed with today's model (in sample: the fix was found on these runs, and the table above
+shows it).* The model's p99 on each run's own traffic is now 9 ms on every healthy run, within 20%
+in 3 of 6 runs (launch 9 against 8, launch-gw1 9 against 8, normal-gw1 9 against 9; launch-hpa 9
+against 7 is still 29% off). The ordinary-day holdout reads 9 ms against 9 measured, off by 4%
+instead of 58%. The cause was where the baseline came from. Calibration read each endpoint's
+baseline latency from the quietest 30% of the ordinary day, and here the quietest minutes are the
+slowest: at 20 req/s k6 measured 6–7 ms mean and 12–33 ms p99 per 30 s bucket, at 60 req/s and
+above 3.5 ms and 7–9 ms. The gateway path wakes for each request when it idles between them, so
+latency falls with load until anything queues. The baseline now comes from every bucket in which
+nothing on the path queues, weighted by its requests. The verdicts above are the committed ones
+and today's code gives the same.
+
 **The miss: halving a JVM's CPU limit.** At 125m, customers-service broke on both days. On launch
 day it spent 29.5 minutes out of SLO with 64% of requests failing; on the ordinary day it spent 4
 minutes out. The backtest said *inconclusive, leans pass* for launch day, because customers-service
