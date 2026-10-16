@@ -59,6 +59,9 @@ export interface Finding {
   fixes: Fix[];
   /** the scenario that reproduces it */
   scenario: Record<string, unknown>;
+  /** a service killed whole and called directly by other services: the incident again with those
+   *  callers' links broken `reconnectS` after it is back (a sensitivity; not graded) */
+  ifCallersStayBroken?: { reconnectS: number; links: [string, string][]; failedRequests: number; breachS: number; recoveryS: number | null };
 }
 
 export interface AuditOptions {

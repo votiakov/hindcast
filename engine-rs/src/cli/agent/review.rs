@@ -52,7 +52,7 @@ pub fn review_capacity(ws: &Workspace, o: &Value) -> Result<Value, String> {
         .collect::<Result<_, _>>()?;
     super::progress("losing a node", 2.0, 5.0);
     let has_pods = g(&mv, &["services"]).as_object().map(|x| x.values().any(|s| truthy(g(s, &["pods"])))).unwrap_or(false);
-    let nodes = if has_pods { Some(to_json(&crate::resilience::node_loss(&m, &d, &crate::resilience::NodeLossOptions { draws: Some(draws.min(8.0)), ..Default::default() })?)) } else { None };
+    let nodes = if has_pods { Some(to_json(&crate::resilience::node_loss(&m, &d, &crate::resilience::NodeLossOptions { draws: Some(draws.min(8.0)), grpc_calls: super::verify::grpc_calls(&mv), ..Default::default() })?)) } else { None };
     let svcs: Vec<Value> = g(&mv, &["services"]).as_object().map(|x| x.values().cloned().collect()).unwrap_or_default();
     let throttled: Vec<Value> = svcs.iter().filter(|s| truthy(g(s, &["capacity", "throttle"]))).map(|x| json!({ "service": g(x, &["id"]), "kneeShareOfLimit": num(js_round(n(x, &["capacity", "throttle", "knee"]) * 100.0) / 100.0), "cpuLimit": g(x, &["cpuLimit"]), "perReplicaRps": num(r1(inf(x, &["capacity", "perReplicaRps"]))) })).collect();
     let memory: Vec<Value> = svcs
@@ -113,12 +113,22 @@ pub fn review_capacity(ws: &Workspace, o: &Value) -> Result<Value, String> {
         match &nodes {
             Some(nl) => {
                 let r0 = arr(nl, &["results"]).first().cloned().cloned();
-                json!({
+                // the same, if callers' connections stay broken after the lost services are back: the
+                // node whose loss it hurts most
+                let stuck = arr(nl, &["results"]).iter().filter(|r| !g(r, &["ifCallersStayBroken"]).is_null()).max_by(|a, b| n(a, &["ifCallersStayBroken", "minutesOutOfSlo"]).partial_cmp(&n(b, &["ifCallersStayBroken", "minutesOutOfSlo"])).unwrap_or(std::cmp::Ordering::Equal)).map(|r| {
+                    let x = g(r, &["ifCallersStayBroken"]);
+                    json!({ "node": g(r, &["node"]), "minutesOutOfSlo": g(x, &["minutesOutOfSlo"]), "failedRequests": g(x, &["failedRequests"]), "answer": { "minutesOutOfSlo": g(r, &["minutesOutOfSlo"]), "failedRequests": g(r, &["failedRequests"]) }, "reconnectS": g(x, &["reconnectS"]), "calls": g(x, &["calls"]), "verdict": g(x, &["verdict"]), "cutShort": g(x, &["cutShort"]).as_bool().unwrap_or(false) })
+                });
+                let mut o = json!({
                     "survives": g(nl, &["survives"]),
                     "worst": r0.map(|r| json!({ "node": g(&r, &["node"]), "minutesOutOfSlo": g(&r, &["minutesOutOfSlo"]), "failedRequests": g(&r, &["failedRequests"]), "down": arr(&r, &["lost"]).iter().filter(|l| g(l, &["down"]).as_bool().unwrap_or(false)).map(|l| g(l, &["service"]).clone()).collect::<Vec<_>>() })).unwrap_or(Value::Null),
                     "singlePointsOfFailure": arr(nl, &["singlePointsOfFailure"]).iter().map(|x| g(x, &["service"]).clone()).collect::<Vec<_>>(),
                     "fix": match g(&sug, &["nodeLoss", "fix"]) { Value::Null => Value::Null, x => x.clone() },
-                })
+                });
+                if let Some(x) = stuck {
+                    o["ifCallersStayBroken"] = x;
+                }
+                o
             }
             None => Value::Null,
         },
@@ -210,6 +220,11 @@ pub fn review_markdown(r: &Value) -> String {
         if !spof.is_empty() {
             l.push(String::new());
             l.push(format!("Single points of failure (every replica on one node): {}.", spof.join(", ")));
+        }
+        let sb = g(nl, &["ifCallersStayBroken"]);
+        if !sb.is_null() {
+            l.push(String::new());
+            l.push(stuck_line(sb));
         }
         let fx = g(nl, &["fix"]);
         if !fx.is_null() {
@@ -359,6 +374,26 @@ fn grpc_restarts(mv: &Value) -> Vec<Value> {
         }
     }
     by.into_iter().map(|(svc, callers)| json!({ "service": svc, "callers": callers })).collect()
+}
+
+/// the node-loss sensitivity, worded: what it assumed, and that it is an assumption
+fn stuck_line(sb: &Value) -> String {
+    let end = |c: &Value, k: usize| c.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string();
+    let calls: Vec<String> = arr(sb, &["calls"]).iter().map(|c| format!("{} → {}", end(c, 0), end(c, 1))).collect();
+    let secs = n(sb, &["reconnectS"]);
+    let source = if secs == crate::resilience::REFERENCE_RECONNECT_S { format!(" (as measured on the reference cluster: the frontend's channel to cart stayed broken {} s after cart was back, until the frontend restarted — one observation on one cluster)", js_num(secs)) } else { String::new() };
+    format!(
+        "If callers' connections stay broken until they restart{}, losing **{}** costs {} min out of SLO and {} failed requests, against {} min and {} in the answer: {} keep failing for {} s after the replacement is up{}. An assumption, not part of the answer above.",
+        source,
+        s(sb, &["node"]),
+        js_num(n(sb, &["minutesOutOfSlo"])),
+        js_locale(n(sb, &["failedRequests"])),
+        js_num(n(sb, &["answer", "minutesOutOfSlo"])),
+        js_locale(n(sb, &["answer", "failedRequests"])),
+        calls.join(", "),
+        js_num(secs),
+        if g(sb, &["cutShort"]).as_bool().unwrap_or(false) { " (the history ends before they would reconnect, so this undercounts)" } else { "" }
+    )
 }
 
 fn cap(x: &str) -> String {

@@ -58,6 +58,10 @@ pub struct Fault {
     pub replicas_lost: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+    /// only this caller's calls to the service are hit (`errorRate` of them fail, all when unset): a
+    /// client whose connection to it stays broken. The service itself, and its other callers, are untouched
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub caller: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]

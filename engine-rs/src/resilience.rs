@@ -14,6 +14,12 @@ use serde_json::Value;
 
 const RECOVER_S: f64 = 50.0 + 300.0 + 30.0;
 
+/// how long a caller's gRPC channel stayed broken after its callee was back, on the reference cluster
+/// (reference/k8s, run `normal-nodeloss`): the node stopped, cart's replacement pod was ready 348 s
+/// later, and the frontend's calls to it kept failing until the frontend restarted at 600 s. One
+/// observation on one kind cluster, stated as an assumption for the node-loss sensitivity — not a fit
+pub const REFERENCE_RECONNECT_S: f64 = 600.0 - 348.0;
+
 #[derive(Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct NodeLossOptions {
@@ -26,6 +32,28 @@ pub struct NodeLossOptions {
     pub nodes: Option<Vec<String>>,
     pub at_s: Option<f64>,
     pub zones: Option<bool>,
+    /// calls made over gRPC (caller, callee), as collection found them (model provenance.grpc.calls):
+    /// where a lost service is called this way, a sensitivity reruns with the caller's calls to it
+    /// still failing `reconnect_s` after it is back
+    pub grpc_calls: Option<Vec<(String, String)>>,
+    /// that sensitivity's time (default REFERENCE_RECONNECT_S)
+    pub reconnect_s: Option<f64>,
+}
+
+/// the answer again, if callers' connections to the lost services stay broken after they are back
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct StuckCallers {
+    /// how long each caller's calls kept failing after its callee was back, s
+    pub reconnect_s: f64,
+    /// (caller, callee) over gRPC, the callee one the node took with it
+    pub calls: Vec<(String, String)>,
+    pub verdict: String,
+    pub minutes_out_of_slo: f64,
+    pub failed_requests: f64,
+    /// the history ends before the callers would have reconnected: the rest is not counted
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub cut_short: bool,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -55,6 +83,8 @@ pub struct NodeLossResult {
     pub worst: String,
     pub recovered: bool,
     pub total: Totals,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub if_callers_stay_broken: Option<StuckCallers>,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -275,9 +305,46 @@ pub fn node_loss(model: &Model, d: &Dataset, o: &NodeLossOptions) -> Result<Node
                 no_scale_out: None,
                 warmup_factor: None,
                 replicas_lost: if l.down { None } else { Some(l.pods) },
+                caller: None,
                 note: Some(format!("{} lost: {} {}", node, l.service, if l.down { "has no replica left".to_string() } else { format!("down to {} of {} replicas", js_num(l.of - l.pods), js_num(l.of)) })),
             })
             .collect();
+        // gRPC callers of what the node took, that themselves kept a replica: their channels can stay
+        // broken after the replacements are up
+        // (only where the replacements are up before the history ends: after it there is nothing to replay)
+        let end = traffic.n * traffic.step_s;
+        let stuck: Vec<(String, String)> = match (until.filter(|u| *u < end), &o.grpc_calls) {
+            (Some(_), Some(calls)) => {
+                let down = |x: &str| lost.iter().any(|l| l.down && l.service == x);
+                let mut v: Vec<(String, String)> = vec![];
+                for (a, b) in calls {
+                    if a != b && down(b) && !down(a) && model.services.contains_key(a) && !v.contains(&(a.clone(), b.clone())) {
+                        v.push((a.clone(), b.clone()));
+                    }
+                }
+                v
+            }
+            _ => vec![],
+        };
+        let reconnect_s = o.reconnect_s.unwrap_or(REFERENCE_RECONNECT_S);
+        let stuck_faults: Vec<Fault> = stuck
+            .iter()
+            .map(|(a, b)| Fault {
+                at: until.unwrap_or(start),
+                until: until.map(|u| u + reconnect_s),
+                service: b.clone(),
+                capacity: None,
+                down: None,
+                extra_ms: None,
+                error_rate: Some(1.0),
+                no_scale_out: None,
+                warmup_factor: None,
+                replicas_lost: None,
+                note: Some(format!("{}'s channel to {} still broken after it is back", a, b)),
+                caller: Some(a.clone()),
+            })
+            .collect();
+        let all_faults: Vec<Fault> = faults.iter().cloned().chain(stuck_faults).collect();
         let r = backtest(model, d, &strategies, &bopts(Some(faults)))?;
         let s = pick(&r);
         let added = s.summary.minutes_out_of_slo.p50 - reference.summary.minutes_out_of_slo.p50;
@@ -285,6 +352,23 @@ pub fn node_loss(model: &Model, d: &Dataset, o: &NodeLossOptions) -> Result<Node
         // fails decide, against what the error budget allows over the outage at the peak's rate
         let added_failed = s.summary.failed_requests.p50 - reference.summary.failed_requests.p50;
         let allowed = (peak * until.map(|u| u - start).unwrap_or(recover_s) * model.slo.error_rate).max(1.0);
+        let if_stuck = if stuck.is_empty() {
+            None
+        } else {
+            let r2 = backtest(model, d, &strategies, &bopts(Some(all_faults)))?;
+            let s2 = pick(&r2);
+            let added2 = s2.summary.minutes_out_of_slo.p50 - reference.summary.minutes_out_of_slo.p50;
+            let failed2 = s2.summary.failed_requests.p50 - reference.summary.failed_requests.p50;
+            let allowed2 = (peak * (until.map(|u| u - start).unwrap_or(recover_s) + reconnect_s) * model.slo.error_rate).max(1.0);
+            Some(StuckCallers {
+                reconnect_s,
+                calls: stuck.clone(),
+                verdict: if added2 > gate || failed2 > allowed2 { "fails".into() } else { "survives".into() },
+                minutes_out_of_slo: js_round(added2 * 10.0) / 10.0,
+                failed_requests: js_round(failed2),
+                cut_short: until.map(|u| u + reconnect_s > end).unwrap_or(false),
+            })
+        };
         results.push(NodeLossResult {
             node: node.clone(),
             lost,
@@ -294,6 +378,7 @@ pub fn node_loss(model: &Model, d: &Dataset, o: &NodeLossOptions) -> Result<Node
             worst: s.worst.why.clone(),
             recovered: !roomless_for(node),
             total: Totals { minutes_out_of_slo: js_round(s.summary.minutes_out_of_slo.p50 * 10.0) / 10.0, failed_requests: js_round(s.summary.failed_requests.p50) },
+            if_callers_stay_broken: if_stuck,
         });
     }
     js_sort_by(&mut results, |a, b| {
@@ -312,6 +397,9 @@ pub fn node_loss(model: &Model, d: &Dataset, o: &NodeLossOptions) -> Result<Node
         format!("pods come back {} min after the node goes (NotReady after ~50 s, the default 300 s eviction toleration, a start)", js_num(js_round(recover_s / 60.0)))
     }];
     notes.push("that is when the platform has recovered; callers can stay broken longer. Reconnect backoff (gRPC waits up to 2 min between attempts) and channels that never reconnect are not in the replay. On the reference cluster a stopped node cost 10.5 min against 7 predicted, because the frontend's channel to cart stayed broken until it restarted".into());
+    if let Some(x) = results.iter().find_map(|r| r.if_callers_stay_broken.as_ref()) {
+        notes.push(stuck_note(x.reconnect_s));
+    }
     if !strategies.is_empty() {
         notes.push("replica counts the strategy changes are spread evenly over the nodes, as the default scheduler does".into());
     }
@@ -325,6 +413,18 @@ pub fn node_loss(model: &Model, d: &Dataset, o: &NodeLossOptions) -> Result<Node
         single_points_of_failure: spof,
         notes,
     })
+}
+
+/// what the sensitivity assumed, and where the number comes from
+pub fn stuck_note(reconnect_s: f64) -> String {
+    if reconnect_s == REFERENCE_RECONNECT_S {
+        format!(
+            "ifCallersStayBroken: the same loss, with every gRPC caller of a service the node took failing its calls to it for {} s more after the replacement is up. That is how long the frontend's channel to cart stayed broken on the reference cluster (cart ready 348 s after its node stopped, the frontend's calls failing until it restarted at 600 s): one observation on one kind cluster, an assumption rather than a fit. The main answer leaves it out",
+            js_num(reconnect_s)
+        )
+    } else {
+        format!("ifCallersStayBroken: the same loss, with every gRPC caller of a service the node took failing its calls to it for {} s more after the replacement is up — an assumption; the main answer leaves it out", js_num(reconnect_s))
+    }
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -365,7 +465,7 @@ pub struct FaultOut {
 
 impl FaultOut {
     pub fn fault(&self) -> Fault {
-        Fault { at: self.at, until: self.until, service: self.service.clone(), capacity: self.capacity, down: self.down, extra_ms: self.extra_ms, error_rate: self.error_rate, no_scale_out: self.no_scale_out, warmup_factor: self.warmup_factor, replicas_lost: self.replicas_lost, note: Some(self.note.clone()) }
+        Fault { at: self.at, until: self.until, service: self.service.clone(), capacity: self.capacity, down: self.down, extra_ms: self.extra_ms, error_rate: self.error_rate, no_scale_out: self.no_scale_out, warmup_factor: self.warmup_factor, replicas_lost: self.replicas_lost, note: Some(self.note.clone()), caller: None }
     }
 }
 
@@ -552,4 +652,41 @@ pub fn replay_outage(model: &Model, outage: &Outage, strategies: &[Value], base_
     let replay = outage_scenario(model, outage, base_rps, roles);
     let result = backtest(model, &replay.dataset, strategies, &BacktestOptions { draws: Some(draws.unwrap_or(10.0)), seed: None, observed: Some(false), traffic: None, load: None, faults: Some(replay.faults.iter().map(|f| f.fault()).collect()) })?;
     Ok((replay, result))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// the reference cluster's node kill: its model, history, and the placement at the instant
+    fn reference() -> (Model, Dataset, NodeLossOptions) {
+        let v: Value = serde_json::from_str(include_str!("../../public/reference/k8s-shop.json")).unwrap();
+        let m: Model = serde_json::from_value(v["model"].clone()).unwrap();
+        let d: Dataset = serde_json::from_value(v["dataset"].clone()).unwrap();
+        let x = &v["nodeLosses"][0];
+        let o = NodeLossOptions { pods: Some(serde_json::from_value(x["pods"].clone()).unwrap()), nodes: Some(vec![x["node"].as_str().unwrap().to_string()]), at_s: x["atS"].as_f64(), draws: Some(4.0), ..Default::default() };
+        (m, d, o)
+    }
+
+    #[test]
+    fn a_grpc_caller_left_broken_adds_its_time_beside_the_answer() {
+        let (m, d, o) = reference();
+        let plain = node_loss(&m, &d, &o).unwrap();
+        assert!(plain.results[0].if_callers_stay_broken.is_none());
+        // frontend kept two of its three replicas; cart had one, on the lost node
+        let with = node_loss(&m, &d, &NodeLossOptions { grpc_calls: Some(vec![("frontend".into(), "cart".into())]), ..o.clone() }).unwrap();
+        let (a, b) = (&plain.results[0], &with.results[0]);
+        // the answer itself does not move
+        assert_eq!((a.minutes_out_of_slo, a.failed_requests, &a.verdict), (b.minutes_out_of_slo, b.failed_requests, &b.verdict));
+        let s = b.if_callers_stay_broken.as_ref().unwrap();
+        assert_eq!(s.reconnect_s, 252.0);
+        assert_eq!(s.calls, vec![("frontend".to_string(), "cart".to_string())]);
+        // the cart endpoints fail 252 s more: about 4 minutes more out of SLO, more failed requests
+        assert!(s.minutes_out_of_slo >= a.minutes_out_of_slo + 3.5 && s.minutes_out_of_slo <= a.minutes_out_of_slo + 5.0, "{} vs {}", s.minutes_out_of_slo, a.minutes_out_of_slo);
+        assert!(s.failed_requests > a.failed_requests, "{} vs {}", s.failed_requests, a.failed_requests);
+        assert!(with.notes.iter().any(|n| n.starts_with("ifCallersStayBroken:") && n.contains("one observation on one kind cluster")), "{:?}", with.notes);
+        // a callee the node didn't take, or a caller it took with it: nothing to say
+        let other = node_loss(&m, &d, &NodeLossOptions { grpc_calls: Some(vec![("frontend".into(), "product-catalog".into()), ("ad".into(), "cart".into())]), ..o }).unwrap();
+        assert!(other.results[0].if_callers_stay_broken.is_none());
+    }
 }
