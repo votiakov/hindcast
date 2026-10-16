@@ -71,6 +71,24 @@ fn median(xs: &[f64]) -> f64 {
     quantile(&s, 0.5)
 }
 
+/// the median of (value, weight) pairs: the value below and above which half the weight lies
+fn weighted_median(xs: &[(f64, f64)]) -> f64 {
+    let mut s: Vec<(f64, f64)> = xs.iter().copied().filter(|x| x.1 > 0.0).collect();
+    if s.is_empty() {
+        return median(&xs.iter().map(|x| x.0).collect::<Vec<_>>());
+    }
+    js_sort_by(&mut s, |a, b| a.0 - b.0);
+    let total = s.iter().fold(0.0, |a, x| a + x.1);
+    let mut cum = 0.0;
+    for x in &s {
+        cum += x.1;
+        if cum >= total / 2.0 {
+            return x.0;
+        }
+    }
+    s[s.len() - 1].0
+}
+
 fn mape(pred: &[f64], obs: &[Num], floor: f64) -> Option<f64> {
     let (mut s, mut k) = (0.0, 0usize);
     for i in 0..obs.len() {
@@ -1453,7 +1471,36 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
         let mut idx: Vec<(f64, usize)> = rps.iter().enumerate().map(|(i, v)| (v.unwrap_or(0.0), i)).filter(|x| x.0 > 0.0).collect();
         js_sort_by(&mut idx, |a, b| a.0 - b.0);
         let low_idx: Vec<usize> = idx[..3.max((idx.len() as f64 * 0.3).floor() as usize).min(idx.len())].iter().map(|x| x.1).collect();
-        let low_of = |a: Option<&Vec<Num>>| median(&low_idx.iter().filter_map(|&i| vals(a, i)).collect::<Vec<_>>());
+        // the baseline is read where nothing on the path queues (the wait the replay adds at that
+        // load is under a tenth of each service's own time), weighted by the requests each bucket
+        // carried: what the clients saw. The quietest buckets alone can be the slowest ones — a
+        // service idling between requests wakes for each (PetClinic's gateway path: 6 ms at 20
+        // req/s, 3.5 ms at 60) — so they are the baseline only when the history queued most of the time
+        let path: Vec<&String> = match shape {
+            Some(sh) => sh.visits.keys().collect(),
+            None => vec![&ser_service],
+        };
+        let calm_idx: Vec<usize> = (0..rps.len())
+            .filter(|&i| {
+                rps[i].unwrap_or(0.0) > 0.0
+                    && path.iter().all(|svc| {
+                        let (sm, ss) = match (services.get(*svc), d.services.get(*svc)) {
+                            (Some(sm), Some(ss)) => (sm, ss),
+                            _ => return true,
+                        };
+                        let lam = match vals(ss.rps.as_ref(), i) {
+                            Some(l) => l / vals(ss.replicas.as_ref(), i).unwrap_or(sm.replicas).max(1.0),
+                            None => return true,
+                        };
+                        let w = mmc_wait(lam, sm.capacity.servers, sm.capacity.per_replica_rps);
+                        let le = sm.load_exponent.unwrap_or(1.0) - 1.0;
+                        let v = sm.variability.unwrap_or(1.0) * if le == 0.0 { 1.0 } else { w.rho.min(1.0).js_pow(le) };
+                        v * w.mean_ms <= 0.1 * sm.self_time.mean
+                    })
+            })
+            .collect();
+        let base_idx: &Vec<usize> = if calm_idx.len() >= low_idx.len() { &calm_idx } else { &low_idx };
+        let low_of = |a: Option<&Vec<Num>>| weighted_median(&base_idx.iter().filter_map(|&i| Some((vals(a, i)?, rps[i].unwrap_or(0.0)))).collect::<Vec<_>>());
         let low_mean = low_of(ser.and_then(|s| s.mean_ms.as_ref()));
         let low_p99 = low_of(ser.and_then(|s| s.p99_ms.as_ref()));
         let low_p50 = low_of(ser.and_then(|s| s.p50_ms.as_ref()));

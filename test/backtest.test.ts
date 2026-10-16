@@ -325,6 +325,17 @@ describe('calibration', () => {
     expect(m.services.api.capacity.limit).toBe('cpu');
     expect(m.services.api.capacity.perReplicaRps).toBeGreaterThan(30);
   });
+
+  it('reads the baseline latency from the requests while nothing queues, not from the quietest buckets alone', () => {
+    // a service that idles between requests wakes for each one: its quietest buckets are its slowest
+    const d = synthetic({ K: 40, c: 4, S: 20 }, 0.3);
+    const ep = d.endpoints['api GET /x'];
+    const quiet = [...ep.rps!].sort((a, b) => a! - b!)[Math.floor(d.n * 0.3)]!;
+    ep.meanMs = ep.rps!.map((x) => (x! < quiet ? 40 : 25));
+    ep.p99Ms = ep.rps!.map((x) => (x! < quiet ? 90 : 60));
+    const e = calibrate(d, { bootstrap: 0 }).endpoints['api GET /x'];
+    expect(e.baseExcessMs).toBeCloseTo(35, 0);
+  });
 });
 
 describe('strategies and backtest', () => {

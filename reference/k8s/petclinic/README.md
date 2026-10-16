@@ -29,16 +29,16 @@ any of these runs was recorded. Each change is a manifest variant ([variants/](v
 
 | run | question | measured (k6, every request) | backtest before the day | model on the day’s real traffic | naive CPU ratio |
 |---|---|---|---|---|---|
-| `launch` | As built (2 gateways), on launch day? | **pass**: p99 8 ms, errors 0.00%, 0 min out of SLO | pass ✅, 0 min | p99 14 ms, errors 0.00%, 0 min | pass ✅ at 62% CPU |
-| `launch-gw1` | 1 gateway instead of 2, on launch day? | **pass**: p99 8 ms, errors 0.00%, 0 min out of SLO | pass ✅ (medium confidence), 0 min | p99 14 ms, errors 0.00%, 0 min | pass ✅ at 81% CPU |
-| `normal-gw1` | 1 gateway instead of 2, on an ordinary day? | **pass**: p99 9 ms, errors 0.00%, 0 min out of SLO | pass ✅ (medium confidence), 0 min | p99 14 ms, errors 0.00%, 0 min | pass ✅ at 37% CPU |
-| `launch-cust125` | customers-service at 125m instead of 250m, on launch day? | **fail**: p99 5003 ms, errors 64.5%, 29.5 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | p99 20 ms, errors 0.00%, 0 min | fail ✅ at 125% CPU |
-| `normal-cust125` | customers-service at 125m instead of 250m, on an ordinary day? | **fail**: p99 5001 ms, errors 2.2%, 4 min out of SLO | pass ❌ (medium confidence), 0 min | p99 14 ms, errors 0.00%, 0 min | pass ❌ at 56% CPU |
-| `launch-hpa` | An HPA (1–3 gateways at 60% CPU) instead of 2 fixed, on launch day? | **pass**: p99 7 ms, errors 0.00%, 0 min out of SLO | pass ✅ (medium confidence), 0 min | p99 14 ms, errors 0.00%, 0 min | pass ✅ at 62% CPU |
+| `launch` | As built (2 gateways), on launch day? | **pass**: p99 8 ms, errors 0.00%, 0 min out of SLO | pass ✅, 0 min | p99 9 ms, errors 0.00%, 0 min | pass ✅ at 62% CPU |
+| `launch-gw1` | 1 gateway instead of 2, on launch day? | **pass**: p99 8 ms, errors 0.00%, 0 min out of SLO | pass ✅ (medium confidence), 0 min | p99 9 ms, errors 0.00%, 0 min | pass ✅ at 81% CPU |
+| `normal-gw1` | 1 gateway instead of 2, on an ordinary day? | **pass**: p99 9 ms, errors 0.00%, 0 min out of SLO | pass ✅ (medium confidence), 0 min | p99 9 ms, errors 0.00%, 0 min | pass ✅ at 37% CPU |
+| `launch-cust125` | customers-service at 125m instead of 250m, on launch day? | **fail**: p99 5003 ms, errors 64.5%, 29.5 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | p99 13 ms, errors 0.00%, 0 min | fail ✅ at 125% CPU |
+| `normal-cust125` | customers-service at 125m instead of 250m, on an ordinary day? | **fail**: p99 5001 ms, errors 2.2%, 4 min out of SLO | pass ❌ (medium confidence), 0 min | p99 9 ms, errors 0.00%, 0 min | pass ❌ at 56% CPU |
+| `launch-hpa` | An HPA (1–3 gateways at 60% CPU) instead of 2 fixed, on launch day? | **pass**: p99 7 ms, errors 0.00%, 0 min out of SLO | pass ✅ (medium confidence), 0 min | p99 9 ms, errors 0.00%, 0 min | pass ✅ at 62% CPU |
 
 Backtest verdicts: **4 right**, 1 inconclusive (it said to load-test; 0 of them leaned the right way), 1 wrong, of 6. Naive CPU ratio: 5 right.
 
-p99 of the model on each day's real traffic, against the measured p99: within 20% in **0 of 6** runs; the others off by 56–100%.
+p99 of the model on each day's real traffic, against the measured p99: within 20% in **3 of 6** runs; the others off by 29–100%.
 
 
 
