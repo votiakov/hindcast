@@ -31,11 +31,13 @@ pub struct DesConfig {
     pub cold_start_ms: f64,
     pub hop_ms: f64,
     pub max_events: f64,
+    /// follow a sample of requests hop by hop (off unless given)
+    pub trace: Option<super::trace::TraceConfig>,
 }
 
 impl Default for DesConfig {
     fn default() -> Self {
-        DesConfig { seed: 1.0, service_cv: 0.6, queue_s: 1.0, failover_s: Some(60.0), cold_start_ms: 400.0, hop_ms: 0.3, max_events: 60_000_000.0 }
+        DesConfig { seed: 1.0, service_cv: 0.6, queue_s: 1.0, failover_s: Some(60.0), cold_start_ms: 400.0, hop_ms: 0.3, max_events: 60_000_000.0, trace: None }
     }
 }
 
@@ -260,7 +262,7 @@ fn why(n: usize, r: u8) -> Why {
 }
 
 /// what a user would read: the cause, worded for the component it happened at
-fn reason_text(r: u8) -> &'static str {
+pub(super) fn reason_text(r: u8) -> &'static str {
     match r {
         R_DOWN => "down",
         R_LIMIT => "rate limited",
@@ -549,6 +551,9 @@ pub struct DesResult {
     /// why requests failed: the component each failure started at and the cause, most first
     pub failures: Vec<FailureCause>,
     pub events: Vec<super::headless::Event>,
+    /// sampled request journeys, when the config asked for them
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trace: Option<super::trace::TraceReport>,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -625,6 +630,8 @@ struct Des<'a> {
     worst_score: f64,
     sim_nodes: Vec<SimNode>,
     zones: IndexMap<String, Vec<String>>,
+    /// request journeys (only when asked for: it reads the run and changes nothing in it)
+    tr: Option<Box<super::trace::Tracer>>,
 }
 
 impl<'a> Des<'a> {
@@ -634,13 +641,17 @@ impl<'a> Des<'a> {
     }
 
     fn cont(&mut self, c: Cont) -> ContId {
-        if let Some(i) = self.free.pop() {
+        let id = if let Some(i) = self.free.pop() {
             self.conts[i] = c;
             i
         } else {
             self.conts.push(c);
             self.conts.len() - 1
+        };
+        if let Some(t) = self.tr.as_mut() {
+            t.fresh(id);
         }
+        id
     }
 
     fn at(&mut self, dt_ms: f64, ev: Ev) {
@@ -798,6 +809,9 @@ impl<'a> Des<'a> {
     /// run a continuation now
     fn deliver(&mut self, id: ContId, why: Why) {
         let ok = why == OK;
+        if let Some(t) = self.tr.as_mut() {
+            t.deliver(id, why, self.now, matches!(self.conts[id], Cont::User { job: false, .. }));
+        }
         match self.conts[id] {
             Cont::User { job: true, .. } => {
                 self.release(id);
@@ -894,9 +908,15 @@ impl<'a> Des<'a> {
     fn release(&mut self, id: ContId) {
         self.conts[id] = Cont::Free;
         self.free.push(id);
+        if let Some(t) = self.tr.as_mut() {
+            t.release(id);
+        }
     }
 
     fn arrive(&mut self, i: usize, read: bool, done: ContId) {
+        if let Some(t) = self.tr.as_mut() {
+            t.arrive(done, self.now);
+        }
         self.nodes[i].win.arrivals += 1.0;
         let kind = self.nodes[i].kind;
         if kind == "replica" && read && self.nodes[i].repl_lag > 1.0 {
@@ -959,6 +979,9 @@ impl<'a> Des<'a> {
                 q.push_back(Job { read, t_in: now, done: None, shard: NO_SHARD, tries: 0 });
             }
             let ack = base_latency_of(&self.nodes[i].data);
+            if let Some(t) = self.tr.as_mut() {
+                t.mark(done, super::trace::MARK_QUEUED);
+            }
             self.at(ack, Ev::Deliver { done, why: OK }); // the producer gets the ack
             self.pump_stream(i);
             return;
@@ -969,6 +992,9 @@ impl<'a> Des<'a> {
             }
             self.nodes[i].backlog.push_back(Job { read, t_in: now, done: None, shard: NO_SHARD, tries: 0 });
             let ack = base_latency_of(&self.nodes[i].data);
+            if let Some(t) = self.tr.as_mut() {
+                t.mark(done, super::trace::MARK_QUEUED);
+            }
             self.at(ack, Ev::Deliver { done, why: OK }); // the producer gets the ack
             self.pump(i);
             return;
@@ -1026,6 +1052,10 @@ impl<'a> Des<'a> {
             // a restore is billed when it is requested, however long it takes
             if kind == "archive" {
                 self.nodes[i].win.usage_reqs += 1.0;
+            }
+            if let Some(t) = self.tr.as_mut() {
+                t.start(done, now);
+                t.served(done, now + svc / 1000.0);
             }
             self.at(svc, Ev::LlmDone { n: i, done, fault });
             return;
@@ -1098,9 +1128,11 @@ impl<'a> Des<'a> {
         // in transient failure); across a partition: no answer until the connection times out
         if let Some(f) = from {
             if self.link_broken(f, i) {
+                self.tr_hop(done, i);
                 return self.fail(Some(f), why(f, R_RECONNECT), done, 0.5);
             }
             if self.link_cut(f, i) && !(self.nodes[f].data.kind == "db" && !up(&self.nodes[f])) {
+                self.tr_hop(done, i);
                 return self.fail(None, why(i, R_PARTITION), done, 1000.0);
             }
         }
@@ -1114,10 +1146,15 @@ impl<'a> Des<'a> {
                         x.bulk_inflight.resize(x.children.len(), 0.0);
                     }
                     if x.bulk_inflight[k] >= x.bulk_cap {
+                        self.tr_hop(done, i);
                         return self.fail(Some(f), why(f, R_BULKHEAD), done, 0.5);
                     }
                     x.bulk_inflight[k] += 1.0;
+                    let inner = done;
                     done = self.cont(Cont::Bulk { n: f, k, done });
+                    if let Some(t) = self.tr.as_mut() {
+                        t.wrap(done, inner);
+                    }
                 }
             }
         }
@@ -1130,11 +1167,22 @@ impl<'a> Des<'a> {
             self.groups.push(Some(Group { pending: n as usize, why: OK, done }));
             for _ in 0..(n as usize) {
                 let p = self.cont(Cont::Part { group });
+                if let Some(t) = self.tr.as_mut() {
+                    t.inherit(p, done, Some(super::trace::VIA_FANOUT));
+                }
+                self.tr_hop(p, i);
                 self.at(ms, Ev::Arrive { i, read, done: p });
             }
             return;
         }
+        self.tr_hop(done, i);
         self.at(ms, Ev::Arrive { i, read, done });
+    }
+
+    fn tr_hop(&mut self, done: ContId, i: usize) {
+        if let Some(t) = self.tr.as_mut() {
+            t.hop(done, i, self.now);
+        }
     }
 
     fn enqueue(&mut self, n: usize, job: Job) {
@@ -1177,6 +1225,9 @@ impl<'a> Des<'a> {
             }
             self.nodes[n].lock_busy = true;
             self.nodes[n].lock_t0 = self.now;
+            if let (Some(t), Some(d)) = (self.tr.as_mut(), job.done) {
+                t.start(d, self.now);
+            }
             let svc = self.rng.lognormal(1000.0 / super::catalog::row_lock_rps(&self.nodes[n].data), self.cfg.service_cv);
             self.at(svc, Ev::LockDone { n, job });
             return;
@@ -1185,12 +1236,19 @@ impl<'a> Des<'a> {
 
     fn start(&mut self, n: usize, mut job: Job) {
         self.set_busy(n, 1.0);
+        if let (Some(t), Some(d)) = (self.tr.as_mut(), job.done) {
+            t.start(d, self.now);
+        }
         // a thread is taken for the work and every call it makes, until the answer
         if self.nodes[n].threads_cap.is_finite() {
             if let Some(done) = job.done {
                 self.nodes[n].held += 1.0;
                 let t0 = self.now;
-                job.done = Some(self.cont(Cont::Hold { n, done, t0 }));
+                let hold = self.cont(Cont::Hold { n, done, t0 });
+                if let Some(t) = self.tr.as_mut() {
+                    t.wrap(hold, done);
+                }
+                job.done = Some(hold);
             }
         }
         if job.shard != NO_SHARD {
@@ -1222,6 +1280,9 @@ impl<'a> Des<'a> {
 
     fn finish(&mut self, n: usize, job: Job) {
         self.set_busy(n, -1.0);
+        if let (Some(t), Some(d)) = (self.tr.as_mut(), job.done) {
+            t.served(d, self.now);
+        }
         // next in line; shed anything that waited longer than the queue bound
         let bound = {
             let d = &self.nodes[n].data;
@@ -1276,6 +1337,9 @@ impl<'a> Des<'a> {
             let hit = if job.read { super::catalog::cache_hit_rate(d) * cache_warmth(self.nodes[n].cold_at, self.now, d.warmup_s) } else { 0.0 };
             if self.rng.next() < hit {
                 self.nodes[n].win.hits += 1.0;
+                if let Some(t) = self.tr.as_mut() {
+                    t.mark(done, super::trace::MARK_HIT);
+                }
                 return self.deliver(done, OK);
             }
             if self.nodes[n].children.is_empty() {
@@ -1291,6 +1355,9 @@ impl<'a> Des<'a> {
             }
             if self.rng.next() < share {
                 self.nodes[n].win.hits += 1.0;
+                if let Some(t) = self.tr.as_mut() {
+                    t.mark(done, super::trace::MARK_HIT);
+                }
                 return self.deliver(done, OK);
             }
             if self.nodes[n].children.is_empty() {
@@ -1388,6 +1455,9 @@ impl<'a> Des<'a> {
         };
         self.nodes[n].win.attempts += 1.0;
         let settle = self.cont(Cont::Settle { call, k, settled: false, refs: if tmo.is_some() { 2 } else { 1 } });
+        if let Some(t) = self.tr.as_mut() {
+            t.call(settle, self.calls[call].as_ref().unwrap().done, k);
+        }
         if let Some(t) = tmo {
             self.at(t, Ev::Timeout { settle });
         }
@@ -1417,6 +1487,9 @@ impl<'a> Des<'a> {
         };
         if late {
             self.nodes[n].win.late += 1.0;
+            if let Some(t) = self.tr.as_mut() {
+                t.timeout(id, self.now, self.calls[call].as_ref().unwrap().timeout);
+            }
         }
         if breaker {
             if ok {
@@ -1477,6 +1550,9 @@ impl<'a> Des<'a> {
             self.groups.push(Some(Group { pending: kids.len(), why: OK, done }));
             for c in kids {
                 let p = self.cont(Cont::Part { group });
+                if let Some(t) = self.tr.as_mut() {
+                    t.inherit(p, done, Some(super::trace::VIA_FANOUT));
+                }
                 self.hop(c, read, p, Some(n));
             }
             return;
@@ -1504,6 +1580,9 @@ impl<'a> Des<'a> {
             while i < degree {
                 let k = (self.rng.next() * kids.len() as f64).floor() as usize;
                 let p = self.cont(Cont::Part { group });
+                if let Some(t) = self.tr.as_mut() {
+                    t.inherit(p, done, Some(super::trace::VIA_FANOUT));
+                }
                 self.hop(kids[k], read, p, Some(n));
                 i += 1.0;
             }
@@ -1516,6 +1595,9 @@ impl<'a> Des<'a> {
     fn try_failover(&mut self, n: usize, read: bool, order: usize, i: usize, done: ContId) {
         let target = self.orders[order][i];
         let c = self.cont(Cont::Failover { n, read, order, i, done });
+        if let Some(t) = self.tr.as_mut() {
+            t.inherit(c, done, if i > 0 { Some(super::trace::VIA_FAILOVER) } else { None });
+        }
         self.hop(target, read, c, Some(n));
     }
 
@@ -1544,6 +1626,9 @@ impl<'a> Des<'a> {
             let finish = self.cont(Cont::User { t0, job: job.is_some() });
             if job.is_none() {
                 self.live_users += 1.0;
+                if let Some(t) = self.tr.as_mut() {
+                    t.begin(t0, c, read, finish);
+                }
             }
             if self.nodes[c].children.is_empty() {
                 self.deliver(finish, why(c, R_NO_ROUTE));
@@ -1763,6 +1848,9 @@ impl<'a> Des<'a> {
         self.win_hist.reset();
         self.win_reqs = 0.0;
         self.win_fail = 0.0;
+        if let Some(t) = self.tr.as_mut() {
+            t.second();
+        }
         if now + win_s <= self.sc.duration + 1e-9 {
             self.q.push(now + win_s, Ev::Sample);
         }
@@ -1792,6 +1880,9 @@ impl<'a> Des<'a> {
                 self.nodes[n].lock_busy = false;
                 let held = self.now - self.nodes[n].lock_t0;
                 self.nodes[n].win.lock_s += held;
+                if let (Some(t), Some(d)) = (self.tr.as_mut(), job.done) {
+                    t.served(d, self.now);
+                }
                 self.next_lock(n);
                 self.after_service(n, job);
             }
@@ -1991,6 +2082,7 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
         worst_score: -1.0,
         sim_nodes,
         zones: spec.zones.iter().map(|z| (z.0.clone(), z.2.clone())).collect(),
+        tr: cfg.trace.clone().map(|t| Box::new(super::trace::Tracer::new(t, n_nodes, cfg.seed))),
     };
     for i in 0..des.nodes.len() {
         des.configure(i);
@@ -2120,6 +2212,10 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
         bottlenecks,
         failures,
         events: des.ev_log.clone(),
+        trace: des.tr.as_ref().map(|t| {
+            let names: Vec<(String, String, String)> = des.sim_nodes.iter().map(|n| (n.id.clone(), n.data.name.clone(), n.data.kind.clone())).collect();
+            t.report(&names, &reason_text)
+        }),
     }
 }
 
