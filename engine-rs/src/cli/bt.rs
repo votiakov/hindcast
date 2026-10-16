@@ -154,13 +154,15 @@ fn print_backtest(r: &Value, out: &mut Out) {
 pub(crate) fn print_backtest_table(r: &Value, out: &mut Out) {
     let fd = |x: f64| format!("{}${}", if x < 0.0 { "−" } else { "+" }, js_to_fixed(x.abs(), if x.abs() < 100.0 { 2 } else { 0 }));
     out.log(&format!("\n{} {}", bold(&format!("Backtest — {}", s(r, &["model"]))), dim(&format!("· {} h of history · {} draws", js_to_fixed((n(r, &["window", "end"]) - n(r, &["window", "start"])) / 3600.0, 1), js_num(n(r, &["draws"]))))));
+    // the name column fits the longest strategy name (30 at least)
+    let w = arr(r, &["strategies"]).iter().map(|x| s(x, &["name"]).chars().count()).max().unwrap_or(0).max(30);
     let b = g(r, &["baseline", "summary"]);
-    out.log(&format!("  {} ${}/month   {} min out of SLO   {} failed", bold(&pad_end("As built", 30)), js_to_fixed(n(b, &["monthly", "p50"]), 0), js_num(js_round(n(b, &["minutesOutOfSlo", "p50"]))), loc(js_round(n(b, &["failedRequests", "p50"])))));
+    out.log(&format!("  {} ${}/month   {} min out of SLO   {} failed", bold(&pad_end("As built", w)), js_to_fixed(n(b, &["monthly", "p50"]), 0), js_num(js_round(n(b, &["minutesOutOfSlo", "p50"]))), loc(js_round(n(b, &["failedRequests", "p50"])))));
     for k in arr(r, &["ranking"]) {
         let name = s(k, &["name"]);
         let st = arr(r, &["strategies"]).into_iter().find(|x| s(x, &["name"]) == name).unwrap_or(&Value::Null);
         let good = n(k, &["minutesOutOfSloDelta"]) <= 0.5;
-        let nm = pad_end(&s(st, &["name"]), 30);
+        let nm = pad_end(&s(st, &["name"]), w);
         let (lo, hi) = (n(st, &["delta", "monthly", "lo"]), n(st, &["delta", "monthly", "hi"]));
         out.log(&format!(
             "  {} {}/month {}   {} min out of SLO   {} failed",
@@ -170,7 +172,7 @@ pub(crate) fn print_backtest_table(r: &Value, out: &mut Out) {
             js_num(js_round(n(st, &["summary", "minutesOutOfSlo", "p50"]))),
             loc(js_round(n(st, &["summary", "failedRequests", "p50"])))
         ));
-        out.log(&format!("  {} {}", pad_end("", 30), dim(&reports::headline(st, g(r, &["baseline"])))));
+        out.log(&format!("  {} {}", pad_end("", w), dim(&reports::headline(st, g(r, &["baseline"])))));
     }
 }
 
