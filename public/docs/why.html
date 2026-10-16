@@ -71,7 +71,7 @@
 <ul>
 <li>Its evidence so far is demo systems and a laptop cluster, not a production fleet; the one production check (Alibaba's trace) covers CPU per request only.</li>
 <li>It doesn't replace a load test for a change far past anything your history shows — it says so (confidence <i>low</i>, "load-test before trusting it").</li>
-<li>It has no term yet for callers that stay broken after a dependency restarts (a stuck gRPC channel), or for a container stalling before an OOM kill; treat its recovery times as the platform's.</li>
+<li>Its recovery times are the platform's. Callers that stay broken after a dependency restarts (a stuck gRPC channel) are a stated assumption, not a fit: a link can carry <code>reconnect</code> (seconds, or until the caller restarts) in the simulator, and where a lost service is called over gRPC, node-loss checks show beside their answer what it costs if those callers stay broken 252 s more, the one time measured on the reference cluster. It has no term yet for a container stalling before an OOM kill.</li>
 <li>Its bands show how much the answer moves with the fitted capacities, not how wrong the model itself can be; they aren't calibrated against outcomes yet, and a fixed replica count has no cost band at all, because its cost doesn't depend on load.</li>
 <li>It models what your telemetry shows. A service nobody instruments is a guess, labelled as one.</li>
 <li>The simulator's built-in capacities are teaching defaults; calibrate them, or use a real pricing profile and your own numbers.</li>
