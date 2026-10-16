@@ -234,9 +234,23 @@ Shared code keeps the engines consistent (`src/sim/autoscale.ts`, `cacheWarmth` 
   `hitRate × (1 − e^(−t / warmupS))`. The origin briefly sees nearly all traffic: the thundering herd.
   Fluid and DES agree on the resulting error spike within about one percentage point.
 - **Gray failures** — `faultRate`: the component fails that share of the requests it handles (without
-  calling downstream). `faultLatencyMs`: added to every request's service time; in the DES this holds
-  workers longer, so throughput falls with it; the fluid engine applies the same capacity factor
-  `base ÷ (base + fault)`.
+  calling downstream). `faultLatencyMs`: added to every request's latency. On a database, cache or any
+  other kind it is work: in the DES it is added to the service time and holds a worker, so throughput
+  falls with it; the fluid engine applies the same capacity factor `base ÷ (base + fault)`. On a
+  server or worker it is a wait (on a call the model does not draw, a lock, a slow disk behind it): the
+  DES frees the worker after the work and delays the answer, and the fluid engine leaves capacity
+  alone. It costs capacity only through `threads` (below).
+- **Slow dependencies hold threads, not workers** — a request waiting on its calls (or on its own
+  injected wait) holds a thread only when the component has `threads` (thread-per-request: Tomcat,
+  a Java or Rails server). Then the pool finishes at most `threads × instances ÷ hold time` requests a
+  second (Little's law), the hold time being the work plus every call it waits on; the rest wait for a
+  thread and are shed ("out of threads"). A `bulkhead` caps the calls that may wait on one dependency.
+  Without `threads` (async: Node, Go, Envoy) waiting holds nothing: a slow dependency adds its latency
+  to the caller's answers, and fails requests only through deadlines (`timeoutMs`, which still
+  trigger retries). Hand check: a caller of 2 × 150 req/s offered 200 req/s, whose dependency turns
+  slow by 250 ms — without `threads` no request fails and the p99 rises by 250 ms in both engines;
+  with `threads: 20` per instance, 40 threads held 25 + 25 + 250 ms = 0.3 s finish 133 req/s and a
+  third of the requests fail (fluid 33.3 %, DES 33–34 %). `slow_dependency_tests` in both engines.
 - **Link latency** — a connection's `latencyMs` is added to every call over it (DES: on the request
   hop; fluid: to the child's latency in the backward pass).
 

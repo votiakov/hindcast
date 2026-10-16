@@ -123,7 +123,8 @@ grades what users would have seen:
 |---|---|
 | one instance dies / the component goes down | every component (fleets lose one instance; singletons die) |
 | zone goes dark | every zone |
-| turns slow (+250 ms) | every component except lb/queue |
+| turns slow (+250 ms) | every component except lb/queue (a server or worker waits without holding a worker; it costs capacity only through `threads`) |
+| stalls (+2 s) | every dependency whose caller has `threads` |
 | fails 20 % of requests | every component except lb/queue/cdn |
 | restarts cold | every cache / CDN |
 | traffic surges 3× for 20 s | once |

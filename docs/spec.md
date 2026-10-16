@@ -43,7 +43,7 @@ zones:                          # optional failure domains
 | `timeoutMs` | any caller (typically client) | deadline per attempt; slower responses are failures |
 | `breaker` | any caller | circuit breaker on downstream calls |
 | `fallback` | with `breaker` | serve a degraded response while open |
-| `threads` | server, worker | threads per instance: every request in flight holds one, waiting on its calls included (thread-per-request, e.g. Tomcat's 200); unset = asynchronous. A slow dependency then exhausts them, and requests that never touch it fail too |
+| `threads` | server, worker | threads per instance: every request in flight holds one, waiting on its calls included (thread-per-request, e.g. Tomcat's 200); unset = asynchronous: waiting holds nothing, so a slow dependency only adds its latency (and fails requests through deadlines). With threads a slow dependency exhausts them, and requests that never touch it fail too |
 | `bulkhead` | any caller | calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread |
 | `provisioned` | function | provisioned concurrency: executions kept warm, so no cold start up to it; billed by the hour whether used or not at Lambda's $0.0000041667 per GB-s, under every pricing profile (GCP min instances and Azure premium plans price differently) |
 | `prefixes` | storage | key prefixes the objects are spread over (default 10): each takes 5,500 reads or 3,500 writes a second (S3), past it 503 SlowDown; `hotKeyShare` puts that share on one prefix |
@@ -171,7 +171,7 @@ slo: { maxErrorRate: 0.01, maxP99Ms: 300 }      # defaults
 | `{ type: fail-zone, id }` / `{ type: restore-zone, id }` | take every member of a zone down / up |
 | `{ type: degrade, id, factor }` | brownout: capacity × factor (0–1) |
 | `{ type: inject-errors, id, rate }` | gray failure: the component fails `rate` (0–1) of its requests |
-| `{ type: inject-latency, id, ms }` | gray failure: every request takes `ms` longer (and each worker is busy longer, so throughput drops too) |
+| `{ type: inject-latency, id, ms }` | gray failure: every request takes `ms` longer. On a server or worker that is a wait: no worker is held, only a thread when it has `threads` (so only then does throughput drop). On other kinds it is work: each worker is busy longer, so throughput drops too |
 | `{ type: flush-cache, id }` | a cache/cdn loses every key — hit rate restarts from zero and re-warms over `warmupS` |
 | `{ type: restore, id }` | end a brownout and clear injected faults |
 | `{ type: hot-key, id, share }` | a database or key-value store: `share` of its traffic goes to one key — one shard, or one partition (0 ends it) |
