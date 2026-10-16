@@ -81,12 +81,18 @@ How it differs from the system-design simulators you may have seen, and what it 
 
 ## Install
 
+**Just the CLI, MCP server and agent tools:** download the binary for your platform from the
+[latest release](https://github.com/votiakov/hindcast/releases/latest)
+(`hindcast-aarch64-apple-darwin`, `hindcast-x86_64-apple-darwin`, `hindcast-x86_64-unknown-linux-musl`,
+`hindcast-x86_64-pc-windows-msvc.exe`), make it executable and run it; no Node or Rust needed.
+
+**The app, lessons and everything else:** clone the repository (`git clone --depth 1` skips the history).
 Needs Node 22.12 or newer. The CLI, the MCP server and the agent tools are one native binary:
 `bin/hindcast` builds it on first use (about two minutes, once), which needs a Rust toolchain
 ([rustup](https://rustup.rs)). The app doesn't: the engine is committed as WebAssembly (rebuilding
 it with `npm run engine:build` needs the `wasm32-unknown-unknown` target and `wasm-bindgen-cli`).
-A clone is about 470 MB, most of it the recorded reference runs that the accuracy tables are
-regenerated from.
+A clone is about 470 MB (less with `--depth 1`), most of it the recorded reference runs that the
+accuracy tables are regenerated from; they stay in the repository so anyone can check those tables.
 
 ```
 npm install
