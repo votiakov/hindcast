@@ -8,6 +8,7 @@ pub mod engine;
 pub mod headless;
 pub mod optimize;
 pub mod spec;
+pub mod journey;
 pub mod trace;
 
 #[cfg(test)]

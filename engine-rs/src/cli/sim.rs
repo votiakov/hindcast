@@ -32,6 +32,22 @@ pub fn command(cmd: &str, f: &Flags, out: &mut Out) -> Result<Option<i32>, Strin
         "simulate" => {
             let spec = load(&pos(0))?;
             let sc = scenario_from(f.pos.get(1).map(|s| s.as_str()), f, out)?;
+            if let Some(comp) = f.get("trace") {
+                if f.get("engine").as_deref() != Some("des") {
+                    return Err("--trace follows requests in the discrete-event engine: add --engine des".into());
+                }
+                if comp == "true" {
+                    return Err("--trace needs a component: --trace <component id>".into());
+                }
+                let count = f.num("count").filter(|c| c.is_finite() && *c >= 1.0).map(|c| c.floor() as usize).unwrap_or(3);
+                let t = trace_request(&spec, &sc, f.num("seed").unwrap_or(1.0), &comp, f.has("failed"), count)?;
+                if json {
+                    out.log(&pretty(&t.to_json()));
+                } else {
+                    print_trace(&t, out);
+                }
+                return Ok(Some(0));
+            }
             if f.get("engine").as_deref() == Some("des") {
                 let cfg = crate::sim::des::DesConfig { seed: f.num("seed").unwrap_or(1.0), ..Default::default() };
                 let r = crate::sim::des::simulate_des(&spec, &sc, &cfg)?;
@@ -265,6 +281,137 @@ fn print_des(r: &crate::sim::des::DesResult, out: &mut Out) {
 
 #[allow(dead_code)]
 fn _unused(_: &SimResult) {}
+
+// ---- trace: sampled requests through one component ----
+
+/// a discrete-event run's sampled requests through one component (`simulate --trace`, the
+/// trace_request tool)
+pub struct Traced {
+    pub component: String,
+    pub failed_only: bool,
+    pub seed: f64,
+    pub duration_s: f64,
+    /// requests that began before this were not followed
+    pub from_s: f64,
+    pub requests: f64,
+    pub failed_requests: f64,
+    /// followed requests that went through it, and those of them that failed
+    pub seen: f64,
+    pub seen_failed: f64,
+    /// how many of its sampled requests there were to pick from
+    pub sampled: usize,
+    pub journeys: Vec<crate::sim::trace::Journey>,
+}
+
+/// the id each component reaches the journeys under: the spec's own
+fn component_ids(spec: &Value) -> Vec<String> {
+    spec.get("components").and_then(|c| c.as_array()).map(|a| a.iter().filter_map(|c| c.get("id").and_then(|i| i.as_str()).map(String::from)).collect()).unwrap_or_default()
+}
+
+/// run the scenario on the discrete-event engine following a sample of requests, and pick `count`
+/// of those through `component` (the failed ones only, if asked), spread over the run
+pub fn trace_request(spec: &Value, sc: &Value, seed: f64, component: &str, failed_only: bool, count: usize) -> Result<Traced, String> {
+    let ids = component_ids(spec);
+    if !ids.is_empty() && !ids.iter().any(|i| i == component) {
+        return Err(format!("no component \"{}\" in the architecture (its components: {})", component, ids.join(", ")));
+    }
+    let count = count.clamp(1, 20);
+    // the first seconds start cold: follow requests from 2 s in, unless the run is short
+    let from_s = if sc.get("duration").and_then(|d| d.as_f64()).map_or(true, |d| d >= 8.0) { 2.0 } else { 0.0 };
+    let tc = crate::sim::trace::TraceConfig { per_node: count.max(12), from_s, ..Default::default() };
+    let cfg = crate::sim::des::DesConfig { seed, trace: Some(tc), ..Default::default() };
+    let r = crate::sim::des::simulate_des(spec, sc, &cfg)?;
+    let report = r.trace.ok_or("the run kept no trace")?;
+    let n = report.by_node.get(component);
+    let list: Vec<usize> = n.map(|n| if failed_only { n.failed.clone() } else { n.all.clone() }).unwrap_or_default();
+    let take = count.min(list.len());
+    // spread over the run: the sample is in the order the requests began
+    let journeys = (0..take).map(|k| report.journeys[list[k * list.len() / take]].clone()).collect();
+    Ok(Traced {
+        component: component.to_string(),
+        failed_only,
+        seed,
+        duration_s: r.summary.duration_s,
+        from_s,
+        requests: r.summary.requests,
+        failed_requests: r.summary.failed_requests,
+        seen: n.map_or(0.0, |n| n.seen),
+        seen_failed: n.map_or(0.0, |n| n.seen_failed),
+        sampled: list.len(),
+        journeys,
+    })
+}
+
+impl Traced {
+    fn none_note(&self) -> Option<String> {
+        if !self.journeys.is_empty() {
+            return None;
+        }
+        Some(if self.seen == 0.0 {
+            format!("no followed request reached {}: is traffic flowing to it?", self.component)
+        } else {
+            format!("none of the {} followed requests through {} failed", loc(self.seen), self.component)
+        })
+    }
+
+    /// the run, the journeys with their verdict and their path as lines, and how to read them
+    pub fn to_json(&self) -> Value {
+        let id = |s: &str| s.to_string();
+        let journeys: Vec<Value> = self
+            .journeys
+            .iter()
+            .map(|j| {
+                let mut v = to_json(j);
+                if let Value::Object(o) = &mut v {
+                    o.insert("verdict".into(), json!(crate::sim::journey::journey_verdict(j, &id)));
+                    o.insert("lines".into(), json!(crate::sim::journey::journey_lines(j, &id, Some(&self.component))));
+                }
+                v
+            })
+            .collect();
+        let mut o = JMap::new();
+        o.insert("component".into(), json!(self.component));
+        o.insert("shown".into(), json!(if self.failed_only { "failed" } else { "all" }));
+        o.insert("run".into(), json!({ "engine": "des", "seed": num(self.seed), "durationS": num(self.duration_s), "followedFromS": num(self.from_s), "requests": num(self.requests), "failedRequests": num(self.failed_requests) }));
+        o.insert("through".into(), json!({ "followed": num(self.seen), "failed": num(self.seen_failed), "sampled": self.sampled }));
+        if let Some(n) = self.none_note() {
+            o.insert("note".into(), json!(n));
+        }
+        o.insert("journeys".into(), json!(journeys));
+        o.insert("legend".into(), json!("Each line is one request, hop by hop: ─12ms─▶ is the network on the way and the component's own work; ══ 800ms queue ══▶ means it waited that long for a worker first; ✕ marks where it failed and why (a timeout says the caller's deadline); retries, fan-out parts and failovers branch below the hop that made them; times are ms after the request began"));
+        Value::Object(o)
+    }
+}
+
+fn print_trace(t: &Traced, out: &mut Out) {
+    let id = |s: &str| s.to_string();
+    out.log(&format!("\n{} {}", bold(&format!("Requests through {}", t.component)), dim(&format!("· discrete-event run, {}s simulated, seed {}", js_num(t.duration_s), js_num(t.seed)))));
+    let failed = if t.requests > 0.0 { pct(t.failed_requests / t.requests) } else { "0%".into() };
+    out.log(&format!("  {} requests, {} failed · {} followed requests went through {}, {} of them failed", loc(t.requests), failed, loc(t.seen), t.component, loc(t.seen_failed)));
+    if let Some(n) = t.none_note() {
+        out.log(&format!("  {}\n", yellow(&n)));
+        return;
+    }
+    out.log(&dim(&format!("  {} of the {} {} sampled, from {}s in", t.journeys.len(), t.sampled, if t.failed_only { "failed requests" } else { "requests" }, js_num(t.from_s))));
+    out.log("");
+    for j in &t.journeys {
+        let v = crate::sim::journey::journey_verdict(j, &id);
+        out.log(&format!("{}  {}", if j.ok { green(&v) } else { red(&v) }, dim(&format!("began {} s in{}", js_to_fixed(j.at_s, 1), if j.truncated { " · cut at 64 hops" } else { "" }))));
+        for row in crate::sim::journey::journey_rows(j, &id, Some(&t.component)) {
+            out.log(&row.iter().map(|r| match r.c {
+                "focus" => bold(&r.t),
+                "arrow" | "dim" => dim(&r.t),
+                "q" => yellow(&r.t),
+                "bad" => red(&r.t),
+                "ok" => green(&r.t),
+                _ => r.t.clone(),
+            }).collect::<String>());
+        }
+        out.log("");
+    }
+    out.log(&dim("─12ms─▶ network and its own work · ══ queue ══▶ waited for a worker first · ✕ where it failed"));
+    out.log("");
+}
 
 // ---- validate ----
 

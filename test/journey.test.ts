@@ -1,7 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { loadEngine } from '../src/backtest/native';
 import { simulateDes, type Journey, type TraceSpan } from '../src/sim/des/des';
-import { boardMarks, failMark, hopTimes, journeyRows } from '../src/ui/journey';
+import { boardMarks, failMark, hopTimes, journeyRows, journeyVerdict } from '../src/ui/journey';
+
+beforeAll(loadEngine);
 
 const span = (p: Partial<TraceSpan> & Pick<TraceSpan, 'id' | 'parent'>): TraceSpan => ({
   via: 'call',
@@ -51,6 +53,16 @@ describe('a journey, read out', () => {
     expect(second).toBe('                        └─ retry 1 ─0.3ms─▶ db ✕ overloaded');
     // the branch starts under the hop that retried
     expect(second.indexOf('└')).toBe(first.indexOf('api'));
+    expect(journeyVerdict(sketch, (id) => id)).toBe('read · failed after 1.01s · db: overloaded');
+  });
+
+  it('names components as the board does and tones each part', () => {
+    const rows = journeyRows(sketch, (id) => (id === 'db' ? 'orders-db' : id), 'db');
+    expect(rows[0].map((r) => r.t).join('')).toBe('users ─12ms─▶ lb ─3ms─▶ api ══ 1000ms queue ══▶ orders-db ✕ timeout (1 s)');
+    expect(rows[0].filter((r) => r.c === 'focus').map((r) => r.t)).toEqual(['orders-db']);
+    expect(rows[0].filter((r) => r.c === 'q').map((r) => r.t)).toEqual([' ══ 1000ms queue ══▶ ']);
+    expect(rows[1].filter((r) => r.c === 'dim').map((r) => r.t.trim())).toEqual(['└─ retry 1']);
+    expect(journeyVerdict(sketch, (id) => (id === 'db' ? 'orders-db' : id))).toBe('read · failed after 1.01s · orders-db: overloaded');
   });
 
   it('puts the wait a request had in the queue on the hop it was stuck at', () => {
@@ -93,5 +105,36 @@ describe('a journey from the engine', () => {
     const [first, second] = text(j);
     expect(first).toMatch(/^users ─[\d.]+ms─▶ api ─[\d.]+ms─▶ db ✕ down$/);
     expect(second).toMatch(/└─ retry 1 ─[\d.]+ms─▶ db ✕ down$/);
+  });
+});
+
+describe('the readout and the board agree', () => {
+  it('marks a failure in the text exactly where the board marks it, and a queue where it lights one', async () => {
+    await loadEngine();
+    // a slow db behind a deadline and retries, and a dead replica: timeouts, sheds and retries
+    const spec = {
+      components: [
+        { id: 'users', kind: 'client' },
+        { id: 'api', kind: 'server', capacity: 1000, latencyMs: 2, timeoutMs: 500, retries: 2, routing: 'fanout' },
+        { id: 'db', kind: 'server', capacity: 10, latencyMs: 100, queueS: 1 },
+        { id: 'cache', kind: 'cache', hitRate: 0.5 },
+        { id: 'store', kind: 'db' },
+      ],
+      connections: ['users -> api', 'api -> db', 'api -> cache', 'cache -> store'],
+    };
+    const r = simulateDes(spec, { duration: 12, rps: 40, events: [{ at: 0, action: { type: 'kill-id', id: 'store' } }] }, { trace: { fromS: 3, perNode: 12 } });
+    const journeys = r.trace!.journeys;
+    expect(journeys.length).toBeGreaterThan(10);
+    let marks = 0;
+    for (const j of journeys) {
+      const text = journeyRows(j, (id) => id).map((row) => row.map((x) => x.t).join('')).join('\n');
+      const expected = j.spans.map((_, i) => failMark(j, i)).filter((m): m is string => !!m);
+      const shown = [...text.matchAll(/✕ ([^─═▶\n]+?)(?= ─| ══|\n|$)/g)].map((m) => m[1]);
+      expect(shown.sort()).toEqual([...expected].sort());
+      marks += expected.length;
+      const queued = j.spans.filter((s) => s.parent >= 0 && hopTimes(j, s).queued && hopTimes(j, s).unreached === false).length;
+      expect((text.match(/══▶/g) ?? []).length).toBe(queued);
+    }
+    expect(marks).toBeGreaterThan(5);
   });
 });

@@ -15,7 +15,7 @@
    "name": "hindcast",
    "version": "1.0.0"
   },
-  "instructions": "Hindcast lets an agent check infrastructure decisions before they ship.\n\nREAL SYSTEMS (production telemetry): connect_telemetry (Prometheus URL, plus Jaeger or Tempo for traces where there are any — without them who calls whom is read from the metrics, and the trust report says what that loses — optionally the cloud bill) → collect_telemetry (history into the workspace) → calibrate_model (read its trust report) → review_capacity for \"how are we doing / how much headroom / what should I worry about\" (it opens with a five-line summary: risk, headroom, cost, the one change, trust — lead with it) → suggest_changes for \"what should we change / where can we save\", and verify_change for any change you propose or are asked about: a strategy, a Kubernetes manifest diff, a Terraform plan, or edited manifests against read_cluster's snapshot. Start a session with model_status: the workspace (./.hindcast) may already hold a fresh model.\nReport verify_change results with their verdict AND confidence. \"pass\" with confidence \"low\" means the change pushes a service past anything the history showed: say so and recommend a load test instead of calling it safe. Quote the money as a range when the band is wide, and say when prices are list prices rather than the bill. Never present a backtest as a guarantee.\nEverything is read-only towards the user's systems; nothing is applied. Credentials are passed as env var names, never as values.\n\nDESIGNS ON PAPER: verify_design checks a spec you wrote (failures, headroom, cost vs budget) and returns fixes as exact spec changes; apply them and verify again until it passes.\n\nENGINE DETAILS: Hindcast simulates distributed-system architectures under load and failure.\nTwo engines: \"fluid\" (queueing model, milliseconds, used for quick checks and search) and \"des\" (discrete-event, every request simulated: real p50/p99/p99.9, emergent retry storms/timeouts/breakers, seeded). Use analyze for Monte Carlo confidence intervals and optimize_cost for the cheapest sizing that meets an SLO.\nDescribe a system as an architecture spec: components (id, kind, optional knobs) + connections ([caller, callee]) + optional zones (failure domains).\nKinds: client (traffic source), cdn, lb, gateway, server, worker, function, cache, db, replica, storage, queue, llm (self-hosted GPU), llmapi (hosted model API), external (someone else's service: its rate limit and latency, not its capacity), kv (managed NoSQL on demand: billed per request, a hot key throttles at one partition), dns (health-checked answers; failover lags by the health check and the TTL), stream (pub/sub log: every subscriber gets every message; partitions cap ingest and each subscriber's consumers), search (OpenSearch-like index: data nodes share the queries; a write is searchable only after refreshS and any indexing backlog), vector (vector database: recall and whether vectorsM fits in the nodes' memory set its capacity), archive (S3 Glacier: retrieval instant answers in ms; expedited/standard are restores taking minutes/hours, priced per read), edge (edge function: answers edgeShare itself before the origin; CPU past cpuLimitMs is killed).\nRules: instances are only reachable behind lb/gateway/queue/stream (a search index's or vector database's nodes share its queries themselves); db shares reads with replica children and fails over to them, and splits its keys over `shards` (a hot key still lands on one); cache/cdn/edge need an origin behind them.\nDynamics: server/worker/llm can autoscale ({ min, max, targetUtil, warmupS, cooldownS }); caches go cold after a restart or flush-cache and re-warm over warmupS (thundering herd on the origin); a connection can carry network latency ({ from, to, latencyMs }).\nScenarios: duration, constant rps or traffic keyframes, readRatio, timed events (kill-id, kill, fail-zone, degrade, inject-errors, inject-latency, flush-cache, restore…), SLO.\nFor \"is this design production-ready / what breaks first / what should we fix\", call audit_resilience: it replays every failure mode, grades user impact, and returns verified fixes priced in $/month.\nCalibrate to a real system by overriding capacity (req/s per instance), latencyMs and costPerHour per component.\nResults are directional: good for comparing designs and finding bottlenecks, not a substitute for load tests.\nFor real systems with recorded telemetry, use backtest_strategy (replays production history through a calibrated model, with measured accuracy) and replay_outage (famous public outages against that model)."
+  "instructions": "Hindcast lets an agent check infrastructure decisions before they ship.\n\nREAL SYSTEMS (production telemetry): connect_telemetry (Prometheus URL, plus Jaeger or Tempo for traces where there are any — without them who calls whom is read from the metrics, and the trust report says what that loses — optionally the cloud bill) → collect_telemetry (history into the workspace) → calibrate_model (read its trust report) → review_capacity for \"how are we doing / how much headroom / what should I worry about\" (it opens with a five-line summary: risk, headroom, cost, the one change, trust — lead with it) → suggest_changes for \"what should we change / where can we save\", and verify_change for any change you propose or are asked about: a strategy, a Kubernetes manifest diff, a Terraform plan, or edited manifests against read_cluster's snapshot. Start a session with model_status: the workspace (./.hindcast) may already hold a fresh model.\nReport verify_change results with their verdict AND confidence. \"pass\" with confidence \"low\" means the change pushes a service past anything the history showed: say so and recommend a load test instead of calling it safe. Quote the money as a range when the band is wide, and say when prices are list prices rather than the bill. Never present a backtest as a guarantee.\nEverything is read-only towards the user's systems; nothing is applied. Credentials are passed as env var names, never as values.\n\nDESIGNS ON PAPER: verify_design checks a spec you wrote (failures, headroom, cost vs budget) and returns fixes as exact spec changes; apply them and verify again until it passes.\n\nENGINE DETAILS: Hindcast simulates distributed-system architectures under load and failure.\nTwo engines: \"fluid\" (queueing model, milliseconds, used for quick checks and search) and \"des\" (discrete-event, every request simulated: real p50/p99/p99.9, emergent retry storms/timeouts/breakers, seeded). Use analyze for Monte Carlo confidence intervals and optimize_cost for the cheapest sizing that meets an SLO. Use trace_request to see why requests through one component fail or wait: sampled requests, hop by hop, with the queue waits and where each failed.\nDescribe a system as an architecture spec: components (id, kind, optional knobs) + connections ([caller, callee]) + optional zones (failure domains).\nKinds: client (traffic source), cdn, lb, gateway, server, worker, function, cache, db, replica, storage, queue, llm (self-hosted GPU), llmapi (hosted model API), external (someone else's service: its rate limit and latency, not its capacity), kv (managed NoSQL on demand: billed per request, a hot key throttles at one partition), dns (health-checked answers; failover lags by the health check and the TTL), stream (pub/sub log: every subscriber gets every message; partitions cap ingest and each subscriber's consumers), search (OpenSearch-like index: data nodes share the queries; a write is searchable only after refreshS and any indexing backlog), vector (vector database: recall and whether vectorsM fits in the nodes' memory set its capacity), archive (S3 Glacier: retrieval instant answers in ms; expedited/standard are restores taking minutes/hours, priced per read), edge (edge function: answers edgeShare itself before the origin; CPU past cpuLimitMs is killed).\nRules: instances are only reachable behind lb/gateway/queue/stream (a search index's or vector database's nodes share its queries themselves); db shares reads with replica children and fails over to them, and splits its keys over `shards` (a hot key still lands on one); cache/cdn/edge need an origin behind them.\nDynamics: server/worker/llm can autoscale ({ min, max, targetUtil, warmupS, cooldownS }); caches go cold after a restart or flush-cache and re-warm over warmupS (thundering herd on the origin); a connection can carry network latency ({ from, to, latencyMs }).\nScenarios: duration, constant rps or traffic keyframes, readRatio, timed events (kill-id, kill, fail-zone, degrade, inject-errors, inject-latency, flush-cache, restore…), SLO.\nFor \"is this design production-ready / what breaks first / what should we fix\", call audit_resilience: it replays every failure mode, grades user impact, and returns verified fixes priced in $/month.\nCalibrate to a real system by overriding capacity (req/s per instance), latencyMs and costPerHour per component.\nResults are directional: good for comparing designs and finding bottlenecks, not a substitute for load tests.\nFor real systems with recorded telemetry, use backtest_strategy (replays production history through a calibrated model, with measured accuracy) and replay_outage (famous public outages against that model)."
  },
  "tools": [
   {
@@ -1599,6 +1599,1009 @@
     },
     "required": [
      "architecture"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "trace_request",
+   "title": "Trace requests through a component",
+   "description": "Follow sampled requests through one component in a discrete-event run, hop by hop: for each request, the network time, the wait in each queue and the work at every component it reached, and where and why it failed (shed by a full queue, given up on at the caller's deadline, a dead or broken component), with its retries, fan-out parts and failovers. Use it to answer \"why do requests through X fail?\" or \"where does the time go?\". Same architecture and scenario as simulate. Returns the run's totals, how many followed requests went through the component and how many of them failed, and each picked request as data (spans with timings, outcome, reason, origin) with a verdict and its path as text lines, e.g. users ─5.7ms─▶ api ══ 800ms queue ══▶ db ✕ timeout (800 ms), a retry on a line below the hop that made it. Requests are followed from 2 s into the run (the first seconds start cold).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "architecture": {
+      "type": "object",
+      "properties": {
+       "version": {
+        "default": 1,
+        "type": "number",
+        "const": 1
+       },
+       "name": {
+        "type": "string"
+       },
+       "description": {
+        "type": "string"
+       },
+       "pricing": {
+        "description": "cost model: illustrative teaching defaults, or cited AWS us-east-1 / Google Cloud us-central1 / Azure East US on-demand prices",
+        "type": "string",
+        "enum": [
+         "illustrative",
+         "aws-us-east-1",
+         "gcp-us-central1",
+         "azure-eastus"
+        ]
+       },
+       "commitment": {
+        "description": "with a real pricing profile: a 1- or 3-year commitment (savings plan, reserved instances, committed use) at published rates, no upfront; usage prices are not discounted",
+        "type": "string",
+        "enum": [
+         "none",
+         "1y",
+         "3y"
+        ]
+       },
+       "components": {
+        "minItems": 1,
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "id": {
+           "type": "string",
+           "minLength": 1,
+           "description": "Unique id, also used as the display name unless `name` is set"
+          },
+          "kind": {
+           "type": "string",
+           "enum": [
+            "client",
+            "cdn",
+            "lb",
+            "gateway",
+            "server",
+            "worker",
+            "function",
+            "cache",
+            "db",
+            "replica",
+            "storage",
+            "queue",
+            "llm",
+            "llmapi",
+            "external",
+            "kv",
+            "dns",
+            "stream",
+            "search",
+            "vector",
+            "archive",
+            "edge"
+           ],
+           "description": "Component type — see list_components for capacities, latency and price"
+          },
+          "name": {
+           "type": "string"
+          },
+          "tier": {
+           "description": "Vertical size: S ×1, M ×2, L ×4 capacity",
+           "type": "string",
+           "enum": [
+            "S",
+            "M",
+            "L"
+           ]
+          },
+          "instances": {
+           "description": "server/worker/llm: horizontal instances (reachable only behind lb/gateway/queue)",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 500
+          },
+          "runtime": {
+           "description": "server/worker/function language runtime",
+           "type": "string",
+           "enum": [
+            "node",
+            "python",
+            "java",
+            "go",
+            "rust"
+           ]
+          },
+          "hitRate": {
+           "description": "cache/cdn hit ratio",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 0.999
+          },
+          "limit": {
+           "description": "gateway/llmapi/external/kv rate limit or function max concurrency, req/s",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
+          "batching": {
+           "description": "llm: continuous batching (×4 throughput, +400ms)",
+           "type": "boolean"
+          },
+          "retries": {
+           "description": "retries per failed downstream call",
+           "type": "integer",
+           "minimum": 0,
+           "maximum": 10
+          },
+          "retryPolicy": {
+           "type": "string",
+           "enum": [
+            "immediate",
+            "backoff",
+            "budget"
+           ]
+          },
+          "timeoutMs": {
+           "description": "client deadline; slower responses count as failures",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
+          "breaker": {
+           "description": "circuit breaker on downstream calls",
+           "type": "boolean"
+          },
+          "fallback": {
+           "description": "serve a degraded response while the breaker is open",
+           "type": "boolean"
+          },
+          "routing": {
+           "description": "split evenly (default), call all children in parallel, or fail over in order",
+           "type": "string",
+           "enum": [
+            "split",
+            "fanout",
+            "failover"
+           ]
+          },
+          "stallRate": {
+           "description": "share of requests that hit a rare stall (GC pause, compaction, noisy neighbour)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 0.5
+          },
+          "stallMs": {
+           "description": "stall duration in ms",
+           "type": "number",
+           "minimum": 0
+          },
+          "fanout": {
+           "description": "each call goes to N partitions of the callee in parallel; the caller waits for the slowest (scatter-gather)",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 1000
+          },
+          "queueS": {
+           "description": "bounded queue length in seconds of work",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
+          "autoscale": {
+           "description": "server/worker/llm: target-tracking autoscaling; `instances` is the starting size",
+           "type": "object",
+           "properties": {
+            "min": {
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 500
+            },
+            "max": {
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 500
+            },
+            "targetUtil": {
+             "description": "utilisation to aim for (default 0.6)",
+             "type": "number",
+             "minimum": 0.1,
+             "maximum": 0.95
+            },
+            "warmupS": {
+             "description": "launch → serving, seconds (default 30; EC2 ASG 90–180, k8s pod 5–20)",
+             "type": "number",
+             "minimum": 0,
+             "maximum": 900
+            },
+            "cooldownS": {
+             "description": "wait after scaling before scaling in (default 60)",
+             "type": "number",
+             "minimum": 0,
+             "maximum": 3600
+            }
+           },
+           "required": [
+            "min",
+            "max"
+           ]
+          },
+          "warmupS": {
+           "description": "cache/cdn: re-warm time constant after a restart or flush (default 20 s)",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
+          "writePolicy": {
+           "description": "cache/cdn: writes go on to the origin (through, default), or are acknowledged at the cache and flushed ~5 s later — fast, but lost if the cache dies first (behind)",
+           "type": "string",
+           "enum": [
+            "through",
+            "behind"
+           ]
+          },
+          "workingSetGb": {
+           "description": "archive: the data it holds, GB (default 1,000), priced per GB-month; cache: the data it fronts, GB — with it the hit rate follows from the cache size (S 6.4, M 13, L 26 GB) and `skew`",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
+          "skew": {
+           "description": "cache: how concentrated reads are on popular keys (Zipf exponent, default 1)",
+           "type": "number",
+           "minimum": 0.1,
+           "maximum": 3
+          },
+          "shards": {
+           "description": "db/replica: horizontal partitions, each a full database of its own — capacity and cost × shards; keys are spread by hash (give a sharded database's replica the same count)",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 256
+          },
+          "hotKeyShare": {
+           "description": "db/kv: share of its traffic on one key (a celebrity, a hot counter): it all lands on one shard, which saturates first",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
+          "partitions": {
+           "description": "stream: partitions (default 4) — 1,000 messages/s in each, and a subscriber can use at most one consumer instance per partition",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 1024
+          },
+          "refreshS": {
+           "description": "search: how often the index refreshes, s (default 1) — a document is searchable only after the next refresh; a longer interval indexes faster but searches miss recent writes for longer",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 3600
+          },
+          "edgeShare": {
+           "description": "edge: the share of requests the edge function answers itself (default 0.5: redirects, auth checks, cached personalisation); the rest go on to the origin",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
+          "cpuMs": {
+           "description": "edge: CPU time per request, ms (default 1; exponentially spread)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 300000
+          },
+          "cpuLimitMs": {
+           "description": "edge: the platform's CPU limit per request, ms (default 10 as Workers Free; about 1 for CloudFront Functions, 30,000 for Workers paid) — requests past it are killed with an error",
+           "type": "number",
+           "exclusiveMinimum": 0,
+           "maximum": 300000
+          },
+          "retrieval": {
+           "description": "archive: how a read gets its object back — instant (default: milliseconds, Glacier Instant Retrieval, 5,500 reads/s), or a Glacier Flexible Retrieval restore: expedited (1–5 min, $10 per 1,000) or standard (3–5 h) at 1,000 restores/s",
+           "type": "string",
+           "enum": [
+            "instant",
+            "expedited",
+            "standard"
+           ]
+          },
+          "recall": {
+           "description": "vector: the recall queries are tuned for (default 0.95) — each halving of the neighbours a search may miss doubles its work: 0.99 costs five times 0.95",
+           "type": "number",
+           "minimum": 0.5,
+           "maximum": 0.999
+          },
+          "vectorsM": {
+           "description": "vector: vectors in the index, millions (default 1; 768 dimensions, 3.5 GB of graph a million) — what does not fit in the nodes' memory (4/8/16 GB a node by size) is read from disk at ~10× the cost",
+           "type": "number",
+           "exclusiveMinimum": 0,
+           "maximum": 100000
+          },
+          "ttlS": {
+           "description": "dns: how long clients cache an answer, s (default 60) — a dead target keeps getting traffic until it expires",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 86400
+          },
+          "healthCheckS": {
+           "description": "dns: how long health checks take to notice a dead target, s (default 30; 3 checks × 10 s)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 3600
+          },
+          "threads": {
+           "description": "server/worker: threads per instance — every request in flight holds one, waiting on its calls included (thread-per-request, e.g. Tomcat 200). Unset: asynchronous, waiting holds nothing",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 10000
+          },
+          "bulkhead": {
+           "description": "calls that may wait on any one dependency at once, per instance; past it a call fails at once instead of taking another thread",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 10000
+          },
+          "provisioned": {
+           "description": "function: provisioned concurrency — executions kept warm, so no cold start up to it; billed by the hour whether used or not ($0.0000041667 per GB-s)",
+           "type": "integer",
+           "minimum": 0,
+           "maximum": 10000
+          },
+          "prefixes": {
+           "description": "storage: key prefixes the objects are spread over (default 10) — S3 takes 5,500 reads or 3,500 writes a second per prefix; `hotKeyShare` puts that share on one prefix",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 100000
+          },
+          "hotRowShare": {
+           "description": "db: share of the writes that update one row (a stock counter, a balance): its lock takes them one at a time, each for a write's time — at most 1,000 ÷ latency a second, however big the database",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
+          "failoverS": {
+           "description": "db: seconds from the primary dying to a replica taking writes (default 60, RDS Multi-AZ: 60–120 s; Aurora under 30 s; Cloud SQL HA about 60 s). Reads go on to the replicas meanwhile; with no automatic failover, the time someone takes to promote one by hand",
+           "type": "number",
+           "exclusiveMinimum": 0,
+           "maximum": 86400
+          },
+          "burst": {
+           "description": "gateway: the token bucket's size in requests (default one second of `limit`): a burst above the rate passes until the bucket is empty — API Gateway's rate 10,000 and burst 5,000",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
+          "maxReceives": {
+           "description": "queue: a redrive policy (SQS maxReceiveCount) — a message a consumer fails comes back after `visibilityS`, until it has been received this many times, then goes to the dead-letter queue; unset, a failed message is gone",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 100
+          },
+          "visibilityS": {
+           "description": "queue: how long a received message stays hidden before it can be received again, s (default 30, as SQS)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 43200
+          },
+          "maxConnections": {
+           "description": "lb/gateway: connections it can hold at once; each request holds one for `connectionS` (a websocket session, a streamed answer, a long poll) — past it, new ones are refused (Erlang B)",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 9007199254740991
+          },
+          "connectionS": {
+           "description": "lb/gateway: how long each request holds its connection, s (default 30)",
+           "type": "number",
+           "exclusiveMinimum": 0,
+           "maximum": 86400
+          },
+          "everyS": {
+           "description": "client: a scheduled job instead of users (a cron, a nightly export) — every everyS seconds it sends `batch` requests over `batchS` (default 10 s), the first run 10 s in; it takes no share of the user traffic, and its requests do not count as the users'",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
+          "batch": {
+           "description": "client with everyS: requests per run",
+           "type": "number",
+           "minimum": 0
+          },
+          "batchS": {
+           "description": "client with everyS: how long a run takes to send them, s (default 10)",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
+          "capacity": {
+           "description": "override: req/s per size-S instance",
+           "type": "number",
+           "exclusiveMinimum": 0
+          },
+          "latencyMs": {
+           "description": "override: base service time",
+           "type": "number",
+           "minimum": 0
+          },
+          "costPerHour": {
+           "description": "override: $/h per size-S instance",
+           "type": "number",
+           "minimum": 0
+          }
+         },
+         "required": [
+          "id",
+          "kind"
+         ],
+         "description": "One component of the architecture"
+        }
+       },
+       "connections": {
+        "type": "array",
+        "items": {
+         "anyOf": [
+          {
+           "type": "array",
+           "items": [
+            {
+             "type": "string"
+            },
+            {
+             "type": "string"
+            }
+           ],
+           "additionalItems": false,
+           "minItems": 2,
+           "maxItems": 2
+          },
+          {
+           "type": "string",
+           "pattern": "^\\s*[^\\s>]+\\s*->\\s*[^\\s>]+\\s*$"
+          },
+          {
+           "type": "object",
+           "properties": {
+            "from": {
+             "type": "string"
+            },
+            "to": {
+             "type": "string"
+            },
+            "latencyMs": {
+             "description": "network round trip added to every call over this link (cross-AZ ≈ 1, cross-region ≈ 60–150)",
+             "type": "number",
+             "minimum": 0,
+             "maximum": 1000
+            },
+            "calls": {
+             "description": "calls per request over this link, made in parallel; the caller needs every one (a tweet written to N timelines, N lookups per page)",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 1000
+            },
+            "carries": {
+             "description": "the link takes only reads or only writes (CQRS: reads to a cache or replica, writes to a queue); default both",
+             "type": "string",
+             "enum": [
+              "reads",
+              "writes"
+             ]
+            },
+            "replication": {
+             "description": "database → replica: sync — every write waits for this replica (no data lost on failover, writes stop while it is unreachable); async (default) — the replica lags, a failover loses what it had not received",
+             "type": "string",
+             "enum": [
+              "sync",
+              "async"
+             ]
+            },
+            "reconnect": {
+             "anyOf": [
+              {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 86400
+              },
+              {
+               "type": "string",
+               "const": "until-restart"
+              }
+             ],
+             "description": "seconds the caller keeps failing its calls over this link after the callee comes back from being down: a client connection that stays broken (gRPC reconnect backoff, a channel that gave up). \"until-restart\": until the caller itself restarts. Unset or 0: it reconnects at once. An assumption you state, not something measured"
+            }
+           },
+           "required": [
+            "from",
+            "to"
+           ]
+          }
+         ]
+        },
+        "description": "caller → callee pairs, e.g. \"lb -> api\", [\"lb\",\"api\"] or { from, to, latencyMs }; order matters for failover routing"
+       },
+       "zones": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "id": {
+           "type": "string"
+          },
+          "label": {
+           "type": "string"
+          },
+          "members": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           },
+           "description": "component ids located in this failure domain"
+          }
+         },
+         "required": [
+          "id",
+          "members"
+         ]
+        }
+       },
+       "notes": {
+        "description": "notes on the board: free text at a position, for explaining the design; the engines ignore them",
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "text": {
+           "type": "string",
+           "maxLength": 2000
+          },
+          "x": {
+           "type": "number"
+          },
+          "y": {
+           "type": "number"
+          },
+          "width": {
+           "type": "number",
+           "exclusiveMinimum": 0
+          }
+         },
+         "required": [
+          "text",
+          "x",
+          "y"
+         ]
+        }
+       }
+      },
+      "required": [
+       "components",
+       "connections"
+      ]
+     },
+     "scenario": {
+      "type": "object",
+      "properties": {
+       "name": {
+        "type": "string"
+       },
+       "duration": {
+        "default": 60,
+        "description": "simulated seconds",
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "maximum": 3600
+       },
+       "rps": {
+        "description": "constant traffic (ignored when `traffic` is given)",
+        "type": "number",
+        "minimum": 0
+       },
+       "traffic": {
+        "description": "keyframes, linear in between",
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "at": {
+           "type": "number",
+           "minimum": 0
+          },
+          "rps": {
+           "type": "number",
+           "minimum": 0
+          }
+         },
+         "required": [
+          "at",
+          "rps"
+         ]
+        }
+       },
+       "readRatio": {
+        "default": 0.8,
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+       },
+       "events": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "at": {
+           "type": "number",
+           "minimum": 0
+          },
+          "action": {
+           "oneOf": [
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "kill-id"
+              },
+              "id": {
+               "type": "string"
+              }
+             },
+             "required": [
+              "type",
+              "id"
+             ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "revive-id"
+              },
+              "id": {
+               "type": "string"
+              }
+             },
+             "required": [
+              "type",
+              "id"
+             ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "kill"
+              },
+              "kind": {
+               "type": "string",
+               "enum": [
+                "client",
+                "cdn",
+                "lb",
+                "gateway",
+                "server",
+                "worker",
+                "function",
+                "cache",
+                "db",
+                "replica",
+                "storage",
+                "queue",
+                "llm",
+                "llmapi",
+                "external",
+                "kv",
+                "dns",
+                "stream",
+                "search",
+                "vector",
+                "archive",
+                "edge"
+               ]
+              },
+              "pick": {
+               "default": "busiest",
+               "type": "string",
+               "enum": [
+                "busiest",
+                "random"
+               ]
+              }
+             },
+             "required": [
+              "type",
+              "kind"
+             ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "revive-all"
+              }
+             },
+             "required": [
+              "type"
+             ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "fail-zone"
+              },
+              "id": {
+               "type": "string"
+              }
+             },
+             "required": [
+              "type",
+              "id"
+             ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "restore-zone"
+              },
+              "id": {
+               "type": "string"
+              }
+             },
+             "required": [
+              "type",
+              "id"
+             ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "degrade"
+              },
+              "id": {
+               "type": "string"
+              },
+              "factor": {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 1
+              }
+             },
+             "required": [
+              "type",
+              "id",
+              "factor"
+             ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "restore"
+              },
+              "id": {
+               "type": "string"
+              }
+             },
+             "required": [
+              "type",
+              "id"
+             ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "inject-errors"
+              },
+              "id": {
+               "type": "string"
+              },
+              "rate": {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 1
+              }
+             },
+             "required": [
+              "type",
+              "id",
+              "rate"
+             ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "inject-latency"
+              },
+              "id": {
+               "type": "string"
+              },
+              "ms": {
+               "type": "number",
+               "minimum": 0
+              }
+             },
+             "required": [
+              "type",
+              "id",
+              "ms"
+             ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "flush-cache"
+              },
+              "id": {
+               "type": "string"
+              }
+             },
+             "required": [
+              "type",
+              "id"
+             ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "hot-key"
+              },
+              "id": {
+               "type": "string"
+              },
+              "share": {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 1
+              }
+             },
+             "required": [
+              "type",
+              "id",
+              "share"
+             ],
+             "description": "database: this share of its traffic goes to one key — a celebrity, a hot counter — all on one shard (0 ends it)"
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "partition"
+              },
+              "a": {
+               "type": "string",
+               "description": "zone id"
+              },
+              "b": {
+               "type": "string",
+               "description": "zone id"
+              }
+             },
+             "required": [
+              "type",
+              "a",
+              "b"
+             ],
+             "description": "cut every link between two zones; both keep running"
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "heal-partition"
+              }
+             },
+             "required": [
+              "type"
+             ]
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "cut-link"
+              },
+              "from": {
+               "type": "string",
+               "description": "component id"
+              },
+              "to": {
+               "type": "string",
+               "description": "component id"
+              }
+             },
+             "required": [
+              "type",
+              "from",
+              "to"
+             ],
+             "description": "cut one link: calls over it get no answer until the connection times out"
+            },
+            {
+             "type": "object",
+             "properties": {
+              "type": {
+               "type": "string",
+               "const": "heal-link"
+              },
+              "from": {
+               "type": "string"
+              },
+              "to": {
+               "type": "string"
+              }
+             },
+             "required": [
+              "type",
+              "from",
+              "to"
+             ]
+            }
+           ]
+          },
+          "note": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "at",
+          "action"
+         ]
+        }
+       },
+       "slo": {
+        "type": "object",
+        "properties": {
+         "maxErrorRate": {
+          "default": 0.01,
+          "type": "number"
+         },
+         "maxP99Ms": {
+          "default": 300,
+          "type": "number"
+         }
+        }
+       }
+      }
+     },
+     "component": {
+      "description": "id of the component to follow requests through",
+      "type": "string",
+      "minLength": 1
+     },
+     "failed_only": {
+      "description": "only requests that failed (default false: any request through it)",
+      "type": "boolean"
+     },
+     "count": {
+      "description": "how many sampled requests to return, spread over the run (default 3)",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20
+     },
+     "seed": {
+      "description": "des only: random seed (same seed → same result)",
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+     }
+    },
+    "required": [
+     "architecture",
+     "component"
     ]
    },
    "annotations": {

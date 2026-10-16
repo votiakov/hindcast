@@ -411,7 +411,8 @@ impl Tracer {
                                 VIA_FAILOVER => "failover",
                                 VIA_ROUTED => "routed",
                                 _ => "call",
-                            },
+                            }
+                            .into(),
                             attempt: s.k,
                             sent_ms: r1((s.sent - t0) * 1000.0),
                             arrive_ms: ms(t0, s.arrive),
@@ -421,8 +422,8 @@ impl Tracer {
                             network_ms: r1(net * 1000.0),
                             wait_ms: r1(wait * 1000.0),
                             service_ms: r1(svc * 1000.0),
-                            outcome,
-                            reason: if failed { Some(reason((s.why & 0xff) as u8)) } else { None },
+                            outcome: outcome.into(),
+                            reason: if failed { Some(reason((s.why & 0xff) as u8).into()) } else { None },
                             origin: if failed { origin(s.why) } else { None },
                             gave_up_ms: ms(t0, s.gave_up),
                             deadline_ms: if s.deadline_ms.is_nan() { None } else { Some(s.deadline_ms) },
@@ -436,7 +437,7 @@ impl Tracer {
                     ms: r1((b.end - t0) * 1000.0),
                     ok: b.why == 0,
                     failed_at: if b.why != 0 { origin(b.why) } else { None },
-                    reason: if b.why != 0 { Some(reason((b.why & 0xff) as u8)) } else { None },
+                    reason: if b.why != 0 { Some(reason((b.why & 0xff) as u8).into()) } else { None },
                     truncated: b.truncated,
                     spans,
                 }
@@ -458,14 +459,14 @@ impl Tracer {
     }
 }
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SpanOut {
     /// the component
     pub id: String,
     /// the hop that made this call (-1: the user's own)
     pub parent: i32,
-    pub via: &'static str,
+    pub via: String,
     /// 0 for the first attempt, 1 for the first retry…
     pub attempt: u8,
     /// ms after the request began
@@ -481,15 +482,15 @@ pub struct SpanOut {
     pub service_ms: f64,
     /// ok, hit (a cache answered), queued (left for consumers), failed, timeout (the caller gave up at
     /// its deadline), open (still out when the request ended)
-    pub outcome: &'static str,
-    pub reason: Option<&'static str>,
+    pub outcome: String,
+    pub reason: Option<String>,
     /// the component the failure started at
     pub origin: Option<String>,
     pub gave_up_ms: Option<f64>,
     pub deadline_ms: Option<f64>,
 }
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Journey {
     pub id: u32,
@@ -500,7 +501,7 @@ pub struct Journey {
     pub ms: f64,
     pub ok: bool,
     pub failed_at: Option<String>,
-    pub reason: Option<&'static str>,
+    pub reason: Option<String>,
     pub truncated: bool,
     pub spans: Vec<SpanOut>,
 }

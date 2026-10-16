@@ -37,7 +37,7 @@ fn a_quiet_board_s_journey_adds_up_hop_by_hop() {
         assert!(near(api.network_ms, 12.3) && near(db.network_ms, 5.3), "{} {}", api.network_ms, db.network_ms);
         assert!(near(api.service_ms, 100.0) && near(db.service_ms, 40.0), "{} {}", api.service_ms, db.service_ms);
         assert!(near(db.wait_ms, 0.0));
-        assert_eq!((api.outcome, db.outcome), ("ok", "ok"));
+        assert_eq!((api.outcome.as_str(), db.outcome.as_str()), ("ok", "ok"));
         // the api answers when the db has: its time covers the call
         assert!(near(api.end_ms.unwrap(), db.end_ms.unwrap()));
         assert!(near(j.ms, 12.3 + api.wait_ms + 100.0 + 5.3 + 40.0), "{} vs {}", j.ms, 157.6 + api.wait_ms);
@@ -66,10 +66,10 @@ fn a_timeout_and_its_retry_are_marked_where_they_happened() {
     for j in &failed {
         let dbs = hop(j, "db");
         let first = dbs[0];
-        assert_eq!((first.attempt, first.via), (0, "call"));
+        assert_eq!((first.attempt, first.via.as_str()), (0, "call"));
         if first.outcome == "failed" {
             // shed at once, and the retry was too
-            assert_eq!((first.reason, first.origin.as_deref()), (Some("overloaded"), Some("db")));
+            assert_eq!((first.reason.as_deref(), first.origin.as_deref()), (Some("overloaded"), Some("db")));
         } else {
             // every hop of the first try was given up on at the deadline, 500 ms after it was sent
             assert_eq!(first.outcome, "timeout");
@@ -78,29 +78,29 @@ fn a_timeout_and_its_retry_are_marked_where_they_happened() {
         }
         assert_eq!(dbs.len(), 2, "first try and one retry: {:?}", j);
         let retry = dbs[1];
-        assert_eq!((retry.attempt, retry.via), (1, "retry"));
+        assert_eq!((retry.attempt, retry.via.as_str()), (1, "retry"));
         // the retry leaves 1 ms after the first try's outcome (the immediate policy)
         let first_out = first.gave_up_ms.or(first.end_ms).unwrap();
         assert!(near(retry.sent_ms, first_out + 1.0), "{} {}", retry.sent_ms, first_out);
-        match retry.outcome {
+        match retry.outcome.as_str() {
             "timeout" => {
                 timeouts += 1;
                 assert_eq!(j.failed_at.as_deref(), Some("api"));
-                assert_eq!(j.reason, Some("timed out waiting on its calls"));
+                assert_eq!(j.reason.as_deref(), Some("timed out waiting on its calls"));
             }
             "failed" => {
                 sheds += 1;
-                assert_eq!((retry.reason, retry.origin.as_deref()), (Some("overloaded"), Some("db")));
+                assert_eq!((retry.reason.as_deref(), retry.origin.as_deref()), (Some("overloaded"), Some("db")));
                 // refused on arrival: no wait, no work, answered in 0.5 ms
                 assert!(retry.start_ms.is_none());
                 assert!(near(retry.end_ms.unwrap() - retry.arrive_ms.unwrap(), 0.5));
-                assert_eq!((j.failed_at.as_deref(), j.reason), (Some("db"), Some("overloaded")));
+                assert_eq!((j.failed_at.as_deref(), j.reason.as_deref()), (Some("db"), Some("overloaded")));
             }
             o => panic!("retry {}", o),
         }
         // the api's own hop failed, with the reason the user got
         let api = hop(j, "api")[0];
-        assert_eq!((api.outcome, api.reason), ("failed", j.reason));
+        assert_eq!((api.outcome.as_str(), api.reason.as_deref()), ("failed", j.reason.as_deref()));
     }
     assert!(timeouts > 0 && sheds > 0, "timeouts {} sheds {}", timeouts, sheds);
     // a request that got through was answered within its deadline
@@ -122,11 +122,11 @@ fn a_dead_component_is_where_the_journey_fails_and_a_cache_hit_ends_it() {
             assert!(hop(j, "db").is_empty());
         } else {
             down += 1;
-            assert_eq!((j.failed_at.as_deref(), j.reason), (Some("db"), Some("down")));
+            assert_eq!((j.failed_at.as_deref(), j.reason.as_deref()), (Some("db"), Some("down")));
             let db = hop(j, "db")[0];
-            assert_eq!((db.outcome, db.origin.as_deref()), ("failed", Some("db")));
+            assert_eq!((db.outcome.as_str(), db.origin.as_deref()), ("failed", Some("db")));
             // the cache passes the failure on: failed, started at the db
-            assert_eq!((cache.outcome, cache.origin.as_deref()), ("failed", Some("db")));
+            assert_eq!((cache.outcome.as_str(), cache.origin.as_deref()), ("failed", Some("db")));
         }
     }
     assert!(hits > 0 && down > 0, "hits {} down {}", hits, down);
@@ -139,7 +139,7 @@ fn a_fan_out_s_parts_are_siblings() {
     assert!(!t.journeys.is_empty());
     for j in &t.journeys {
         let (a, b) = (hop(j, "a")[0], hop(j, "b")[0]);
-        assert_eq!((a.parent, b.parent, a.via, b.via), (1, 1, "fanout", "fanout"));
+        assert_eq!((a.parent, b.parent, a.via.as_str(), b.via.as_str()), (1, 1, "fanout", "fanout"));
         // the api answers when the slower part has
         assert!(near(hop(j, "api")[0].end_ms.unwrap(), b.end_ms.unwrap()));
     }
@@ -187,7 +187,7 @@ fn a_request_shed_from_the_queue_shows_the_wait_it_had() {
     let (mut refused, mut waited) = (0, 0);
     for j in t.journeys.iter().filter(|j| !j.ok) {
         let api = hop(j, "api")[0];
-        assert_eq!((api.reason, api.origin.as_deref()), (Some("overloaded"), Some("api")));
+        assert_eq!((api.reason.as_deref(), api.origin.as_deref()), (Some("overloaded"), Some("api")));
         assert!(api.start_ms.is_none() && api.service_ms == 0.0);
         if api.wait_ms == 0.0 {
             refused += 1;

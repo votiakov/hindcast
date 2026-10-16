@@ -101,6 +101,11 @@ const CASES: Case[] = [
   call('collect_telemetry', { workspace: ws('i'), last: '6h' }, true),
   call('calibrate_model', { workspace: ws('i') }),
   call('review_capacity', { workspace: ws('i'), draws: 3 }),
+  // the request tracer (appended, so the cases before keep their ids)
+  call('trace_request', { architecture: parseYaml(readFileSync('test/cli-fixtures/slow-db.yaml', 'utf8')), scenario: { rps: 14, duration: 20 }, component: 'db', failed_only: true, count: 2 }),
+  call('trace_request', { architecture: shop, scenario: { duration: 10 }, component: 'api', seed: 3 }),
+  call('trace_request', { architecture: shop, component: 'nope' }),
+  call('trace_request', { architecture: shop, count: 50 }),
 ];
 
 const mask = (s: string) =>

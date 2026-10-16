@@ -6,6 +6,7 @@
 |---|---|
 | `validate <arch>` | schema + lint (exit code 1 on errors) |
 | `simulate <arch> [scenario] [--rps N] [--duration S] [--engine fluid\|des] [--seed N]` | one run; summary, bottlenecks with explanations, events; DES adds p50/p90/p99/p99.9 |
+| `simulate <arch> [scenario] --engine des --trace <component> [--failed] [--count 3]` | sampled requests through one component, hop by hop, in the same lines as the app's trace strip (below); `--failed` picks failed ones, `--json` gives the journeys as data |
 | `analyze <arch> [scenario] [--runs 20] [--seed 1]` | discrete-event Monte Carlo with 95 % CIs, in parallel threads |
 | `compare <arch> <variants> [scenario]` | baseline + variants ranked (SLO first, then cost) with each one's top bottleneck |
 | `breaking-point <arch> [--p99 300] [--errors 0.01]` | max sustainable req/s and the limiting component |
@@ -38,11 +39,23 @@ Every command accepts `--json`. Files may be YAML or JSON. Examples live in `exa
 
 ```bash
 npm run sim -- simulate examples/shop.yaml examples/black-friday.yaml --engine des
+npm run sim -- simulate examples/shop.yaml examples/black-friday.yaml --engine des --trace api --failed
 npm run sim -- compare  examples/shop.yaml examples/shop-variants.yaml examples/black-friday.yaml
 npm run sim -- analyze  examples/shop.yaml --rps 800 --runs 24
 npm run sim -- optimize examples/shop.yaml examples/black-friday.yaml --runtimes --out optimized.yaml
 npm run sim -- link     examples/shop.yaml examples/shop-hypothesis.yaml
 npm run sim -- import-terraform examples/terraform/shop.tfstate.json --out shop.yaml
+```
+
+`--trace` prints each sampled request on its own lines: the arrow into each hop is the network and
+the component's own work (`─12ms─▶`), or, when it mostly waited for a worker, the queue first
+(`══ 800ms queue ══▶`); `✕` marks where the failure started and the engine's reason; a retry, a
+fan-out part or a failover target branches below the hop that made it:
+
+```
+read · failed after 1s · api: timed out waiting on its calls  began 3.8 s in
+users ─1.2ms─▶ api ══ 651ms queue + 69ms ══▶ db ✕ timeout (500 ms)
+               └─ retry 1 ══ 500ms queue ══▶ db ✕ timeout (500 ms)
 ```
 
 `HINDCAST_APP_URL` (default `http://localhost:5173`) controls generated links. The CLI is `hindcast`
@@ -59,6 +72,7 @@ Registered for Claude Code in `.mcp.json` (restart Claude Code in this folder an
 | `list_components` | — | catalogue: kinds, numbers, tiers, runtimes, modelling notes |
 | `validate_architecture` | `architecture` | `{ ok, issues[], spec }` |
 | `simulate` | `architecture`, `scenario?`, `engine? fluid\|des`, `seed?`, `include_timeline?` | summary, SLO, bottlenecks (+ explanations), events, components |
+| `trace_request` | `architecture`, `component`, `scenario?`, `failed_only?`, `count?` (3, up to 20), `seed?` | sampled requests through the component in a discrete-event run, hop by hop (network, queue wait, work, where and why each failed), each with a verdict and its path as text lines; how many followed requests went through it and failed |
 | `analyze` | `architecture`, `scenario?`, `runs?` | Monte Carlo metrics with CIs, pSloMet, bottleneck frequencies |
 | `compare_architectures` | `architecture`, `variants[]`, `scenario?` | ranked variants + per-variant summaries |
 | `find_breaking_point` | `architecture`, `readRatio?`, `slo?` | max req/s within SLO, limiting component |

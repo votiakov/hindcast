@@ -1,9 +1,12 @@
+import * as wasm from '../backtest/wasm/hindcast_engine.js';
 import type { Journey, TraceSpan } from '../sim/des/des';
 
 /**
  * One sampled request (a journey from the discrete-event engine) laid out for reading: the text
- * readout in the strip, row by row in monospace, and the marks the board draws on its nodes and
- * links. Pure: the engine measured everything; this only words and places it.
+ * readout in the strip, row by row in monospace (worded in the engine, engine-rs/src/sim/journey.rs,
+ * the same rows `hindcast simulate --trace` and the trace_request tool print), and the marks the
+ * board draws on its nodes and links. Pure: the engine measured everything; this only words and
+ * places it.
  */
 
 /** compact: 0.4ms, 12ms, 840ms, 1.21s */
@@ -55,16 +58,11 @@ export function okMark(s: TraceSpan): string | null {
 
 const viaLabel = (s: TraceSpan) => (s.via === 'retry' ? `retry ${s.attempt} ` : s.via === 'failover' ? 'failover ' : s.via === 'routed' ? 'routed ' : '');
 
-/** the arrow into a hop: its network and own work, or a heavy one when it mostly queued */
-export function arrow(j: Journey, s: TraceSpan): { text: string; queued: boolean } {
-  const t = hopTimes(j, s);
-  if (t.unreached) return { text: '──▶', queued: false };
-  if (t.queued) return { text: `══ ${ms(t.wait)} queue${t.net + t.work >= 1 ? ` + ${ms(t.net + t.work)}` : ''} ══▶`, queued: true };
-  return { text: `─${ms(t.net + t.work)}─▶`, queued: false };
-}
-
 export type Cls = '' | 'arrow' | 'q' | 'bad' | 'ok' | 'name' | 'focus' | 'dim';
 export type Run = { t: string; c: Cls };
+
+/** the display name of each component the journey reaches */
+const namesOf = (j: Journey, nameOf: (id: string) => string) => Object.fromEntries(j.spans.map((s) => [s.id, nameOf(s.id)]));
 
 /**
  * The journey as rows of text: the first call each hop makes continues on its row, the others
@@ -74,61 +72,7 @@ export type Run = { t: string; c: Cls };
  *                  └─ retry 1 ─0.3ms─▶ db ✕ overloaded
  */
 export function journeyRows(j: Journey, nameOf: (id: string) => string, focus?: string | null): Run[][] {
-  const grid: { ch: string; c: Cls }[][] = [];
-  const put = (row: number, col: number, text: string, c: Cls) => {
-    while (grid.length <= row) grid.push([]);
-    const r = grid[row];
-    while (r.length < col) r.push({ ch: ' ', c: '' });
-    [...text].forEach((ch, k) => (r[col + k] = { ch, c }));
-    return col + [...text].length;
-  };
-  const kids = new Map<number, number[]>();
-  j.spans.forEach((s, i) => {
-    if (s.parent < 0) return;
-    kids.set(s.parent, [...(kids.get(s.parent) ?? []), i]);
-  });
-  for (const v of kids.values()) v.sort((a, b) => j.spans[a].sentMs - j.spans[b].sentMs || a - b);
-  const node = (i: number, row: number, col: number) => {
-    const s = j.spans[i];
-    let c = put(row, col, nameOf(s.id), s.id === focus ? 'focus' : 'name');
-    const bad = failMark(j, i);
-    const ok = okMark(s);
-    if (bad) c = put(row, c, ` ✕ ${bad}`, 'bad');
-    else if (ok) c = put(row, c, ` · ${ok}`, 'ok');
-    const ch = kids.get(i) ?? [];
-    const rows: number[] = [];
-    ch.forEach((k, n) => {
-      const a = arrow(j, j.spans[k]);
-      if (n === 0) {
-        const end = put(row, c, ` ${a.text} `, a.queued ? 'q' : 'arrow');
-        node(k, row, end);
-        return;
-      }
-      const r = grid.length;
-      rows.push(r);
-      let x = put(r, col, n === ch.length - 1 ? '└─ ' : '├─ ', 'dim');
-      const via = viaLabel(j.spans[k]);
-      if (via) x = put(r, x, via, 'dim');
-      x = put(r, x, `${a.text} `, a.queued ? 'q' : 'arrow');
-      node(k, r, x);
-    });
-    // the branch's stem, down to its last row
-    const last = rows[rows.length - 1];
-    for (let r = row + 1; last !== undefined && r < last; r++) {
-      const cell = grid[r]?.[col];
-      if (!cell || cell.ch === ' ') put(r, col, '│', 'dim');
-    }
-  };
-  node(0, 0, 0);
-  return grid.map((r) => {
-    const runs: Run[] = [];
-    for (const cell of r) {
-      const lastRun = runs[runs.length - 1];
-      if (lastRun && lastRun.c === cell.c) lastRun.t += cell.ch;
-      else runs.push({ t: cell.ch, c: cell.c });
-    }
-    return runs;
-  });
+  return wasm.journeyRows(j, namesOf(j, nameOf), focus ?? undefined) as Run[][];
 }
 
 export interface NodeMark {
@@ -183,7 +127,5 @@ export function boardMarks(j: Journey, edges: { id: string; source: string; targ
 
 /** the one-line summary: what it was, how long the user waited, and how it ended */
 export function journeyVerdict(j: Journey, nameOf: (id: string) => string): string {
-  const kind = j.read ? 'read' : 'write';
-  if (j.ok) return `${kind} · answered in ${ms(j.ms)}`;
-  return `${kind} · failed after ${ms(j.ms)} · ${j.failedAt ? `${nameOf(j.failedAt)}: ` : ''}${j.reason ?? 'failed'}`;
+  return wasm.journeyVerdict(j, namesOf(j, nameOf));
 }

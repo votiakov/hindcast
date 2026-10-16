@@ -141,7 +141,7 @@ to start without `HINDCAST_MCP_TOKEN` (clients send `Authorization: Bearer <toke
 `--no-auth`. On loopback it answers only to a local `Host`, and a browser only from a local `Origin`
 (`HINDCAST_MCP_ORIGINS` adds others), so a web page can't drive it by DNS rebinding. Requests are
 bounded: 4 MiB bodies, 30 s to send one, 8 at once. Over HTTP it offers only an allowlist of tools
-that compute on what they are given — designing, simulating, auditing, importing Terraform or
+that compute on what they are given — designing, simulating, tracing requests, auditing, importing Terraform or
 Kubernetes, `verify_design`. The workspace tools (they read and write local files and query your
 Prometheus or cluster), `backtest_strategy` / `replay_outage` (they read paths) and `open_in_app`
 are left out unless you add `--all-tools`, on a machine and network you trust.
@@ -612,7 +612,7 @@ or dropped on the app's Backtest screen.
 | `verify_design` | `spec`, `rps?`, `slo?`, `budgetMonthly?`, `incidentCostPerMinute?` | verdict, problems, findings with fixes as spec changes, app link |
 | `read_cluster` | `context`, `namespace?`, `selector?` | workloads, snapshot path, the exact command run |
 
-The earlier tools are still there: `simulate`, `analyze`, `audit_resilience`, `compare_architectures`,
+The earlier tools are still there: `simulate`, `trace_request`, `analyze`, `audit_resilience`, `compare_architectures`,
 `find_breaking_point`, `optimize_cost`, `import_terraform`, `import_kubernetes`, `validate_architecture`,
 `list_components`, `show_architecture`, `open_in_app`, `backtest_strategy`, `replay_outage`
 ([tools.md](tools.md#mcp-server--npm-run-mcp)). `backtest_strategy` and `replay_outage` default to

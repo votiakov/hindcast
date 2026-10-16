@@ -1,0 +1,10 @@
+# a database at 10 req/s behind an api that waits 500 ms and retries once: requests queue at the db,
+# time out, and the retries are shed (simulate --engine des --trace db)
+name: Slow db
+components:
+  - { id: users, kind: client }
+  - { id: api, kind: server, capacity: 1000, latencyMs: 2, timeoutMs: 500, retries: 1 }
+  - { id: db, kind: server, capacity: 10, latencyMs: 100, queueS: 1 }
+connections:
+  - users -> api
+  - api -> db

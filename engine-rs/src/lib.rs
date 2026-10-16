@@ -398,6 +398,25 @@ mod wasm {
         Ok(crate::sim::des::simulate_des(&spec, &sc, &cfg).map_err(jerr)?.serialize(&ser())?)
     }
 
+    /// journeyRows(journey, names, focus?) → [[{ t, c }]]: a traced request's path as rows of text runs
+    /// (src/ui/journey.ts), as `simulate --trace` and the trace_request tool print it
+    #[wasm_bindgen(js_name = journeyRows)]
+    pub fn journey_rows(journey: JsValue, names: JsValue, focus: Option<String>) -> Result<JsValue, JsValue> {
+        let j: crate::sim::trace::Journey = from(journey)?;
+        let names: std::collections::HashMap<String, String> = opt(names)?;
+        let name_of = |id: &str| names.get(id).cloned().unwrap_or_else(|| id.to_string());
+        Ok(crate::sim::journey::journey_rows(&j, &name_of, focus.as_deref()).serialize(&ser())?)
+    }
+
+    /// journeyVerdict(journey, names) → the one-line summary of a traced request
+    #[wasm_bindgen(js_name = journeyVerdict)]
+    pub fn journey_verdict(journey: JsValue, names: JsValue) -> Result<String, JsValue> {
+        let j: crate::sim::trace::Journey = from(journey)?;
+        let names: std::collections::HashMap<String, String> = opt(names)?;
+        let name_of = |id: &str| names.get(id).cloned().unwrap_or_else(|| id.to_string());
+        Ok(crate::sim::journey::journey_verdict(&j, &name_of))
+    }
+
     /// analyze(spec, scenario, { runs, seed, des }) → Analysis: discrete-event Monte Carlo
     #[wasm_bindgen]
     pub fn analyze(spec: JsValue, scenario: JsValue, opts: JsValue) -> Result<JsValue, JsValue> {

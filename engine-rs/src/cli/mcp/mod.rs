@@ -84,7 +84,7 @@ pub fn serve() -> i32 {
 /// browser: the ones a server reachable over the network offers by default (an allowlist, so a tool
 /// added later is not exposed until it is judged safe)
 pub fn network_safe(tool: &str) -> bool {
-    matches!(tool, "list_components" | "validate_architecture" | "simulate" | "compare_architectures" | "find_breaking_point" | "analyze" | "optimize_cost" | "audit_resilience" | "import_terraform" | "import_kubernetes" | "show_architecture" | "verify_design")
+    matches!(tool, "list_components" | "validate_architecture" | "simulate" | "trace_request" | "compare_architectures" | "find_breaking_point" | "analyze" | "optimize_cost" | "audit_resilience" | "import_terraform" | "import_kubernetes" | "show_architecture" | "verify_design")
 }
 
 /// one JSON-RPC message: its reply (none for a notification); progress notifications go to `sink`
@@ -463,6 +463,11 @@ fn run(name: &str, a: &Value, token: Option<&Value>, sink: &mut Vec<Value>) -> R
             }
             r.as_object_mut().ok_or("no result")?.insert("timelineSamples".into(), json!(samples));
             as_json(&r)
+        }
+        "trace_request" => {
+            let count = num_arg(a, "count").map(|c| c as usize).unwrap_or(3);
+            let t = crate::cli::sim::trace_request(&arch(), &scenario_of(a), num_arg(a, "seed").unwrap_or(1.0), &s(a, &["component"]), a.get("failed_only").and_then(|x| x.as_bool()) == Some(true), count)?;
+            as_json(&t.to_json())
         }
         "compare_architectures" => {
             let variants = a.get("variants").and_then(|v| v.as_array()).cloned().unwrap_or_default();

@@ -66,13 +66,14 @@ hindcast diff-strategy --base old/deploy --head deploy --model model.json --out 
 
 <section class="prose">
 <h2>For AI assistants (MCP)</h2>
-<p><code>npm run mcp</code> starts an MCP server over stdio; Claude Code picks it up from <code>.mcp.json</code>. Twenty-three tools. The nine that let an agent work on a live system itself (connect to Prometheus and Jaeger, collect, calibrate, verify a change or a Terraform plan) are in <a href="agents.html">For AI agents</a>. The rest:</p>
+<p><code>npm run mcp</code> starts an MCP server over stdio; Claude Code picks it up from <code>.mcp.json</code>. Twenty-six tools. The eleven that let an agent work on a live system itself (connect to Prometheus and Jaeger, collect, calibrate, verify a change or a Terraform plan) are in <a href="agents.html">For AI agents</a>. The rest:</p>
 <div class="table-wrap"><table>
 <tr><th>tool</th><th>what it does</th></tr>
 <tr><td><code>backtest_strategy</code></td><td>backtests strategies (objects or YAML) over a recorded history and returns the Markdown report</td></tr>
 <tr><td><code>replay_outage</code></td><td>replays a public outage against a model, as built and with strategies</td></tr>
 <tr><td><code>audit_resilience</code></td><td>what breaks first in a design, and what it costs; verified, priced fixes</td></tr>
 <tr><td><code>simulate</code>, <code>analyze</code></td><td>one run (fluid or discrete-event), or Monte Carlo with confidence intervals</td></tr>
+<tr><td><code>trace_request</code></td><td>sampled requests through one component, hop by hop: queue waits, work, and where and why each failed, as data and as the lines the app's trace strip shows (<code>hindcast simulate … --engine des --trace &lt;component&gt;</code> from a shell)</td></tr>
 <tr><td><code>compare_architectures</code>, <code>find_breaking_point</code>, <code>optimize_cost</code></td><td>rank variants, find the max req/s within SLO, find the cheapest sizing that meets it</td></tr>
 <tr><td><code>import_terraform</code>, <code>import_kubernetes</code></td><td>infrastructure code → an architecture, with the assumptions to confirm</td></tr>
 <tr><td><code>show_architecture</code>, <code>open_in_app</code></td><td>a live canvas inline in hosts that support MCP Apps, or a link into the app</td></tr>

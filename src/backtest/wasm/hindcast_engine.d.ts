@@ -75,6 +75,15 @@ export function loadCurve(spec: any, opts: any): any;
  */
 export function simulateDes(spec: any, scenario: any, cfg: any): any;
 /**
+ * journeyRows(journey, names, focus?) → [[{ t, c }]]: a traced request's path as rows of text runs
+ * (src/ui/journey.ts), as `simulate --trace` and the trace_request tool print it
+ */
+export function journeyRows(journey: any, names: any, focus?: string | null): any;
+/**
+ * journeyVerdict(journey, names) → the one-line summary of a traced request
+ */
+export function journeyVerdict(journey: any, names: any): string;
+/**
  * analyze(spec, scenario, { runs, seed, des }) → Analysis: discrete-event Monte Carlo
  */
 export function analyze(spec: any, scenario: any, opts: any): any;
@@ -198,6 +207,8 @@ export interface InitOutput {
   readonly breakingPoint: (a: any, b: any) => [number, number, number];
   readonly loadCurve: (a: any, b: any) => [number, number, number];
   readonly simulateDes: (a: any, b: any, c: any) => [number, number, number];
+  readonly journeyRows: (a: any, b: any, c: number, d: number) => [number, number, number];
+  readonly journeyVerdict: (a: any, b: any) => [number, number, number, number];
   readonly analyze: (a: any, b: any, c: any) => [number, number, number];
   readonly optimize: (a: any, b: any, c: any) => [number, number, number];
   readonly audit: (a: any, b: any, c: any) => [number, number, number];

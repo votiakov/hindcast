@@ -452,6 +452,49 @@ export function simulateDes(spec, scenario, cfg) {
 }
 
 /**
+ * journeyRows(journey, names, focus?) → [[{ t, c }]]: a traced request's path as rows of text runs
+ * (src/ui/journey.ts), as `simulate --trace` and the trace_request tool print it
+ * @param {any} journey
+ * @param {any} names
+ * @param {string | null} [focus]
+ * @returns {any}
+ */
+export function journeyRows(journey, names, focus) {
+    var ptr0 = isLikeNone(focus) ? 0 : passStringToWasm0(focus, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len0 = WASM_VECTOR_LEN;
+    const ret = wasm.journeyRows(journey, names, ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * journeyVerdict(journey, names) → the one-line summary of a traced request
+ * @param {any} journey
+ * @param {any} names
+ * @returns {string}
+ */
+export function journeyVerdict(journey, names) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ret = wasm.journeyVerdict(journey, names);
+        var ptr1 = ret[0];
+        var len1 = ret[1];
+        if (ret[3]) {
+            ptr1 = 0; len1 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred2_0 = ptr1;
+        deferred2_1 = len1;
+        return getStringFromWasm0(ptr1, len1);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
  * analyze(spec, scenario, { runs, seed, des }) → Analysis: discrete-event Monte Carlo
  * @param {any} spec
  * @param {any} scenario

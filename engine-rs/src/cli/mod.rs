@@ -20,6 +20,7 @@ Start here, on a running system (read-only; one command → a capacity review):
 
   hindcast validate        <arch.yaml>
   hindcast simulate        <arch.yaml> [scenario.yaml] [--rps 800 | --traffic metrics.csv] [--duration 60] [--engine fluid|des] [--seed 1] [--json]
+                           [--engine des --trace <component> [--failed] [--count 3]]   (sampled requests through it, hop by hop)
   hindcast analyze         <arch.yaml> [scenario.yaml] [--runs 20]       (discrete-event Monte Carlo, 95% CIs)
   hindcast optimize        <arch.yaml> [scenario.yaml] [--runtimes] [--out optimized.yaml]
   hindcast compare         <arch.yaml> <variants.yaml> [scenario.yaml] [--json]
