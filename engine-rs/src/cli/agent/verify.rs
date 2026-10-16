@@ -77,7 +77,7 @@ pub fn accuracy_of(m: &Value) -> Value {
                 json!({
                     "method": if s(a, &["method"]) == "reference" { "recorded runs the model never saw" } else { "holdout: the last part of the history, held back" },
                     "label": g(a, &["label"]),
-                    "checks": arr(a, &["checks"]).iter().map(|c| json!({ "metric": g(c, &["metric"]), "predicted": num(r2(n(c, &["predicted"]))), "measured": num(r2(n(c, &["measured"]))), "error": pct(n(c, &["error"])), "tolerance": pct(inf(c, &["tolerance"])), "pass": g(c, &["pass"]), "note": g(c, &["note"]) })).collect::<Vec<_>>(),
+                    "checks": arr(a, &["checks"]).iter().map(|c| json!({ "metric": g(c, &["metric"]), "predicted": num(r2(n(c, &["predicted"]))), "measured": num(r2(n(c, &["measured"]))), "error": pct(n(c, &["error"])), "tolerance": if inf(c, &["tolerance"]).is_finite() { json!(pct(inf(c, &["tolerance"]))) } else { json!("none (informational)") }, "pass": g(c, &["pass"]), "note": g(c, &["note"]) })).collect::<Vec<_>>(),
                 })
             })
             .collect(),
