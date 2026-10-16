@@ -21,8 +21,9 @@ No Prometheus to point it at? [Open the recorded reference systems](#no-cluster-
 ![The Astronomy Shop's recorded day replayed at twice its traffic: as built it breaks at the peak; autoscaling the frontend holds the SLO](docs/media/backtest.gif)
 
 <sub>A recorded day of the OpenTelemetry Astronomy Shop, replayed at 2× its traffic. As built it
-breaks at the peak; autoscaling the frontend removes 23 minutes out of SLO for $28 a month more.
-[Full video, 39 s](docs/media/app-backtest.mp4).</sub>
+breaks as the traffic climbs and spends 24 minutes out of SLO; autoscaling the frontend removes 23
+of them for $28 a month more. [Full video, 24 s](docs/media/app-backtest.mp4), with the Review
+screen.</sub>
 
 ## Try it
 

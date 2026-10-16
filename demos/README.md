@@ -6,9 +6,10 @@ OpenTelemetry Collector and Jaeger.
 
 - `agent.tape` — Claude Code, with the MCP server connected, answers "can we cut the frontend to
   2 replicas before launch day?" from the cluster's telemetry (VHS: `vhs demos/agent.tape`).
-- `app.mjs` — the Backtest screen on the Astronomy Shop reference, whose accuracy is within target on
-  every recorded run: the recorded day, four changes, the same day at twice the traffic, and the
-  accuracy record (Playwright: `node demos/app.mjs`).
+- `app.mjs` — the README's hero: the Backtest screen on the Astronomy Shop reference, its recorded
+  day, then the same day at twice the traffic (as built it breaks, autoscaling the frontend holds),
+  then the Review screen. Writes `app-backtest.mp4` and the `backtest.gif` cut, copied by hand to
+  `docs/media/` (Playwright and ffmpeg: `node demos/app.mjs --url <dev server>`).
 
 - `nodeloss.mjs` — losing a Kubernetes node at the busiest moment: what Hindcast predicts from the
   recorded day and the pod placement, and (once `normal-nodeloss` is recorded and scored) what was
