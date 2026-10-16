@@ -34,3 +34,4 @@ reference/k8s/*/validation/collected/*/*
 reference/k8s/*/validation/runs/*/*
 !reference/k8s/*/validation/runs/*/dataset.json
 reference/k8s/*/runs/*/raw/
+golden-dump/

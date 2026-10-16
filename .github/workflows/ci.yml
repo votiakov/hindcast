@@ -22,5 +22,9 @@ jobs:
       - run: cargo test --release --lib
         working-directory: engine-rs
       # the native CLI and MCP server against their golden outputs
-      - run: npm run cli:golden
+      - run: npm run cli:golden -- --dump golden-dump
+      # every case's full output when a golden differs, to diff against a local run
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with: { name: golden-dump, path: golden-dump, retention-days: 7 }
       - run: npm run mcp:golden
