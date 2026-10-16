@@ -72,6 +72,22 @@ export interface NodeStats {
   ownMs?: number;
   /** a queue with a redrive policy: messages a second sent to the dead-letter queue */
   deadLetterRps?: number;
+  /** with best-effort traffic: the success of critical and of best-effort requests entering here */
+  successCritical?: number;
+  successBestEffort?: number;
+  /** best-effort requests shed here for priority, req/s */
+  shedRps?: number;
+  /** with instance faults or outlier ejection: each instance — its own fault's error rate, the ms it
+   *  adds, and how long it stays ejected (0: in the balancing) */
+  instances?: { errorRate: number; extraMs: number; ejectedS: number }[];
+}
+
+/** one priority class now: req/s sent, the share failed, p99 (failures as timeouts past 1%), req/s shed */
+export interface ClassStats {
+  rps: number;
+  errorRate: number;
+  p99: number;
+  shedRps: number;
 }
 
 export interface EdgeStats {
@@ -93,10 +109,13 @@ export interface GlobalStats {
   /** the furthest any replica is behind its primary, s */
   replicaLagS: number;
   history: { rps: number; err: number; p99: number; cost: number }[];
+  /** with best-effort traffic (a client's lowPriorityShare): each class on its own */
+  critical?: ClassStats;
+  bestEffort?: ClassStats;
 }
 
 export interface SimEvent {
-  kind: 'overload' | 'recovered' | 'failover' | 'breaker-open' | 'breaker-closed' | 'scale-out' | 'scale-in' | 'reconnect';
+  kind: 'overload' | 'recovered' | 'failover' | 'breaker-open' | 'breaker-closed' | 'scale-out' | 'scale-in' | 'reconnect' | 'eject' | 'return';
   nodeId: string;
   name: string;
   detail?: string;

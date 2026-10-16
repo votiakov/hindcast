@@ -283,6 +283,19 @@ pub struct NodeState {
     pub hold_ms: f64,
     /// this component's own time per request, ms: its work and its queue, not what it waits on
     pub own_ms: f64,
+    /// success of critical and of best-effort requests on their own (priority load shedding)
+    pub success_c: f64,
+    pub success_b: f64,
+    /// best-effort requests shed for priority: their share of what arrived, and of the best-effort
+    /// requests the share let in; and the critical share of what arrives
+    pub shed_ratio: f64,
+    pub be_keep: f64,
+    pub crit: f64,
+    pub shed_rps: f64,
+    /// outlier ejection: each instance's way to its next ejection (a run of errors, 0–1) and until when
+    /// it is ejected, s; the failure share its instance faults added last tick
+    pub inst: Vec<(f64, f64)>,
+    pub inst_fr: f64,
 }
 
 /// how much faster than real time a replica catches up once it can reach its primary again
@@ -344,6 +357,14 @@ fn fresh() -> NodeState {
         sub_backlog: vec![],
         hold_ms: 0.0,
         own_ms: 0.0,
+        success_c: 1.0,
+        success_b: 1.0,
+        shed_ratio: 0.0,
+        be_keep: 1.0,
+        crit: 1.0,
+        shed_rps: 0.0,
+        inst: vec![],
+        inst_fr: 0.0,
     }
 }
 
@@ -612,6 +633,11 @@ fn mix_merge(mut dist: Vec<[f64; 3]>) -> Vec<[f64; 3]> {
 fn mix_then(dist: &[[f64; 3]], mean: f64, tail: f64, weight: f64) -> Vec<[f64; 3]> {
     let w: f64 = dist.iter().map(|c| c[0]).sum::<f64>().max(1e-12);
     dist.iter().map(|c| [c[0] / w * weight, c[1] + mean, (c[2] * c[2] + tail * tail).sqrt()]).collect()
+}
+
+/// kinds that can keep capacity for critical requests: those with a pool of workers or a rate limit
+pub fn priority_kind(kind: &str) -> bool {
+    !matches!(kind, "client" | "queue" | "stream" | "storage" | "archive" | "dns")
 }
 
 /// a request shed, refused or throttled is answered at once, ms (as the discrete-event engine fails it)
@@ -1141,6 +1167,32 @@ pub struct GlobalStats {
     /// the furthest any replica is behind its primary, s
     pub replica_lag_s: f64,
     pub history: Vec<HistoryPoint>,
+    /// with best-effort traffic (a client's lowPriorityShare): each class on its own
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub critical: Option<ClassStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub best_effort: Option<ClassStats>,
+}
+
+/// one priority class's requests now: req/s sent, the share failed, p99 (failures as timeouts past
+/// 1%, as the global one), and req/s shed for priority on their way
+#[derive(Serialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ClassStats {
+    pub rps: f64,
+    pub error_rate: f64,
+    pub p99: f64,
+    pub shed_rps: f64,
+}
+
+/// one instance of a component with instance faults or outlier ejection: the share of its answers
+/// its own fault fails, the ms it adds, and how long it stays ejected, s (0: in the balancing)
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct InstanceStats {
+    pub error_rate: f64,
+    pub extra_ms: f64,
+    pub ejected_s: f64,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -1182,6 +1234,17 @@ pub struct NodeStats {
     /// a queue with a redrive policy: messages a second sent to the dead-letter queue
     #[serde(skip_serializing_if = "is_zero_f")]
     pub dead_letter_rps: f64,
+    /// with best-effort traffic: the success of critical and of best-effort requests entering here
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub success_critical: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub success_best_effort: Option<f64>,
+    /// best-effort requests shed for priority, req/s
+    #[serde(skip_serializing_if = "is_zero_f")]
+    pub shed_rps: f64,
+    /// with instance faults or outlier ejection: each instance
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instances: Option<Vec<InstanceStats>>,
 }
 
 fn is_zero_f(x: &f64) -> bool {
@@ -1212,6 +1275,10 @@ struct Local {
     rr: f64,
     write_fail: f64,
     write_extra_ms: f64,
+    /// the critical share of what arrived, the best-effort share let in, and the share shed
+    crit: f64,
+    be_keep: f64,
+    shed_ratio: f64,
     routes: Vec<Route>,
     /// (edge index, volume), in the order first sent
     flows: Vec<(usize, f64)>,
@@ -1231,6 +1298,8 @@ pub struct Engine {
     since_history: f64,
     /// requests sent this tick to a component that had already run (a call cycle): they arrive next tick
     carry: HashMap<String, (f64, f64)>,
+    /// of those, the critical requests (priority load shedding)
+    carry_c: HashMap<String, f64>,
     /// links with a `reconnect`, by "from>to": whether each end was up last tick, and until when the
     /// caller's calls over it keep failing
     links: HashMap<String, LinkState>,
@@ -1418,7 +1487,7 @@ impl Engine {
                 self.scalers.shift_remove(&nd.id);
             }
         }
-        let data: Vec<NodeData> = nodes_in.iter().map(|nd| dynamic_data(&nd.data, self.scalers.get(&nd.id))).collect();
+        let mut data: Vec<NodeData> = nodes_in.iter().map(|nd| dynamic_data(&nd.data, self.scalers.get(&nd.id))).collect();
         let by_id: HashMap<&str, usize> = nodes_in.iter().enumerate().map(|(i, nd)| (nd.id.as_str(), i)).collect();
         // states by node index (every node gets one this tick, as the TypeScript engine's lookups do)
         let sidx: Vec<usize> = nodes_in.iter().map(|nd| self.state_index(&nd.id)).collect();
@@ -1481,6 +1550,96 @@ impl Engine {
             }
             out[si].push(Route { e: ei, t: ti, up: is_up(&data[ti]) && !edge_cut[ei] });
             indeg[ti] += 1;
+        }
+
+        // faults on single instances, and outlier ejection: which instances are in the balancing, and
+        // what they fail, add and lose between them (each takes an even share)
+        let mut inst_mix: Vec<Vec<[f64; 2]>> = vec![vec![]; n];
+        let mut inst_hold = vec![0.0; n];
+        for i in 0..n {
+            let raw = &nodes_in[i].data;
+            if (raw.inst_faults.is_none() && raw.eject_after.is_none()) || !spec(&raw.kind).scalable {
+                continue;
+            }
+            let id = nodes_in[i].id.as_str();
+            let d = data[i].clone();
+            let total = d.instances.unwrap_or(1.0).max(1.0);
+            // the instances up are the first ones; without a balancer only the first takes requests
+            let up_n = instances_up(&d).max(0.0).floor() as usize;
+            let lb = pooled[i] || d.kind == "llm" || clustered(&d.kind);
+            let st = &mut self.nodes[sidx[i]];
+            if st.inst.len() < total as usize {
+                st.inst.resize(total as usize, (0.0, f64::NEG_INFINITY));
+            }
+            for k in 0..st.inst.len() {
+                if st.inst[k].1 > f64::NEG_INFINITY && st.inst[k].1 <= now {
+                    st.inst[k] = (0.0, f64::NEG_INFINITY);
+                    events.push(SimEvent { kind: "return".into(), node_id: id.into(), name: d.name.clone(), detail: Some(format!("#{}", k + 1)) });
+                }
+            }
+            let rotation = |st: &NodeState| -> Vec<usize> {
+                if lb {
+                    (0..up_n).filter(|&k| !(st.inst[k].1 > now)).collect()
+                } else {
+                    (0..up_n.min(1)).collect()
+                }
+            };
+            let mut rot = rotation(st);
+            if rot.is_empty() {
+                continue;
+            }
+            // ejection (Envoy's consecutive_5xx): an instance in the balancing fails each request with its
+            // own chance, so its run of `ejectAfter` errors comes after requests_to_run of them. Each tick
+            // it gets its share of the traffic and goes that far towards the run; there it is ejected,
+            // if the share already ejected allows (a duty cycle: in for the run, out for ejectForS)
+            if let Some(kk) = d.eject_after.filter(|k| *k >= 1.0 && lb) {
+                let s0 = (st.success / (1.0 - st.inst_fr).max(1e-9)).clamp(0.0, 1.0);
+                let vol = st.in_rps * dt / rot.len() as f64;
+                let mut ejected = (up_n - rot.len()) as f64;
+                for &k in &rot {
+                    let p = 1.0 - s0 * (1.0 - inst_fault(&d, k).0);
+                    let need = requests_to_run(p, kk);
+                    if need.is_finite() {
+                        st.inst[k].0 = (st.inst[k].0 + vol / need).min(1.0);
+                    }
+                    if st.inst[k].0 >= 1.0 && may_eject(&d, ejected, total) {
+                        let for_s = d.eject_for_s.filter(|x| *x > 0.0).unwrap_or(EJECT_FOR_S);
+                        st.inst[k] = (0.0, now + for_s);
+                        ejected += 1.0;
+                        events.push(SimEvent { kind: "eject".into(), node_id: id.into(), name: d.name.clone(), detail: Some(format!("#{} for {} s", k + 1, js_num(for_s))) });
+                    }
+                }
+                rot = rotation(st);
+            }
+            let nr = rot.len() as f64;
+            let base = base_latency_of(&d).max(0.05);
+            let waits = fault_latency_waits(&d.kind);
+            let (mut fr, mut cap) = (0.0, 0.0);
+            for &k in &rot {
+                let (r, ms, f) = inst_fault(&d, k);
+                fr += r / nr;
+                // a degraded instance works 1/f as long on each request; injected latency is work too,
+                // except a server's or worker's (a wait, holding a thread if it has them)
+                cap += base / (base / f + if waits { 0.0 } else { ms }) / nr;
+                let extra = base / f - base + ms;
+                if extra > 0.0 {
+                    inst_mix[i].push([1.0 / nr, extra]);
+                }
+                if waits {
+                    inst_hold[i] += ms / nr;
+                }
+            }
+            st.inst_fr = fr;
+            let e = &mut data[i];
+            if lb && up_n > rot.len() {
+                e.down = Some(e.down.unwrap_or(0.0) + (up_n - rot.len()) as f64);
+            }
+            if fr > 0.0 {
+                e.fault_rate = Some(1.0 - (1.0 - e.fault_rate.unwrap_or(0.0)) * (1.0 - fr));
+            }
+            if cap < 1.0 - 1e-12 {
+                e.degraded = Some(e.degraded.unwrap_or(1.0) * cap);
+            }
         }
 
         // Kahn topological order; nodes in cycles go at the end
@@ -1561,6 +1720,11 @@ impl Engine {
         let mut inflow = vec![0.0; n];
         let mut done = vec![false; n];
         let mut carried: HashMap<String, (f64, f64)> = std::mem::take(&mut self.carry);
+        // priority classes: only once a client sends best-effort requests is anything followed
+        let prio = data.iter().any(|d| d.kind == "client" && d.low_priority_share.unwrap_or(0.0) > 0.0);
+        let mut carried_c: HashMap<String, f64> = std::mem::take(&mut self.carry_c);
+        let mut inflow_c = vec![0.0; n];
+        let mut shed_now = 0.0;
         // reads among what arrives: a cache's misses and every write are what reaches what is behind it
         let mut inflow_r = vec![0.0; n];
         let mut edge_flow = vec![0.0; edges.len()];
@@ -1575,6 +1739,7 @@ impl Engine {
             let id = nodes_in[i].id.as_str();
             let routes = &out[i];
             let (late_in, late_r) = if d.kind == "client" { (0.0, 0.0) } else { carried.remove(id).unwrap_or((0.0, 0.0)) };
+            let late_c = if d.kind == "client" { 0.0 } else { carried_c.remove(id).unwrap_or(0.0) };
             let arrivals = if d.kind == "client" {
                 match (d.alive, job_rate(d, now)) {
                     (false, _) => 0.0,
@@ -1585,6 +1750,17 @@ impl Engine {
                 inflow[i] + late_in
             };
             let read_ratio = if d.kind == "client" || arrivals <= 0.0 { read_ratio } else { ((inflow_r[i] + late_r) / arrivals).clamp(0.0, 1.0) };
+            // the critical share of what arrives: a client's own, else what its callers sent
+            let crit = if !prio {
+                1.0
+            } else if d.kind == "client" {
+                1.0 - d.low_priority_share.unwrap_or(0.0).clamp(0.0, 1.0)
+            } else if arrivals > 0.0 {
+                ((inflow_c[i] + late_c) / arrivals).clamp(0.0, 1.0)
+            } else {
+                1.0
+            };
+            let mut shed = 0.0;
             done[i] = true;
             let mut st = std::mem::replace(&mut self.nodes[sidx[i]], fresh());
             if d.kind == "replica" {
@@ -1630,8 +1806,25 @@ impl Engine {
                 res(0.0, arrivals, 0.0, 0.0, false)
             } else {
                 let ctx = Ctx { d, data: &data, arrivals, dt, cfg, read_ratio, routes, pooled: pooled[i], edge_sync: &edge_sync, edge_lat: &edge_lat, lags: &lags, dead: &dead, now, pushed: &pushed, pull_share: &pull_share, pull_cap: &pull_cap };
-                process(&ctx, &mut st)
+                // priority load shedding: best-effort requests are let in only while the component is
+                // busy below 1 − reserve of its capacity, counting the critical ones and the backlog first
+                if let Some(rs) = d.priority_reserve.filter(|x| *x > 0.0 && prio && priority_kind(&d.kind)) {
+                    let reach = if spec(&d.kind).scalable { reachable(&ctx) } else { st.reachable };
+                    let cap = threads_capacity(d, reach, st.hold_ms).min(capacity_of(d, Some(reach)));
+                    let (ac, ab) = (arrivals * crit, arrivals * (1.0 - crit));
+                    let room = (1.0 - rs.min(1.0)) * cap * dt - ac - st.queue;
+                    shed = ab - room.clamp(0.0, ab);
+                }
+                let mut r = process(&Ctx { arrivals: arrivals - shed, ..ctx }, &mut st);
+                if shed > 0.0 {
+                    r.failed += shed;
+                    r.processed += shed;
+                    r.failed_processed += shed;
+                }
+                r
             };
+            // what it passes on is the critical requests and the best-effort ones it let in
+            let crit_fwd = if shed > 0.0 && arrivals - shed > 1e-12 { (arrivals * crit / (arrivals - shed)).min(1.0) } else { crit };
             // a search index: a write is searchable after the indexing backlog ahead of it and the next
             // refresh; reads in that window miss the writes made in it
             if d.kind == "search" {
@@ -1747,9 +1940,13 @@ impl Engine {
                         let c = self.carry.entry(nodes_in[t].id.clone()).or_insert((0.0, 0.0));
                         c.0 += v;
                         c.1 += v_r;
+                        if prio {
+                            *self.carry_c.entry(nodes_in[t].id.clone()).or_insert(0.0) += v * crit_fwd;
+                        }
                     } else {
                         inflow[t] += v;
                         inflow_r[t] += v_r;
+                        inflow_c[t] += v * crit_fwd;
                         if d.kind == "queue" {
                             from_queues[t] += v;
                         }
@@ -1812,9 +2009,13 @@ impl Engine {
                         let c = self.carry.entry(nodes_in[t].id.clone()).or_insert((0.0, 0.0));
                         c.0 += v;
                         c.1 += v * fwd_r;
+                        if prio {
+                            *self.carry_c.entry(nodes_in[t].id.clone()).or_insert(0.0) += v * crit_fwd;
+                        }
                     } else {
                         inflow[t] += v;
                         inflow_r[t] += v * fwd_r;
+                        inflow_c[t] += v * crit_fwd;
                         if d.kind == "queue" {
                             from_queues[t] += v;
                         }
@@ -1837,8 +2038,17 @@ impl Engine {
             let local_share = r.local_share.unwrap_or(1.0);
             let own = if d.kind == "db" { arrivals * local_share } else { arrivals };
             st.drop_ratio = ema(st.drop_ratio, if own > 0.0 { r.failed / own } else { 0.0 }, dt, 0.6);
+            if prio {
+                st.crit = crit;
+                st.shed_ratio = ema(st.shed_ratio, if own > 0.0 { (shed / own).min(1.0) } else { 0.0 }, dt, 0.6);
+                let ab = arrivals * (1.0 - crit);
+                st.be_keep = ema(st.be_keep, if ab > 1e-12 { 1.0 - shed / ab } else { 1.0 }, dt, 0.6);
+                st.shed_rps = ema(st.shed_rps, shed / dt, dt, 0.6);
+                shed_now += shed;
+            }
+            let (be_keep, shed_ratio) = (st.be_keep, st.shed_ratio);
             self.nodes[sidx[i]] = st;
-            local[i] = Some(Local { local_share, local_r: r.local_r.unwrap_or(local_share), local_w: r.local_w.unwrap_or(local_share), rr: read_ratio, write_fail: r.write_fail, write_extra_ms: r.write_extra_ms, routes: targets, flows, flows_r, mode, up: r.up });
+            local[i] = Some(Local { local_share, local_r: r.local_r.unwrap_or(local_share), local_w: r.local_w.unwrap_or(local_share), rr: read_ratio, write_fail: r.write_fail, write_extra_ms: r.write_extra_ms, crit, be_keep, shed_ratio, routes: targets, flows, flows_r, mode, up: r.up });
         }
 
         // ---- backward pass ----
@@ -1851,6 +2061,8 @@ impl Engine {
             // aggregate one downstream attempt according to the routing policy
             let (mut succ, mut lat, mut tail) = (1.0, 0.0, 0.0);
             let (mut succ_r, mut succ_w) = (1.0, 1.0);
+            // critical and best-effort on their own (priority load shedding)
+            let (mut succ_c, mut succ_b) = (1.0, 1.0);
             // the caller's deadline judged branch by branch: a slow branch's answers are late, a fast one's are not
             let tmo = d.timeout_ms.filter(|t| *t != 0.0 && !t.is_nan());
             let mut late: Option<f64> = None;
@@ -2023,6 +2235,48 @@ impl Engine {
                         late = Some(lt / wa);
                     }
                 }
+                if prio {
+                    let kid_cb = |k: &Route| {
+                        let s = &self.nodes[sidx[k.t]];
+                        let n = edge_calls[k.e];
+                        if edge_cut[k.e] {
+                            return (0.0, 0.0);
+                        }
+                        let f = l.flows.iter().find(|x| x.0 == k.e).map(|x| x.1).unwrap_or(0.0);
+                        let admit = bulkhead_admit(d, bulk_reach, f / dt, s.latency_ms + edge_lat[k.e]);
+                        (s.success_c.js_pow(n) * admit, s.success_b.js_pow(n) * admit)
+                    };
+                    if l.mode == "fanout" {
+                        for k in &l.routes {
+                            let (c, b) = kid_cb(k);
+                            succ_c *= c;
+                            succ_b *= b;
+                        }
+                    } else if l.mode == "failover" {
+                        let (mut mc, mut mb) = (1.0, 1.0);
+                        for k in &l.routes {
+                            if l.flows.iter().find(|x| x.0 == k.e).map(|x| x.1).unwrap_or(0.0) > 0.0 {
+                                let (c, b) = kid_cb(k);
+                                mc *= 1.0 - c;
+                                mb *= 1.0 - b;
+                            }
+                        }
+                        succ_c = 1.0 - mc;
+                        succ_b = 1.0 - mb;
+                    } else {
+                        let (mut w, mut sc, mut sb) = (0.0, 0.0, 0.0);
+                        for k in &l.routes {
+                            let f = l.flows.iter().find(|x| x.0 == k.e).map(|x| x.1).unwrap_or(0.0);
+                            let wk = if f > 0.0 { f } else { 1e-9 };
+                            let (c, b) = kid_cb(k);
+                            w += wk;
+                            sc += c * wk;
+                            sb += b * wk;
+                        }
+                        succ_c = sc / w;
+                        succ_b = sb / w;
+                    }
+                }
             }
             // scatter-gather: every partition must answer, and the caller waits for the slowest
             let degree = d.fanout.unwrap_or(1.0).max(1.0);
@@ -2030,6 +2284,8 @@ impl Engine {
                 succ = succ.js_pow(degree);
                 succ_r = succ_r.js_pow(degree);
                 succ_w = succ_w.js_pow(degree);
+                succ_c = succ_c.js_pow(degree);
+                succ_b = succ_b.js_pow(degree);
                 let kd = &data[l.routes[0].t];
                 let p = kd.stall_rate.unwrap_or(0.0);
                 lat = lat * fanout_tail(degree) + (1.0 - (1.0 - p).js_pow(degree) - p) * kd.stall_ms.unwrap_or(0.0);
@@ -2046,6 +2302,8 @@ impl Engine {
             };
             let attempt = succ * (1.0 - st.late_frac);
             let (attempt_r, attempt_w) = (succ_r * (1.0 - st.late_frac), succ_w * (1.0 - st.late_frac));
+            let (attempt_c, attempt_b) = (succ_c * (1.0 - st.late_frac), succ_b * (1.0 - st.late_frac));
+            let (mut child_c, mut child_b) = (attempt_c, attempt_b);
             if let Some(t) = tmo {
                 lat = lat.min(t);
             }
@@ -2071,6 +2329,8 @@ impl Engine {
                 child_succ = retry_success(attempt, retries, policy, st.retry_amp);
                 child_r = retry_success(attempt_r, retries, policy, st.retry_amp);
                 child_w = retry_success(attempt_w, retries, policy, st.retry_amp);
+                child_c = retry_success(attempt_c, retries, policy, st.retry_amp);
+                child_b = retry_success(attempt_b, retries, policy, st.retry_amp);
                 // retry k happens when the k attempts before it failed (chance f^k), after a failed
                 // attempt's time and, with backoff, its wait
                 let f = st.attempt_fail;
@@ -2104,11 +2364,13 @@ impl Engine {
                 child_succ = p * child_succ + (1.0 - p) * fb;
                 child_r = p * child_r + (1.0 - p) * fb;
                 child_w = p * child_w + (1.0 - p) * fb;
+                child_c = p * child_c + (1.0 - p) * fb;
+                child_b = p * child_b + (1.0 - p) * fb;
                 child_lat = p * child_lat + (1.0 - p) * 2.0;
                 call_fail_ms = p * call_fail_ms + (1.0 - p) * 2.0;
             }
             // a thread is held through the calls, and through the component's own injected wait
-            let waited = if fault_latency_waits(&d.kind) { d.fault_latency_ms.filter(|x| *x > 0.0).unwrap_or(0.0) } else { 0.0 };
+            let waited = if fault_latency_waits(&d.kind) { d.fault_latency_ms.filter(|x| *x > 0.0).unwrap_or(0.0) + inst_hold[i] } else { 0.0 };
             st.hold_ms = ema(st.hold_ms, waited + if has_kids { child_lat } else { 0.0 }, dt, 0.3);
             // a queue with a redrive policy: of what its consumers failed, the messages with receives
             // left come back after the visibility timeout; the rest go to the dead-letter queue
@@ -2150,10 +2412,29 @@ impl Engine {
                 latency += (1.0 - l.rr) * l.write_extra_ms;
             }
             let success = l.rr * success_r + (1.0 - l.rr) * success_w;
+            // each class's success: what it keeps here (best-effort also loses what was shed) and what it
+            // gets from below, scaled so the two mix back to the success of all requests
+            let (success_c, success_b) = if !prio {
+                (success, success)
+            } else {
+                let keep_c = if 1.0 - l.shed_ratio > 1e-9 { (keep / (1.0 - l.shed_ratio)).min(1.0) } else { 1.0 };
+                let keep_b = keep_c * l.be_keep;
+                let f = |k: f64, c: f64| if !l.up { 0.0 } else { fold(&FoldCtx { d, keep: k, local_share: l.local_share, child_succ: c, child_lat, has_kids, cfg }, st).0 };
+                let (sc, sb) = (f(keep_c, child_c), f(keep_b, child_b));
+                let mixed = l.crit * sc + (1.0 - l.crit) * sb;
+                if mixed > 1e-12 {
+                    ((success * sc / mixed).min(1.0), (success * sb / mixed).min(1.0))
+                } else {
+                    (0.0, 0.0)
+                }
+            };
+            // what single instances add (faults on one instance): their share of the answers takes that much longer
+            let inst_extra: f64 = inst_mix[i].iter().map(|m| m[0] * m[1]).sum();
             if l.up {
                 if let Some(fl) = d.fault_latency_ms.filter(|x| *x != 0.0 && !x.is_nan()) {
                     latency += fl;
                 }
+                latency += inst_extra;
             }
             // the answer's tail: this component's own and what it waits on, independent spreads adding
             // in quadrature, each weighted by the share of requests that take that part
@@ -2246,6 +2527,20 @@ impl Engine {
                 } else {
                     vec![(1.0, own_mean)]
                 };
+                // an instance with a fault of its own: its share of every mode is a slower mode
+                let modes: Vec<(f64, f64)> = if inst_mix[i].is_empty() {
+                    modes
+                } else {
+                    let rest = 1.0 - inst_mix[i].iter().map(|m| m[0]).sum::<f64>();
+                    let mut out = vec![];
+                    for &(mw, om) in &modes {
+                        out.push((mw * rest, om));
+                        for m in &inst_mix[i] {
+                            out.push((mw * m[0], om + m[1]));
+                        }
+                    }
+                    out
+                };
                 let mut out: Vec<[f64; 3]> = vec![];
                 for &(mw, own_mean) in &modes {
                     if own_share > 0.0 || kids.is_empty() {
@@ -2286,8 +2581,12 @@ impl Engine {
             st.success = ema(st.success, success, dt, 0.3);
             st.success_r = ema(st.success_r, success_r, dt, 0.3);
             st.success_w = ema(st.success_w, success_w, dt, 0.3);
+            if prio {
+                st.success_c = ema(st.success_c, success_c, dt, 0.3);
+                st.success_b = ema(st.success_b, success_b, dt, 0.3);
+            }
             st.latency_ms = ema(st.latency_ms, latency, dt, 0.3);
-            let own_now = if l.up && d.kind != "client" { fold(&FoldCtx { d, keep, local_share: 1.0, child_succ: 1.0, child_lat: 0.0, has_kids: false, cfg }, st).1 + d.fault_latency_ms.filter(|x| !x.is_nan()).unwrap_or(0.0) } else { 0.0 };
+            let own_now = if l.up && d.kind != "client" { fold(&FoldCtx { d, keep, local_share: 1.0, child_succ: 1.0, child_lat: 0.0, has_kids: false, cfg }, st).1 + d.fault_latency_ms.filter(|x| !x.is_nan()).unwrap_or(0.0) + inst_extra } else { 0.0 };
             st.own_ms = ema(st.own_ms, own_now, dt, 0.3);
             // its failures: what it sheds itself comes back at once; what it fails itself (a gray
             // failure, `inject-errors`) after its own work, as the discrete-event engine fails it at the
@@ -2387,6 +2686,27 @@ impl Engine {
         let ok_lat = if ok > 0.0 { lat / rps } else { 0.0 };
         g.p99 = if rps < 0.5 { 0.0 } else if g.error_rate >= 0.01 { ok_lat.max(cfg.timeout_s * 1000.0) } else { ok_lat };
         g.cost = cost;
+        // each priority class at the clients: its share of what they send, answered at its own success
+        if prio {
+            let (mut rc, mut oc, mut rb, mut ob) = (0.0, 0.0, 0.0, 0.0);
+            for &c in &clients {
+                let st = &self.nodes[sidx[c]];
+                let b = data[c].low_priority_share.unwrap_or(0.0).clamp(0.0, 1.0);
+                rc += st.in_rps * (1.0 - b);
+                oc += st.in_rps * (1.0 - b) * st.success_c;
+                rb += st.in_rps * b;
+                ob += st.in_rps * b * st.success_b;
+            }
+            let class = |r: f64, o: f64, shed: f64| {
+                let err = if r > 0.5 { (1.0 - o / r).max(0.0) } else { 0.0 };
+                ClassStats { rps: r, error_rate: err, p99: if r < 0.5 { 0.0 } else if err >= 0.01 { ok_lat.max(cfg.timeout_s * 1000.0) } else { ok_lat }, shed_rps: shed }
+            };
+            g.critical = Some(class(rc, oc, 0.0));
+            g.best_effort = Some(class(rb, ob, shed_now / dt));
+        } else {
+            g.critical = None;
+            g.best_effort = None;
+        }
         self.since_history += dt;
         if self.since_history >= HISTORY_EVERY_S {
             self.since_history = 0.0;
@@ -2413,6 +2733,8 @@ impl Engine {
     /// without each node's utilisation history (headless runs never read it)
     pub fn snapshot_with(&mut self, nodes: &[SimNode], edges: &[SimEdge], with_history: bool) -> Snapshot {
         let mut node_stats = IndexMap::new();
+        let prio = nodes.iter().any(|n| n.data.kind == "client" && n.data.low_priority_share.unwrap_or(0.0) > 0.0);
+        let now = self.t;
         for n in nodes {
             let scaling = self.scalers.get(&n.id).map(|s| Scaling { live: s.live, pending: s.pending.len() as f64, desired: s.desired });
             let st = self.state(&n.id);
@@ -2452,6 +2774,24 @@ impl Engine {
                     hold_ms: if n.data.threads.is_some() { st.hold_ms } else { 0.0 },
                     own_ms: st.own_ms,
                     dead_letter_rps: st.dead_letter_rps,
+                    success_critical: if prio { Some(st.success_c) } else { None },
+                    success_best_effort: if prio { Some(st.success_b) } else { None },
+                    shed_rps: if prio { st.shed_rps } else { 0.0 },
+                    instances: if (n.data.inst_faults.is_some() || n.data.eject_after.is_some()) && spec(&n.data.kind).scalable {
+                        let total = n.data.instances.unwrap_or(1.0).max(1.0) as usize;
+                        let base = base_latency_of(&n.data).max(0.05);
+                        Some(
+                            (0..total)
+                                .map(|k| {
+                                    let (r, ms, f) = inst_fault(&n.data, k);
+                                    let until = st.inst.get(k).map(|x| x.1).unwrap_or(f64::NEG_INFINITY);
+                                    InstanceStats { error_rate: r, extra_ms: base / f - base + ms, ejected_s: (until - now).max(0.0) }
+                                })
+                                .collect(),
+                        )
+                    } else {
+                        None
+                    },
                 },
             );
         }

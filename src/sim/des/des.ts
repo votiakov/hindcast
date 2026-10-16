@@ -1,4 +1,5 @@
 import * as wasm from '../../backtest/wasm/hindcast_engine.js';
+import type { ClassSummary } from '../headless';
 
 /**
  * Discrete-event simulation (DES) — the analysis engine.
@@ -126,6 +127,9 @@ export interface DesResult {
     staleReads?: number;
     maxReplicaLagS?: number;
     worstMomentS: number;
+    /** with best-effort traffic (a client's lowPriorityShare): each class on its own */
+    critical?: ClassSummary;
+    bestEffort?: ClassSummary;
     events: number;
     wallMs: number;
   };

@@ -257,6 +257,7 @@ const R_CONN: u8 = 14;
 const R_CPU: u8 = 15;
 const R_RECONNECT: u8 = 16;
 const R_BULKHEAD_WAIT: u8 = 17;
+const R_PRIORITY: u8 = 18;
 
 fn why(n: usize, r: u8) -> Why {
     ((n as u32 + 1) << 8) | r as u32
@@ -282,6 +283,7 @@ pub(super) fn reason_text(r: u8) -> &'static str {
         R_CPU => "killed at its CPU time limit",
         R_RECONNECT => "connection still broken after its dependency came back",
         R_BULKHEAD_WAIT => "bulkhead full (waited for a slot until its wait ran out)",
+        R_PRIORITY => "shed: a best-effort request, capacity kept for critical ones",
         _ => "failed",
     }
 }
@@ -289,15 +291,15 @@ pub(super) fn reason_text(r: u8) -> &'static str {
 #[derive(Clone, Copy)]
 enum Cont {
     /// a user's request finished (a scheduled job's: not counted as the users')
-    User { t0: f64, job: bool },
+    User { t0: f64, job: bool, crit: bool },
     /// one attempt of a call settled (the answer, or its deadline): reachable twice when timed
     Settle { call: usize, k: f64, settled: bool, refs: u8 },
     /// one part of a fan-out or scatter-gather
     Part { group: usize },
     /// the failover target at position i answered
-    Failover { n: usize, read: bool, order: usize, i: usize, done: ContId },
+    Failover { n: usize, read: Rq, order: usize, i: usize, done: ContId },
     /// a queue's consumer finished one message (received `tries` times before)
-    Consumer { queue: usize, read: bool, tries: u8 },
+    Consumer { queue: usize, read: Rq, tries: u8 },
     /// a stream's subscriber (its k-th child) finished one message
     SubConsumer { stream: usize, k: usize },
     /// a write-behind cache's flush to the origin settled
@@ -306,19 +308,21 @@ enum Cont {
     Hold { n: usize, done: ContId, t0: f64 },
     /// a call through a bulkhead: its slot for that dependency is freed when it settles
     Bulk { n: usize, k: usize, done: ContId },
+    /// an answer from instance k of n (outlier ejection counts its errors in a row)
+    Inst { n: usize, k: usize, done: ContId },
     Free,
 }
 
 #[derive(Clone, Copy)]
 enum Ev {
     Generate { c: usize, emit: bool },
-    Arrive { i: usize, read: bool, done: ContId },
+    Arrive { i: usize, read: Rq, done: ContId },
     Deliver { done: ContId, why: Why },
     Finish { n: usize, job: Job },
     /// a write to the hot row has held its lock for a write's time
     LockDone { n: usize, job: Job },
     /// a failed message is visible in its queue again
-    Redrive { n: usize, read: bool, tries: u8 },
+    Redrive { n: usize, read: Rq, tries: u8 },
     /// a request's connection to a balancer or gateway closes
     ConnClose { n: usize },
     /// fault: the node's fault rate when the request arrived
@@ -333,11 +337,13 @@ enum Ev {
     Waited { n: usize, job: Job },
     /// a call waiting for a slot in n's bulkhead to its k-th child has waited `bulkheadWaitMs`
     BulkGiveUp { n: usize, k: usize, token: u64 },
+    /// instance k of n has been ejected for its time: it comes back
+    Unject { n: usize, k: usize },
 }
 
 #[derive(Clone, Copy)]
 struct Job {
-    read: bool,
+    read: Rq,
     t_in: f64,
     /// None: a queue's backlog entry (its producer was already answered)
     done: Option<ContId>,
@@ -345,9 +351,28 @@ struct Job {
     shard: u16,
     /// a queue's message: how many times a consumer has received it (and failed)
     tries: u8,
+    /// the instance that serves it (NO_INST: the pool as a whole)
+    inst: u16,
 }
 
+const NO_INST: u16 = u16::MAX;
+
 const NO_SHARD: u16 = u16::MAX;
+
+/// a request's class: a read or a write, and critical or best-effort (priority load shedding)
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Rq {
+    read: bool,
+    crit: bool,
+}
+
+/// `!read`: a write
+impl std::ops::Not for Rq {
+    type Output = bool;
+    fn not(self) -> bool {
+        !self.read
+    }
+}
 
 /// how long past the end of a run the users' requests still in flight are followed to their answers, s
 /// (a standard archive restore takes 3–5 h)
@@ -356,7 +381,7 @@ const DRAIN_S: f64 = 6.0 * 3600.0;
 /// a call to the children, with what the caller's data said when it began (retries see the same)
 struct Call {
     n: usize,
-    read: bool,
+    read: Rq,
     done: ContId,
     retries: f64,
     policy: &'static str,
@@ -444,7 +469,7 @@ struct DNode {
     /// a bulkhead with a wait (`bulkheadWaitMs`, ms; 0: none): the calls waiting for a slot, by child
     /// position — (token, callee, read, continuation), first come first served
     bulk_wait_ms: f64,
-    bulk_waiting: Vec<VecDeque<(u64, usize, bool, ContId)>>,
+    bulk_waiting: Vec<VecDeque<(u64, usize, Rq, ContId)>>,
     bulk_seq: u64,
     queue: VecDeque<Job>,
     queue_max: f64,
@@ -477,6 +502,14 @@ struct DNode {
     worst: f64,
     worst_note: Option<String>,
     last_stats: Option<NodeStats>,
+    /// instance faults or outlier ejection: requests go round robin over the instances in the
+    /// balancing; each one's errors in a row, and until when it is ejected
+    inst_on: bool,
+    inst_rr: usize,
+    /// a rate limit with a priority reserve: the best-effort requests' bucket
+    be_tokens: f64,
+    inst_run: Vec<u32>,
+    inst_until: Vec<f64>,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -521,6 +554,11 @@ pub struct DesSummary {
     #[serde(skip_serializing_if = "is_zero")]
     pub max_replica_lag_s: f64,
     pub worst_moment_s: f64,
+    /// with best-effort traffic: each class on its own
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub critical: Option<super::headless::ClassSummary>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub best_effort: Option<super::headless::ClassSummary>,
     pub events: f64,
     pub wall_ms: f64,
 }
@@ -643,6 +681,22 @@ struct Des<'a> {
     zones: IndexMap<String, Vec<String>>,
     /// request journeys (only when asked for: it reads the run and changes nothing in it)
     tr: Option<Box<super::trace::Tracer>>,
+    /// priority classes (critical, best-effort): users' requests, failed, answers' latency; and the
+    /// best-effort requests shed for priority at the components
+    prio: bool,
+    cls: [ClassAcc; 2],
+    shed: f64,
+}
+
+struct ClassAcc {
+    reqs: f64,
+    fail: f64,
+    hist: Histogram,
+    answers: u64,
+}
+
+fn class_acc() -> ClassAcc {
+    ClassAcc { reqs: 0.0, fail: 0.0, hist: Histogram::new(), answers: 0 }
 }
 
 impl<'a> Des<'a> {
@@ -750,6 +804,21 @@ impl<'a> Des<'a> {
             (Some(_), Some(s)) => NodeData { instances: Some(s.live), down: Some(s.live.min(n.raw.down.unwrap_or(0.0) - s.replaced).max(0.0)), ..n.raw.clone() },
             _ => n.raw.clone(),
         };
+        // instance faults and outlier ejection: requests are dealt to the instances; the ejected ones
+        // serve nothing meanwhile
+        n.inst_on = (n.raw.inst_faults.is_some() || n.raw.eject_after.is_some()) && spec(&n.raw.kind).scalable;
+        if n.inst_on {
+            let total = n.raw.instances.unwrap_or(1.0).max(1.0) as usize;
+            if n.inst_run.len() < total {
+                n.inst_run.resize(total, 0);
+                n.inst_until.resize(total, f64::NEG_INFINITY);
+            }
+            let up_n = instances_up(&n.raw).max(0.0).floor() as usize;
+            let ejected = n.inst_until.iter().take(up_n).filter(|u| **u > now).count() as f64;
+            if ejected > 0.0 {
+                n.data.down = Some(n.data.down.unwrap_or(0.0) + ejected);
+            }
+        }
         if (n.raw.kind == "cache" || n.raw.kind == "cdn") && (!up(n) || n.raw.flushes.unwrap_or(0.0) != n.flush_seen) {
             n.cold_at = Some(now);
         }
@@ -837,10 +906,20 @@ impl<'a> Des<'a> {
             Cont::User { job: true, .. } => {
                 self.release(id);
             }
-            Cont::User { t0, .. } => {
+            Cont::User { t0, crit, .. } => {
                 self.release(id);
                 self.live_users -= 1.0;
                 let ms = (self.now - t0) * 1000.0;
+                if self.prio {
+                    let c = &mut self.cls[if crit { 0 } else { 1 }];
+                    c.reqs += 1.0;
+                    if ok {
+                        c.hist.record(ms);
+                        c.answers += 1;
+                    } else {
+                        c.fail += 1.0;
+                    }
+                }
                 self.win_reqs += 1.0;
                 self.total_reqs += 1.0;
                 self.all_hist.record(ms);
@@ -923,8 +1002,91 @@ impl<'a> Des<'a> {
                 self.bulk_next(n, k);
                 self.deliver(done, why);
             }
+            Cont::Inst { n, k, done } => {
+                self.release(id);
+                self.inst_answer(n, k, ok);
+                self.deliver(done, why);
+            }
             Cont::Free => {}
         }
+    }
+
+    /// outlier ejection: instance k of n answered; a run of `ejectAfter` errors ejects it for
+    /// `ejectForS`, if the share already ejected allows (Envoy's consecutive_5xx, max_ejection_percent)
+    fn inst_answer(&mut self, n: usize, k: usize, ok: bool) {
+        let now = self.now;
+        let x = &mut self.nodes[n];
+        if k >= x.inst_run.len() {
+            return;
+        }
+        if ok {
+            x.inst_run[k] = 0;
+            return;
+        }
+        x.inst_run[k] += 1;
+        let after = match x.raw.eject_after.filter(|a| *a >= 1.0) {
+            Some(a) => a,
+            None => return,
+        };
+        if (x.inst_run[k] as f64) < after || x.inst_until[k] > now {
+            return;
+        }
+        let ejected = x.inst_until.iter().filter(|u| **u > now).count() as f64;
+        let total = x.raw.instances.unwrap_or(1.0).max(1.0);
+        if !may_eject(&x.raw, ejected, total) {
+            return;
+        }
+        let for_s = x.raw.eject_for_s.filter(|s| *s > 0.0).unwrap_or(EJECT_FOR_S);
+        x.inst_until[k] = now + for_s;
+        x.inst_run[k] = 0;
+        let what = format!("eject: {} #{} for {} s", x.raw.name, k + 1, js_num(for_s));
+        self.ev_log.push(super::headless::Event { t: r3(now), what });
+        self.configure(n);
+        self.at(for_s * 1000.0, Ev::Unject { n, k });
+    }
+
+    /// the instance that takes a request at n: the next in the balancing, round robin (the first
+    /// instance only, without a balancer in front)
+    fn pick_instance(&mut self, n: usize) -> Option<usize> {
+        let now = self.now;
+        let x = &mut self.nodes[n];
+        if !x.inst_on {
+            return None;
+        }
+        let up_n = instances_up(&x.raw).max(0.0).floor() as usize;
+        if up_n == 0 {
+            return None;
+        }
+        let lb = x.pooled || x.raw.kind == "llm" || super::catalog::clustered(&x.raw.kind);
+        if !lb {
+            return Some(0);
+        }
+        for _ in 0..up_n {
+            let k = x.inst_rr % up_n;
+            x.inst_rr = x.inst_rr.wrapping_add(1);
+            if !(x.inst_until.get(k).copied().unwrap_or(f64::NEG_INFINITY) > now) {
+                return Some(k);
+            }
+        }
+        None
+    }
+
+    /// priority load shedding: a best-effort request finds the component busier than 1 − reserve (its
+    /// workers, its threads, or a backlog) — or, behind a rate limit, the bucket down to the reserve
+    fn shed_best_effort(&self, i: usize, rq: Rq) -> bool {
+        if rq.crit || !self.prio {
+            return false;
+        }
+        let x = &self.nodes[i];
+        let r = match x.data.priority_reserve.filter(|r| *r > 0.0 && super::engine::priority_kind(&x.data.kind)) {
+            Some(r) => r.min(1.0),
+            None => return false,
+        };
+        let keep = 1.0 - r;
+        if !x.workers.is_finite() || x.rate.is_finite() {
+            return false;
+        }
+        x.busy >= keep * x.workers || !x.queue.is_empty() || x.sh_queue.iter().any(|q| !q.is_empty()) || (x.threads_cap.is_finite() && x.held >= keep * x.threads_cap)
     }
 
     fn release(&mut self, id: ContId) {
@@ -935,13 +1097,13 @@ impl<'a> Des<'a> {
         }
     }
 
-    fn arrive(&mut self, i: usize, read: bool, done: ContId) {
+    fn arrive(&mut self, i: usize, read: Rq, done: ContId) {
         if let Some(t) = self.tr.as_mut() {
             t.arrive(done, self.now);
         }
         self.nodes[i].win.arrivals += 1.0;
         let kind = self.nodes[i].kind;
-        if kind == "replica" && read && self.nodes[i].repl_lag > 1.0 {
+        if kind == "replica" && read.read && self.nodes[i].repl_lag > 1.0 {
             self.stale_reads += 1.0;
         }
         if kind == "search" && up(&self.nodes[i]) {
@@ -979,17 +1141,38 @@ impl<'a> Des<'a> {
             }
         }
         let now = self.now;
+        let prio = self.prio;
+        let mut be_shed = false;
         {
             let n = &mut self.nodes[i];
             if n.rate.is_finite() {
                 let cap = n.data.burst.filter(|b| *b > 0.0 && n.data.kind == "gateway").unwrap_or(n.rate);
-                n.tokens = cap.min(n.tokens + (now - n.last_refill) * n.rate);
+                let elapsed = now - n.last_refill;
+                n.tokens = cap.min(n.tokens + elapsed * n.rate);
                 n.last_refill = now;
-                if n.tokens < 1.0 {
-                    return self.fail(Some(i), why(i, R_LIMIT), done, 1.0); // 429
+                // priority: best-effort requests draw on a second bucket, refilled at 1 − reserve of the
+                // rate, that every request empties: they get only what the critical ones leave of it
+                let reserve = n.data.priority_reserve.filter(|r| *r > 0.0 && prio && super::engine::priority_kind(&n.data.kind));
+                if let Some(r) = reserve {
+                    let keep = 1.0 - r.min(1.0);
+                    n.be_tokens = (keep * cap).min(n.be_tokens + elapsed * keep * n.rate);
+                    be_shed = !read.crit && n.be_tokens < 1.0;
                 }
-                n.tokens -= 1.0;
+                if !be_shed {
+                    if n.tokens < 1.0 {
+                        return self.fail(Some(i), why(i, R_LIMIT), done, 1.0); // 429
+                    }
+                    n.tokens -= 1.0;
+                    if reserve.is_some() {
+                        // a critical request takes its token too, into debt if need be: best-effort repays it first
+                        n.be_tokens = (n.be_tokens - 1.0).max(-(1.0 - reserve.unwrap_or(0.0).min(1.0)) * cap);
+                    }
+                }
             }
+        }
+        if be_shed {
+            self.shed += 1.0;
+            return self.fail(Some(i), why(i, R_PRIORITY), done, 0.5);
         }
         if kind == "stream" {
             // every subscriber gets it; past retention the oldest expire unread
@@ -998,7 +1181,7 @@ impl<'a> Des<'a> {
                 if q.len() >= QUEUE_BACKLOG_MAX {
                     q.pop_front();
                 }
-                q.push_back(Job { read, t_in: now, done: None, shard: NO_SHARD, tries: 0 });
+                q.push_back(Job { read, t_in: now, done: None, shard: NO_SHARD, tries: 0, inst: NO_INST });
             }
             let ack = base_latency_of(&self.nodes[i].data);
             if let Some(t) = self.tr.as_mut() {
@@ -1012,7 +1195,7 @@ impl<'a> Des<'a> {
             if self.nodes[i].backlog.len() >= QUEUE_BACKLOG_MAX {
                 return self.fail(Some(i), why(i, R_SHED), done, 0.5);
             }
-            self.nodes[i].backlog.push_back(Job { read, t_in: now, done: None, shard: NO_SHARD, tries: 0 });
+            self.nodes[i].backlog.push_back(Job { read, t_in: now, done: None, shard: NO_SHARD, tries: 0, inst: NO_INST });
             let ack = base_latency_of(&self.nodes[i].data);
             if let Some(t) = self.tr.as_mut() {
                 t.mark(done, super::trace::MARK_QUEUED);
@@ -1038,7 +1221,7 @@ impl<'a> Des<'a> {
                 let n = &mut self.nodes[i];
                 n.kv_bucket = (n.kv_bucket + (now - n.kv_t)).min(1.0);
                 n.kv_t = now;
-                let cost = if read { 1.0 / super::catalog::KV_PARTITION_READS } else { 1.0 / super::catalog::KV_PARTITION_WRITES };
+                let cost = if read.read { 1.0 / super::catalog::KV_PARTITION_READS } else { 1.0 / super::catalog::KV_PARTITION_WRITES };
                 if n.kv_bucket < cost {
                     return self.fail(Some(i), why(i, R_LIMIT), done, 1.0); // throttled
                 }
@@ -1058,7 +1241,7 @@ impl<'a> Des<'a> {
             }
             n.px_bucket[k] = (n.px_bucket[k] + (now - n.px_t[k])).min(1.0);
             n.px_t[k] = now;
-            let cost = (if read { 1.0 / super::catalog::PREFIX_READS } else { 1.0 / super::catalog::PREFIX_WRITES }) / deg;
+            let cost = (if read.read { 1.0 / super::catalog::PREFIX_READS } else { 1.0 / super::catalog::PREFIX_WRITES }) / deg;
             if n.px_bucket[k] < cost {
                 return self.fail(Some(i), why(i, R_LIMIT), done, 1.0); // 503 SlowDown
             }
@@ -1082,10 +1265,27 @@ impl<'a> Des<'a> {
             self.at(svc, Ev::LlmDone { n: i, done, fault });
             return;
         }
-        self.enqueue(i, Job { read, t_in: now, done: Some(done), shard: NO_SHARD, tries: 0 });
+        if self.shed_best_effort(i, read) {
+            self.shed += 1.0;
+            return self.fail(Some(i), why(i, R_PRIORITY), done, 0.5);
+        }
+        // one instance takes it: its own faults apply, and with outlier ejection its answer is counted
+        let mut done = done;
+        let mut inst = NO_INST;
+        if let Some(k) = self.pick_instance(i) {
+            inst = k as u16;
+            if self.nodes[i].raw.eject_after.is_some() {
+                let w = self.cont(Cont::Inst { n: i, k, done });
+                if let Some(t) = self.tr.as_mut() {
+                    t.wrap(w, done);
+                }
+                done = w;
+            }
+        }
+        self.enqueue(i, Job { read, t_in: now, done: Some(done), shard: NO_SHARD, tries: 0, inst });
     }
 
-    fn arrive_db(&mut self, i: usize, read: bool, done: ContId) {
+    fn arrive_db(&mut self, i: usize, read: Rq, done: ContId) {
         // a dead primary's replicas are chosen around it: the partition does not stop the failover
         let primary_up = up(&self.nodes[i]);
         let mut replicas: Vec<usize> = self.nodes[i].children.iter().copied().filter(|&c| self.nodes[c].data.kind == "replica" && if primary_up { self.reach(i, c) } else { up(&self.nodes[c]) }).collect();
@@ -1098,7 +1298,7 @@ impl<'a> Des<'a> {
             if !read && self.nodes[i].children.iter().any(|&c| self.link_sync.contains(&(i, c)) && !self.reach(i, c)) {
                 return self.fail(Some(i), why(i, R_SYNC), done, 0.5);
             }
-            if read && !replicas.is_empty() {
+            if read.read && !replicas.is_empty() {
                 let pick = (self.rng.next() * (replicas.len() + 1) as f64).floor() as usize;
                 if pick > 0 {
                     return self.hop(replicas[pick - 1], read, done, Some(i));
@@ -1112,7 +1312,7 @@ impl<'a> Des<'a> {
                 if self.nodes[i].lock_q.len() as f64 >= qmax {
                     return self.fail(Some(i), why(i, R_LOCK), done, 0.5);
                 }
-                self.nodes[i].lock_q.push_back(Job { read, t_in: now, done: Some(done), shard: NO_SHARD, tries: 0 });
+                self.nodes[i].lock_q.push_back(Job { read, t_in: now, done: Some(done), shard: NO_SHARD, tries: 0, inst: NO_INST });
                 return self.next_lock(i);
             }
             // a sharded database: the hot key's shard, or one picked by the key's hash
@@ -1125,7 +1325,11 @@ impl<'a> Des<'a> {
                     NO_SHARD
                 }
             };
-            return self.enqueue(i, Job { read, t_in: now, done: Some(done), shard, tries: 0 });
+            if self.shed_best_effort(i, read) {
+                self.shed += 1.0;
+                return self.fail(Some(i), why(i, R_PRIORITY), done, 0.5);
+            }
+            return self.enqueue(i, Job { read, t_in: now, done: Some(done), shard, tries: 0, inst: NO_INST });
         }
         if self.nodes[i].down_since.is_none() {
             self.nodes[i].down_since = Some(self.now);
@@ -1145,7 +1349,7 @@ impl<'a> Des<'a> {
     }
 
     /// one call over the network: a hop plus the link's round trip, if it has one
-    fn hop(&mut self, i: usize, read: bool, done: ContId, from: Option<usize>) {
+    fn hop(&mut self, i: usize, read: Rq, done: ContId, from: Option<usize>) {
         // a connection that stayed broken after its callee came back: the call fails at once (a channel
         // in transient failure); across a partition: no answer until the connection times out
         if let Some(f) = from {
@@ -1221,7 +1425,7 @@ impl<'a> Des<'a> {
     }
 
     /// the call goes over the link (its round trip, N calls in parallel when the link makes N)
-    fn send(&mut self, i: usize, read: bool, done: ContId, from: Option<usize>) {
+    fn send(&mut self, i: usize, read: Rq, done: ContId, from: Option<usize>) {
         let link = from.map(|f| self.link_lat(f, i)).unwrap_or(0.0);
         let ms = self.cfg.hop_ms + link;
         // a link that makes N calls per request: N in parallel, done when all have answered
@@ -1333,6 +1537,14 @@ impl<'a> Des<'a> {
         if !fault_latency_waits(&self.nodes[n].data.kind) {
             svc += self.nodes[n].data.fault_latency_ms.unwrap_or(0.0);
         }
+        // an instance with a fault of its own: degraded, it works 1/f as long; its injected latency
+        if job.inst != NO_INST {
+            let (_, ms, f) = inst_fault(&self.nodes[n].raw, job.inst as usize);
+            svc /= f;
+            if !fault_latency_waits(&self.nodes[n].data.kind) {
+                svc += ms;
+            }
+        }
         if self.nodes[n].data.kind == "function" {
             let x = &mut self.nodes[n];
             if x.busy > x.warm.max(x.data.provisioned.unwrap_or(0.0)) {
@@ -1377,7 +1589,12 @@ impl<'a> Des<'a> {
         self.drain(n, bound);
         // a server's or worker's injected latency: the worker is free, the request (and its thread,
         // if it holds one) waits
-        let wait = if fault_latency_waits(&self.nodes[n].data.kind) { self.nodes[n].data.fault_latency_ms.filter(|x| *x > 0.0) } else { None };
+        let wait = if fault_latency_waits(&self.nodes[n].data.kind) {
+            let own = if job.inst != NO_INST { inst_fault(&self.nodes[n].raw, job.inst as usize).1 } else { 0.0 };
+            Some(self.nodes[n].data.fault_latency_ms.unwrap_or(0.0).max(0.0) + own).filter(|x| *x > 0.0)
+        } else {
+            None
+        };
         match wait {
             Some(ms) if job.done.is_some() => self.at(ms, Ev::Waited { n, job }),
             _ => self.after_service(n, job),
@@ -1409,6 +1626,12 @@ impl<'a> Des<'a> {
                 return self.fail(Some(n), why(n, R_ERROR), done, 0.0);
             }
         }
+        if job.inst != NO_INST {
+            let fr = inst_fault(&self.nodes[n].raw, job.inst as usize).0;
+            if fr > 0.0 && self.rng.next() < fr {
+                return self.fail(Some(n), why(n, R_ERROR), done, 0.0);
+            }
+        }
         if kind == "cache" || kind == "cdn" {
             let d = &self.nodes[n].data;
             // writes never hit: they go on to the origin, or wait in a write-behind cache
@@ -1417,7 +1640,7 @@ impl<'a> Des<'a> {
                 self.at(wait, Ev::Flush { n });
                 return self.deliver(done, OK);
             }
-            let hit = if job.read { super::catalog::cache_hit_rate(d) * cache_warmth(self.nodes[n].cold_at, self.now, d.warmup_s) } else { 0.0 };
+            let hit = if job.read.read { super::catalog::cache_hit_rate(d) * cache_warmth(self.nodes[n].cold_at, self.now, d.warmup_s) } else { 0.0 };
             if self.rng.next() < hit {
                 self.nodes[n].win.hits += 1.0;
                 if let Some(t) = self.tr.as_mut() {
@@ -1503,7 +1726,7 @@ impl<'a> Des<'a> {
     }
 
     /// calling children: breaker → retries → deadline → routing
-    fn call_downstream(&mut self, n: usize, read: bool, done: ContId) {
+    fn call_downstream(&mut self, n: usize, read: Rq, done: ContId) {
         self.nodes[n].win.calls += 1.0;
         let breaker = self.nodes[n].data.breaker == Some(true);
         if breaker && self.nodes[n].br != "closed" {
@@ -1597,7 +1820,7 @@ impl<'a> Des<'a> {
         self.at(delay, Ev::Attempt { call, k: k + 1.0 });
     }
 
-    fn route(&mut self, n: usize, read: bool, done: ContId) {
+    fn route(&mut self, n: usize, read: Rq, done: ContId) {
         let kind = self.nodes[n].kind;
         let mode = self.nodes[n].mode;
         let degree = self.nodes[n].data.fanout.unwrap_or(1.0).max(1.0);
@@ -1620,7 +1843,7 @@ impl<'a> Des<'a> {
         if restricted {
             // only the links that carry this request's class
             kids.retain(|&c| match self.link_carries.get(&(n, c)) {
-                Some(1) => read,
+                Some(1) => read.read,
                 Some(2) => !read,
                 _ => true,
             });
@@ -1675,7 +1898,7 @@ impl<'a> Des<'a> {
         self.hop(kids[k], read, done, Some(n))
     }
 
-    fn try_failover(&mut self, n: usize, read: bool, order: usize, i: usize, done: ContId) {
+    fn try_failover(&mut self, n: usize, read: Rq, order: usize, i: usize, done: ContId) {
         let target = self.orders[order][i];
         let c = self.cont(Cont::Failover { n, read, order, i, done });
         if let Some(t) = self.tr.as_mut() {
@@ -1705,12 +1928,16 @@ impl<'a> Des<'a> {
         if emit && rate > 0.0 && self.nodes[c].data.alive {
             let t0 = self.now;
             let read = self.rng.next() < self.sc.read_ratio;
+            // a share of a client's requests are best-effort (drawn only when it sends any)
+            let lps = self.nodes[c].data.low_priority_share.unwrap_or(0.0);
+            let crit = !(lps > 0.0 && self.rng.next() < lps);
+            let read = Rq { read, crit };
             self.nodes[c].win.arrivals += 1.0;
-            let finish = self.cont(Cont::User { t0, job: job.is_some() });
+            let finish = self.cont(Cont::User { t0, job: job.is_some(), crit });
             if job.is_none() {
                 self.live_users += 1.0;
                 if let Some(t) = self.tr.as_mut() {
-                    t.begin(t0, c, read, finish);
+                    t.begin(t0, c, read.read, finish);
                 }
             }
             if self.nodes[c].children.is_empty() {
@@ -1857,6 +2084,10 @@ impl<'a> Des<'a> {
                 hold_ms: if w.held_n > 0.0 { (w.held_s / w.held_n * 1000.0 - n.svc_mean_ms).max(0.0) } else { 0.0 },
                 own_ms: n.svc_mean_ms,
                 dead_letter_rps: w.dead / win_s,
+                success_critical: None,
+                success_best_effort: None,
+                shed_rps: 0.0,
+                instances: None,
             };
             let arrivals = w.arrivals;
             if (n.data.kind == "cache" || n.data.kind == "cdn") && !up(n) {
@@ -1952,7 +2183,7 @@ impl<'a> Des<'a> {
             Ev::Redrive { n, read, tries } => {
                 let now = self.now;
                 if self.nodes[n].backlog.len() < QUEUE_BACKLOG_MAX {
-                    self.nodes[n].backlog.push_back(Job { read, t_in: now, done: None, shard: NO_SHARD, tries });
+                    self.nodes[n].backlog.push_back(Job { read, t_in: now, done: None, shard: NO_SHARD, tries, inst: NO_INST });
                 } else {
                     // nowhere to come back to: as good as dead-lettered
                     self.dead_letters += 1.0;
@@ -1981,6 +2212,15 @@ impl<'a> Des<'a> {
             }
             Ev::Attempt { call, k } => self.attempt(call, k),
             Ev::BulkGiveUp { n, k, token } => self.bulk_give_up(n, k, token),
+            Ev::Unject { n, k } => {
+                if self.nodes[n].inst_until.get(k).map_or(false, |u| *u <= self.now) {
+                    self.nodes[n].inst_until[k] = f64::NEG_INFINITY;
+                    self.nodes[n].inst_run[k] = 0;
+                    let what = format!("return: {} #{}", self.nodes[n].raw.name, k + 1);
+                    self.ev_log.push(super::headless::Event { t: r3(self.now), what });
+                    self.configure(n);
+                }
+            }
             Ev::Timeout { settle } => self.settle(settle, OK, true),
             Ev::Sample => self.sample(),
             Ev::Scenario { k } => self.scenario(k),
@@ -1991,7 +2231,7 @@ impl<'a> Des<'a> {
                     return;
                 }
                 let c = self.cont(Cont::Flushed);
-                self.call_downstream(n, false, c);
+                self.call_downstream(n, Rq { read: false, crit: true }, c);
             }
         }
     }
@@ -2072,6 +2312,11 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
             worst: -1.0,
             worst_note: None,
             last_stats: None,
+            inst_on: false,
+            inst_rr: 0,
+            be_tokens: 0.0,
+            inst_run: vec![],
+            inst_until: vec![],
         })
         .collect();
     let mut link_ms = HashMap::new();
@@ -2126,6 +2371,7 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
     js_sort_by(&mut tl, |a, b| a.0 - b.0);
     let clients: Vec<usize> = (0..nodes.len()).filter(|&i| nodes[i].data.kind == "client").collect();
     let n_nodes = nodes.len();
+    let prio = clients.iter().any(|&c| nodes[c].data.low_priority_share.unwrap_or(0.0) > 0.0);
     let mut des = Des {
         cfg: cfg.clone(),
         sc,
@@ -2171,11 +2417,15 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
         sim_nodes,
         zones: spec.zones.iter().map(|z| (z.0.clone(), z.2.clone())).collect(),
         tr: cfg.trace.clone().map(|t| Box::new(super::trace::Tracer::new(t, n_nodes, cfg.seed))),
+        prio,
+        cls: [class_acc(), class_acc()],
+        shed: 0.0,
     };
     for i in 0..des.nodes.len() {
         des.configure(i);
         let n = &mut des.nodes[i];
         n.tokens = if n.rate.is_finite() { n.rate * 0.1 } else { 0.0 };
+        n.be_tokens = n.tokens * (1.0 - n.data.priority_reserve.unwrap_or(0.0).clamp(0.0, 1.0));
     }
     for k in 0..sc.events.len() {
         des.q.push(sc.events[k].0, Ev::Scenario { k });
@@ -2210,7 +2460,7 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
     // any still waiting count with what they have waited so far (a lower bound)
     let end = des.now.max(sc.duration);
     for c in &des.conts {
-        if let Cont::User { t0, job: false } = c {
+        if let Cont::User { t0, job: false, .. } = c {
             des.total_reqs += 1.0;
             des.user_hist.record((end - t0) * 1000.0);
             des.all_hist.record((end - t0) * 1000.0);
@@ -2291,6 +2541,8 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
             stale_reads: des.stale_reads,
             max_replica_lag_s: r3(des.max_replica_lag),
             worst_moment_s: r3(des.worst_t),
+            critical: if des.prio { Some(des_class(&des.cls[0], 0.0)) } else { None },
+            best_effort: if des.prio { Some(des_class(&des.cls[1], des.shed)) } else { None },
             events: processed,
             wall_ms,
         },
@@ -2305,6 +2557,10 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
             t.report(&names, &reason_text)
         }),
     }
+}
+
+fn des_class(c: &ClassAcc, shed: f64) -> super::headless::ClassSummary {
+    super::headless::ClassSummary { requests: c.reqs, failed_requests: c.fail, error_rate: if c.reqs > 0.0 { r3(c.fail / c.reqs) } else { 0.0 }, p99_answers_ms: if c.answers > 0 { Some(js_round(c.hist.quantile(0.99))) } else { None }, shed }
 }
 
 fn static_kind(k: &str) -> &'static str {
@@ -2660,5 +2916,187 @@ mod slow_dependency_tests {
                 assert!(fp >= dp / 1.25 - 5.0 && fp <= dp * 1.25 + 5.0, "{} slow: p99 fluid {} des {}", target, fp, dp);
             }
         }
+    }
+}
+
+/// priority load shedding: best-effort requests shed past 1 − reserve, critical ones kept
+#[cfg(test)]
+mod priority_tests {
+    use super::super::engine::{Engine, EngineConfig};
+    use super::super::headless::{simulate, SimOptions};
+    use super::*;
+    use serde_json::{json, Value};
+
+    /// users (1,000/s, 70% best-effort) → api: 500/s, a fifth kept for critical requests. `latency`
+    /// sets the pool's size (500/s × 200 ms = 100 workers)
+    fn board(latency: f64) -> Value {
+        json!({ "components": [{ "id": "users", "kind": "client", "lowPriorityShare": 0.7 }, { "id": "api", "kind": "server", "capacity": 500, "latencyMs": latency, "priorityReserve": 0.2 }], "connections": [["users", "api"]] })
+    }
+
+    /// the fluid engine's two classes after `secs` at `rps`: (critical, best-effort) error rates, shed req/s
+    fn fluid_now(spec: &Value, rps: f64, secs: f64) -> (f64, f64, f64) {
+        let (nodes, edges) = graph_of(&parse_architecture(spec).unwrap());
+        let mut e = Engine::new();
+        let cfg = EngineConfig::default();
+        let mut t = 0.0;
+        while t < secs {
+            e.step(&nodes, &edges, rps, 0.8, 0.05, &cfg, "illustrative");
+            t += 0.05;
+        }
+        let g = e.snapshot(&nodes, &edges).global;
+        let (c, b) = (g.critical.unwrap(), g.best_effort.unwrap());
+        (c.error_rate, b.error_rate, b.shed_rps)
+    }
+
+    /// hand check: 300/s critical all fit; best-effort is let in only below 400/s busy, so 100 of its
+    /// 700/s are served: 6/7 of it fails, 600/s shed, and 60% of everything
+    const BE_FAILS: f64 = 6.0 / 7.0;
+
+    #[test]
+    fn the_fluid_engine_sheds_exactly_the_best_effort_past_the_reserve() {
+        for latency in [25.0, 200.0] {
+            let (c, b, shed) = fluid_now(&board(latency), 1000.0, 30.0);
+            assert!(c < 1e-3, "critical {}", c);
+            assert!((b - BE_FAILS).abs() < 2e-3, "best-effort {} (want {})", b, BE_FAILS);
+            assert!((shed - 600.0).abs() < 2.0, "shed {}/s", shed);
+        }
+    }
+
+    #[test]
+    fn the_discrete_event_engine_sheds_the_best_effort_past_the_reserve() {
+        // 100 workers: the threshold (80 busy) is fine-grained
+        let r = simulate_des(&board(200.0), &json!({ "duration": 60, "rps": 1000 }), &DesConfig::default()).unwrap();
+        let (c, b) = (r.summary.critical.clone().unwrap(), r.summary.best_effort.clone().unwrap());
+        assert!(c.error_rate < 0.002, "critical {}", c.error_rate);
+        assert!((b.error_rate - BE_FAILS).abs() < 0.02, "best-effort {}", b.error_rate);
+        assert!((b.shed - b.failed_requests).abs() < 1.0, "every best-effort failure was a shed one");
+        assert!(r.failures.iter().any(|f| f.id == "api" && f.reason == reason_text(R_PRIORITY)));
+        // 13 workers: a critical request that arrives at the threshold still takes a worker, so the
+        // pool sits a little above it and best-effort gets in a little more often (20% served, not 14%)
+        let r = simulate_des(&board(25.0), &json!({ "duration": 60, "rps": 1000 }), &DesConfig::default()).unwrap();
+        let (c, b) = (r.summary.critical.unwrap(), r.summary.best_effort.unwrap());
+        assert!(c.error_rate < 0.002, "critical {}", c.error_rate);
+        assert!(b.error_rate > 0.76 && b.error_rate < BE_FAILS, "best-effort {}", b.error_rate);
+    }
+
+    #[test]
+    fn both_engines_agree_on_priority_shedding() {
+        let sc = json!({ "duration": 60, "rps": 1000 });
+        let f = simulate(&board(200.0), &sc, &SimOptions::default()).unwrap().summary;
+        let d = simulate_des(&board(200.0), &sc, &DesConfig::default()).unwrap().summary;
+        let (fb, db) = (f.best_effort.unwrap(), d.best_effort.unwrap());
+        assert!((fb.error_rate - db.error_rate).abs() < 0.02, "fluid {} des {}", fb.error_rate, db.error_rate);
+        assert!((fb.shed - db.shed).abs() / db.shed < 0.05, "shed fluid {} des {}", fb.shed, db.shed);
+        assert!(f.critical.unwrap().error_rate < 0.002 && d.critical.unwrap().error_rate < 0.002);
+    }
+
+    #[test]
+    fn the_class_travels_through_the_graph_and_a_rate_limit_keeps_its_reserve_too() {
+        // the shedding one hop down, behind a server with no reserve: the class came with the request
+        let deep = json!({ "components": [{ "id": "users", "kind": "client", "lowPriorityShare": 0.7 }, { "id": "lb", "kind": "lb" }, { "id": "api", "kind": "server", "instances": 8 }, { "id": "db", "kind": "db", "capacity": 500, "latencyMs": 200, "priorityReserve": 0.2 }], "connections": [["users", "lb"], ["lb", "api"], ["api", "db"]] });
+        // a gateway's rate limit: best-effort gets 1 − reserve of the rate, less what critical takes
+        let gw = json!({ "components": [{ "id": "users", "kind": "client", "lowPriorityShare": 0.7 }, { "id": "gw", "kind": "gateway", "limit": 500, "priorityReserve": 0.2 }, { "id": "api", "kind": "server", "instances": 8 }], "connections": [["users", "gw"], ["gw", "api"]] });
+        for spec in [deep, gw] {
+            let (c, b, _) = fluid_now(&spec, 1000.0, 30.0);
+            assert!(c < 2e-3 && (b - BE_FAILS).abs() < 5e-3, "fluid {} {}", c, b);
+            let d = simulate_des(&spec, &json!({ "duration": 60, "rps": 1000 }), &DesConfig::default()).unwrap().summary;
+            let (dc, db) = (d.critical.unwrap(), d.best_effort.unwrap());
+            assert!(dc.error_rate < 0.005 && (db.error_rate - BE_FAILS).abs() < 0.025, "des {} {}", dc.error_rate, db.error_rate);
+        }
+    }
+
+    #[test]
+    fn without_best_effort_traffic_nothing_changes() {
+        let mut spec = board(25.0);
+        spec["components"][0].as_object_mut().unwrap().remove("lowPriorityShare");
+        let sc = json!({ "duration": 20, "rps": 1000 });
+        let f = simulate(&spec, &sc, &SimOptions::default()).unwrap().summary;
+        let d = simulate_des(&spec, &sc, &DesConfig::default()).unwrap().summary;
+        assert!(f.critical.is_none() && f.best_effort.is_none() && d.critical.is_none() && d.best_effort.is_none());
+        // the reserve does nothing to critical requests: 1,000/s against 500/s overloads as before
+        assert!(f.mean_error_rate > 0.4 && d.mean_error_rate > 0.4);
+    }
+}
+
+/// outlier ejection: one bad instance of four, ejected after a run of errors
+#[cfg(test)]
+mod ejection_tests {
+    use super::super::headless::{simulate, SimOptions};
+    use super::*;
+    use serde_json::{json, Value};
+
+    fn board(eject: Option<(f64, Option<f64>)>) -> Value {
+        let mut api = json!({ "id": "api", "kind": "server", "instances": 4, "capacity": 500 });
+        if let Some((after, pct)) = eject {
+            api["ejectAfter"] = json!(after);
+            if let Some(p) = pct {
+                api["maxEjectedPercent"] = json!(p);
+            }
+        }
+        json!({ "components": [{ "id": "users", "kind": "client" }, { "id": "lb", "kind": "lb" }, api], "connections": [["users", "lb"], ["lb", "api"]] })
+    }
+    /// instance #3 of api has a fault from the start
+    fn bad_third(action: Value) -> Value {
+        json!({ "duration": 120, "rps": 1000, "events": [{ "at": 0, "action": action }] })
+    }
+    fn errors_30() -> Value {
+        bad_third(json!({ "type": "inject-errors", "id": "api", "rate": 0.3, "instance": 3 }))
+    }
+    fn both(spec: &Value, sc: &Value) -> (f64, f64, Vec<String>) {
+        let f = simulate(spec, sc, &SimOptions::default()).unwrap();
+        let d = simulate_des(spec, sc, &DesConfig::default()).unwrap();
+        (f.summary.mean_error_rate, d.summary.mean_error_rate, d.events.iter().map(|e| e.what.clone()).collect())
+    }
+
+    #[test]
+    fn a_run_of_k_errors_takes_its_expected_number_of_requests() {
+        // (1 − pᵏ) / ((1 − p) pᵏ): 586.5 requests at 30% for 5 in a row; k at 100%; never at 0
+        assert!((requests_to_run(0.3, 5.0) - 586.5).abs() < 0.1, "{}", requests_to_run(0.3, 5.0));
+        assert_eq!(requests_to_run(1.0, 5.0), 5.0);
+        assert!(requests_to_run(0.0, 5.0).is_infinite());
+        // Envoy's rule: (ejected + 1) / n ≤ max %; its default 10% ejects nothing among 4
+        let d = NodeData { max_ejected_percent: None, ..Default::default() };
+        assert!(!may_eject(&d, 0.0, 4.0) && may_eject(&d, 0.0, 10.0) && !may_eject(&d, 1.0, 10.0));
+        let d = NodeData { max_ejected_percent: Some(25.0), ..Default::default() };
+        assert!(may_eject(&d, 0.0, 4.0) && !may_eject(&d, 1.0, 4.0));
+    }
+
+    #[test]
+    fn one_bad_instance_of_four_fails_a_quarter_of_its_rate() {
+        // without ejection: 30% × ¼ = 7.5%; Envoy's default 10% ejects none of 4 instances either
+        for spec in [board(None), board(Some((5.0, None)))] {
+            let (f, d, ev) = both(&spec, &errors_30());
+            assert!((f - 0.075).abs() < 0.004, "fluid {}", f);
+            assert!((d - 0.075).abs() < 0.006, "des {}", d);
+            assert!(!ev.iter().any(|e| e.starts_with("eject")), "{:?}", ev);
+        }
+    }
+
+    #[test]
+    fn ejecting_the_bad_instance_leaves_only_the_runs_before_each_ejection() {
+        // 250/s reach it, a run of 5 errors takes 586.5 of its requests (2.3 s); then 30 s out. Over a
+        // cycle the failures are 30% of 586.5 against 1,000/s × 32.3 s: 0.54%
+        let spec = board(Some((5.0, Some(25.0))));
+        let (f, d, ev) = both(&spec, &errors_30());
+        assert!(f > 0.004 && f < 0.008, "fluid {}", f);
+        assert!(d > 0.001 && d < 0.012, "des {}", d);
+        assert!(ev.iter().filter(|e| *e == "eject: api #3 for 30 s").count() >= 3, "{:?}", ev);
+        assert!(ev.iter().any(|e| e == "return: api #3"), "{:?}", ev);
+        // the fluid engine's cycle: ejected at the expected run (2.3 s after each return)
+        let r = simulate(&spec, &errors_30(), &SimOptions::default()).unwrap();
+        let t: Vec<f64> = r.events.iter().filter(|e| e.what.starts_with("eject")).map(|e| e.t).collect();
+        assert!((t[1] - 33.0 - 586.5 / 250.0).abs() < 0.15, "{:?}", t);
+    }
+
+    #[test]
+    fn a_slow_instance_is_a_slow_mode_of_the_answers() {
+        // a quarter of the answers take 500 ms longer: the p99 is past 500 ms in both engines, the p50 is not
+        let sc = bad_third(json!({ "type": "inject-latency", "id": "api", "ms": 500, "instance": 3 }));
+        let f = simulate(&board(None), &sc, &SimOptions { answers: Some(true), ..Default::default() }).unwrap();
+        let d = simulate_des(&board(None), &sc, &DesConfig::default()).unwrap();
+        let fa = f.answers.unwrap();
+        assert!(fa.p99_ms > 500.0 && fa.p50_ms < 100.0, "fluid {:?}", (fa.p50_ms, fa.p99_ms));
+        assert!(d.summary.p99_ms > 500.0 && d.summary.p50_ms < 100.0, "des {} {}", d.summary.p50_ms, d.summary.p99_ms);
+        assert!((fa.p99_ms - d.summary.p99_ms).abs() / d.summary.p99_ms < 0.15, "fluid {} des {}", fa.p99_ms, d.summary.p99_ms);
     }
 }

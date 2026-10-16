@@ -7,7 +7,7 @@ use crate::math::js_num;
 use serde_json::{json, Map as JMap, Value};
 
 const KINDS: [&str; 22] = ["client", "cdn", "lb", "gateway", "server", "worker", "function", "cache", "db", "replica", "storage", "queue", "llm", "llmapi", "external", "kv", "dns", "stream", "search", "vector", "archive", "edge"];
-const DATA_KEYS: [&str; 51] = ["tier", "instances", "runtime", "hitRate", "limit", "batching", "retries", "retryPolicy", "timeoutMs", "breaker", "fallback", "routing", "fanout", "stallRate", "stallMs", "queueS", "capacity", "latencyMs", "costPerHour", "autoscale", "warmupS", "writePolicy", "workingSetGb", "skew", "shards", "hotKeyShare", "ttlS", "healthCheckS", "partitions", "threads", "bulkhead", "bulkheadWaitMs", "provisioned", "prefixes", "hotRowShare", "failoverS", "burst", "maxReceives", "visibilityS", "maxConnections", "connectionS", "everyS", "batch", "batchS", "refreshS", "recall", "vectorsM", "retrieval", "edgeShare", "cpuMs", "cpuLimitMs"];
+const DATA_KEYS: [&str; 56] = ["tier", "instances", "runtime", "hitRate", "limit", "batching", "retries", "retryPolicy", "timeoutMs", "breaker", "fallback", "routing", "fanout", "stallRate", "stallMs", "queueS", "capacity", "latencyMs", "costPerHour", "autoscale", "warmupS", "writePolicy", "workingSetGb", "skew", "shards", "hotKeyShare", "ttlS", "healthCheckS", "partitions", "threads", "bulkhead", "bulkheadWaitMs", "provisioned", "prefixes", "hotRowShare", "failoverS", "burst", "maxReceives", "visibilityS", "maxConnections", "connectionS", "everyS", "batch", "batchS", "refreshS", "recall", "vectorsM", "retrieval", "edgeShare", "cpuMs", "cpuLimitMs", "lowPriorityShare", "priorityReserve", "ejectAfter", "ejectForS", "maxEjectedPercent"];
 
 #[derive(Clone, Debug, Default)]
 pub struct Issue {
@@ -196,6 +196,11 @@ fn check_component(c: &JMap<String, Value>, path: Vec<Value>, issues: &mut Vec<I
     v.number("edgeShare", false, Some((0.0, true)), Some(1.0), false);
     v.number("cpuMs", false, Some((0.0, true)), Some(300000.0), false);
     v.number("cpuLimitMs", false, Some((0.0, false)), Some(300000.0), false);
+    v.number("lowPriorityShare", false, Some((0.0, true)), Some(1.0), false);
+    v.number("priorityReserve", false, Some((0.0, true)), Some(1.0), false);
+    v.number("ejectAfter", false, Some((1.0, true)), Some(1000.0), true);
+    v.number("ejectForS", false, Some((0.0, false)), Some(3600.0), false);
+    v.number("maxEjectedPercent", false, Some((0.0, true)), Some(100.0), false);
     v.one_of("retrieval", &["instant", "expedited", "standard"], false);
     v.number("recall", false, Some((0.5, true)), Some(0.999), false);
     v.number("vectorsM", false, Some((0.0, false)), Some(100000.0), false);
@@ -807,10 +812,11 @@ pub enum Action {
     ReviveId(String),
     FailZone(String),
     RestoreZone(String),
-    Degrade(String, f64),
+    /// (id, factor, instance): one instance only when given (1-based)
+    Degrade(String, f64, Option<f64>),
     Restore(String),
-    InjectErrors(String, f64),
-    InjectLatency(String, f64),
+    InjectErrors(String, f64, Option<f64>),
+    InjectLatency(String, f64, Option<f64>),
     FlushCache(String),
     /// a database: this share of its traffic goes to one key (0 ends it)
     HotKey(String, f64),
@@ -848,7 +854,7 @@ impl Action {
     }
     pub fn id(&self) -> Option<&str> {
         match self {
-            Action::KillId(i) | Action::ReviveId(i) | Action::FailZone(i) | Action::RestoreZone(i) | Action::Degrade(i, _) | Action::Restore(i) | Action::InjectErrors(i, _) | Action::InjectLatency(i, _) | Action::FlushCache(i) | Action::HotKey(i, _) => Some(i),
+            Action::KillId(i) | Action::ReviveId(i) | Action::FailZone(i) | Action::RestoreZone(i) | Action::Degrade(i, ..) | Action::Restore(i) | Action::InjectErrors(i, ..) | Action::InjectLatency(i, ..) | Action::FlushCache(i) | Action::HotKey(i, _) => Some(i),
             _ => None,
         }
     }
@@ -883,6 +889,21 @@ pub fn parse_action(v: &Value, path: Vec<Value>, issues: &mut Vec<Issue>) -> Opt
         }
         x
     };
+    // one instance of the component (1-based), when given: Some(None) without one, None when invalid
+    let instance = |issues: &mut Vec<Issue>| -> Option<Option<f64>> {
+        match o.get("instance") {
+            None | Some(Value::Null) => Some(None),
+            Some(v) => match v.as_f64().filter(|x| *x >= 1.0 && *x <= 500.0 && x.fract() == 0.0) {
+                Some(x) => Some(Some(x)),
+                None => {
+                    let mut p = path.clone();
+                    p.push(json!("instance"));
+                    issues.push(Issue { path: p, message: "expected an instance number from 1 to 500".into(), ..Default::default() });
+                    None
+                }
+            },
+        }
+    };
     Some(match ty {
         "kill-id" => Action::KillId(need_id(issues)?),
         "revive-id" => Action::ReviveId(need_id(issues)?),
@@ -901,16 +922,19 @@ pub fn parse_action(v: &Value, path: Vec<Value>, issues: &mut Vec<Issue>) -> Opt
         "restore-zone" => Action::RestoreZone(need_id(issues)?),
         "degrade" => {
             let i = need_id(issues)?;
-            Action::Degrade(i, frac("factor", Some(1.0), issues)?)
+            let inst = instance(issues)?;
+            Action::Degrade(i, frac("factor", Some(1.0), issues)?, inst)
         }
         "restore" => Action::Restore(need_id(issues)?),
         "inject-errors" => {
             let i = need_id(issues)?;
-            Action::InjectErrors(i, frac("rate", Some(1.0), issues)?)
+            let inst = instance(issues)?;
+            Action::InjectErrors(i, frac("rate", Some(1.0), issues)?, inst)
         }
         "inject-latency" => {
             let i = need_id(issues)?;
-            Action::InjectLatency(i, frac("ms", None, issues)?)
+            let inst = instance(issues)?;
+            Action::InjectLatency(i, frac("ms", None, issues)?, inst)
         }
         "flush-cache" => Action::FlushCache(need_id(issues)?),
         "hot-key" => {

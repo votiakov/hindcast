@@ -252,6 +252,19 @@ pub fn explain(d: &NodeData, st: Option<&NodeStats>, v: &View) -> Option<String>
     })
 }
 
+/// change one instance's fault (1-based), adding it if it has none
+fn inst_fault_set(d: &mut NodeData, k: f64, f: impl Fn(&mut InstFault)) {
+    let v = d.inst_faults.get_or_insert_with(Vec::new);
+    match v.iter_mut().find(|x| x.instance == k) {
+        Some(x) => f(x),
+        None => {
+            let mut x = InstFault { instance: k, ..Default::default() };
+            f(&mut x);
+            v.push(x);
+        }
+    }
+}
+
 /// apply a scripted action to the board; the component it hit (None: nothing)
 pub fn apply_action(nodes: &mut [SimNode], zones: &IndexMap<String, Vec<String>>, a: &Action, in_rps: &dyn Fn(&str) -> f64, rand: &mut dyn FnMut() -> f64) -> Option<String> {
     fn kill(nodes: &mut [SimNode], id: &str) -> Option<String> {
@@ -276,6 +289,7 @@ pub fn apply_action(nodes: &mut [SimNode], zones: &IndexMap<String, Vec<String>>
                 n.data.degraded = None;
                 n.data.fault_rate = None;
                 n.data.fault_latency_ms = None;
+                n.data.inst_faults = None;
             }
             Some("all".into())
         }
@@ -287,9 +301,12 @@ pub fn apply_action(nodes: &mut [SimNode], zones: &IndexMap<String, Vec<String>>
             });
             Some(id.clone())
         }
-        Action::Degrade(id, f) => {
+        Action::Degrade(id, f, inst) => {
             let f = *f;
-            set(nodes, id, &move |d| d.degraded = Some(f));
+            match inst {
+                Some(k) => set(nodes, id, &move |d| inst_fault_set(d, *k, |x| x.degraded = Some(f))),
+                None => set(nodes, id, &move |d| d.degraded = Some(f)),
+            }
             Some(id.clone())
         }
         Action::Restore(id) => {
@@ -297,12 +314,16 @@ pub fn apply_action(nodes: &mut [SimNode], zones: &IndexMap<String, Vec<String>>
                 d.degraded = None;
                 d.fault_rate = None;
                 d.fault_latency_ms = None;
+                d.inst_faults = None;
             });
             Some(id.clone())
         }
-        Action::InjectErrors(id, r) => {
+        Action::InjectErrors(id, r, inst) => {
             let r = *r;
-            set(nodes, id, &move |d| d.fault_rate = Some(r));
+            match inst {
+                Some(k) => set(nodes, id, &move |d| inst_fault_set(d, *k, |x| x.rate = Some(r))),
+                None => set(nodes, id, &move |d| d.fault_rate = Some(r)),
+            }
             Some(id.clone())
         }
         Action::HotKey(id, h) => {
@@ -310,9 +331,12 @@ pub fn apply_action(nodes: &mut [SimNode], zones: &IndexMap<String, Vec<String>>
             set(nodes, id, &move |d| d.hot_key_share = if h > 0.0 { Some(h) } else { None });
             Some(id.clone())
         }
-        Action::InjectLatency(id, ms) => {
+        Action::InjectLatency(id, ms, inst) => {
             let ms = *ms;
-            set(nodes, id, &move |d| d.fault_latency_ms = Some(ms));
+            match inst {
+                Some(k) => set(nodes, id, &move |d| inst_fault_set(d, *k, |x| x.latency_ms = Some(ms))),
+                None => set(nodes, id, &move |d| d.fault_latency_ms = Some(ms)),
+            }
             Some(id.clone())
         }
         Action::Partition(a, b) => {
@@ -458,6 +482,26 @@ pub struct Summary {
     #[serde(skip_serializing_if = "is_zero")]
     pub max_replica_lag_s: f64,
     pub worst_moment_s: f64,
+    /// with best-effort traffic (a client's lowPriorityShare): each class on its own
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub critical: Option<ClassSummary>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub best_effort: Option<ClassSummary>,
+}
+
+/// one priority class over a run: the users' requests of that class, how many failed, the 99th
+/// percentile of its answers, and the requests shed for priority at the components (each attempt
+/// counted where it was shed). The fluid engine does not tell the classes' latencies apart: both get
+/// the run's answers' p99
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ClassSummary {
+    pub requests: f64,
+    pub failed_requests: f64,
+    pub error_rate: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub p99_answers_ms: Option<f64>,
+    pub shed: f64,
 }
 
 fn is_zero(x: &f64) -> bool {
@@ -664,6 +708,8 @@ pub fn simulate_parsed(spec: &Architecture, sc: &Scenario, o: &SimOptions) -> Si
     let mut last: IndexMap<String, NodeStats> = IndexMap::new();
     let mut since_sample = sample_every;
     let (mut requests, mut failed, mut breach) = (0.0, 0.0, 0.0);
+    // each priority class: (requests, failed); best-effort requests shed
+    let (mut cls, mut shed, mut prio) = ([(0.0, 0.0); 2], 0.0, false);
     // every tick's successful answers, pooled over the run as the discrete-event engine's histogram is
     let mut ans: Vec<[f64; 3]> = vec![];
     // the same, and the failures, binned: the summary's p99AnswersMs and p99WithFailuresMs
@@ -711,6 +757,14 @@ pub fn simulate_parsed(spec: &Architecture, sc: &Scenario, o: &SimOptions) -> Si
         }
         requests += gl.rps * dt;
         failed += gl.rps * gl.error_rate * dt;
+        if let (Some(c), Some(b)) = (&gl.critical, &gl.best_effort) {
+            prio = true;
+            cls[0].0 += c.rps * dt;
+            cls[0].1 += c.rps * c.error_rate * dt;
+            cls[1].0 += b.rps * dt;
+            cls[1].1 += b.rps * b.error_rate * dt;
+            shed += b.shed_rps * dt;
+        }
         let ok = gl.error_rate <= max_err && gl.p99 <= max_p99;
         if !ok && gl.rps > 0.5 {
             breach += dt;
@@ -798,6 +852,8 @@ pub fn simulate_parsed(spec: &Architecture, sc: &Scenario, o: &SimOptions) -> Si
             slo_breach_seconds: round(breach, 1),
             requests: js_round(requests),
             failed_requests: js_round(failed),
+            critical: if prio { Some(ClassSummary { requests: js_round(cls[0].0), failed_requests: js_round(cls[0].1), error_rate: round(if cls[0].0 > 0.0 { cls[0].1 / cls[0].0 } else { 0.0 }, 4), p99_answers_ms: pool.p99_answers(), shed: 0.0 }) } else { None },
+            best_effort: if prio { Some(ClassSummary { requests: js_round(cls[1].0), failed_requests: js_round(cls[1].1), error_rate: round(if cls[1].0 > 0.0 { cls[1].1 / cls[1].0 } else { 0.0 }, 4), p99_answers_ms: pool.p99_answers(), shed: js_round(shed) }) } else { None },
             lost_writes: js_round(engine.lost_writes()),
             stale_reads: js_round(engine.stale_reads()),
             max_replica_lag_s: round(max_lag, 1),

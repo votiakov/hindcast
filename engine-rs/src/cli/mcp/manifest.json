@@ -314,6 +314,36 @@
            "minimum": 0,
            "maximum": 300000
           },
+          "lowPriorityShare": {
+           "description": "client: the share of its requests that are best-effort (default 0: all critical); the class travels with each request through the graph, and a component with priorityReserve sheds best-effort ones first",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
+          "priorityReserve": {
+           "description": "the share of its capacity kept for critical requests: best-effort ones are shed once it is busier than 1 − reserve (default 0: no priority; a rate limit keeps that share of its rate)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
+          "ejectAfter": {
+           "description": "outlier ejection, as Envoy's consecutive_5xx (default 5 there): an instance that answers this many errors in a row is taken out of the balancing for ejectForS (unset: never ejected)",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 1000
+          },
+          "ejectForS": {
+           "description": "how long an ejected instance gets no traffic, s (default 30, Envoy's base_ejection_time)",
+           "type": "number",
+           "exclusiveMinimum": 0,
+           "maximum": 3600
+          },
+          "maxEjectedPercent": {
+           "description": "at most this % of the instances ejected at once: an ejection that would take the ejected share past it does not happen (default 10, Envoy's max_ejection_percent — which ejects none of fewer than 10 instances)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 100
+          },
           "cpuLimitMs": {
            "description": "edge: the platform's CPU limit per request, ms (default 10 as Workers Free; about 1 for CloudFront Functions, 30,000 for Workers paid) — requests past it are killed with an error",
            "type": "number",
@@ -919,6 +949,36 @@
            "minimum": 0,
            "maximum": 300000
           },
+          "lowPriorityShare": {
+           "description": "client: the share of its requests that are best-effort (default 0: all critical); the class travels with each request through the graph, and a component with priorityReserve sheds best-effort ones first",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
+          "priorityReserve": {
+           "description": "the share of its capacity kept for critical requests: best-effort ones are shed once it is busier than 1 − reserve (default 0: no priority; a rate limit keeps that share of its rate)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
+          "ejectAfter": {
+           "description": "outlier ejection, as Envoy's consecutive_5xx (default 5 there): an instance that answers this many errors in a row is taken out of the balancing for ejectForS (unset: never ejected)",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 1000
+          },
+          "ejectForS": {
+           "description": "how long an ejected instance gets no traffic, s (default 30, Envoy's base_ejection_time)",
+           "type": "number",
+           "exclusiveMinimum": 0,
+           "maximum": 3600
+          },
+          "maxEjectedPercent": {
+           "description": "at most this % of the instances ejected at once: an ejection that would take the ejected share past it does not happen (default 10, Envoy's max_ejection_percent — which ejects none of fewer than 10 instances)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 100
+          },
           "cpuLimitMs": {
            "description": "edge: the platform's CPU limit per request, ms (default 10 as Workers Free; about 1 for CloudFront Functions, 30,000 for Workers paid) — requests past it are killed with an error",
            "type": "number",
@@ -1426,6 +1486,12 @@
                "type": "number",
                "minimum": 0,
                "maximum": 1
+              },
+              "instance": {
+               "description": "one instance only (1-based)",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 500
               }
              },
              "required": [
@@ -1464,6 +1530,12 @@
                "type": "number",
                "minimum": 0,
                "maximum": 1
+              },
+              "instance": {
+               "description": "one instance only (1-based): the rest stay healthy",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 500
               }
              },
              "required": [
@@ -1485,6 +1557,12 @@
               "ms": {
                "type": "number",
                "minimum": 0
+              },
+              "instance": {
+               "description": "one instance only (1-based)",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 500
               }
              },
              "required": [
@@ -1976,6 +2054,36 @@
            "minimum": 0,
            "maximum": 300000
           },
+          "lowPriorityShare": {
+           "description": "client: the share of its requests that are best-effort (default 0: all critical); the class travels with each request through the graph, and a component with priorityReserve sheds best-effort ones first",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
+          "priorityReserve": {
+           "description": "the share of its capacity kept for critical requests: best-effort ones are shed once it is busier than 1 − reserve (default 0: no priority; a rate limit keeps that share of its rate)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
+          "ejectAfter": {
+           "description": "outlier ejection, as Envoy's consecutive_5xx (default 5 there): an instance that answers this many errors in a row is taken out of the balancing for ejectForS (unset: never ejected)",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 1000
+          },
+          "ejectForS": {
+           "description": "how long an ejected instance gets no traffic, s (default 30, Envoy's base_ejection_time)",
+           "type": "number",
+           "exclusiveMinimum": 0,
+           "maximum": 3600
+          },
+          "maxEjectedPercent": {
+           "description": "at most this % of the instances ejected at once: an ejection that would take the ejected share past it does not happen (default 10, Envoy's max_ejection_percent — which ejects none of fewer than 10 instances)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 100
+          },
           "cpuLimitMs": {
            "description": "edge: the platform's CPU limit per request, ms (default 10 as Workers Free; about 1 for CloudFront Functions, 30,000 for Workers paid) — requests past it are killed with an error",
            "type": "number",
@@ -2483,6 +2591,12 @@
                "type": "number",
                "minimum": 0,
                "maximum": 1
+              },
+              "instance": {
+               "description": "one instance only (1-based)",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 500
               }
              },
              "required": [
@@ -2521,6 +2635,12 @@
                "type": "number",
                "minimum": 0,
                "maximum": 1
+              },
+              "instance": {
+               "description": "one instance only (1-based): the rest stay healthy",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 500
               }
              },
              "required": [
@@ -2542,6 +2662,12 @@
               "ms": {
                "type": "number",
                "minimum": 0
+              },
+              "instance": {
+               "description": "one instance only (1-based)",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 500
               }
              },
              "required": [
@@ -3037,6 +3163,36 @@
            "type": "number",
            "minimum": 0,
            "maximum": 300000
+          },
+          "lowPriorityShare": {
+           "description": "client: the share of its requests that are best-effort (default 0: all critical); the class travels with each request through the graph, and a component with priorityReserve sheds best-effort ones first",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
+          "priorityReserve": {
+           "description": "the share of its capacity kept for critical requests: best-effort ones are shed once it is busier than 1 − reserve (default 0: no priority; a rate limit keeps that share of its rate)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
+          "ejectAfter": {
+           "description": "outlier ejection, as Envoy's consecutive_5xx (default 5 there): an instance that answers this many errors in a row is taken out of the balancing for ejectForS (unset: never ejected)",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 1000
+          },
+          "ejectForS": {
+           "description": "how long an ejected instance gets no traffic, s (default 30, Envoy's base_ejection_time)",
+           "type": "number",
+           "exclusiveMinimum": 0,
+           "maximum": 3600
+          },
+          "maxEjectedPercent": {
+           "description": "at most this % of the instances ejected at once: an ejection that would take the ejected share past it does not happen (default 10, Envoy's max_ejection_percent — which ejects none of fewer than 10 instances)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 100
           },
           "cpuLimitMs": {
            "description": "edge: the platform's CPU limit per request, ms (default 10 as Workers Free; about 1 for CloudFront Functions, 30,000 for Workers paid) — requests past it are killed with an error",
@@ -3632,6 +3788,36 @@
               "minimum": 0,
               "maximum": 300000
              },
+             "lowPriorityShare": {
+              "description": "client: the share of its requests that are best-effort (default 0: all critical); the class travels with each request through the graph, and a component with priorityReserve sheds best-effort ones first",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+             },
+             "priorityReserve": {
+              "description": "the share of its capacity kept for critical requests: best-effort ones are shed once it is busier than 1 − reserve (default 0: no priority; a rate limit keeps that share of its rate)",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+             },
+             "ejectAfter": {
+              "description": "outlier ejection, as Envoy's consecutive_5xx (default 5 there): an instance that answers this many errors in a row is taken out of the balancing for ejectForS (unset: never ejected)",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+             },
+             "ejectForS": {
+              "description": "how long an ejected instance gets no traffic, s (default 30, Envoy's base_ejection_time)",
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 3600
+             },
+             "maxEjectedPercent": {
+              "description": "at most this % of the instances ejected at once: an ejection that would take the ejected share past it does not happen (default 10, Envoy's max_ejection_percent — which ejects none of fewer than 10 instances)",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+             },
              "cpuLimitMs": {
               "description": "edge: the platform's CPU limit per request, ms (default 10 as Workers Free; about 1 for CloudFront Functions, 30,000 for Workers paid) — requests past it are killed with an error",
               "type": "number",
@@ -4162,6 +4348,36 @@
                 "minimum": 0,
                 "maximum": 300000
                },
+               "lowPriorityShare": {
+                "description": "client: the share of its requests that are best-effort (default 0: all critical); the class travels with each request through the graph, and a component with priorityReserve sheds best-effort ones first",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+               },
+               "priorityReserve": {
+                "description": "the share of its capacity kept for critical requests: best-effort ones are shed once it is busier than 1 − reserve (default 0: no priority; a rate limit keeps that share of its rate)",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+               },
+               "ejectAfter": {
+                "description": "outlier ejection, as Envoy's consecutive_5xx (default 5 there): an instance that answers this many errors in a row is taken out of the balancing for ejectForS (unset: never ejected)",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+               },
+               "ejectForS": {
+                "description": "how long an ejected instance gets no traffic, s (default 30, Envoy's base_ejection_time)",
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 3600
+               },
+               "maxEjectedPercent": {
+                "description": "at most this % of the instances ejected at once: an ejection that would take the ejected share past it does not happen (default 10, Envoy's max_ejection_percent — which ejects none of fewer than 10 instances)",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+               },
                "cpuLimitMs": {
                 "description": "edge: the platform's CPU limit per request, ms (default 10 as Workers Free; about 1 for CloudFront Functions, 30,000 for Workers paid) — requests past it are killed with an error",
                 "type": "number",
@@ -4553,6 +4769,36 @@
                 "type": "number",
                 "minimum": 0,
                 "maximum": 300000
+               },
+               "lowPriorityShare": {
+                "description": "client: the share of its requests that are best-effort (default 0: all critical); the class travels with each request through the graph, and a component with priorityReserve sheds best-effort ones first",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+               },
+               "priorityReserve": {
+                "description": "the share of its capacity kept for critical requests: best-effort ones are shed once it is busier than 1 − reserve (default 0: no priority; a rate limit keeps that share of its rate)",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+               },
+               "ejectAfter": {
+                "description": "outlier ejection, as Envoy's consecutive_5xx (default 5 there): an instance that answers this many errors in a row is taken out of the balancing for ejectForS (unset: never ejected)",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+               },
+               "ejectForS": {
+                "description": "how long an ejected instance gets no traffic, s (default 30, Envoy's base_ejection_time)",
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 3600
+               },
+               "maxEjectedPercent": {
+                "description": "at most this % of the instances ejected at once: an ejection that would take the ejected share past it does not happen (default 10, Envoy's max_ejection_percent — which ejects none of fewer than 10 instances)",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
                },
                "cpuLimitMs": {
                 "description": "edge: the platform's CPU limit per request, ms (default 10 as Workers Free; about 1 for CloudFront Functions, 30,000 for Workers paid) — requests past it are killed with an error",
@@ -5009,6 +5255,12 @@
                "type": "number",
                "minimum": 0,
                "maximum": 1
+              },
+              "instance": {
+               "description": "one instance only (1-based)",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 500
               }
              },
              "required": [
@@ -5047,6 +5299,12 @@
                "type": "number",
                "minimum": 0,
                "maximum": 1
+              },
+              "instance": {
+               "description": "one instance only (1-based): the rest stay healthy",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 500
               }
              },
              "required": [
@@ -5068,6 +5326,12 @@
               "ms": {
                "type": "number",
                "minimum": 0
+              },
+              "instance": {
+               "description": "one instance only (1-based)",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 500
               }
              },
              "required": [
@@ -5542,6 +5806,36 @@
            "type": "number",
            "minimum": 0,
            "maximum": 300000
+          },
+          "lowPriorityShare": {
+           "description": "client: the share of its requests that are best-effort (default 0: all critical); the class travels with each request through the graph, and a component with priorityReserve sheds best-effort ones first",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
+          "priorityReserve": {
+           "description": "the share of its capacity kept for critical requests: best-effort ones are shed once it is busier than 1 − reserve (default 0: no priority; a rate limit keeps that share of its rate)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
+          "ejectAfter": {
+           "description": "outlier ejection, as Envoy's consecutive_5xx (default 5 there): an instance that answers this many errors in a row is taken out of the balancing for ejectForS (unset: never ejected)",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 1000
+          },
+          "ejectForS": {
+           "description": "how long an ejected instance gets no traffic, s (default 30, Envoy's base_ejection_time)",
+           "type": "number",
+           "exclusiveMinimum": 0,
+           "maximum": 3600
+          },
+          "maxEjectedPercent": {
+           "description": "at most this % of the instances ejected at once: an ejection that would take the ejected share past it does not happen (default 10, Envoy's max_ejection_percent — which ejects none of fewer than 10 instances)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 100
           },
           "cpuLimitMs": {
            "description": "edge: the platform's CPU limit per request, ms (default 10 as Workers Free; about 1 for CloudFront Functions, 30,000 for Workers paid) — requests past it are killed with an error",
@@ -6164,6 +6458,36 @@
            "minimum": 0,
            "maximum": 300000
           },
+          "lowPriorityShare": {
+           "description": "client: the share of its requests that are best-effort (default 0: all critical); the class travels with each request through the graph, and a component with priorityReserve sheds best-effort ones first",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
+          "priorityReserve": {
+           "description": "the share of its capacity kept for critical requests: best-effort ones are shed once it is busier than 1 − reserve (default 0: no priority; a rate limit keeps that share of its rate)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
+          "ejectAfter": {
+           "description": "outlier ejection, as Envoy's consecutive_5xx (default 5 there): an instance that answers this many errors in a row is taken out of the balancing for ejectForS (unset: never ejected)",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 1000
+          },
+          "ejectForS": {
+           "description": "how long an ejected instance gets no traffic, s (default 30, Envoy's base_ejection_time)",
+           "type": "number",
+           "exclusiveMinimum": 0,
+           "maximum": 3600
+          },
+          "maxEjectedPercent": {
+           "description": "at most this % of the instances ejected at once: an ejection that would take the ejected share past it does not happen (default 10, Envoy's max_ejection_percent — which ejects none of fewer than 10 instances)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 100
+          },
           "cpuLimitMs": {
            "description": "edge: the platform's CPU limit per request, ms (default 10 as Workers Free; about 1 for CloudFront Functions, 30,000 for Workers paid) — requests past it are killed with an error",
            "type": "number",
@@ -6671,6 +6995,12 @@
                "type": "number",
                "minimum": 0,
                "maximum": 1
+              },
+              "instance": {
+               "description": "one instance only (1-based)",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 500
               }
              },
              "required": [
@@ -6709,6 +7039,12 @@
                "type": "number",
                "minimum": 0,
                "maximum": 1
+              },
+              "instance": {
+               "description": "one instance only (1-based): the rest stay healthy",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 500
               }
              },
              "required": [
@@ -6730,6 +7066,12 @@
               "ms": {
                "type": "number",
                "minimum": 0
+              },
+              "instance": {
+               "description": "one instance only (1-based)",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 500
               }
              },
              "required": [
@@ -7210,6 +7552,36 @@
            "minimum": 0,
            "maximum": 300000
           },
+          "lowPriorityShare": {
+           "description": "client: the share of its requests that are best-effort (default 0: all critical); the class travels with each request through the graph, and a component with priorityReserve sheds best-effort ones first",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
+          "priorityReserve": {
+           "description": "the share of its capacity kept for critical requests: best-effort ones are shed once it is busier than 1 − reserve (default 0: no priority; a rate limit keeps that share of its rate)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
+          "ejectAfter": {
+           "description": "outlier ejection, as Envoy's consecutive_5xx (default 5 there): an instance that answers this many errors in a row is taken out of the balancing for ejectForS (unset: never ejected)",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 1000
+          },
+          "ejectForS": {
+           "description": "how long an ejected instance gets no traffic, s (default 30, Envoy's base_ejection_time)",
+           "type": "number",
+           "exclusiveMinimum": 0,
+           "maximum": 3600
+          },
+          "maxEjectedPercent": {
+           "description": "at most this % of the instances ejected at once: an ejection that would take the ejected share past it does not happen (default 10, Envoy's max_ejection_percent — which ejects none of fewer than 10 instances)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 100
+          },
           "cpuLimitMs": {
            "description": "edge: the platform's CPU limit per request, ms (default 10 as Workers Free; about 1 for CloudFront Functions, 30,000 for Workers paid) — requests past it are killed with an error",
            "type": "number",
@@ -7717,6 +8089,12 @@
                "type": "number",
                "minimum": 0,
                "maximum": 1
+              },
+              "instance": {
+               "description": "one instance only (1-based)",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 500
               }
              },
              "required": [
@@ -7755,6 +8133,12 @@
                "type": "number",
                "minimum": 0,
                "maximum": 1
+              },
+              "instance": {
+               "description": "one instance only (1-based): the rest stay healthy",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 500
               }
              },
              "required": [
@@ -7776,6 +8160,12 @@
               "ms": {
                "type": "number",
                "minimum": 0
+              },
+              "instance": {
+               "description": "one instance only (1-based)",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 500
               }
              },
              "required": [
@@ -8264,6 +8654,36 @@
            "type": "number",
            "minimum": 0,
            "maximum": 300000
+          },
+          "lowPriorityShare": {
+           "description": "client: the share of its requests that are best-effort (default 0: all critical); the class travels with each request through the graph, and a component with priorityReserve sheds best-effort ones first",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
+          "priorityReserve": {
+           "description": "the share of its capacity kept for critical requests: best-effort ones are shed once it is busier than 1 − reserve (default 0: no priority; a rate limit keeps that share of its rate)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
+          "ejectAfter": {
+           "description": "outlier ejection, as Envoy's consecutive_5xx (default 5 there): an instance that answers this many errors in a row is taken out of the balancing for ejectForS (unset: never ejected)",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 1000
+          },
+          "ejectForS": {
+           "description": "how long an ejected instance gets no traffic, s (default 30, Envoy's base_ejection_time)",
+           "type": "number",
+           "exclusiveMinimum": 0,
+           "maximum": 3600
+          },
+          "maxEjectedPercent": {
+           "description": "at most this % of the instances ejected at once: an ejection that would take the ejected share past it does not happen (default 10, Envoy's max_ejection_percent — which ejects none of fewer than 10 instances)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 100
           },
           "cpuLimitMs": {
            "description": "edge: the platform's CPU limit per request, ms (default 10 as Workers Free; about 1 for CloudFront Functions, 30,000 for Workers paid) — requests past it are killed with an error",
@@ -8954,6 +9374,36 @@
            "minimum": 0,
            "maximum": 300000
           },
+          "lowPriorityShare": {
+           "description": "client: the share of its requests that are best-effort (default 0: all critical); the class travels with each request through the graph, and a component with priorityReserve sheds best-effort ones first",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
+          "priorityReserve": {
+           "description": "the share of its capacity kept for critical requests: best-effort ones are shed once it is busier than 1 − reserve (default 0: no priority; a rate limit keeps that share of its rate)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
+          "ejectAfter": {
+           "description": "outlier ejection, as Envoy's consecutive_5xx (default 5 there): an instance that answers this many errors in a row is taken out of the balancing for ejectForS (unset: never ejected)",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 1000
+          },
+          "ejectForS": {
+           "description": "how long an ejected instance gets no traffic, s (default 30, Envoy's base_ejection_time)",
+           "type": "number",
+           "exclusiveMinimum": 0,
+           "maximum": 3600
+          },
+          "maxEjectedPercent": {
+           "description": "at most this % of the instances ejected at once: an ejection that would take the ejected share past it does not happen (default 10, Envoy's max_ejection_percent — which ejects none of fewer than 10 instances)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 100
+          },
           "cpuLimitMs": {
            "description": "edge: the platform's CPU limit per request, ms (default 10 as Workers Free; about 1 for CloudFront Functions, 30,000 for Workers paid) — requests past it are killed with an error",
            "type": "number",
@@ -9545,6 +9995,36 @@
              "minimum": 0,
              "maximum": 300000
             },
+            "lowPriorityShare": {
+             "description": "client: the share of its requests that are best-effort (default 0: all critical); the class travels with each request through the graph, and a component with priorityReserve sheds best-effort ones first",
+             "type": "number",
+             "minimum": 0,
+             "maximum": 1
+            },
+            "priorityReserve": {
+             "description": "the share of its capacity kept for critical requests: best-effort ones are shed once it is busier than 1 − reserve (default 0: no priority; a rate limit keeps that share of its rate)",
+             "type": "number",
+             "minimum": 0,
+             "maximum": 1
+            },
+            "ejectAfter": {
+             "description": "outlier ejection, as Envoy's consecutive_5xx (default 5 there): an instance that answers this many errors in a row is taken out of the balancing for ejectForS (unset: never ejected)",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 1000
+            },
+            "ejectForS": {
+             "description": "how long an ejected instance gets no traffic, s (default 30, Envoy's base_ejection_time)",
+             "type": "number",
+             "exclusiveMinimum": 0,
+             "maximum": 3600
+            },
+            "maxEjectedPercent": {
+             "description": "at most this % of the instances ejected at once: an ejection that would take the ejected share past it does not happen (default 10, Envoy's max_ejection_percent — which ejects none of fewer than 10 instances)",
+             "type": "number",
+             "minimum": 0,
+             "maximum": 100
+            },
             "cpuLimitMs": {
              "description": "edge: the platform's CPU limit per request, ms (default 10 as Workers Free; about 1 for CloudFront Functions, 30,000 for Workers paid) — requests past it are killed with an error",
              "type": "number",
@@ -10075,6 +10555,36 @@
                "minimum": 0,
                "maximum": 300000
               },
+              "lowPriorityShare": {
+               "description": "client: the share of its requests that are best-effort (default 0: all critical); the class travels with each request through the graph, and a component with priorityReserve sheds best-effort ones first",
+               "type": "number",
+               "minimum": 0,
+               "maximum": 1
+              },
+              "priorityReserve": {
+               "description": "the share of its capacity kept for critical requests: best-effort ones are shed once it is busier than 1 − reserve (default 0: no priority; a rate limit keeps that share of its rate)",
+               "type": "number",
+               "minimum": 0,
+               "maximum": 1
+              },
+              "ejectAfter": {
+               "description": "outlier ejection, as Envoy's consecutive_5xx (default 5 there): an instance that answers this many errors in a row is taken out of the balancing for ejectForS (unset: never ejected)",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 1000
+              },
+              "ejectForS": {
+               "description": "how long an ejected instance gets no traffic, s (default 30, Envoy's base_ejection_time)",
+               "type": "number",
+               "exclusiveMinimum": 0,
+               "maximum": 3600
+              },
+              "maxEjectedPercent": {
+               "description": "at most this % of the instances ejected at once: an ejection that would take the ejected share past it does not happen (default 10, Envoy's max_ejection_percent — which ejects none of fewer than 10 instances)",
+               "type": "number",
+               "minimum": 0,
+               "maximum": 100
+              },
               "cpuLimitMs": {
                "description": "edge: the platform's CPU limit per request, ms (default 10 as Workers Free; about 1 for CloudFront Functions, 30,000 for Workers paid) — requests past it are killed with an error",
                "type": "number",
@@ -10466,6 +10976,36 @@
                "type": "number",
                "minimum": 0,
                "maximum": 300000
+              },
+              "lowPriorityShare": {
+               "description": "client: the share of its requests that are best-effort (default 0: all critical); the class travels with each request through the graph, and a component with priorityReserve sheds best-effort ones first",
+               "type": "number",
+               "minimum": 0,
+               "maximum": 1
+              },
+              "priorityReserve": {
+               "description": "the share of its capacity kept for critical requests: best-effort ones are shed once it is busier than 1 − reserve (default 0: no priority; a rate limit keeps that share of its rate)",
+               "type": "number",
+               "minimum": 0,
+               "maximum": 1
+              },
+              "ejectAfter": {
+               "description": "outlier ejection, as Envoy's consecutive_5xx (default 5 there): an instance that answers this many errors in a row is taken out of the balancing for ejectForS (unset: never ejected)",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 1000
+              },
+              "ejectForS": {
+               "description": "how long an ejected instance gets no traffic, s (default 30, Envoy's base_ejection_time)",
+               "type": "number",
+               "exclusiveMinimum": 0,
+               "maximum": 3600
+              },
+              "maxEjectedPercent": {
+               "description": "at most this % of the instances ejected at once: an ejection that would take the ejected share past it does not happen (default 10, Envoy's max_ejection_percent — which ejects none of fewer than 10 instances)",
+               "type": "number",
+               "minimum": 0,
+               "maximum": 100
               },
               "cpuLimitMs": {
                "description": "edge: the platform's CPU limit per request, ms (default 10 as Workers Free; about 1 for CloudFront Functions, 30,000 for Workers paid) — requests past it are killed with an error",
@@ -10921,6 +11461,12 @@
                "type": "number",
                "minimum": 0,
                "maximum": 1
+              },
+              "instance": {
+               "description": "one instance only (1-based)",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 500
               }
              },
              "required": [
@@ -10959,6 +11505,12 @@
                "type": "number",
                "minimum": 0,
                "maximum": 1
+              },
+              "instance": {
+               "description": "one instance only (1-based): the rest stay healthy",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 500
               }
              },
              "required": [
@@ -10980,6 +11532,12 @@
               "ms": {
                "type": "number",
                "minimum": 0
+              },
+              "instance": {
+               "description": "one instance only (1-based)",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 500
               }
              },
              "required": [
@@ -11454,6 +12012,36 @@
            "minimum": 0,
            "maximum": 300000
           },
+          "lowPriorityShare": {
+           "description": "client: the share of its requests that are best-effort (default 0: all critical); the class travels with each request through the graph, and a component with priorityReserve sheds best-effort ones first",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
+          "priorityReserve": {
+           "description": "the share of its capacity kept for critical requests: best-effort ones are shed once it is busier than 1 − reserve (default 0: no priority; a rate limit keeps that share of its rate)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          },
+          "ejectAfter": {
+           "description": "outlier ejection, as Envoy's consecutive_5xx (default 5 there): an instance that answers this many errors in a row is taken out of the balancing for ejectForS (unset: never ejected)",
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 1000
+          },
+          "ejectForS": {
+           "description": "how long an ejected instance gets no traffic, s (default 30, Envoy's base_ejection_time)",
+           "type": "number",
+           "exclusiveMinimum": 0,
+           "maximum": 3600
+          },
+          "maxEjectedPercent": {
+           "description": "at most this % of the instances ejected at once: an ejection that would take the ejected share past it does not happen (default 10, Envoy's max_ejection_percent — which ejects none of fewer than 10 instances)",
+           "type": "number",
+           "minimum": 0,
+           "maximum": 100
+          },
           "cpuLimitMs": {
            "description": "edge: the platform's CPU limit per request, ms (default 10 as Workers Free; about 1 for CloudFront Functions, 30,000 for Workers paid) — requests past it are killed with an error",
            "type": "number",
@@ -12045,6 +12633,36 @@
              "minimum": 0,
              "maximum": 300000
             },
+            "lowPriorityShare": {
+             "description": "client: the share of its requests that are best-effort (default 0: all critical); the class travels with each request through the graph, and a component with priorityReserve sheds best-effort ones first",
+             "type": "number",
+             "minimum": 0,
+             "maximum": 1
+            },
+            "priorityReserve": {
+             "description": "the share of its capacity kept for critical requests: best-effort ones are shed once it is busier than 1 − reserve (default 0: no priority; a rate limit keeps that share of its rate)",
+             "type": "number",
+             "minimum": 0,
+             "maximum": 1
+            },
+            "ejectAfter": {
+             "description": "outlier ejection, as Envoy's consecutive_5xx (default 5 there): an instance that answers this many errors in a row is taken out of the balancing for ejectForS (unset: never ejected)",
+             "type": "integer",
+             "minimum": 1,
+             "maximum": 1000
+            },
+            "ejectForS": {
+             "description": "how long an ejected instance gets no traffic, s (default 30, Envoy's base_ejection_time)",
+             "type": "number",
+             "exclusiveMinimum": 0,
+             "maximum": 3600
+            },
+            "maxEjectedPercent": {
+             "description": "at most this % of the instances ejected at once: an ejection that would take the ejected share past it does not happen (default 10, Envoy's max_ejection_percent — which ejects none of fewer than 10 instances)",
+             "type": "number",
+             "minimum": 0,
+             "maximum": 100
+            },
             "cpuLimitMs": {
              "description": "edge: the platform's CPU limit per request, ms (default 10 as Workers Free; about 1 for CloudFront Functions, 30,000 for Workers paid) — requests past it are killed with an error",
              "type": "number",
@@ -12575,6 +13193,36 @@
                "minimum": 0,
                "maximum": 300000
               },
+              "lowPriorityShare": {
+               "description": "client: the share of its requests that are best-effort (default 0: all critical); the class travels with each request through the graph, and a component with priorityReserve sheds best-effort ones first",
+               "type": "number",
+               "minimum": 0,
+               "maximum": 1
+              },
+              "priorityReserve": {
+               "description": "the share of its capacity kept for critical requests: best-effort ones are shed once it is busier than 1 − reserve (default 0: no priority; a rate limit keeps that share of its rate)",
+               "type": "number",
+               "minimum": 0,
+               "maximum": 1
+              },
+              "ejectAfter": {
+               "description": "outlier ejection, as Envoy's consecutive_5xx (default 5 there): an instance that answers this many errors in a row is taken out of the balancing for ejectForS (unset: never ejected)",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 1000
+              },
+              "ejectForS": {
+               "description": "how long an ejected instance gets no traffic, s (default 30, Envoy's base_ejection_time)",
+               "type": "number",
+               "exclusiveMinimum": 0,
+               "maximum": 3600
+              },
+              "maxEjectedPercent": {
+               "description": "at most this % of the instances ejected at once: an ejection that would take the ejected share past it does not happen (default 10, Envoy's max_ejection_percent — which ejects none of fewer than 10 instances)",
+               "type": "number",
+               "minimum": 0,
+               "maximum": 100
+              },
               "cpuLimitMs": {
                "description": "edge: the platform's CPU limit per request, ms (default 10 as Workers Free; about 1 for CloudFront Functions, 30,000 for Workers paid) — requests past it are killed with an error",
                "type": "number",
@@ -12966,6 +13614,36 @@
                "type": "number",
                "minimum": 0,
                "maximum": 300000
+              },
+              "lowPriorityShare": {
+               "description": "client: the share of its requests that are best-effort (default 0: all critical); the class travels with each request through the graph, and a component with priorityReserve sheds best-effort ones first",
+               "type": "number",
+               "minimum": 0,
+               "maximum": 1
+              },
+              "priorityReserve": {
+               "description": "the share of its capacity kept for critical requests: best-effort ones are shed once it is busier than 1 − reserve (default 0: no priority; a rate limit keeps that share of its rate)",
+               "type": "number",
+               "minimum": 0,
+               "maximum": 1
+              },
+              "ejectAfter": {
+               "description": "outlier ejection, as Envoy's consecutive_5xx (default 5 there): an instance that answers this many errors in a row is taken out of the balancing for ejectForS (unset: never ejected)",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 1000
+              },
+              "ejectForS": {
+               "description": "how long an ejected instance gets no traffic, s (default 30, Envoy's base_ejection_time)",
+               "type": "number",
+               "exclusiveMinimum": 0,
+               "maximum": 3600
+              },
+              "maxEjectedPercent": {
+               "description": "at most this % of the instances ejected at once: an ejection that would take the ejected share past it does not happen (default 10, Envoy's max_ejection_percent — which ejects none of fewer than 10 instances)",
+               "type": "number",
+               "minimum": 0,
+               "maximum": 100
               },
               "cpuLimitMs": {
                "description": "edge: the platform's CPU limit per request, ms (default 10 as Workers Free; about 1 for CloudFront Functions, 30,000 for Workers paid) — requests past it are killed with an error",
@@ -13421,6 +14099,12 @@
                "type": "number",
                "minimum": 0,
                "maximum": 1
+              },
+              "instance": {
+               "description": "one instance only (1-based)",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 500
               }
              },
              "required": [
@@ -13459,6 +14143,12 @@
                "type": "number",
                "minimum": 0,
                "maximum": 1
+              },
+              "instance": {
+               "description": "one instance only (1-based): the rest stay healthy",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 500
               }
              },
              "required": [
@@ -13480,6 +14170,12 @@
               "ms": {
                "type": "number",
                "minimum": 0
+              },
+              "instance": {
+               "description": "one instance only (1-based)",
+               "type": "integer",
+               "minimum": 1,
+               "maximum": 500
               }
              },
              "required": [

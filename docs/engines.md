@@ -262,6 +262,46 @@ Shared code keeps the engines consistent (`src/sim/autoscale.ts`, `cacheWarmth` 
   third of the requests fail (fluid 33.3 %, DES 33–34 %). `slow_dependency_tests` in both engines.
 - **Link latency** — a connection's `latencyMs` is added to every call over it (DES: on the request
   hop; fluid: to the child's latency in the backward pass).
+- **Priority load shedding** — a client's `lowPriorityShare` of its requests are best-effort, the
+  rest critical; the class travels with each request (as reads and writes do: DES on the request,
+  fluid as the critical share of each link's flow). A component with `priorityReserve` r sheds a
+  best-effort request once it is busier than 1 − r. DES: a best-effort arrival is refused when its busy
+  workers are at (1 − r) of the pool or more, or anything is queued, or its threads are that full;
+  behind a rate limit best-effort draws on a second token bucket refilled at (1 − r) × the rate that
+  every request empties (critical ones into debt), so it gets (1 − r) × rate less what critical takes.
+  Fluid: best-effort is let in up to (1 − r) × capacity − critical − backlog each tick; what it passes
+  on is richer in critical. Each class's success is folded through the graph beside the reads' and
+  writes' (retries, breakers, fan-out), and scaled so the two mix back to the success of all
+  requests. Results per class: `summary.critical` and `summary.bestEffort` (requests, failed, error
+  rate, p99 of the answers, requests shed at the components — each attempt where it was shed). The
+  fluid engine does not tell the classes' latencies apart: both get the run's answers' p99. Hand
+  check (`priority_tests`): 1,000 req/s, 30% critical, a 500/s server keeping 20% — best-effort is let
+  in below 400 busy, so the 300 critical all pass and (400 − 300) / 700 of best-effort: 6/7 = 85.7%
+  of it fails, 600/s shed. Fluid 85.7% (steady state, exact), DES 84.9–85.0% with a pool of 100
+  workers. With 13 workers (25 ms requests) the DES lets more best-effort in (80% fails): a critical
+  request arriving at the threshold still takes a worker, and with so few workers the pool sits a
+  worker or two above it. Through a gateway's rate limit (limit 500, same reserve): fluid 85.7%, DES
+  85.5–85.8%; one hop down (users → lb → api → a database with the reserve) the same.
+- **Faults on one instance, and outlier ejection** — `inject-errors`, `inject-latency` and `degrade`
+  take an `instance` (1-based): behind a balancer that instance gets 1/N of the requests (DES: dealt
+  round robin over the instances in the balancing; fluid: an even share), fails its rate of them,
+  adds its latency to them (a slow mode of 1/N of the answers), or works 1/f as long on them. Without
+  a balancer only the first instance serves. With `ejectAfter` k, an instance whose answers fail k
+  times in a row leaves the balancing for `ejectForS`, unless (ejected + 1) ÷ instances would pass
+  `maxEjectedPercent` (Envoy's rule); while out it serves nothing, so the rest carry its share. DES:
+  each answer from an instance is counted (any failure: its own fault, an overload, a failed
+  dependency), and the run of failures ejects it. Fluid, as a duty cycle: an instance failing a
+  share p of its requests answers on average (1 − pᵏ) / ((1 − p) pᵏ) requests before k fail in a row
+  (586.5 at p = 0.3, k = 5); each tick it gets its share of the traffic and moves that far towards the
+  run, and is ejected when it gets there — in for the expected run, out for `ejectForS`. The
+  approximation: the run always takes its expected length (the DES's varies, geometrically), and p is
+  the instance's own fault combined with the component's last-tick failure rate. Hand check
+  (`ejection_tests`): 4 instances at 1,000 req/s, #3 fails 30%. Without ejection 7.5% fail (fluid
+  7.4%, DES 7.5%), and with `ejectAfter: 5` at Envoy's default 10% too — one of four is 25%. With
+  `maxEjectedPercent: 25` the bad one gets 250 req/s, is ejected after 586.5 of them (2.3 s), stays
+  out 30 s: a cycle of 32.3 s whose failures are 0.3 × 586.5 against 32,300 requests, 0.54%. Over
+  120 s fluid 0.61% (its first run is longer while the traffic ramps), DES 0.3–0.8% by seed. A 500 ms
+  latency on one of four: the answers' p99 is past 500 ms and the p50 is not, in both.
 
 - **Shards and hot keys** — a sharded database is a pool of workers and a queue per shard. Each
   request lands on the hot key's shard with probability `hotKeyShare`, otherwise on one picked by

@@ -8,12 +8,12 @@ export type SimAction =
   | { type: 'revive-id'; id: string }
   | { type: 'fail-zone'; id: string }
   | { type: 'restore-zone'; id: string }
-  /** brownout: node keeps running at `factor` × capacity until restored */
-  | { type: 'degrade'; id: string; factor: number }
-  /** gray failure: the node fails `rate` of its requests until restored */
-  | { type: 'inject-errors'; id: string; rate: number }
-  /** gray failure: every request through the node takes `ms` longer until restored */
-  | { type: 'inject-latency'; id: string; ms: number }
+  /** brownout: node keeps running at `factor` × capacity until restored (`instance`: that one only, 1-based) */
+  | { type: 'degrade'; id: string; factor: number; instance?: number }
+  /** gray failure: the node fails `rate` of its requests until restored (`instance`: that one only) */
+  | { type: 'inject-errors'; id: string; rate: number; instance?: number }
+  /** gray failure: every request through the node takes `ms` longer until restored (`instance`: that one only) */
+  | { type: 'inject-latency'; id: string; ms: number; instance?: number }
   /** cache / cdn: drop every key — hit rate starts again from zero */
   | { type: 'flush-cache'; id: string }
   /** database: `share` of its traffic goes to one key, all on one shard (0 ends it) */
@@ -29,7 +29,7 @@ export type SimAction =
   /** one link slow: every call from → to takes `ms` longer (a congested path, a route change); 0 ends it */
   | { type: 'slow-link'; from: string; to: string; ms: number };
 
-import { KINDS, instancesUp, isSystem, type AppNode, type SystemNodeData } from './catalog';
+import { KINDS, instancesUp, isSystem, type AppNode, type InstFault, type SystemNodeData } from './catalog';
 
 export interface ActionContext {
   /** current per-node request rate, used to pick the "busiest" target */
@@ -56,6 +56,17 @@ function kill(nodes: AppNode[], id: string): ActionResult {
   return { nodes: setData(nodes, id, { alive: false }), notes: [{ tone: 'bad', text: `💀 ${n.data.name} is DOWN` }], target: id };
 }
 
+/** one instance's fault changed (1-based), added if it has none */
+function setInstFault(nodes: AppNode[], id: string, instance: number, patch: Omit<InstFault, 'instance'>): AppNode[] {
+  return nodes.map((n) => {
+    if (n.id !== id || !isSystem(n)) return n;
+    const list = n.data.instFaults ?? [];
+    const has = list.some((f) => f.instance === instance);
+    const instFaults = has ? list.map((f) => (f.instance === instance ? { ...f, ...patch } : f)) : [...list, { instance, ...patch }];
+    return { ...n, data: { ...n.data, instFaults } };
+  });
+}
+
 const withoutKey = (m: Record<string, number> | undefined, k: string): Record<string, number> | undefined => {
   if (!m || !(k in m)) return m;
   const { [k]: _, ...rest } = m;
@@ -67,7 +78,7 @@ export function applyAction(nodes: AppNode[], a: SimAction, ctx: ActionContext):
   switch (a.type) {
     case 'revive-all':
       return {
-        nodes: nodes.map((n) => (isSystem(n) ? { ...n, data: { ...n.data, alive: true, down: 0, degraded: undefined, faultRate: undefined, faultLatencyMs: undefined } } : n.type === 'zone' ? ({ ...n, data: { ...n.data, failed: false } } as AppNode) : n)),
+        nodes: nodes.map((n) => (isSystem(n) ? { ...n, data: { ...n.data, alive: true, down: 0, degraded: undefined, faultRate: undefined, faultLatencyMs: undefined, instFaults: undefined } } : n.type === 'zone' ? ({ ...n, data: { ...n.data, failed: false } } as AppNode) : n)),
         notes: [{ tone: 'good', text: '✅ Everything restored' }],
         target: 'all',
       };
@@ -76,12 +87,15 @@ export function applyAction(nodes: AppNode[], a: SimAction, ctx: ActionContext):
     case 'revive-id':
       return { nodes: setData(nodes, a.id, { alive: true, down: 0 }), notes: [], target: a.id };
     case 'degrade':
+      if (a.instance) return { nodes: setInstFault(nodes, a.id, a.instance, { degraded: a.factor }), notes: [{ tone: 'bad', text: `${a.id} #${a.instance} degraded to ${Math.round(a.factor * 100)}% capacity` }], target: a.id };
       return { nodes: setData(nodes, a.id, { degraded: a.factor }), notes: [{ tone: 'bad', text: `🐢 ${a.id} degraded to ${Math.round(a.factor * 100)}% capacity` }], target: a.id };
     case 'restore':
-      return { nodes: setData(nodes, a.id, { degraded: undefined, faultRate: undefined, faultLatencyMs: undefined }), notes: [], target: a.id };
+      return { nodes: setData(nodes, a.id, { degraded: undefined, faultRate: undefined, faultLatencyMs: undefined, instFaults: undefined }), notes: [], target: a.id };
     case 'inject-errors':
+      if (a.instance) return { nodes: setInstFault(nodes, a.id, a.instance, { rate: a.rate }), notes: [{ tone: 'bad', text: `${a.id} #${a.instance} fails ${Math.round(a.rate * 100)}% of its requests` }], target: a.id };
       return { nodes: setData(nodes, a.id, { faultRate: a.rate }), notes: [{ tone: 'bad', text: `☣ ${a.id} fails ${Math.round(a.rate * 100)}% of requests` }], target: a.id };
     case 'inject-latency':
+      if (a.instance) return { nodes: setInstFault(nodes, a.id, a.instance, { latencyMs: a.ms }), notes: [{ tone: 'bad', text: `${a.id} #${a.instance} +${a.ms} ms per request` }], target: a.id };
       return { nodes: setData(nodes, a.id, { faultLatencyMs: a.ms }), notes: [{ tone: 'bad', text: `🐌 ${a.id} +${a.ms} ms per request` }], target: a.id };
     case 'hot-key':
       return {

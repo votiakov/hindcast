@@ -434,7 +434,7 @@ impl Validated {
     }
 }
 
-const COMPONENT_KEYS: [&str; 55] = ["id", "kind", "name", "tier", "instances", "runtime", "hitRate", "limit", "batching", "retries", "retryPolicy", "timeoutMs", "breaker", "fallback", "routing", "stallRate", "stallMs", "fanout", "queueS", "autoscale", "warmupS", "writePolicy", "workingSetGb", "skew", "shards", "hotKeyShare", "ttlS", "healthCheckS", "partitions", "threads", "bulkhead", "bulkheadWaitMs", "provisioned", "prefixes", "hotRowShare", "failoverS", "burst", "maxReceives", "visibilityS", "maxConnections", "connectionS", "everyS", "batch", "batchS", "refreshS", "recall", "vectorsM", "retrieval", "edgeShare", "cpuMs", "cpuLimitMs", "capacity", "latencyMs", "costPerHour", ""];
+const COMPONENT_KEYS: [&str; 60] = ["id", "kind", "name", "tier", "instances", "runtime", "hitRate", "limit", "batching", "retries", "retryPolicy", "timeoutMs", "breaker", "fallback", "routing", "stallRate", "stallMs", "fanout", "queueS", "autoscale", "warmupS", "writePolicy", "workingSetGb", "skew", "shards", "hotKeyShare", "ttlS", "healthCheckS", "partitions", "threads", "bulkhead", "bulkheadWaitMs", "provisioned", "prefixes", "hotRowShare", "failoverS", "burst", "maxReceives", "visibilityS", "maxConnections", "connectionS", "everyS", "batch", "batchS", "refreshS", "recall", "vectorsM", "retrieval", "edgeShare", "cpuMs", "cpuLimitMs", "lowPriorityShare", "priorityReserve", "ejectAfter", "ejectForS", "maxEjectedPercent", "capacity", "latencyMs", "costPerHour", ""];
 
 /// the spec as the schema returns it: its keys in schema order, unknown keys dropped, "a -> b" as a pair
 pub fn canonical_spec(v: &Value) -> Value {

@@ -144,6 +144,8 @@ GB (except `archive`) are not included; 1- and 3-year commitments are a setting 
 | breaker | trip > 50 % failures, open 5 s, close < 10 % | engine constants |
 | retry budget | ≤ 10 % extra calls | engine constants |
 | bulkhead wait | 0: a call past the bulkhead fails at once, as [Resilience4j's `maxWaitDuration`](https://resilience4j.readme.io/docs/bulkhead) defaults to 0. A connection pool waits instead: [HikariCP's `connectionTimeout`](https://github.com/brettwooldridge/HikariCP) defaults to 30,000 ms | per caller `bulkheadWaitMs` |
+| priority | none: every request critical, nothing reserved. A reserve is the share of capacity kept for critical work, as in Google's SRE book ([Handling Overload: criticality](https://sre.google/sre-book/handling-overload/)) | per client `lowPriorityShare`, per component `priorityReserve` |
+| outlier ejection | off. With `ejectAfter`: [Envoy's outlier detection](https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/cluster/v3/outlier_detection.proto) defaults — `consecutive_5xx` 5, `base_ejection_time` 30 s, `max_ejection_percent` 10%. Envoy ejects only while (ejected + 1) ÷ hosts ≤ that percent ([its check](https://github.com/envoyproxy/envoy/blob/main/source/common/upstream/outlier_detection_impl.cc)), so at 10% nothing is ejected below 10 instances unless `always_eject_one_host` is set; raise `maxEjectedPercent` for small fleets (25 lets one of 4 go). Envoy also multiplies the ejection time by the times a host was ejected (up to 300 s); Hindcast keeps it at `ejectForS` | per component `ejectAfter`, `ejectForS`, `maxEjectedPercent` |
 
 ## Where the audit's numbers come from
 

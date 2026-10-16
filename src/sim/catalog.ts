@@ -47,6 +47,14 @@ export const RUNTIME_KINDS: Kind[] = ['server', 'worker', 'function'];
 /** AWS-Lambda-like pricing: per-request fee + GB-seconds */
 export const FN_PRICE = { perRequest: 0.2 / 1_000_000, perGbSecond: 0.0000166667 };
 
+/** a fault on one instance of a component (1-based): its error rate, added latency, capacity factor */
+export interface InstFault {
+  instance: number;
+  rate?: number;
+  latencyMs?: number;
+  degraded?: number;
+}
+
 export interface SystemNodeData extends Record<string, unknown> {
   kind: Kind;
   name: string;
@@ -119,6 +127,18 @@ export interface SystemNodeData extends Record<string, unknown> {
   cpuMs?: number;
   /** edge: the platform's CPU limit per request, ms (default 10, Workers Free; ~1 for CloudFront Functions) */
   cpuLimitMs?: number;
+  /** client: the share of its requests that are best-effort (default 0: all critical) */
+  lowPriorityShare?: number;
+  /** the share of its capacity kept for critical requests: best-effort ones are shed past 1 − reserve busy */
+  priorityReserve?: number;
+  /** outlier ejection: errors in a row before an instance leaves the balancing (Envoy's consecutive_5xx) */
+  ejectAfter?: number;
+  /** how long an ejected instance stays out, s (default 30, Envoy's base_ejection_time) */
+  ejectForS?: number;
+  /** at most this % of the instances ejected at once (default 10, Envoy's max_ejection_percent) */
+  maxEjectedPercent?: number;
+  /** faults on single instances (1-based), set by inject-errors / inject-latency / degrade with `instance` */
+  instFaults?: InstFault[];
   /** dns: how long clients cache an answer, s (default 60) */
   ttlS?: number;
   /** dns: how long health checks take to notice a dead target, s (default 30) */

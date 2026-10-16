@@ -199,6 +199,83 @@ pub struct NodeData {
     pub fault_rate: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fault_latency_ms: Option<f64>,
+    /// client: the share of its requests that are best-effort (default 0: every request critical). The
+    /// class travels with the request through the whole graph
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub low_priority_share: Option<f64>,
+    /// the share of its capacity kept for critical requests: a best-effort request is shed once the
+    /// component is busier than 1 − reserve (default 0: no priority)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority_reserve: Option<f64>,
+    /// outlier ejection (Envoy's consecutive_5xx): an instance that answers this many errors in a row is
+    /// taken out of the balancing for `eject_for_s`, then put back (None: never ejected)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eject_after: Option<f64>,
+    /// how long an ejected instance gets no traffic, s (default 30, Envoy's base_ejection_time)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eject_for_s: Option<f64>,
+    /// at most this % of the instances ejected at once (default 10, Envoy's max_ejection_percent): an
+    /// ejection that would take the ejected share past it does not happen
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_ejected_percent: Option<f64>,
+    /// faults on single instances (inject-errors / inject-latency / degrade with `instance`)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inst_faults: Option<Vec<InstFault>>,
+}
+
+/// a fault on one instance of a component (1-based)
+#[derive(Deserialize, Serialize, Clone, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct InstFault {
+    pub instance: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rate: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latency_ms: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub degraded: Option<f64>,
+}
+
+/// Envoy's outlier detection defaults (api-v3 config.cluster.v3.OutlierDetection): base_ejection_time
+/// 30 s, max_ejection_percent 10
+pub const EJECT_FOR_S: f64 = 30.0;
+pub const MAX_EJECTED_PERCENT: f64 = 10.0;
+
+/// the instance faults that apply to instance k (0-based) of a component: (error rate, extra ms, capacity factor)
+pub fn inst_fault(d: &NodeData, k: usize) -> (f64, f64, f64) {
+    let mut out = (0.0, 0.0, 1.0);
+    if let Some(v) = d.inst_faults.as_ref() {
+        for f in v.iter().filter(|f| f.instance as usize == k + 1) {
+            if let Some(r) = f.rate {
+                out.0 = r.clamp(0.0, 1.0);
+            }
+            if let Some(m) = f.latency_ms {
+                out.1 = m.max(0.0);
+            }
+            if let Some(g) = f.degraded {
+                out.2 = g.clamp(1e-3, 1.0);
+            }
+        }
+    }
+    out
+}
+
+/// whether Envoy's rule lets one more instance go: (ejected + 1) / n ≤ maxEjectedPercent
+pub fn may_eject(d: &NodeData, ejected: f64, n: f64) -> bool {
+    n > 1.0 && 100.0 * (ejected + 1.0) / n <= d.max_ejected_percent.unwrap_or(MAX_EJECTED_PERCENT) + 1e-9
+}
+
+/// requests an instance answers until `k` errors in a row, each failing with chance p (the waiting
+/// time for a run of k: (1 − pᵏ) / ((1 − p) pᵏ)); infinite when it never fails
+pub fn requests_to_run(p: f64, k: f64) -> f64 {
+    if p <= 1e-12 {
+        return f64::INFINITY;
+    }
+    if p >= 1.0 - 1e-12 {
+        return k;
+    }
+    let pk = p.js_pow(k);
+    (1.0 - pk) / ((1.0 - p) * pk)
 }
 fn tier_s() -> String {
     "S".into()

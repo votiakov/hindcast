@@ -9,6 +9,16 @@ import * as wasm from '../backtest/wasm/hindcast_engine.js';
  * No React, no store — just spec in, numbers and explanations out.
  */
 
+/** one priority class over a run: its users' requests, failed, the p99 of its answers, and best-effort
+ *  requests shed for priority at the components (the fluid engine gives both classes the run's p99) */
+export interface ClassSummary {
+  requests: number;
+  failedRequests: number;
+  errorRate: number;
+  p99AnswersMs?: number;
+  shed: number;
+}
+
 export interface SimOptions {
   /** simulation step (s) */
   dt?: number;
@@ -62,6 +72,9 @@ export interface SimResult {
     staleReads?: number;
     maxReplicaLagS?: number;
     worstMomentS: number;
+    /** with best-effort traffic (a client's lowPriorityShare): each class on its own */
+    critical?: ClassSummary;
+    bestEffort?: ClassSummary;
   };
   slo: { maxErrorRate: number; maxP99Ms: number };
   timeline: { t: number; rps: number; errorRate: number; p99Ms: number; costPerHour: number }[];
