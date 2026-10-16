@@ -1,0 +1,33 @@
+# Kubernetes reference, second system — Spring PetClinic Microservices (3.4.1) on the same kind
+# cluster and the same observability stack as the Astronomy Shop (reference/k8s): JVMs, a reactive
+# gateway in front of thread-per-request services, HTTP/JSON (petclinic.yaml, from gen.ts). Its spans
+# go to the shop namespace's OpenTelemetry Collector and Jaeger; the shop's own workloads are scaled
+# to zero while these runs record. Traffic is the same NASA July 1995 log, each day compressed into
+# 40 minutes.
+name: PetClinic on Kubernetes
+namespace: petclinic
+base: http://bnk8s-control-plane
+prometheus: http://localhost:8088/prometheus
+jaeger: http://localhost:8088/jaeger
+mix: mix.json
+thin: 5
+timeout: 5s
+slo: { p99Ms: 500, errorRate: 0.01 }
+# 5 minutes stepping 10 → 100 req/s: the JIT compiles the hot paths before recording
+warmup: [steps, 10, 100, 10, 30]
+log: ../nasa/NASA_access_log_Jul95.gz
+watch: api-gateway
+connect:
+  namespaces: [petclinic]
+  entry: [api-gateway]
+  # the shop's services: one collector and one Jaeger record both systems
+  exclude: [ad, cart, checkout, currency, email, flagd, frontend, payment, product-catalog, quote, recommendation, shipping, valkey-cart, jaeger, otel-collector]
+runs:
+  # a step load test to find where it breaks, before the scale of the days was chosen (not used
+  # for calibration or accuracy): +20 req/s a minute from 20 to 400
+  probe: { steps: [20, 400, 20, 60], manifests: variants/probe.yaml }
+  # the history the model is calibrated on: an ordinary day, as built. ×55 puts its busiest 20 s at
+  # 120 req/s (the shop's ×83: 181), so launch day peaks at 272
+  history: { day: 12/Jul/1995, minutes: 40, scale: x55, manifests: petclinic.yaml }
+  # the system as built on launch day (STS-70, 2.2× the ordinary day's peak)
+  launch: { day: 13/Jul/1995, minutes: 40, scale: x55, manifests: petclinic.yaml }

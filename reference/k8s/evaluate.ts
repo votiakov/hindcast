@@ -6,12 +6,16 @@
  *     (launch day forecast as the ordinary day at the launch day's ratio, 2.2×)
  *   - the model's prediction over the traffic that actually came (model error alone, no forecast error)
  *   - a naive estimate: the frontend's busiest CPU utilisation in the history, scaled by the change
+ *     (other systems: every service's, the worst one counts)
  *
  * Two models are scored: calibrated on the ordinary day alone, and on the ordinary day plus a
- * 12-minute step load test (the `stress` run) — what a team that load-tests before a launch has.
+ * step load test (the shop's 12-minute `stress` run) — what a team that load-tests before a launch has.
  *
  *   npx tsx reference/k8s/evaluate.ts [system]     → <system>/validation/validation.json, the README's table,
  *                                                   public/reference/k8s-<system>.json for the app
+ *
+ * The shop's questions are below (SHOP); another system lists its own under `evaluation:` in its
+ * reference.yaml, with its README's table in <system>/README.md.
  */
 import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
@@ -56,10 +60,34 @@ interface Case {
   cpu?: number;
   /** out of sample: the round whose committed predictions it is scored on (made before it ran) */
   oos?: number;
+  /** the service the change is about, whose replicas the series keep (default: the system's watch) */
+  service?: string;
+  /** the change's name as a strategy (default: from the shop's variant file names) */
+  name?: string;
+}
+
+/** how one system is evaluated */
+interface Evaluation {
+  /** the as-built manifests */
+  manifests: string;
+  cases: Case[];
+  /** a recorded step load test, calibrated with the history for the second model */
+  loadTest: string;
+  loadTestLabel: string;
+  /** the naive CPU-ratio rule: the shop's frontend as built, or every service in the manifests */
+  naive: 'frontend' | 'all';
+  /** the service whose replicas the series keep */
+  watch: string;
+  /** bundle the model for the app (public/reference/k8s-<system>.json and index.json) */
+  publish: boolean;
+  /** the README whose RESULTS block is written */
+  readme: string;
+  /** why each out-of-sample round was chosen, for the README */
+  rounds: Record<number, string>;
 }
 
 const LAUNCH = 2.22; // 13 July's busiest 10 minutes over 12 July's, from the log itself
-const CASES: Case[] = [
+const SHOP_CASES: Case[] = [
   { run: 'launch', asBuilt: 'launch', scale: LAUNCH, question: 'As built (3 frontend replicas), on launch day?' },
   { run: 'normal-2', asBuilt: 'history', head: 'variants/frontend-2.yaml', scale: 1, question: '2 frontend replicas instead of 3, on an ordinary day?' },
   { run: 'launch-2', asBuilt: 'launch', head: 'variants/frontend-2.yaml', scale: LAUNCH, question: '2 frontend replicas instead of 3, on launch day?' },
@@ -76,8 +104,24 @@ const CASES: Case[] = [
   { run: 'launch-email300', asBuilt: 'launch', head: 'variants/email-300mi.yaml', scale: LAUNCH, oos: 3, question: 'email with 300 MiB instead of 150, on launch day?' },
 ];
 const AS_BUILT_CPU = 0.5;
+const SHOP = (): Evaluation => ({
+  manifests: 'shop.yaml',
+  cases: SHOP_CASES,
+  loadTest: 'stress',
+  loadTestLabel: 'a 12-minute load test',
+  naive: 'frontend',
+  watch: 'frontend',
+  publish: true,
+  readme: join(ROOT, 'README.md'),
+  rounds: { 1: 'added after the throttle model was designed on the runs above' },
+});
 
 let SYS = '';
+let EV: Evaluation = SHOP();
+let CASES: Case[] = SHOP_CASES;
+let NS = 'shop';
+/** the keys the replica series are kept under: the shop's name its frontend */
+const repKey = () => (EV.watch === 'frontend' ? 'frontendReplicas' : 'replicas');
 const runDir = (r: string) => join(SYS, 'runs', r);
 const meta = (r: string) => JSON.parse(readFileSync(join(runDir(r), 'run.json'), 'utf8')) as { start: number; end: number };
 const recorded = (r: string) => existsSync(join(runDir(r), 'run.json'));
@@ -230,7 +274,7 @@ function measuredSeries(log: RequestLog, start: number, n: number) {
 }
 
 /** the model with the change, replayed over the traffic the run actually had (after settling) */
-function predicted(m: Model, ws: Workspace, run: Dataset, runStart: number, head: string | undefined, base: string) {
+function predicted(m: Model, ws: Workspace, run: Dataset, runStart: number, head: string | undefined, base: string, watch = EV.watch) {
   const strat = head ? strategyFromManifests(base, head, ws.path('model.json')) : undefined;
   const plan = strat ? applyStrategy(m, basePlan(m), strat).plan : basePlan(m);
   // a fixed replica count was really applied: replay the counts the run had (pods start seconds
@@ -253,8 +297,8 @@ function predicted(m: Model, ws: Workspace, run: Dataset, runStart: number, head
     if (r.rps[i] > 0 && (r.p99Ms[i] > m.slo.p99Ms || r.errorRate[i] > m.slo.errorRate)) out++;
     for (const e of Object.values(r.endpoints)) if (e.rps[i] > 0) parts.push({ w: e.rps[i], mean: e.meanMs[i], p99: e.p99Ms[i], ...(e.p50Ms[i] > 0 && e.p99Ms[i] < 4000 ? { p50: e.p50Ms[i] } : {}) });
   }
-  const series = { rps: r.rps.map((x) => Math.round(x * 10) / 10), p99Ms: r.p99Ms.map((x) => Math.round(x)), errorRate: r.errorRate.map((x) => Math.round(x * 1e4) / 1e4), frontendReplicas: r.services.frontend?.replicas ?? [] };
-  return { p99: parts.length ? mixtureQuantile(parts) : 0, errorRate: n > 0 ? f / n : 0, minutesOutOfSlo: (out * run.stepS) / 60, frontendReplicasPeak: Math.max(...(r.services.frontend?.replicas ?? [0])), series };
+  const series = { rps: r.rps.map((x) => Math.round(x * 10) / 10), p99Ms: r.p99Ms.map((x) => Math.round(x)), errorRate: r.errorRate.map((x) => Math.round(x * 1e4) / 1e4), [repKey()]: r.services[watch]?.replicas ?? [] };
+  return { p99: parts.length ? mixtureQuantile(parts) : 0, errorRate: n > 0 ? f / n : 0, minutesOutOfSlo: (out * run.stepS) / 60, replicasPeak: Math.max(...(r.services[watch]?.replicas ?? [0])), series };
 }
 
 /** the spreadsheet answer: the frontend's busiest CPU share in the history, scaled by the change */
@@ -273,7 +317,44 @@ function naive(history: Dataset, replicasAfter: number | 'hpa', scale: number, c
   return { historyPeakUtil: peak, predictedPeakUtil: util, verdict: util < 1 ? 'pass' : 'fail' };
 }
 
+/** a manifest file's workloads: replicas (an autoscaler, to the spreadsheet, is its maximum) and
+ *  CPU limit per pod */
+function workloadsOf(file: string): Record<string, { replicas: number; cpu: number }> {
+  const out: Record<string, { replicas: number; cpu: number }> = {};
+  const docs = readFileSync(file, 'utf8').split(/^---$/m).map((d) => parse(d) as Record<string, any> | null);
+  const cores = (q: unknown) => (typeof q === 'string' && q.endsWith('m') ? Number(q.slice(0, -1)) / 1000 : Number(q));
+  for (const d of docs) if (d?.kind === 'Deployment') out[d.metadata.name] = { replicas: d.spec.replicas ?? 1, cpu: cores(d.spec.template.spec.containers[0].resources?.limits?.cpu) };
+  for (const d of docs) if (d?.kind === 'HorizontalPodAutoscaler' && out[d.spec.scaleTargetRef.name]) out[d.spec.scaleTargetRef.name].replicas = d.spec.maxReplicas;
+  return out;
+}
+
+/** the spreadsheet answer for a system without one obvious bottleneck: every service's busiest CPU
+ *  share in the history, scaled by the load and by the change's replicas × cores; the worst decides */
+function naiveAll(history: Dataset, base: string, head: string | undefined, scale: number) {
+  const before = workloadsOf(base);
+  const after = head ? workloadsOf(head) : before;
+  let worst = { service: '', historyPeakUtil: 0, predictedPeakUtil: 0 };
+  for (const [id, sv] of Object.entries(history.services)) {
+    const b = before[id];
+    const a = after[id] ?? b;
+    if (!b || !b.cpu || !a.cpu) continue;
+    let peak = 0;
+    for (let i = 0; i < history.n; i++) {
+      const cpu = sv.cpuCores?.[i];
+      const lim = sv.cpuLimitCores?.[i];
+      const reps = sv.replicas?.[i];
+      if (cpu == null || !lim || !reps) continue;
+      peak = Math.max(peak, cpu / (lim * reps));
+    }
+    const util = (peak * scale * b.replicas * b.cpu) / (a.replicas * a.cpu);
+    if (util > worst.predictedPeakUtil) worst = { service: id, historyPeakUtil: peak, predictedPeakUtil: util };
+  }
+  return { ...worst, verdict: worst.predictedPeakUtil < 1 ? 'pass' : 'fail' };
+}
+
 const strategyName = (head: string) => {
+  const named = CASES.find((c) => c.head === head)?.name;
+  if (named) return named;
   if (head.includes('email-300')) return 'email with 300 MiB';
   const hpa = /hpa-(\d)-(\d)/.exec(head);
   if (hpa) return `Frontend on an HPA, ${hpa[1]}–${hpa[2]} replicas`;
@@ -343,10 +424,11 @@ async function score(label: string, ws: Workspace, base: string, evalDir: string
     const exAnte = committed ?? now;
     const actual = measured(log, m.slo);
     const actualBase = measured(settled(requestsOf(c.asBuilt), meta(c.asBuilt).start), m.slo);
-    const post = predicted(m, ws, run, meta(c.run).start, head, base);
+    const watch = c.service ?? EV.watch;
+    const post = predicted(m, ws, run, meta(c.run).start, head, base, watch);
     // an autoscaler, to the spreadsheet, is its maximum
     const hpaMax = c.head ? /hpa-\d-(\d)/.exec(c.head) : null;
-    const nv = naive(history, !c.head ? 3 : hpaMax ? Number(hpaMax[1]) : c.head.includes('hpa') ? 'hpa' : replicasOfHead(c.head), c.scale, c.cpu);
+    const nv = EV.naive === 'all' ? naiveAll(history, base, head, c.scale) : naive(history, !c.head ? 3 : hpaMax ? Number(hpaMax[1]) : c.head.includes('hpa') ? 'hpa' : replicasOfHead(c.head), c.scale, c.cpu);
     // reality's verdict, judged like verify_change's gate: more than 0.5 min out of SLO added over
     // the as-built system on the same day (for the as-built system itself: more than 0.5 min)
     const added = c.run === c.asBuilt ? actual.minutesOutOfSlo : actual.minutesOutOfSlo - actualBase.minutesOutOfSlo;
@@ -357,9 +439,9 @@ async function score(label: string, ws: Workspace, base: string, evalDir: string
       question: c.question,
       oos: c.oos ?? 0,
       exAnte,
-      exPost: { p99Ms: Math.round(post.p99), errorRate: post.errorRate, minutesOutOfSlo: post.minutesOutOfSlo, frontendReplicasPeak: post.frontendReplicasPeak },
+      exPost: { p99Ms: Math.round(post.p99), errorRate: post.errorRate, minutesOutOfSlo: post.minutesOutOfSlo, [`${repKey()}Peak`]: post.replicasPeak },
       measured: { p99Ms: Math.round(actual.p99), errorRate: actual.errorRate, minutesOutOfSlo: actual.minutesOutOfSlo, requests: actual.requests, addedOverAsBuilt: Math.round(added * 10) / 10 },
-      series: { predicted: post.series, measured: measuredSeries(log, run.start, run.n), frontendReplicas: run.services.frontend?.replicas ?? [] },
+      series: { predicted: post.series, measured: measuredSeries(log, run.start, run.n), [repKey()]: run.services[watch]?.replicas ?? [] },
       truth,
       naive: nv,
       agrees: { backtest: verdict === truth, naive: nv.verdict === truth },
@@ -376,7 +458,7 @@ async function score(label: string, ws: Workspace, base: string, evalDir: string
 async function nodeLossCase(run: string, ws: Workspace, evalDir: string) {
   const m = reviveModel(ws.readJson<Model>('model.json'));
   const info = JSON.parse(readFileSync(join(runDir(run), 'run.json'), 'utf8')) as { start: number; end: number; kill: { node: string; at: number } };
-  const ns = 'shop';
+  const ns = NS;
   const re = new RegExp(workloadRe());
   const pods: Record<string, Record<string, number>> = {};
   for (const line of readFileSync(join(runDir(run), 'placement.txt'), 'utf8').split('\n')) {
@@ -425,19 +507,25 @@ async function calibrated(name: string, runs: string[], evalDir: string, slo: Mo
 async function main() {
   const system = process.argv[2] ?? 'shop';
   SYS = join(ROOT, system);
-  const cfg = parse(readFileSync(join(SYS, 'reference.yaml'), 'utf8')) as K8sReference;
+  const cfg = parse(readFileSync(join(SYS, 'reference.yaml'), 'utf8')) as K8sReference & { evaluation?: Partial<Evaluation> & { cases: Case[] } };
+  NS = cfg.namespace;
+  if (system !== 'shop') {
+    if (!cfg.evaluation) throw new Error(`${system}/reference.yaml has no evaluation: block (its questions)`);
+    EV = { manifests: `${system}.yaml`, loadTest: 'stress', loadTestLabel: 'a load test', naive: 'all', watch: cfg.watch ?? 'frontend', publish: false, rounds: {}, ...cfg.evaluation, readme: join(SYS, 'README.md') };
+    CASES = EV.cases;
+  }
   if (!recorded('history')) throw new Error('record the history run first');
   const evalDir = join(SYS, 'validation');
   // models are rebuilt every time; collected telemetry is kept (refreshed when the cluster is up)
   mkdirSync(evalDir, { recursive: true });
   for (const f of readdirSync(evalDir)) if (!['collected', 'runs'].includes(f) && !/^predictions-oos.*\.json$/.test(f)) rmSync(join(evalDir, f), { recursive: true, force: true });
-  const base = resolve(SYS, 'shop.yaml');
+  const base = resolve(SYS, EV.manifests);
 
   const calm = await calibrated('calm', ['history'], evalDir, cfg.slo);
   const models: { id: string; label: string; rows: Awaited<ReturnType<typeof score>>; trust: unknown }[] = [{ id: 'calm', label: 'calibrated on the ordinary day', rows: await score('calm', calm.ws, base, evalDir, calm.ws.readJson<Dataset>('dataset.json')), trust: calm.trust }];
-  if (recorded('stress')) {
-    const tested = await calibrated('load-tested', ['history', 'stress'], evalDir, cfg.slo);
-    models.push({ id: 'load-tested', label: 'calibrated on the ordinary day and a 12-minute load test', rows: await score('load-tested', tested.ws, base, evalDir, calm.ws.readJson<Dataset>('dataset.json')), trust: tested.trust });
+  if (recorded(EV.loadTest)) {
+    const tested = await calibrated('load-tested', ['history', EV.loadTest], evalDir, cfg.slo);
+    models.push({ id: 'load-tested', label: `calibrated on the ordinary day and ${EV.loadTestLabel}`, rows: await score('load-tested', tested.ws, base, evalDir, calm.ws.readJson<Dataset>('dataset.json')), trust: tested.trust });
   }
 
   // --predict: write down what each model says about the out-of-sample runs before they are recorded
@@ -461,7 +549,7 @@ async function main() {
   }
 
   // the model the app bundles: the best history a team would have, with its accuracy on every run it never saw
-  const best = recorded('stress') ? new Workspace(join(evalDir, 'load-tested')) : calm.ws;
+  const best = recorded(EV.loadTest) ? new Workspace(join(evalDir, 'load-tested')) : calm.ws;
   const m = reviveModel(best.readJson<Model>('model.json'));
   const refRuns: ReferenceRun[] = [];
   const strategies: string[] = [];
@@ -490,11 +578,13 @@ async function main() {
   // placement at the instant of the kill, and shows what was measured
   const nodeLosses = [];
   for (const [run, r] of Object.entries(cfg.runs)) if (r.kill && recorded(run)) nodeLosses.push(await nodeLossCase(run, calm.ws, evalDir));
-  writeFileSync(join(pub, `k8s-${system}.json`), JSON.stringify({ nodeLosses: nodeLosses.map((x) => ({ node: x.node, atS: x.atS, pods: x.pods, predicted: x.predicted, measured: x.measured })), name: cfg.name, source: `reference/k8s/${system} — a kind cluster, NASA's 12 July 1995 traffic${recorded('stress') ? ' and a load test' : ''}, recorded ${new Date(history.start * 1000).toISOString().slice(0, 10)}`, dataset: history, model: m, strategies }));
-  const indexPath = join(pub, 'index.json');
-  const index = JSON.parse(readFileSync(indexPath, 'utf8')) as { id: string; label: string }[];
-  const entry = { id: `k8s-${system}`, label: `${cfg.name} (reference)` };
-  writeFileSync(indexPath, JSON.stringify([...index.filter((x) => x.id !== entry.id), entry], null, 1));
+  if (EV.publish) {
+    writeFileSync(join(pub, `k8s-${system}.json`), JSON.stringify({ nodeLosses: nodeLosses.map((x) => ({ node: x.node, atS: x.atS, pods: x.pods, predicted: x.predicted, measured: x.measured })), name: cfg.name, source: `reference/k8s/${system} — a kind cluster, NASA's 12 July 1995 traffic${recorded(EV.loadTest) ? ' and a load test' : ''}, recorded ${new Date(history.start * 1000).toISOString().slice(0, 10)}`, dataset: history, model: m, strategies }));
+    const indexPath = join(pub, 'index.json');
+    const index = JSON.parse(readFileSync(indexPath, 'utf8')) as { id: string; label: string }[];
+    const entry = { id: `k8s-${system}`, label: `${cfg.name} (reference)` };
+    writeFileSync(indexPath, JSON.stringify([...index.filter((x) => x.id !== entry.id), entry], null, 1));
+  }
 
   writeFileSync(join(evalDir, 'validation.json'), JSON.stringify({ system: cfg.name, slo: cfg.slo, settleS: SETTLE_S, models, nodeLosses, evaluatedAt: new Date().toISOString() }, null, 1));
 
@@ -514,15 +604,11 @@ async function main() {
       const rounds = [...new Set(mod.rows.map((r) => r.oos).filter((x) => x > 0))].sort();
       return [
         `**${mod.label[0].toUpperCase()}${mod.label.slice(1)}:**`,
-        '',
-        ...head,
-        ...ins.map(row),
-        '',
-        tally(ins),
+        ...(ins.length ? ['', ...head, ...ins.map(row), '', tally(ins)] : []),
         ...rounds.flatMap((k) => {
           const oos = mod.rows.filter((r) => r.oos === k);
           const file = k === 1 ? 'predictions-oos.json' : `predictions-oos-${k}.json`;
-          const why = k === 1 ? 'added after the throttle model was designed on the runs above' : `round ${k}, chosen after round ${k - 1} was scored`;
+          const why = EV.rounds[k] ?? `round ${k}, chosen after round ${k - 1} was scored`;
           return ['', `*Out of sample* — ${why}; the verdicts are the ones committed in \`validation/${file}\` before each run was recorded:`, '', ...head, ...oos.map(row), '', tally(oos)];
         }),
         ...(rounds.length > 1 ? (() => {
@@ -574,8 +660,8 @@ async function main() {
         ...nodeLosses.map((x) => `| \`${x.run}\` | ${x.node} at minute ${x.atMinute} | ${x.lost.filter((l) => l.down).map((l) => l.service).join(', ') || '—'} | +${x.predicted.minutesOutOfSlo} min, +${x.predicted.failedRequests.toLocaleString('en-US')} failed | +${x.onTheDay.minutesOutOfSlo} min, +${x.onTheDay.failedRequests.toLocaleString('en-US')} failed | +${x.measured.minutesOutOfSlo} min, +${x.measured.failedRequests.toLocaleString('en-US')} failed |`),
       ].join('\n')
     : '';
-  const readme = join(ROOT, 'README.md');
-  writeFileSync(readme, readFileSync(readme, 'utf8').replace(/<!-- RESULTS -->[\s\S]*<!-- \/RESULTS -->/, `<!-- RESULTS -->\n${md}\n${nl}\n${leakTable}\n\nThe first ${SETTLE_S / 60} minutes of every run are left out of the scoring, measured and predicted alike (pods restarted minutes earlier). Generated by \`npx tsx reference/k8s/evaluate.ts\`, ${new Date().toISOString().slice(0, 10)}.\n<!-- /RESULTS -->`));
+  const readme = EV.readme;
+  writeFileSync(readme, readFileSync(readme, 'utf8').replace(/<!-- RESULTS -->[\s\S]*<!-- \/RESULTS -->/, `<!-- RESULTS -->\n${md}\n${nl}\n${leakTable}\n\nThe first ${SETTLE_S / 60} minutes of every run are left out of the scoring, measured and predicted alike (pods restarted minutes earlier). Generated by \`npx tsx reference/k8s/evaluate.ts${system === 'shop' ? '' : ` ${system}`}\`, ${new Date().toISOString().slice(0, 10)}.\n<!-- /RESULTS -->`));
   console.log(`\nwrote ${join(evalDir, 'validation.json')}`);
 }
 

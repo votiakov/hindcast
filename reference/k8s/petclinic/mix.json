@@ -1,0 +1,50 @@
+[
+ {
+  "name": "api-gateway GET /api/gateway/owners/{ownerId}",
+  "method": "GET",
+  "path": "/api/gateway/owners/{id}",
+  "weight": 30,
+  "vars": { "id": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] }
+ },
+ {
+  "name": "api-gateway GET /api/customer/owners",
+  "method": "GET",
+  "path": "/api/customer/owners",
+  "weight": 15
+ },
+ {
+  "name": "api-gateway GET /api/customer/owners/{ownerId}",
+  "method": "GET",
+  "path": "/api/customer/owners/{id}",
+  "weight": 15,
+  "vars": { "id": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] }
+ },
+ {
+  "name": "api-gateway GET /api/vet/vets",
+  "method": "GET",
+  "path": "/api/vet/vets",
+  "weight": 15
+ },
+ {
+  "name": "api-gateway GET /api/visit/owners/*/pets/{petId}/visits",
+  "method": "GET",
+  "path": "/api/visit/owners/1/pets/{pet}/visits",
+  "weight": 10,
+  "vars": { "pet": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] }
+ },
+ {
+  "name": "api-gateway GET /api/customer/petTypes",
+  "method": "GET",
+  "path": "/api/customer/petTypes",
+  "weight": 5
+ },
+ {
+  "name": "api-gateway PUT /api/customer/owners/{ownerId}",
+  "method": "PUT",
+  "path": "/api/customer/owners/{id}",
+  "weight": 10,
+  "vars": { "id": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] },
+  "headers": { "Content-Type": "application/json" },
+  "body": "{\"firstName\":\"George\",\"lastName\":\"Franklin\",\"address\":\"110 W. Liberty St.\",\"city\":\"Madison\",\"telephone\":\"6085551023\"}"
+ }
+]

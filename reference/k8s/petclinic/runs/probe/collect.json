@@ -1,0 +1,131 @@
+{
+ "window": {
+  "start": "2026-10-16T13:13:00Z",
+  "end": "2026-10-16T13:33:30Z",
+  "stepS": 30,
+  "buckets": 41,
+  "hours": 0.3
+ },
+ "presets": [
+  "otel-spanmetrics",
+  "ingress-nginx",
+  "kubernetes"
+ ],
+ "entry": [
+  "api-gateway"
+ ],
+ "ignored": [],
+ "traces": "3,011 traces from jaeger through api-gateway (20 queries)",
+ "services": 4,
+ "endpoints": [
+  "api-gateway GET /api/gateway/owners/{ownerId}",
+  "api-gateway GET customers-service",
+  "api-gateway GET vets-service",
+  "api-gateway GET visits-service",
+  "api-gateway PUT customers-service"
+ ],
+ "coverage": [
+  {
+   "service": "api-gateway",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 1
+  },
+  {
+   "service": "customers-service",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 1
+  },
+  {
+   "service": "vets-service",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 1
+  },
+  {
+   "service": "visits-service",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 1
+  }
+ ],
+ "emptyQueries": [],
+ "imported": [
+  "prometheus rps (615 points)",
+  "prometheus errorRate (164 points)",
+  "prometheus p50Ms (164 points)",
+  "prometheus p99Ms (164 points)",
+  "prometheus meanMs (164 points)",
+  "prometheus rps (205 points)",
+  "prometheus errorRate (205 points)",
+  "prometheus p99Ms (400 points)",
+  "prometheus meanMs (205 points)",
+  "prometheus rps (41 points)",
+  "prometheus errorRate (41 points)",
+  "prometheus p99Ms (41 points)",
+  "prometheus meanMs (41 points)",
+  "prometheus cpuCores (164 points)",
+  "prometheus cpuLimitCores (164 points)",
+  "prometheus replicas (164 points)",
+  "prometheus netTxBps (164 points)",
+  "prometheus memoryBytes (164 points)",
+  "prometheus memoryMaxBytes (164 points)",
+  "prometheus memoryLimitBytes (164 points)",
+  "prometheus cpuRequestCores (164 points)",
+  "prometheus memoryRequestBytes (164 points)",
+  "prometheus clusterNodes (41 points)",
+  "prometheus clusterNodeCpu (41 points)",
+  "prometheus clusterNodeMemoryBytes (41 points)",
+  "prometheus clusterRequestedCpu (41 points)",
+  "prometheus clusterRequestedMemoryBytes (41 points)",
+  "prometheus cpuThrottled (164 points)",
+  "traces: 3,011 requests, 4 services, 5 endpoints (10,909 points)",
+  "api-gateway: endpoint rates scaled to the edge's count — the endpoint series had counted 98% of the requests the edge saw"
+ ],
+ "bill": null,
+ "warnings": [
+  "no bill: calibrate_model prices each service as its requests' share of a node, at the node size's on-demand list price"
+ ],
+ "files": {
+  "manifest": "/Users/andrii/Workspace/votiakov/system-design-sandbox/.claude/worktrees/agent-a8d629ffb1316feeb/reference/k8s/petclinic/runs/probe/workspace/telemetry/hindcast.import.yaml",
+  "dataset": "/Users/andrii/Workspace/votiakov/system-design-sandbox/.claude/worktrees/agent-a8d629ffb1316feeb/reference/k8s/petclinic/runs/probe/workspace/dataset.json"
+ },
+ "next": "calibrate_model"
+}

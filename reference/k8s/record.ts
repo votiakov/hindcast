@@ -38,6 +38,11 @@ export interface K8sReference {
   warmup: (string | number)[];
   /** the access log the days are replayed from */
   log: string;
+  /** the Deployment whose ready replicas are logged during a run (default: frontend) */
+  watch?: string;
+  /** passed to connect_telemetry: Kubernetes metrics kept to these namespaces, the entry services,
+   *  and another system's services left out (one collector and one Jaeger record both systems) */
+  connect?: { namespaces?: string[]; entry?: string[]; exclude?: string[] };
   /** a day from the log, or a step load test (shape.mjs steps args: from, to, step, holdS) */
   runs: Record<string, { day?: string; minutes?: number; scale?: string; steps?: (string | number)[]; manifests: string; note?: string; kill?: { node: string; atS: number } }>;
 }
@@ -96,7 +101,7 @@ async function main() {
   if (shape.status !== 0) throw new Error(shape.stderr);
   process.stdout.write(shape.stderr);
   writeFileSync(join(out, 'shape.json'), shape.stdout);
-  const replicas = () => kubectl(['-n', cfg.namespace, 'get', 'deploy', 'frontend', '-o', 'jsonpath={.status.readyReplicas}'], { quiet: true }).trim();
+  const replicas = () => kubectl(['-n', cfg.namespace, 'get', 'deploy', cfg.watch ?? 'frontend', '-o', 'jsonpath={.status.readyReplicas}'], { quiet: true }).trim();
   const scaleLog: string[] = [];
   const watch = setInterval(() => scaleLog.push(`${Math.floor(Date.now() / 1000)} ${replicas()}`), 15_000);
   const start = Math.floor(Date.now() / 1000);
@@ -121,7 +126,7 @@ async function main() {
     console.log(`${r.kill.node} is back`);
   }
   clearInterval(watch);
-  writeFileSync(join(out, 'frontend-replicas.log'), scaleLog.join('\n') + '\n');
+  writeFileSync(join(out, `${cfg.watch ?? 'frontend'}-replicas.log`), scaleLog.join('\n') + '\n');
   console.log('flushing 45 s…');
   await sleep(45_000);
 
@@ -136,7 +141,8 @@ async function main() {
 
   // 4. telemetry, collected the way an agent collects it: from the live Prometheus and Jaeger
   const ws = new Workspace(join(out, 'workspace'));
-  const conn = agent('connect_telemetry', ws, { prometheus: { url: cfg.prometheus }, jaeger: { url: cfg.jaeger }, system: { name: `${cfg.name} — ${run}`, slo: cfg.slo, timeoutMs: Number(String(cfg.timeout ?? '5s').replace('s', '')) * 1000 } });
+  const c = cfg.connect ?? {};
+  const conn = agent('connect_telemetry', ws, { prometheus: { url: cfg.prometheus, ...(c.namespaces ? { namespaces: c.namespaces } : {}) }, jaeger: { url: cfg.jaeger }, system: { name: `${cfg.name} — ${run}`, slo: cfg.slo, timeoutMs: Number(String(cfg.timeout ?? '5s').replace('s', '')) * 1000, ...(c.entry ? { entry: c.entry } : {}), ...(c.exclude ? { exclude: c.exclude } : {}) } });
   if (conn.problems.length) console.warn('connect problems:', conn.problems);
   // a killed node may have taken Jaeger and its traces with it: the metrics still stand
   const col = await Promise.resolve().then(() => agent('collect_telemetry', ws, { start, end, stepS: 30 })).catch((e) => {
