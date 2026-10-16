@@ -1,0 +1,11 @@
+{
+  "format_version": "1.2",
+  "resource_changes": [
+    {
+      "address": "aws_ecs_service.customer",
+      "type": "aws_ecs_service",
+      "name": "customer",
+      "change": { "actions": ["update"], "before": { "name": "customer", "desired_count": 1 }, "after": { "name": "customer", "desired_count": 2 } }
+    }
+  ]
+}

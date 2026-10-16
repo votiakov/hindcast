@@ -392,10 +392,20 @@ pub fn strategies_from(ws: &Workspace, inputs: &[Value], m: &Value) -> Result<(V
 pub use crate::review::judge::{draws_for, judge, slice_last};
 use crate::review::judge::breaking;
 
-pub fn verify_change(ws: &Workspace, inputs: &[Value], o: &Value) -> Result<Value, String> {
-    let mv = ws.read_json("model.json")?;
+/// a verified change: the answer an agent reads, and the backtest it was judged on (for reports and comments)
+pub struct Verified {
+    pub out: Value,
+    pub rv: Value,
+    pub mv: Value,
+    pub dv: Value,
+    pub strategies: Vec<Value>,
+}
+
+/// verify_change on a model and a dataset already read: the same verdicts whether an agent's workspace or a
+/// CI job (hindcast verify-change) holds the files
+pub fn verify_with(ws: &Workspace, mv: Value, dv: Value, cal: Option<Value>, inputs: &[Value], o: &Value) -> Result<Verified, String> {
     let m = model_of(&mv)?;
-    let mut dv = ws.read_json("dataset.json")?;
+    let mut dv = dv;
     if let Some(w) = o.get("window").filter(|x| !x.is_null()) {
         let t = |v: &Value| match v {
             Value::Number(x) => {
@@ -426,10 +436,9 @@ pub fn verify_change(ws: &Workspace, inputs: &[Value], o: &Value) -> Result<Valu
         }
     }
     let d = dataset_of(&dv)?;
-    let cal = if ws.has("calibration.json") { Some(ws.read_json("calibration.json")?) } else { None };
     let (strategies, mut notes) = strategies_from(ws, inputs, &mv)?;
     if strategies.is_empty() {
-        return Ok(json!({ "verdict": "nothing to verify", "notes": notes, "results": [] }));
+        return Ok(Verified { out: json!({ "verdict": "nothing to verify", "notes": notes, "results": [] }), rv: Value::Null, mv, dv, strategies });
     }
     let gate = o.get("gateMinutes").and_then(|x| x.as_f64()).unwrap_or(0.5);
     let draws = match o.get("draws").and_then(|x| x.as_f64()) {
@@ -470,6 +479,31 @@ pub fn verify_change(ws: &Workspace, inputs: &[Value], o: &Value) -> Result<Valu
         let after = breaking(&m, &applied.plan);
         results.push(judge(&mv, &m, &rv, st, spec, cal.as_ref(), gate, before.clone(), after, Some(&d))?);
     }
+    let worst = if results.iter().any(|x| s(x, &["verdict"]) == "fail") { "fail" } else if results.iter().any(|x| s(x, &["verdict"]) == "inconclusive") { "inconclusive" } else { "pass" };
+    let fitted = g(&mv, &["fittedOn"]);
+    let bsum = g(&rv, &["baseline", "summary"]);
+    let mut out = JMap::new();
+    out.insert("verdict".into(), json!(worst));
+    out.insert("model".into(), json!({ "name": g(&mv, &["name"]), "fittedOn": { "start": iso(n(fitted, &["start"])), "end": iso(n(fitted, &["end"])) }, "ageDays": num(r1((now_s() - n(fitted, &["end"])) / 86400.0)), "accuracy": accuracy_of(&mv) }));
+    out.insert("window".into(), json!({ "start": iso(n(&rv, &["window", "start"])), "end": iso(n(&rv, &["window", "end"])), "hours": num(r1((n(&rv, &["window", "end"]) - n(&rv, &["window", "start"])) / 3600.0)) }));
+    out.insert("slo".into(), g(&rv, &["slo"]).clone());
+    out.insert("gate".into(), json!(format!("fails if it adds more than {} min out of SLO over the window", js_num(gate))));
+    out.insert("asBuilt".into(), json!({ "monthly": num(r2(n(bsum, &["monthly", "p50"]))), "minutesOutOfSlo": num(r1(n(bsum, &["minutesOutOfSlo", "p50"]))), "failedRequests": num(js_round(n(bsum, &["failedRequests", "p50"]))) }));
+    out.insert("results".into(), json!(results));
+    out.insert("ranking".into(), g(&rv, &["ranking"]).clone());
+    out.insert("notes".into(), json!(notes));
+
+    Ok(Verified { out: Value::Object(out), rv, mv, dv, strategies })
+}
+
+pub fn verify_change(ws: &Workspace, inputs: &[Value], o: &Value) -> Result<Value, String> {
+    let mv = ws.read_json("model.json")?;
+    let dv = ws.read_json("dataset.json")?;
+    let cal = if ws.has("calibration.json") { Some(ws.read_json("calibration.json")?) } else { None };
+    let Verified { out, rv, mv, dv, strategies } = verify_with(ws, mv, dv, cal, inputs, o)?;
+    if strategies.is_empty() {
+        return Ok(out);
+    }
     let mut reports: Option<Value> = None;
     if o.get("report").and_then(|x| x.as_bool()) != Some(false) {
         ws.ensure("reports");
@@ -499,23 +533,11 @@ pub fn verify_change(ws: &Workspace, inputs: &[Value], o: &Value) -> Result<Valu
         std::fs::write(&bundle, crate::convert::js_stringify(&b)).map_err(|e| e.to_string())?;
         reports = Some(json!({ "html": html, "markdown": md, "bundle": bundle }));
     }
-    let worst = if results.iter().any(|x| s(x, &["verdict"]) == "fail") { "fail" } else if results.iter().any(|x| s(x, &["verdict"]) == "inconclusive") { "inconclusive" } else { "pass" };
-    let fitted = g(&mv, &["fittedOn"]);
-    let bsum = g(&rv, &["baseline", "summary"]);
-    let mut out = JMap::new();
-    out.insert("verdict".into(), json!(worst));
-    out.insert("model".into(), json!({ "name": g(&mv, &["name"]), "fittedOn": { "start": iso(n(fitted, &["start"])), "end": iso(n(fitted, &["end"])) }, "ageDays": num(r1((now_s() - n(fitted, &["end"])) / 86400.0)), "accuracy": accuracy_of(&mv) }));
-    out.insert("window".into(), json!({ "start": iso(n(&rv, &["window", "start"])), "end": iso(n(&rv, &["window", "end"])), "hours": num(r1((n(&rv, &["window", "end"]) - n(&rv, &["window", "start"])) / 3600.0)) }));
-    out.insert("slo".into(), g(&rv, &["slo"]).clone());
-    out.insert("gate".into(), json!(format!("fails if it adds more than {} min out of SLO over the window", js_num(gate))));
-    out.insert("asBuilt".into(), json!({ "monthly": num(r2(n(bsum, &["monthly", "p50"]))), "minutesOutOfSlo": num(r1(n(bsum, &["minutesOutOfSlo", "p50"]))), "failedRequests": num(js_round(n(bsum, &["failedRequests", "p50"]))) }));
-    out.insert("results".into(), json!(results));
-    out.insert("ranking".into(), g(&rv, &["ranking"]).clone());
-    out.insert("notes".into(), json!(notes));
+    let mut out = out;
     if let Some(rp) = reports {
-        out.insert("reports".into(), rp);
+        out.as_object_mut().unwrap().insert("reports".into(), rp);
     }
-    Ok(Value::Object(out))
+    Ok(out)
 }
 
 pub fn find_headroom(ws: &Workspace, a: &Value) -> Result<Value, String> {

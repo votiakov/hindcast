@@ -204,11 +204,11 @@ pub fn backtest_markdown(r: &Value, model: &Value) -> String {
     l.join("\n") + "\n"
 }
 
-/// the comment a CI check posts on a pull request
-pub fn pr_comment(r: &Value, title: Option<&str>, run_url: Option<&str>) -> String {
+/// "the last 14 days" of a backtest's window
+fn replayed_span(r: &Value) -> String {
     let days = (n(r, &["window", "end"]) - n(r, &["window", "start"])) / 86400.0;
     let hrs = js_round(days * 24.0);
-    let span = if days >= 1.5 {
+    if days >= 1.5 {
         format!("the last {} days", js_num(js_round(days)))
     } else if days >= 1.0 {
         "the last day".into()
@@ -216,26 +216,30 @@ pub fn pr_comment(r: &Value, title: Option<&str>, run_url: Option<&str>) -> Stri
         format!("the last {} hours", js_num(hrs))
     } else {
         format!("the last {} minutes", js_num(js_round(days * 1440.0).max(1.0)))
-    };
-    let base = g(r, &["baseline"]);
-    let mut l: Vec<String> = vec![];
-    l.push(format!("### {}", title.unwrap_or("Hindcast backtest")));
-    l.push(String::new());
-    for st in arr(r, &["strategies"]) {
-        l.push(format!("**{}** {}.", s(st, &["name"]), headline(st, base)));
-        l.push(String::new());
     }
+}
+
+/// the line under a comment's verdicts: what was replayed, how many draws
+fn replayed_line(r: &Value) -> String {
     let load = if g(r, &["load"]).is_null() { String::new() } else { format!(" at ×{} its load (busiest moment {} req/s)", js_to_fixed(n(r, &["load", "factor"]), 2), js_num(js_round(n(r, &["load", "peakRps"])))) };
-    l.push(format!("<sub>Replayed {} of production traffic{} through the calibrated model · {} draws · ranges are 10th–90th percentiles</sub>", span, load, js_num(n(r, &["draws"]))));
-    l.push(String::new());
-    l.push("| | $/month | minutes out of SLO | failed requests | worst moment |".into());
-    l.push("|---|---|---|---|---|".into());
+    format!("<sub>Replayed {} of production traffic{} through the calibrated model · {} draws · ranges are 10th–90th percentiles</sub>", replayed_span(r), load, js_num(n(r, &["draws"])))
+}
+
+/// as built and each strategy: $/month, minutes out of SLO, failed requests, worst moment
+fn comment_table(r: &Value) -> Vec<String> {
+    let base = g(r, &["baseline"]);
+    let mut l: Vec<String> = vec!["| | $/month | minutes out of SLO | failed requests | worst moment |".into(), "|---|---|---|---|---|".into()];
     let row = |st: &Value, d: bool| format!("| {} | {} | {} | {} | {} · {} |", s(st, &["name"]), if d { range(g(st, &["delta", "monthly"]), &signed) } else { money(n(st, &["summary", "monthly", "p50"])) }, range(g(st, &["summary", "minutesOutOfSlo"]), &mins), range(g(st, &["summary", "failedRequests"]), &count), when(n(st, &["worst", "t"])), s(st, &["worst", "why"]));
     l.push(row(base, false));
     for st in arr(r, &["strategies"]) {
         l.push(row(st, true));
     }
-    l.push(String::new());
+    l
+}
+
+/// the model's accuracy record, folded
+fn comment_accuracy(r: &Value) -> Vec<String> {
+    let mut l: Vec<String> = vec![];
     let acc = arr(r, &["accuracy"]);
     let checks: Vec<&Value> = acc.iter().flat_map(|a| arr(a, &["checks"])).filter(|c| s(c, &["metric"]) != "errors").collect();
     if !checks.is_empty() {
@@ -247,11 +251,134 @@ pub fn pr_comment(r: &Value, title: Option<&str>, run_url: Option<&str>) -> Stri
         }
         l.push("```".into());
         l.push("</details>".into());
-        l.push(String::new());
     } else {
         l.push("<sub>⚠️ No accuracy record for this model yet.</sub>".into());
+    }
+    l
+}
+
+/// the comment a CI check posts on a pull request
+pub fn pr_comment(r: &Value, title: Option<&str>, run_url: Option<&str>) -> String {
+    let base = g(r, &["baseline"]);
+    let mut l: Vec<String> = vec![];
+    l.push(format!("### {}", title.unwrap_or("Hindcast backtest")));
+    l.push(String::new());
+    for st in arr(r, &["strategies"]) {
+        l.push(format!("**{}** {}.", s(st, &["name"]), headline(st, base)));
         l.push(String::new());
     }
+    l.push(replayed_line(r));
+    l.push(String::new());
+    l.extend(comment_table(r));
+    l.push(String::new());
+    l.extend(comment_accuracy(r));
+    l.push(String::new());
+    if let Some(u) = run_url {
+        l.push(format!("<sub>[Full report]({})</sub>", u));
+    }
+    l.join("\n") + "\n"
+}
+
+/// the hidden line that finds a check's own comment again, to update it in place
+pub const COMMENT_MARKER: &str = "<!-- hindcast-verify-change -->";
+
+fn verdict_mark(v: &str) -> &'static str {
+    match v {
+        "pass" => "✅",
+        "fail" => "❌",
+        "inconclusive" => "⚠️",
+        _ => "➖",
+    }
+}
+
+/// the pull-request comment and job summary of `hindcast verify-change`: verify_change's verdict and
+/// confidence per change, the backtest table it was judged on, why, and how far to trust it
+pub fn verify_comment(out: &Value, r: &Value, title: Option<&str>, run_url: Option<&str>) -> String {
+    let verdict = s(out, &["verdict"]);
+    let mut l: Vec<String> = vec![COMMENT_MARKER.into()];
+    l.push(format!("### {} {}: {}", verdict_mark(&verdict), title.unwrap_or("Hindcast backtest"), verdict));
+    l.push(String::new());
+    let results = arr(out, &["results"]);
+    if results.is_empty() {
+        l.push("No change here that the model can backtest (replicas, CPU and memory limits and requests, autoscalers, CPU architecture).".into());
+        l.push(String::new());
+        for note in arr(out, &["notes"]) {
+            l.push(format!("- {}", s(note, &[])));
+        }
+        if let Some(u) = run_url {
+            l.push(String::new());
+            l.push(format!("<sub>[Run]({})</sub>", u));
+        }
+        return l.join("\n") + "\n";
+    }
+    for x in &results {
+        let v = s(x, &["verdict"]);
+        let leans = if v == "inconclusive" { format!(" (leans {})", s(x, &["leans"])) } else { String::new() };
+        l.push(format!("**{}** — **{}**{} · confidence **{}**", s(x, &["name"]), v, leans, s(x, &["confidence", "level"])));
+        l.push(String::new());
+        l.push(format!("It {}.", s(x, &["summary"])));
+        l.push(String::new());
+        let md = g(x, &["cost", "monthlyDelta"]);
+        let dm = g(x, &["reliability", "minutesOutOfSloDelta"]);
+        let fr = g(x, &["reliability", "failedRequestsDelta"]);
+        let band = |r: &Value, f: &dyn Fn(f64) -> String| {
+            let (p, lo, hi) = (n(r, &["p50"]), n(r, &["lo"]), n(r, &["hi"]));
+            if f(lo) == f(hi) {
+                f(p)
+            } else {
+                format!("{} ({} … {})", f(p), f(lo), f(hi))
+            }
+        };
+        let sgn = |x: f64, k: String| if x > 0.0 { format!("+{}", k) } else if x < 0.0 { format!("−{}", k) } else { k };
+        l.push(format!("- **$ / month:** {}/month ({})", band(md, &signed), s(x, &["cost", "basis"])));
+        l.push(format!("- **minutes out of SLO:** {}, {} min in all with the change",band(dm, &|v| sgn(v, format!("{} min", js_num(r1(v.abs()))))), js_num(n(x, &["reliability", "minutesOutOfSlo"]))));
+        l.push(format!("- **failed requests:** {}", band(fr, &|v| sgn(v, loc(js_round(v.abs()))))));
+        let w = g(x, &["reliability", "worst"]);
+        if !s(w, &["why"]).is_empty() {
+            l.push(format!("- **worst moment:** {} — p99 {} ms, {}% errors; {}", when(crate::accuracy::parse_iso_ms(&s(w, &["at"])).map(|ms| ms as f64 / 1000.0).unwrap_or(f64::NAN)), js_num(n(w, &["p99Ms"])), js_num(js_round(n(w, &["errorRate"]) * 100.0)), s(w, &["why"])));
+        }
+        l.push(String::new());
+        let reasons = arr(x, &["reasons"]);
+        if reasons.len() > 1 {
+            l.push("Why:".into());
+            for r in &reasons[1..] {
+                l.push(format!("- {}", s(r, &[])));
+            }
+            l.push(String::new());
+        }
+        let warns = arr(x, &["confidence", "warnings"]);
+        if !warns.is_empty() {
+            l.push(format!("Confidence {}:", s(x, &["confidence", "level"])));
+            for w in warns {
+                l.push(format!("- {}", s(w, &[])));
+            }
+            l.push(String::new());
+        }
+    }
+    l.push(replayed_line(r));
+    l.push(String::new());
+    l.extend(comment_table(r));
+    l.push(String::new());
+    let slo = g(out, &["slo"]);
+    l.push(format!("<sub>SLO: p99 ≤ {} ms, errors ≤ {}% · {}</sub>", js_num(n(slo, &["p99Ms"])), js_num(r1(n(slo, &["errorRate"]) * 100.0)), s(out, &["gate"])));
+    l.push(String::new());
+    l.extend(comment_accuracy(r));
+    l.push(String::new());
+    let changes: Vec<String> = results.iter().map(|x| crate::yaml_out::to_yaml(g(x, &["change"]))).collect();
+    l.push("<details><summary>What was backtested</summary>".into());
+    l.push(String::new());
+    l.push("```yaml".into());
+    l.push(changes.join("---\n").trim_end().to_string());
+    l.push("```".into());
+    let notes = arr(out, &["notes"]);
+    if !notes.is_empty() {
+        l.push(String::new());
+        for note in notes {
+            l.push(format!("- {}", s(note, &[])));
+        }
+    }
+    l.push("</details>".into());
+    l.push(String::new());
     if let Some(u) = run_url {
         l.push(format!("<sub>[Full report]({})</sub>", u));
     }

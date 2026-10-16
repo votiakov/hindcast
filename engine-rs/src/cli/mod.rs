@@ -4,6 +4,7 @@
 pub mod agent;
 pub mod bt;
 pub mod demo;
+pub mod ci;
 pub mod design;
 pub mod files;
 pub mod http;
@@ -45,6 +46,8 @@ Backtesting on real data (files only; see docs/backtest.md):
   hindcast accuracy      <model.json>
   hindcast outage        <model.json> <outage-id | list> [strategy.yaml …] [--role primary-db=orders-db] [--md r.md] [--html r.html]
   hindcast diff-strategy --base <dir> --head <dir> [--model model.json] [--out strategy.yaml]   (k8s manifests before/after → strategy)
+  hindcast verify-change --model model.json --dataset dataset.json (--base <dir> --head <dir> | --terraform-plan plan.json | <strategy.yaml …>)
+                         [--last 14d] [--p99 500] [--errors 0.01] [--comment pr.md] [--json result.json] [--fail-on fail|inconclusive|never]   (the verify_change verdict, for CI)
 
 For agents (the MCP tools, from a shell; JSON in, JSON out; see docs/agents.md):
   hindcast agent setup [claude|cursor|vscode|desktop|windsurf] [--write]   register the MCP server with an agent host
@@ -93,6 +96,9 @@ fn run(args: &[String], out: &mut Out) -> Result<i32, String> {
         return Ok(mcp::serve());
     }
     let f = flags(rest);
+    if let Some(code) = ci::command(cmd, &f, out)? {
+        return Ok(code);
+    }
     if let Some(code) = bt::command(cmd, &f, out)? {
         return Ok(code);
     }
