@@ -47,6 +47,7 @@ one change worth making, and how far to trust it.
 
 ```
 hindcast quickstart --prometheus http://localhost:9090 --jaeger http://localhost:16686 --last 24h
+hindcast quickstart --datadog datadoghq.com --last 24h     # on Datadog: keys from DD_API_KEY and DD_APP_KEY
 ```
 
 (`hindcast` is `bin/hindcast` in a clone; see [install](#install) below. No Prometheus to point it
@@ -58,6 +59,12 @@ OpenTelemetry service graph, or span metrics' client spans; failing those, from 
 and measured self times (self time is estimated from latency metrics). A service with no latency
 metric gets its capacity from CPU, throttling and memory alone. The review's Trust line says which
 of these applied.
+
+On Datadog, `--datadog <site>` reads APM trace metrics, the Agent's Kubernetes metrics and
+ingress-nginx through the Metrics API (read-only; the keys are only ever named by environment
+variable), and who calls whom from APM service dependencies, which name the calls but not how
+often. It has been tested against a mock built from Datadog's API documentation, not a live account
+([docs/agents.md](docs/agents.md#datadog)).
 
 Draw a system (or import it from Terraform or Kubernetes manifests, or paste a YAML spec), push traffic and failures through
 it, and watch where it gives out. Then run the failure audit: every component dying, every dependency

@@ -14,7 +14,7 @@ agent ──MCP / CLI──▶ connect_telemetry ─▶ collect_telemetry ─▶
                                                                                    verify_design (no history)
 ```
 
-Everything is read-only towards your systems. Hindcast queries your Prometheus, your
+Everything is read-only towards your systems. Hindcast queries your Prometheus (or Datadog), your
 Jaeger/Tempo and (only when asked, against a named context) `kubectl get`. It writes only inside
 its workspace directory, and nothing leaves your machine.
 
@@ -29,6 +29,9 @@ hindcast quickstart --prometheus http://prometheus:9090 --jaeger http://jaeger:1
 #   --last 7d for more history (default: the last 24 h), or --start/--end for an exact window
 #   --calls spanmetrics: which metrics name the calls, where several do (prometheus.calls)
 #   --namespace shop, --exclude jaeger,otel-collector, --p99 500 --errors 0.01, --token-env PROM_TOKEN
+
+hindcast quickstart --datadog datadoghq.eu     # Datadog instead of Prometheus: keys from DD_API_KEY, DD_APP_KEY
+#   --dd-env prod, --dd-api-key-env MY_DD_API_KEY, --dd-app-key-env MY_DD_APP_KEY (see "Datadog")
 ```
 
 It runs `connect_telemetry` → `collect_telemetry` → `calibrate_model` → `review_capacity`, prints
@@ -101,6 +104,89 @@ the replay for exactly that reason. This advisory comes with traces too. The gRP
 way also drive `check_node_loss`'s sensitivity for callers that stay broken (below). Traces mark a
 call as gRPC on their own where its client or server span says so (`rpc.system = grpc`, a `grpc.*`
 attribute, or a `package.Service/Method` name), so a model built from trace files alone gets it too.
+
+### Datadog
+
+Teams on Datadog connect it in place of Prometheus. The connection reads metrics only, through the
+public API, with the keys taken from the environment:
+
+```bash
+export DD_API_KEY=… DD_APP_KEY=…        # an application key with metrics_read, timeseries_query and apm_read
+hindcast quickstart --datadog datadoghq.com --last 7d
+```
+
+```json
+{ "datadog": { "site": "datadoghq.eu", "env": "prod", "apiKeyEnv": "DD_API_KEY", "appKeyEnv": "DD_APP_KEY" } }
+```
+
+`site` is one of `datadoghq.com`, `us3.datadoghq.com`, `us5.datadoghq.com`, `datadoghq.eu`,
+`ap1.datadoghq.com`, `ap2.datadoghq.com` or `ddog-gov.com`; `url` takes an API base instead (a proxy).
+`apiKeyEnv` and `appKeyEnv` name the environment variables holding the keys (default `DD_API_KEY`,
+`DD_APP_KEY`). The keys themselves have no field to go in. They are never written to the workspace
+and never appear in an error, which names the variable. `env` picks the APM env (default: the
+busiest one in the trace metrics, with a warning when there are several), `scope` adds a tag filter to
+every query (`kube_cluster_name:prod-eu`), `namespaces` scopes the Kubernetes metrics (by default, to
+the namespaces where the APM services run), and `presets` picks among the three below.
+
+What it calls, all `GET`:
+
+| endpoint | for |
+|---|---|
+| `/api/v1/metrics?from=` | which metrics report: which presets work, what is missing |
+| `/api/v1/query?from=&to=&query=` | every series, at an explicit `.rollup(…, step)` |
+| `/api/v1/service_dependencies?env=&start=&end=` | who calls whom, without traces |
+
+| preset | Datadog metrics | the model's signals |
+|---|---|---|
+| `datadog-apm` | `trace.<span>.hits` and `.errors` (as counts), the latency distribution `trace.<span>` (`avg:` and `p99:`), by `service` and, on entry services, `resource_name`; where there is no distribution, the legacy `trace.<span>.duration` over hits gives the mean | request rate, error ratio, mean and p99 per service and per endpoint |
+| `datadog-kubernetes` | `kubernetes.cpu.usage.total` (nanocores), `kubernetes.cpu.limits`, `kubernetes.cpu.requests`, `kubernetes.memory.usage`, `kubernetes.memory.limits`, `kubernetes.memory.requests`, `kubernetes.network.tx_bytes`, `kubernetes.cpu.cfs.throttled.periods` / `kubernetes.cpu.cfs.periods`; `kubernetes_state.deployment.replicas_available` and `kubernetes_state.statefulset.replicas_ready`. The container check's `container.cpu.usage`, `container.cpu.limit`, `container.memory.usage` and `container.memory.limit` stand in where the kubelet's are missing | CPU, CPU limit and request, memory, its peak, limit and request, network, throttling, replicas, per Deployment or StatefulSet (`kube_deployment`, `kube_stateful_set`) |
+| `datadog-ingress-nginx` | `nginx_ingress.controller.requests` by `service` and `status` (5xx and 499 count as errors) | requests and errors at the edge |
+
+Each service is read from its primary operation: the span name with the most requests. Span names
+that are a client's calls (`postgres.query`, `redis.command`, `http.client.request`, `grpc.client`,
+…) are left out: their counts are calls made, not requests served. APM service names and
+Kubernetes workload names are matched as Prometheus's are (`shop-frontend` → `frontend`).
+
+The answers are converted to the Prometheus `query_range` shape and imported the same way, so
+calibration, the review and every verdict work as they do with Prometheus. Who calls whom comes
+from the APM service dependencies; where they answer nothing (the endpoint is unavailable, or the
+env has no dependencies), from `--topology`, else each service with request metrics is its own entry,
+as in [Without traces](#without-traces). Jaeger, Tempo or trace files can be connected beside
+Datadog, as beside Prometheus.
+
+What Datadog gives less of than Prometheus and traces:
+
+- **Call counts.** Service dependencies name callers and callees, not how often. Each callee's
+  requests are shared over its callers in proportion to theirs, as for a topology file without
+  counts. Inferred services with no container in the cluster (a managed Redis) are left out.
+- **Each endpoint's own path, measured self time.** As without traces with Prometheus: endpoints
+  share their service's path, and self time is latency less the callees'.
+- **p99 where there is no latency distribution.** The legacy `trace.<span>.duration` gives a mean;
+  the probe lists it under `missing`, and the model's accuracy isn't measured.
+- **Nodes, pods per node, HorizontalPodAutoscalers, CPU throttling from the container check.** No
+  preset reads them yet: services are priced at Fargate list prices, `check_node_loss` has nothing
+  to work on, and the throttling knee needs `kubernetes.cpu.cfs.*`.
+
+The probe (`connect_telemetry`) reports the shape it does for Prometheus: `presets`, `metrics`
+(the metric each signal comes from), `services` per preset, the APM env and span names, when
+requests flowed (`data.newest`, `oldestFound`, `hoursFound`), `workloadNamespaces`, and `missing`,
+each with what is lost.
+
+Limits and back-off: each query asks for at most 300 points (the documentation gives 350 per time
+range on one page and 1,500 on another; longer windows are split, and the parts joined). A 429 is
+retried after `X-RateLimit-Reset` seconds (at most a minute; 1, 2, 4… s without the header), five
+times, with a progress message. The collection step is at least 60 s (the Agent's checks run every
+15 s).
+
+**Tested against a mock only.** No live Datadog account was used. The connector was built from the
+public API documentation and is tested against a mock server (`test/cli-fixtures/mock-datadog.mjs`)
+that serves the documented request and response shapes and evaluates the queries; the golden CLI
+and MCP cases run connect → collect → calibrate → review on it, including a 429. What the
+documentation does not pin down, and is assumed: that `.rollup(step)` applies to a distribution's
+`p99:`; whether a series without a grouped tag has it missing or as `N/A` (both are read as
+missing); the ingress-nginx integration's tag names (`service`, `status`, following the
+controller's labels); and that `service_dependencies` answers for windows longer than its default
+hour. Please report what differs on a real account.
 
 ## Set up
 
@@ -570,7 +656,8 @@ Authentication: `tokenEnv` (bearer), `basicAuthEnv` (`user:password`) and `heade
 
 ## Safety
 
-- **Read-only.** Prometheus: `query`, `query_range`, label values, buildinfo. Jaeger/Tempo:
+- **Read-only.** Prometheus: `query`, `query_range`, label values, buildinfo. Datadog: the
+  active metrics list, timeseries queries and APM service dependencies (`GET` only). Jaeger/Tempo:
   search and trace fetch. Kubernetes: one `get` against a named context. Nothing is ever applied.
 - **Credentials** are env var names in the workspace, never values. A missing variable is
   reported, not sent as an empty header.
@@ -600,7 +687,7 @@ or dropped on the app's Backtest screen.
 
 | tool | inputs | returns |
 |---|---|---|
-| `connect_telemetry` | `prometheus{url, selector?, namespaces?, presets?, tokenEnv?…}`, `jaeger{url}` \| `tempo{url}` \| `traceFiles[]` \| `topologyFile` (all optional), `bill{cur\|gcp, tag?}`, `system{name, slo, timeoutMs, rename, hostedBy, entry, ignore, exclude}` | probes, renames applied, `calls` (without traces), `problems`, `ready` |
+| `connect_telemetry` | `prometheus{url, selector?, namespaces?, presets?, tokenEnv?…}` \| `datadog{site \| url, apiKeyEnv?, appKeyEnv?, env?, scope?, namespaces?, presets?}`, `jaeger{url}` \| `tempo{url}` \| `traceFiles[]` \| `topologyFile` (all optional), `bill{cur\|gcp, tag?}`, `system{name, slo, timeoutMs, rename, hostedBy, entry, ignore, exclude}` | probes, renames applied, `calls` (without traces), `problems`, `ready` |
 | `collect_telemetry` | `last` \| `start`/`end` \| `windows[]`, `stepS?`, `maxTraces?` | window, coverage per service, endpoints, warnings |
 | `calibrate_model` | `holdout?` (0.3), `slo?`, `timeoutMs?`, `listPrices?` | services with capacity, band, limit, basis, cost; accuracy; trust lists |
 | `model_status` | — | what the workspace holds, warnings, next step |
@@ -705,8 +792,11 @@ so in `notes`) rather than running 30 draws for 4 minutes.
   predicted ([calibration.md](calibration.md)).
 - List prices are on-demand: no Savings Plans, Reserved Instances or committed-use discounts. Give
   the bill for real numbers.
-- Supported trace backends: Jaeger and Tempo APIs, and OTLP/Jaeger files. Datadog, Honeycomb and
-  X-Ray need an export to OTLP files first.
+- Supported trace backends: Jaeger and Tempo APIs, and OTLP/Jaeger files. Datadog's traces,
+  Honeycomb and X-Ray need an export to OTLP files first (Datadog's metrics are read directly:
+  [Datadog](#datadog)).
+- The Datadog connector is tested against a mock built from the API documentation, not a live
+  account ([Datadog](#datadog)).
 - Without traces, the review rests on the estimates under [Without traces](#without-traces).
   **Tested live** on the reference kind cluster
   ([reference/k8s](../reference/k8s/README.md#without-traces-live), one 25-minute ordinary day,
