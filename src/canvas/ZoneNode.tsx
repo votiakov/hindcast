@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { NodeResizer, NodeToolbar, Position, type NodeProps } from '@xyflow/react';
 import { HeartPulse, Scissors, Trash2, Zap } from 'lucide-react';
 import type { ZoneNode as ZoneNodeT } from '../sim/catalog';
@@ -9,7 +9,10 @@ import { useBoardId } from './BoardContext';
 function ZoneNodeImpl({ id, data, selected }: NodeProps<ZoneNodeT>) {
   const b = useBoardId();
   const { setZoneFailed, updateZone, removeNode, toast, apply } = useSim.getState();
-  const others = useSim((s) => s.boards[b].nodes.filter((n) => n.type === 'zone' && n.id !== id).map((n) => ({ id: n.id, label: String((n.data as { label?: string }).label ?? n.id) })));
+  // a string, so the selector returns the same value until a zone changes (a fresh array every time
+  // would re-render without end)
+  const othersKey = useSim((s) => JSON.stringify(s.boards[b].nodes.filter((n) => n.type === 'zone' && n.id !== id).map((n) => ({ id: n.id, label: String((n.data as { label?: string }).label ?? n.id) }))));
+  const others = useMemo(() => JSON.parse(othersKey) as { id: string; label: string }[], [othersKey]);
   const partitioned = useSim((s) => s.boards[b].nodes.some((n) => n.type === 'system' && (n.data as { side?: string }).side));
 
   return (
