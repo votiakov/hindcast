@@ -16,6 +16,7 @@ const BIN = 'engine-rs/target/release/hindcast';
 const out = mkdtempSync(join(tmpdir(), 'mcp-golden-'));
 const GOLDEN = 'test/golden/mcp.json';
 const TEL = 'http://127.0.0.1:19091';
+const DD = 'http://127.0.0.1:19691';
 const root = `${out}/OUT`;
 const ws = (k: string) => `${root}/ws-${k}`;
 const shop = parseYaml(readFileSync('examples/shop.yaml', 'utf8'));
@@ -106,6 +107,12 @@ const CASES: Case[] = [
   call('trace_request', { architecture: shop, scenario: { duration: 10 }, component: 'api', seed: 3 }),
   call('trace_request', { architecture: shop, component: 'nope' }),
   call('trace_request', { architecture: shop, count: 50 }),
+  // Datadog instead of Prometheus (a mock built from the documented API; its first query is answered 429 once)
+  call('connect_telemetry', { workspace: ws('d'), datadog: { url: `${DD}/shop` } }, true),
+  call('collect_telemetry', { workspace: ws('d'), last: '6h' }, true),
+  call('calibrate_model', { workspace: ws('d') }),
+  call('review_capacity', { workspace: ws('d'), draws: 3 }),
+  call('connect_telemetry', { workspace: ws('dk'), datadog: { site: 'datadoghq.eu', apiKeyEnv: 'HINDCAST_NO_SUCH_KEY' } }),
 ];
 
 const mask = (s: string) =>
@@ -139,7 +146,7 @@ async function run(record: boolean): Promise<Golden> {
   for (const k of ['v', 'n']) utimesSync(`${root}/ws-${k}/dataset.json`, 1791400000, 1791400000);
   const seeded = snapshot(root, mask);
   const msgs = [...handshake, ...CASES.map(([, method, params], i) => ({ jsonrpc: '2.0', id: 100 + i, method, ...(params ? { params } : {}) }))];
-  const env = { NO_COLOR: '', HINDCAST_NOW: '1791500000', HINDCAST_KUBECTL: 'test/cli-fixtures/fake-kubectl.mjs', HINDCAST_SERVE_PORT: '19101' };
+  const env = { NO_COLOR: '', HINDCAST_NOW: '1791500000', HINDCAST_KUBECTL: 'test/cli-fixtures/fake-kubectl.mjs', HINDCAST_SERVE_PORT: '19101', DD_API_KEY: 'mock-api-key', DD_APP_KEY: 'mock-app-key' };
   const lines = await session(BIN, ['mcp'], msgs, env);
   // a call's name: its label, and a hash of everything it sent (labels are cut short)
   const key = ([l, method, params]: Case) => `${mask(l)} [${createHash('sha256').update(mask(JSON.stringify([method, params ?? null]))).digest('hex').slice(0, 8)}]`;
@@ -161,9 +168,11 @@ async function run(record: boolean): Promise<Golden> {
 const record = process.argv.includes('--record');
 const filter = process.argv.slice(2).find((a) => !a.startsWith('--'));
 const tel = spawn('node', ['test/cli-fixtures/mock-telemetry.mjs', '19091'], { stdio: 'ignore' });
+const dd = spawn('node', ['test/cli-fixtures/mock-datadog.mjs', '19691'], { stdio: 'ignore' });
 spawnSync('sleep', ['0.5']);
 const got = await run(record);
 tel.kill();
+dd.kill();
 if (record) {
   write(GOLDEN, got);
   console.log(`recorded ${Object.keys(got.cases).length} calls in ${GOLDEN}`);

@@ -1,0 +1,6 @@
+# who calls whom among the Datadog mock's services, for its world without APM service dependencies
+entry: [frontend]
+calls:
+  frontend: [cart, catalog]
+  catalog: { postgres: 1.5 }
+grpc: [cart]

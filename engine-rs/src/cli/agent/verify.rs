@@ -200,6 +200,8 @@ pub fn calibrate_model(ws: &Workspace, o: &Value) -> Result<Value, String> {
             let ep_latency = d.endpoints.values().any(|e| e.p99_ms.as_ref().map(|v| v.iter().any(|x| x.is_some())).unwrap_or(false));
             warnings.push(if ep_latency {
                 "accuracy not measured: the held-back part of the history has no end-to-end latency to compare with — trust the fit notes per service, and verify one change against a real rollout".to_string()
+            } else if ws.sources().map(|s| s.get("datadog").is_some()).unwrap_or(false) {
+                "accuracy not measured: the data has no p99 latency per endpoint. Datadog's latency distribution (trace.<span>, with percentiles) gives it; the legacy trace.<span>.duration gives only a mean".to_string()
             } else {
                 "accuracy not measured: the data has no end-to-end latency per endpoint (span names that carry raw URLs are dropped). Name server spans by route (http.route), or give request logs, so the model can be checked on held-back history".to_string()
             });
@@ -242,7 +244,7 @@ pub fn model_status(ws: &Workspace) -> Result<Value, String> {
     out.insert("sources".into(), src.clone());
     let mut warnings: Vec<String> = vec![];
     let mut next = "connect_telemetry";
-    if src.get("prometheus").is_some() {
+    if src.get("prometheus").is_some() || src.get("datadog").is_some() {
         next = "collect_telemetry";
     }
     if ws.has("dataset.json") {

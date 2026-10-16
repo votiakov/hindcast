@@ -847,6 +847,7 @@ pub fn apply(d: &mut Value, c: &Calls) -> Applied {
         "servicegraph" => "the OpenTelemetry service graph",
         "spanmetrics" => "span metrics (client spans matched to the servers that answer them)",
         "file" => "the topology file",
+        "datadog" => "Datadog APM service dependencies (callers and callees, not call counts)",
         _ => "",
     };
     let per_endpoint = d["endpoints"].as_object().map(|x| x.iter().any(|(k, ep)| !synthetic.contains(k) && ep.get("p99Ms").map(|v| v.is_array()).unwrap_or(false))).unwrap_or(false);

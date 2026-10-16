@@ -112,16 +112,27 @@ pub fn coverage_of(d: &Value) -> Vec<Value> {
 
 pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
     let mut src = ws.sources()?.as_object().cloned().unwrap_or_default();
-    let prom = src.get("prometheus").cloned().ok_or("no Prometheus connected — call connect_telemetry with prometheus.url first")?;
+    // the metrics come from Prometheus, or from Datadog where that is what is connected
+    let dd = if src.get("prometheus").is_none() { src.get("datadog").cloned() } else { None };
+    let prom = match &dd {
+        Some(_) => json!({}),
+        None => src.get("prometheus").cloned().ok_or("no Prometheus connected — call connect_telemetry with prometheus.url first")?,
+    };
     let prom_url = prom.get("url").and_then(|x| x.as_str()).unwrap_or("").to_string();
     let mut warnings: Vec<String> = vec![];
     let now = now_s();
-    let probe = probe_prometheus(&prom, now)?;
+    let probe = match &dd {
+        Some(d) => super::datadog::probe(d, now)?,
+        None => probe_prometheus(&prom, now)?,
+    };
     let probe_presets = strs(probe.get("presets")).unwrap_or_default();
     if probe_presets.is_empty() {
-        return Err(format!("Prometheus at {} has none of the metrics the presets read. {}", prom_url, strs(probe.get("nearMisses")).unwrap_or_default().join(" ")));
+        return Err(match &dd {
+            Some(_) => format!("Datadog at {} has none of the metrics the presets read. {}", probe["url"].as_str().unwrap_or(""), strs(probe.get("missing")).unwrap_or_default().join("; ")),
+            None => format!("Prometheus at {} has none of the metrics the presets read. {}", prom_url, strs(probe.get("nearMisses")).unwrap_or_default().join(" ")),
+        });
     }
-    let presets = strs(prom.get("presets")).filter(|p| !p.is_empty()).unwrap_or(probe_presets);
+    let presets = strs(dd.as_ref().unwrap_or(&prom).get("presets")).filter(|p| !p.is_empty()).unwrap_or(probe_presets);
 
     // ---- window and step
     let windows: Option<Vec<(f64, f64)>> = o.get("windows").and_then(|w| w.as_array()).filter(|a| !a.is_empty()).map(|a| {
@@ -169,7 +180,11 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
     }
     let parts: Vec<(f64, f64)> = windows.clone().unwrap_or_else(|| vec![(start, end)]);
     let covered: f64 = parts.iter().map(|(a, b)| b - a).sum();
-    let step_s = o.get("stepS").and_then(|x| x.as_f64()).unwrap_or_else(|| STEPS.iter().copied().find(|s| (end - start) / s <= 20_160.0).unwrap_or(3600.0));
+    let step_s = o.get("stepS").and_then(|x| x.as_f64()).unwrap_or_else(|| {
+        let s = STEPS.iter().copied().find(|s| (end - start) / s <= 20_160.0).unwrap_or(3600.0);
+        // the Agent's checks run every 15 s and trace stats flush every 10 s: a minute keeps every Datadog bucket filled
+        if dd.is_some() { s.max(60.0) } else { s }
+    });
     let rate_window = format!("{}s", js_num(step_s.max(60.0)));
     super::progress(&match &windows {
         Some(w) => format!("{} windows, {} … {}, in {} s buckets", w.len(), iso(start), iso(end), js_num(step_s)),
@@ -263,7 +278,17 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
         let known: Vec<String> = ["otel-spanmetrics", "http-server", "http-server-legacy", "spring"].iter().flat_map(|k| strs(probe.get("services").and_then(|s| s.get(*k))).unwrap_or_default()).map(|x| rename_of(&x)).collect();
         // workloads a client span's peer address can name (a database with no request metrics of its own)
         let workloads: Vec<String> = ["kubernetes", "cadvisor"].iter().flat_map(|k| strs(probe.get("services").and_then(|s| s.get(*k))).unwrap_or_default()).map(|x| rename_of(&x)).collect();
-        let mut c = super::infer::read_calls(&infer_prom, &presets, &super::infer::chosen_calls(&strs(probe.get("calls")).unwrap_or_default(), &prom), &parts, src.get("topologyFile").and_then(|x| x.as_str()), &known, &workloads)?;
+        let mut c = match &dd {
+            Some(d) => {
+                let known: Vec<String> = strs(probe.get("services").and_then(|s| s.get("datadog-apm"))).unwrap_or_default().iter().map(|x| rename_of(x)).collect();
+                match src.get("topologyFile").and_then(|x| x.as_str()) {
+                    // a topology file names the calls as it does with Prometheus (no metric is queried for them)
+                    Some(f) => super::infer::read_calls(&infer_prom, &[], &[], &parts, Some(f), &known, &[])?,
+                    None => super::datadog::read_calls(d, &probe, &parts, &rename_map, &known)?,
+                }
+            }
+            None => super::infer::read_calls(&infer_prom, &presets, &super::infer::chosen_calls(&strs(probe.get("calls")).unwrap_or_default(), &prom), &parts, src.get("topologyFile").and_then(|x| x.as_str()), &known, &workloads)?,
+        };
         match entry.as_ref().filter(|e| !e.is_empty()) {
             Some(e) => c.entry = e.clone(),
             None => entry = Some(c.entry.clone()),
@@ -272,18 +297,42 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
     }
 
     // ---- metrics
-    super::progress("querying Prometheus", 2.0, 4.0);
+    super::progress(if dd.is_some() { "querying Datadog" } else { "querying Prometheus" }, 2.0, 4.0);
     let po = crate::prom_export::Opts {
         window: rate_window.clone(),
         selector: prom.get("selector").and_then(|x| x.as_str()).unwrap_or("").to_string(),
         entry: entry.clone().unwrap_or_default(),
         namespaces: strs(prom.get("namespaces")).unwrap_or_default(),
     };
-    let plan = crate::prom_export::export_plan(&presets, &po)?;
+    let plan = if dd.is_some() { vec![] } else { crate::prom_export::export_plan(&presets, &po)? };
     let dir_of = |k: usize| if parts.len() > 1 { Path::new(&tel).join("metrics").join(format!("w{}", k)).to_string_lossy().to_string() } else { Path::new(&tel).join("metrics").to_string_lossy().to_string() };
     let h = auth_headers(Some(&prom))?;
     let mut exported: Vec<(String, usize)> = vec![];
+    let mut dd_metrics: Vec<Value> = vec![];
     for (k, (a, b)) in parts.iter().enumerate() {
+        let Some(d) = &dd else { continue };
+        let dir = dir_of(k);
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let got = super::datadog::export(d, &probe, &presets, &entry.clone().unwrap_or_default(), *a, *b, step_s, &|file, body| std::fs::write(Path::new(&dir).join(file), body).map_err(|e| e.to_string()))?;
+        for (f, n, mapping) in got {
+            match exported.iter_mut().find(|x| x.0 == f) {
+                Some(e) => e.1 = e.1.max(n),
+                None => {
+                    exported.push((f.clone(), n));
+                    let mut o = JMap::new();
+                    o.insert("prometheus".into(), json!(format!("{}/{}", if parts.len() > 1 { "metrics/*" } else { "metrics" }, f)));
+                    for (k, v) in mapping.as_object().cloned().unwrap_or_default() {
+                        o.insert(k, v);
+                    }
+                    dd_metrics.push(Value::Object(o));
+                }
+            }
+        }
+    }
+    for (k, (a, b)) in parts.iter().enumerate() {
+        if dd.is_some() {
+            break;
+        }
         let dir = dir_of(k);
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         let got = crate::cli::bt::run_export(&prom_url, &plan, *a, *b, step_s, &|file, body| std::fs::write(Path::new(&dir).join(file), body).map_err(|e| e.to_string()), &h)?;
@@ -338,7 +387,7 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
     if let Some(r) = system.get("rename").and_then(|r| r.as_object()).filter(|r| !r.is_empty()) {
         manifest.insert("rename".into(), Value::Object(r.clone()));
     }
-    manifest.insert("metrics".into(), Value::Array(crate::prom_export::manifest_metrics(&metrics_plan, if parts.len() > 1 { "metrics/*" } else { "metrics" })));
+    manifest.insert("metrics".into(), Value::Array(if dd.is_some() { dd_metrics } else { crate::prom_export::manifest_metrics(&metrics_plan, if parts.len() > 1 { "metrics/*" } else { "metrics" }) }));
     let traces_v = if trace_files.is_empty() {
         json!([])
     } else {

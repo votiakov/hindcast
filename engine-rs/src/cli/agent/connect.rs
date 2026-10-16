@@ -23,6 +23,12 @@ pub fn connect_telemetry(ws: &Workspace, input: &Value) -> Result<Value, String>
         sys.insert(k, v);
     }
     merged.insert("system".into(), Value::Object(sys));
+    // one metrics source: connecting Datadog replaces a Prometheus connected before, and the reverse
+    if inp.get("datadog").map(|v| !v.is_null()).unwrap_or(false) {
+        merged.shift_remove("prometheus");
+    } else if inp.get("prometheus").map(|v| !v.is_null()).unwrap_or(false) {
+        merged.shift_remove("datadog");
+    }
     let mut next = obj(&parse_sources(&Value::Object(merged)));
     let now = now_s();
     let mut problems: Vec<String> = vec![];
@@ -30,6 +36,7 @@ pub fn connect_telemetry(ws: &Workspace, input: &Value) -> Result<Value, String>
     let mut traces_report: Option<Value> = None;
     let mut files_report: Option<Value> = None;
     let mut bill_report: Option<Value> = None;
+    let mut dd_report: Option<Value> = None;
 
     if let Some(p) = next.get("prometheus").cloned() {
         let url = p.get("url").and_then(|x| x.as_str()).unwrap_or("").to_string();
@@ -43,6 +50,19 @@ pub fn connect_telemetry(ws: &Workspace, input: &Value) -> Result<Value, String>
             Err(e) => {
                 problems.push(format!("Prometheus at {}: {}", url, e));
                 prom_report = Some(json!({ "url": url, "ok": false, "error": e }));
+            }
+        }
+    } else if let Some(d) = next.get("datadog").cloned() {
+        match super::datadog::probe(&d, now) {
+            Ok(r) => {
+                if r.get("presets").and_then(|x| x.as_array()).map(|a| a.is_empty()).unwrap_or(true) {
+                    problems.push("Datadog has none of the metrics Hindcast reads (APM trace metrics, or the Agent's Kubernetes or ingress-nginx metrics)".into());
+                }
+                dd_report = Some(r);
+            }
+            Err(e) => {
+                problems.push(format!("Datadog: {}", e));
+                dd_report = Some(json!({ "url": super::datadog::api_base(&d).unwrap_or_default(), "ok": false, "error": e }));
             }
         }
     } else {
@@ -92,6 +112,7 @@ pub fn connect_telemetry(ws: &Workspace, input: &Value) -> Result<Value, String>
             ));
         }
         let from = picked;
+        let dd_deps = dd_report.as_ref().and_then(|d| d.get("calls")).and_then(|c| c.as_array()).map(|a| a.iter().any(|x| x == "dependencies")).unwrap_or(false);
         let said = |k: &str| match k {
             "istio" => "Istio metrics (istio_requests_total)",
             "linkerd" => "Linkerd metrics (response_total)",
@@ -107,6 +128,8 @@ pub fn connect_telemetry(ws: &Workspace, input: &Value) -> Result<Value, String>
                 format!("the topology file {}", f)
             }
             None if !from.is_empty() => from.iter().map(|k| said(k)).collect::<Vec<_>>().join(", else "),
+            None if dd_deps => "Datadog APM service dependencies: callers and callees named, not how often — each callee's requests are shared over its callers".into(),
+            None if dd_report.is_some() => "nowhere: Datadog's APM service dependencies named no calls, so each service with request metrics is its own entry and the others are read against the entry traffic (a topologyFile can name the calls)".into(),
             None => "nowhere: no metric here names both ends of a call, so each service with request metrics is its own entry and the others are read against the entry traffic (a topologyFile can name the calls)".into(),
         };
         calls_report = Some(json!({
@@ -129,7 +152,12 @@ pub fn connect_telemetry(ws: &Workspace, input: &Value) -> Result<Value, String>
     // container metrics name services differently from traces: map them
     let mut suggested = JMap::new();
     let trace_svcs: Vec<String> = traces_report.as_ref().and_then(|t| t.get("services")).and_then(|s| s.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
-    if let Some(p) = prom_report.as_ref().filter(|p| p.get("presets").is_some()) {
+    // Datadog's workloads and ingress Services against its APM services, as the Prometheus presets' are
+    let dd_as_prom = dd_report.as_ref().filter(|d| d.get("presets").is_some()).map(|d| {
+        let sv = |k: &str| d.get("services").and_then(|s| s.get(k)).cloned().unwrap_or(json!([]));
+        json!({ "presets": d["presets"], "services": { "otel-spanmetrics": sv("datadog-apm"), "kubernetes": sv("datadog-kubernetes"), "ingress-nginx": sv("datadog-ingress-nginx") } })
+    });
+    if let Some(p) = prom_report.as_ref().filter(|p| p.get("presets").is_some()).or(dd_as_prom.as_ref()) {
         suggested = suggest_renames(p, &trace_svcs);
         let given = inp.get("system").and_then(|s| s.get("rename")).and_then(|r| r.as_object()).cloned().unwrap_or_default();
         let applied: JMap<String, Value> = suggested.iter().filter(|(k, _)| !given.get(*k).map(|v| truthy(v)).unwrap_or(false)).map(|(k, v)| (k.clone(), v.clone())).collect();
@@ -176,6 +204,37 @@ pub fn connect_telemetry(ws: &Workspace, input: &Value) -> Result<Value, String>
             }
         }
     }
+    let dd_has_ns = next.get("datadog").and_then(|p| p.get("namespaces")).and_then(|n| n.as_array()).map(|a| !a.is_empty()).unwrap_or(false);
+    if next.get("datadog").is_some() && !dd_has_ns {
+        if let Some(wns) = dd_report.as_ref().and_then(|p| p.get("workloadNamespaces")).and_then(|w| w.as_object()) {
+            let mut traced: indexmap::IndexSet<String> = trace_svcs.iter().cloned().collect();
+            for p in ["datadog-apm", "datadog-ingress-nginx"] {
+                if let Some(a) = dd_report.as_ref().and_then(|r| r.get("services")).and_then(|s| s.get(p)).and_then(|x| x.as_array()) {
+                    traced.extend(a.iter().filter_map(|x| x.as_str().map(String::from)));
+                }
+            }
+            let rename = next.get("system").and_then(|s| s.get("rename")).and_then(|r| r.as_object()).cloned().unwrap_or_default();
+            let mut hit: Vec<String> = vec![];
+            for (w, nss) in wns {
+                let renamed = rename.get(w).and_then(|x| x.as_str()).unwrap_or("");
+                if traced.contains(w) || traced.contains(renamed) {
+                    for n in nss.as_array().cloned().unwrap_or_default() {
+                        let n = n.as_str().unwrap_or("").to_string();
+                        if !n.is_empty() && !hit.contains(&n) {
+                            hit.push(n);
+                        }
+                    }
+                }
+            }
+            if !hit.is_empty() {
+                hit.sort();
+                let mut p = obj(next.get("datadog").unwrap());
+                p.insert("namespaces".into(), json!(hit));
+                next.insert("datadog".into(), Value::Object(p));
+                scoped = Some(hit);
+            }
+        }
+    }
     let mut sys = obj(next.get("system").unwrap_or(&Value::Null));
     let has_entry = sys.get("entry").and_then(|e| e.as_array()).map(|a| !a.is_empty()).unwrap_or(false);
     if let Some(e) = traces_report.as_ref().and_then(|t| t.get("entry")).filter(|e| e.as_array().map(|a| !a.is_empty()).unwrap_or(false)) {
@@ -190,7 +249,8 @@ pub fn connect_telemetry(ws: &Workspace, input: &Value) -> Result<Value, String>
     }
     next.insert("system".into(), Value::Object(sys.clone()));
     ws.save_sources(&Value::Object(next.clone()))?;
-    let ready = !no_file && next.get("prometheus").is_some() && prom_report.as_ref().and_then(|p| p.get("presets")).and_then(|x| x.as_array()).map(|a| !a.is_empty()).unwrap_or(false);
+    let has_presets = |r: &Option<Value>| r.as_ref().and_then(|p| p.get("presets")).and_then(|x| x.as_array()).map(|a| !a.is_empty()).unwrap_or(false);
+    let ready = !no_file && ((next.get("prometheus").is_some() && has_presets(&prom_report)) || (next.get("datadog").is_some() && has_presets(&dd_report)));
     let on_nodes = prom_report.as_ref().and_then(|p| p.get("presets")).and_then(|x| x.as_array()).map(|a| a.iter().any(|x| x == "kubernetes")).unwrap_or(false);
     let mut out = JMap::new();
     out.insert("workspace".into(), json!(ws.dir_str()));
@@ -198,6 +258,9 @@ pub fn connect_telemetry(ws: &Workspace, input: &Value) -> Result<Value, String>
     out.insert("system".into(), Value::Object(sys));
     if let Some(p) = prom_report {
         out.insert("prometheus".into(), p);
+    }
+    if let Some(d) = dd_report {
+        out.insert("datadog".into(), d);
     }
     out.insert("traces".into(), traces_report.or(files_report).unwrap_or(Value::Null));
     if let Some(c) = calls_report {
@@ -210,7 +273,7 @@ pub fn connect_telemetry(ws: &Workspace, input: &Value) -> Result<Value, String>
     })));
     out.insert("renamed".into(), Value::Object(suggested));
     if let Some(s) = scoped {
-        out.insert("namespaces".into(), json!(format!("Kubernetes metrics kept to {} — where the traced services run (connect again with prometheus.namespaces to change)", s.join(", "))));
+        out.insert("namespaces".into(), json!(format!("Kubernetes metrics kept to {} — where the traced services run (connect again with {}.namespaces to change)", s.join(", "), if next.get("datadog").is_some() { "datadog" } else { "prometheus" })));
     }
     out.insert("problems".into(), json!(problems));
     out.insert("next".into(), json!(if ready { "collect_telemetry (choose how much history with `last`, e.g. \"7d\")" } else { "fix the problems above and connect again" }));

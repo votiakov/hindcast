@@ -1,8 +1,8 @@
 [
  {
   "name": "connect_telemetry",
-  "title": "Connect to telemetry (Prometheus, Jaeger/Tempo, bill)",
-  "description": "Point Hindcast at the system's live telemetry and probe it, read-only: which metric presets Prometheus supports, which services it names, how far back data goes; which services Jaeger or Tempo knows and which ones requests enter through. Traces are optional: without them, who calls whom is read from service-mesh (Istio, Linkerd), service-graph or span metrics, or a topologyFile, and the model says what that loses. Saves the connection in the workspace (credentials only as env var names). Call this first; calling it again merges new settings. Returns problems to fix and what the model will be able to know.",
+  "title": "Connect to telemetry (Prometheus or Datadog, Jaeger/Tempo, bill)",
+  "description": "Point Hindcast at the system's live telemetry and probe it, read-only: which metric presets Prometheus (or Datadog) supports, which services it names, how far back data goes, what is missing; which services Jaeger or Tempo knows and which ones requests enter through. Traces are optional: without them, who calls whom is read from service-mesh (Istio, Linkerd), service-graph or span metrics, Datadog's APM service dependencies, or a topologyFile, and the model says what that loses. Saves the connection in the workspace (credentials only as env var names). Call this first; calling it again merges new settings. Returns problems to fix and what the model will be able to know.",
   "inputSchema": {
    "$schema": "https://json-schema.org/draft/2020-12/schema",
    "type": "object",
@@ -82,6 +82,57 @@
      "required": [
       "url"
      ],
+     "additionalProperties": false
+    },
+    "datadog": {
+     "description": "Datadog instead of Prometheus, read-only through its Metrics API: APM trace metrics, the Agent's Kubernetes metrics and ingress-nginx; who calls whom from APM service dependencies. Keys only as env var names",
+     "type": "object",
+     "properties": {
+      "site": {
+       "description": "your Datadog site: datadoghq.com, us3.datadoghq.com, us5.datadoghq.com, datadoghq.eu, ap1.datadoghq.com, ap2.datadoghq.com, ddog-gov.com",
+       "type": "string"
+      },
+      "url": {
+       "description": "the API base instead of a site (a proxy), e.g. https://api.datadoghq.com",
+       "type": "string",
+       "format": "uri"
+      },
+      "apiKeyEnv": {
+       "description": "env var holding the API key (default DD_API_KEY); the key itself is never accepted or written",
+       "type": "string"
+      },
+      "appKeyEnv": {
+       "description": "env var holding the application key (default DD_APP_KEY); it needs metrics_read, timeseries_query and apm_read",
+       "type": "string"
+      },
+      "env": {
+       "description": "the APM env to read (default: the busiest env in the trace metrics)",
+       "type": "string"
+      },
+      "scope": {
+       "description": "a tag filter added to every query, e.g. kube_cluster_name:prod-eu",
+       "type": "string"
+      },
+      "namespaces": {
+       "description": "Kubernetes namespaces the system runs in (default: the namespaces holding the APM services)",
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "presets": {
+       "description": "default: every preset whose metrics exist",
+       "type": "array",
+       "items": {
+        "type": "string",
+        "enum": [
+         "datadog-apm",
+         "datadog-kubernetes",
+         "datadog-ingress-nginx"
+        ]
+       }
+      }
+     },
      "additionalProperties": false
     },
     "jaeger": {
@@ -268,7 +319,7 @@
  {
   "name": "collect_telemetry",
   "title": "Collect history from the connected telemetry",
-  "description": "Query Prometheus over a window, fetch traces spread across it from Jaeger/Tempo (without them, read who calls whom from the metrics), add the bill, and import everything into the workspace dataset. Reports per service which signals exist (request rate, errors, p99, CPU, CPU limit, replicas, traces) and what is missing. Longer history with a busy peak makes a better model: one overload in the history is worth more than a month of quiet days.",
+  "description": "Query Prometheus (or Datadog) over a window, fetch traces spread across it from Jaeger/Tempo (without them, read who calls whom from the metrics), add the bill, and import everything into the workspace dataset. Reports per service which signals exist (request rate, errors, p99, CPU, CPU limit, replicas, traces) and what is missing. Longer history with a busy peak makes a better model: one overload in the history is worth more than a month of quiet days.",
   "inputSchema": {
    "$schema": "https://json-schema.org/draft/2020-12/schema",
    "type": "object",

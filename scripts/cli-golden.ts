@@ -16,6 +16,7 @@ const ex = 'examples';
 const fx = 'test/cli-fixtures';
 const PROM = 'http://127.0.0.1:19090';
 const TEL = 'http://127.0.0.1:19091';
+const DD = 'http://127.0.0.1:19690';
 const ws = (k: string) => `${out}/OUT/ws-${k}`;
 const agent = (tool: string, args: Record<string, unknown>) => ['agent', tool, JSON.stringify(args)];
 /** cases whose stderr is a YAML parser's syntax message: only the exit code has to agree */
@@ -168,6 +169,14 @@ export const CASES: string[][] = [
   ['audit', `${ex}/kubernetes/shop.yaml`],
   ['audit', `${ex}/sharded.yaml`, '--rps', '9000'],
   ['audit', `${ex}/two-regions-dns.yaml`, '--rps', '600'],
+  // Datadog, against a mock built from the documented API (mock-datadog.mjs): its first query is answered
+  // 429 once; /nodeps has no service dependencies, no latency distribution and no throttling metrics
+  ['quickstart', '--datadog', `${DD}/shop`, '--last', '6h', '--workspace', ws('qdd')],
+  ['quickstart', '--datadog', `${DD}/nodeps`, '--last', '6h', '--workspace', ws('qdn')],
+  ['quickstart', '--datadog', `${DD}/nodeps`, '--topology', `${fx}/dd-topology.yaml`, '--last', '6h', '--workspace', ws('qdt')],
+  ['quickstart', '--datadog', `${DD}/shop`, '--dd-app-key-env', 'HINDCAST_NO_SUCH_KEY', '--workspace', ws('qdk')],
+  ['quickstart', '--datadog', 'datadoghq.cmo'],
+  agent('connect_telemetry', { workspace: ws('qde'), datadog: { url: `${DD}/shop`, env: 'staging', presets: ['datadog-apm'] } }),
 ];
 
 /** wall-clock numbers differ run to run */
@@ -186,7 +195,7 @@ let dumped = 0;
 let files = snapshot(root, mask);
 function run(args: string[], record: boolean): Golden {
   for (const x of args) if (x.startsWith(`${root}/`)) mkdirSync(x.slice(0, x.lastIndexOf('/')), { recursive: true });
-  const env = { ...process.env, NO_COLOR: '', HINDCAST_NOW: '1791500000', HINDCAST_KUBECTL: 'test/cli-fixtures/fake-kubectl.mjs' };
+  const env = { ...process.env, NO_COLOR: '', HINDCAST_NOW: '1791500000', HINDCAST_KUBECTL: 'test/cli-fixtures/fake-kubectl.mjs', DD_API_KEY: 'mock-api-key', DD_APP_KEY: 'mock-app-key' };
   const r = spawnSync(BIN, args, { encoding: 'utf8', env });
   // everything the command wrote: named outputs, workspaces, reports
   const now = snapshot(root, mask);
@@ -204,6 +213,7 @@ function run(args: string[], record: boolean): Golden {
 
 const prom = spawn('node', ['test/cli-fixtures/mock-prometheus.mjs', '19090'], { stdio: 'ignore' });
 const tel = spawn('node', ['test/cli-fixtures/mock-telemetry.mjs', '19091'], { stdio: 'ignore' });
+const dd = spawn('node', ['test/cli-fixtures/mock-datadog.mjs', '19690'], { stdio: 'ignore' });
 spawnSync('sleep', ['0.5']);
 // workspaces seeded with recorded histories, for the verdict tools ("collected N hours ago" reads the mtime)
 mkdirSync(`${root}/ws-v`, { recursive: true });
@@ -243,6 +253,7 @@ for (const c of CASES) {
 }
 prom.kill();
 tel.kill();
+dd.kill();
 if (record) write(GOLDEN, golden);
 console.log(record ? `\nrecorded ${Object.keys(golden).length} cases in ${GOLDEN}` : failed ? `\n${failed} differ` : '\nall match');
 process.exitCode = failed ? 1 : 0;

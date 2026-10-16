@@ -177,6 +177,10 @@ pub fn parse_sources(v: &Value) -> Value {
     if let Some(Value::Object(p)) = o.get("prometheus") {
         out.insert("prometheus".into(), with_auth(p, &["url", "presets", "selector", "namespaces", "calls"]));
     }
+    if let Some(Value::Object(p)) = o.get("datadog") {
+        // the keys' env var names only: a key itself has no field to land in
+        out.insert("datadog".into(), Value::Object(pick(p, &["site", "url", "apiKeyEnv", "appKeyEnv", "env", "scope", "namespaces", "presets"])));
+    }
     if let Some(Value::Object(p)) = o.get("jaeger") {
         out.insert("jaeger".into(), with_auth(p, &["url"]));
     }

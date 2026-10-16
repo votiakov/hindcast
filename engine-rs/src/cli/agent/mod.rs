@@ -3,6 +3,7 @@
 
 pub mod collect;
 pub mod connect;
+pub mod datadog;
 pub mod infer;
 pub mod quickstart;
 pub mod review;
@@ -260,7 +261,7 @@ pub fn dispatch(name: &str, parsed: &Value) -> Result<Value, String> {
 pub fn command(rest: &[String], out: &mut Out) -> Result<i32, String> {
     let tool = rest.first().map(|s| s.as_str()).unwrap_or("");
     if rest.iter().any(|a| a == "--help" || a == "-h") {
-        out.log("hindcast agent setup [claude|cursor|vscode|desktop|windsurf] [--write] [--project <dir>] [--workspace <dir>]\nhindcast agent list\nhindcast agent <tool> '<json args>' | @args.json | -\n\nEach tool's arguments: hindcast agent list, then docs/agents.md. To run connect → collect → calibrate → review in one go: hindcast quickstart --prometheus <url>.");
+        out.log("hindcast agent setup [claude|cursor|vscode|desktop|windsurf] [--write] [--project <dir>] [--workspace <dir>]\nhindcast agent list\nhindcast agent <tool> '<json args>' | @args.json | -\n\nEach tool's arguments: hindcast agent list, then docs/agents.md. To run connect → collect → calibrate → review in one go: hindcast quickstart --prometheus <url> (or --datadog <site>).");
         return Ok(0);
     }
     if tool == "setup" {
