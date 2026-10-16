@@ -47,10 +47,15 @@ export interface DesResult {
     peakErrorRate: number;
     p50Ms: number;
     p90Ms: number;
+    /** p50–p99.9 and the per-second mean/peak p99: successful answers only */
     p99Ms: number;
     p999Ms: number;
     meanP99Ms: number;
     peakP99Ms: number;
+    /** the same as p99Ms, under the name both engines use; absent when nothing succeeded */
+    p99AnswersMs?: number;
+    /** the run's p99 of every request, a failure at the time it took to fail */
+    p99WithFailuresMs?: number;
     meanCostPerHour: number;
     peakCostPerHour: number;
     sloCompliance: number;

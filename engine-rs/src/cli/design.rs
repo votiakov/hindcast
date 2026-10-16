@@ -195,7 +195,7 @@ fn print_analysis(a: &Value, out: &mut Out) {
     let p = n(a, &["pSloMet"]);
     out.log(&format!("  SLO met in {} of runs {}", if p >= 0.95 { green(&pct(p)) } else { red(&pct(p)) }, dim(&format!("(time-in-SLO {} ± {})", pct(n(a, &["metrics", "sloCompliance", "mean"])), pct(n(a, &["metrics", "sloCompliance", "ci95"]))))));
     out.log(&format!("  errors   {}   {}", st("errorRate", &pct), dim(&format!("peak {}", pct(n(a, &["metrics", "peakErrorRate", "mean"]))))));
-    out.log(&format!("  latency  p50 {}   p99 {}   p99.9 {}", st("p50Ms", &ms), st("p99Ms", &ms), st("p999Ms", &ms)));
+    out.log(&format!("  latency  p50 {}   p99 {}   p99.9 {}   {}", st("p50Ms", &ms), st("p99Ms", &ms), st("p999Ms", &ms), dim("successful answers")));
     let c = n(a, &["metrics", "costPerHour", "mean"]);
     out.log(&format!("  cost     ${}/h {}", js_to_fixed(c, 2), dim(&format!("≈ ${}/month", loc(js_round(c * 730.0))))));
     for b in arr(a, &["bottlenecks"]) {
@@ -309,7 +309,7 @@ pub fn audit_markdown(r: &Value) -> String {
         if weak.is_empty() { String::new() } else { format!("; costs the most: {}", weak.join(", ")) }
     ));
     l.push(format!("| Headroom | {}× — {} req/s, then **{}** gives out |", js_to_fixed(n(r, &["headroom", "ratio"]), 1), loc(js_round(n(r, &["headroom", "maxRps"]))), or_dash(r, &["headroom", "limitedBy"])));
-    l.push(format!("| Normal operation | errors {}, p99 {}, {}/month{} |", apct(n(r, &["baseline", "errorRate"])), ams(n(r, &["baseline", "p99Ms"])), money(n(r, &["baseline", "monthly"])), if g(r, &["baseline", "meetsSlo"]).as_bool().unwrap_or(false) { "" } else { " — **already outside the SLO**" }));
+    l.push(format!("| Normal operation | errors {}, p99 incl. failures {}, {}/month{} |", apct(n(r, &["baseline", "errorRate"])), ams(n(r, &["baseline", "p99Ms"])), money(n(r, &["baseline", "monthly"])), if g(r, &["baseline", "meetsSlo"]).as_bool().unwrap_or(false) { "" } else { " — **already outside the SLO**" }));
     l.push(String::new());
     if !bad.is_empty() {
         l.push("## What breaks first".into());
@@ -327,7 +327,7 @@ pub fn audit_markdown(r: &Value) -> String {
             };
             let blast: Vec<String> = arr(f, &["blastRadius"]).iter().map(|b| template(b)).collect();
             l.push(format!(
-                "| {} | {} | {} errors, p99 {} | {} | {} | {} | {} |",
+                "| {} | {} | {} errors, peak p99 incl. failures {} | {} | {} | {} | {} |",
                 sev_name(&s(f, &["severity"])),
                 s(f, &["title"]),
                 apct(n(f, &["impact", "errorRate"])),
@@ -407,7 +407,7 @@ fn curve_svg(r: &Value) -> String {
   <text x=\"{pl6}\" y=\"{ymax4}\" text-anchor=\"end\" class=\"t\">{ymaxms}</text>
   <text x=\"{pl6}\" y=\"{y0}\" text-anchor=\"end\" class=\"t\">0</text>
 </svg>
-<p class=\"legend\"><span class=\"k lat\"></span> p99 latency <span class=\"k err\"></span> share of requests failing (0–100%) · x: req/s, steady state</p>",
+<p class=\"legend\"><span class=\"k lat\"></span> p99 latency incl. failures (as timeouts) <span class=\"k err\"></span> share of requests failing (0–100%) · x: req/s, steady state</p>",
         w = js_num(w),
         h = js_num(h),
         pl = js_num(pl),
@@ -459,7 +459,7 @@ fn html_finding(f: &Value) -> String {
     let blast = arr(f, &["blastRadius"]);
     let facts = if kind != "headroom" {
         format!(
-            "<p class=\"facts\">peak p99 <b>{}</b> · out of SLO <b>{} s</b> · {}{}{}</p>",
+            "<p class=\"facts\">peak p99 incl. failures <b>{}</b> · out of SLO <b>{} s</b> · {}{}{}</p>",
             ams(n(f, &["impact", "peakP99Ms"])),
             js_num(n(f, &["impact", "breachS"])),
             rec,
@@ -508,7 +508,7 @@ pub fn audit_html(r: &Value, date: &str) -> String {
                         s(f, &["severity"]),
                         sev_name(&s(f, &["severity"])),
                         esc(&s(f, &["title"])),
-                        if s(f, &["kind"]) == "headroom" { "—".to_string() } else { format!("{} errors, p99 {}", apct(n(f, &["impact", "errorRate"])), ams(n(f, &["impact", "peakP99Ms"]))) },
+                        if s(f, &["kind"]) == "headroom" { "—".to_string() } else { format!("{} errors, peak p99 incl. failures {}", apct(n(f, &["impact", "errorRate"])), ams(n(f, &["impact", "peakP99Ms"]))) },
                         fix.map(|x| format!("{} → {}", esc(&s(x, &["title"])), sev_name(&s(x, &["after", "severity"])).to_lowercase())).unwrap_or_else(|| "<span>needs a design decision</span>".into()),
                         fix.map(|x| money(n(x, &["monthlyDelta"]))).unwrap_or_default()
                     )

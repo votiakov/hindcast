@@ -613,7 +613,7 @@
   {
    "name": "simulate",
    "title": "Simulate an architecture",
-   "description": "Run one scenario (traffic shape + failure events) against an architecture. Returns SLO compliance, error rate, p99, cost, ranked bottlenecks with plain-English explanations, and an event log. Set include_timeline for a per-second series.",
+   "description": "Run one scenario (traffic shape + failure events) against an architecture. Returns SLO compliance, error rate, p99, cost, ranked bottlenecks with plain-English explanations, and an event log. Set include_timeline for a per-second series. The engines' meanP99Ms/peakP99Ms differ: fluid counts failures as timeouts once they pass 1% of a second, des is successful answers only. To compare engines use summary.p99AnswersMs (successful answers) and summary.p99WithFailuresMs (every request, a failure at the time it took), both over the whole run.",
    "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",

@@ -39,7 +39,7 @@ function curveSvg(r: AuditResult): string {
   <text x="${P.l - 6}" y="${yl(yMax) + 4}" text-anchor="end" class="t">${ms(Math.round(yMax))}</text>
   <text x="${P.l - 6}" y="${yl(0)}" text-anchor="end" class="t">0</text>
 </svg>
-<p class="legend"><span class="k lat"></span> p99 latency <span class="k err"></span> share of requests failing (0–100%) · x: req/s, steady state</p>`;
+<p class="legend"><span class="k lat"></span> p99 latency incl. failures (as timeouts) <span class="k err"></span> share of requests failing (0–100%) · x: req/s, steady state</p>`;
 }
 
 function finding(f: Finding): string {
@@ -48,7 +48,7 @@ function finding(f: Finding): string {
   return `<section class="f sev-${f.severity}">
   <h3><span class="sev">${SEV[f.severity]}</span> ${esc(f.title)}</h3>
   <p>${esc(f.explanation)}</p>
-  ${f.kind !== 'headroom' ? `<p class="facts">peak p99 <b>${ms(i.peakP99Ms)}</b> · out of SLO <b>${i.breachS} s</b> · ${rec}${f.costAtRisk ? ` · <b class="bad">$${f.costAtRisk.toLocaleString('en-US')}</b> at risk` : ''}${f.blastRadius.length ? ` · blast radius: ${f.blastRadius.map((b) => `<code>${esc(b)}</code>`).join(' ')}` : ''}</p>` : ''}
+  ${f.kind !== 'headroom' ? `<p class="facts">peak p99 incl. failures <b>${ms(i.peakP99Ms)}</b> · out of SLO <b>${i.breachS} s</b> · ${rec}${f.costAtRisk ? ` · <b class="bad">$${f.costAtRisk.toLocaleString('en-US')}</b> at risk` : ''}${f.blastRadius.length ? ` · blast radius: ${f.blastRadius.map((b) => `<code>${esc(b)}</code>`).join(' ')}` : ''}</p>` : ''}
   ${f.fixes.length ? `<table class="fixes"><thead><tr><th>verified fix</th><th>after</th><th>$/month</th></tr></thead><tbody>${f.fixes.map((x) => `<tr><td><b>${esc(x.title)}</b><br><span>${esc(x.why)}</span></td><td class="sev-${x.after.severity}">${SEV[x.after.severity]}${x.after.errorRate ? `, ${pct(x.after.errorRate)}` : ''}</td><td class="num">${money(x.monthlyDelta)}</td></tr>`).join('')}</tbody></table>` : ''}
 </section>`;
 }
@@ -110,7 +110,7 @@ footer { margin-top: 40px; color: var(--mut); font-size: 12px; border-top: 1px s
 <h2>Load curve</h2>
 ${curveSvg(r)}
 ${bad.length ? `<h2>What breaks first</h2><table><thead><tr><th>incident</th><th>users see</th><th>best verified fix</th><th>$/month</th></tr></thead><tbody>${bad
-    .map((f) => `<tr><td class="sev-${f.severity}"><b>${SEV[f.severity]}</b> ${esc(f.title)}</td><td>${f.kind === 'headroom' ? '—' : `${pct(f.impact.errorRate)} errors, p99 ${ms(f.impact.peakP99Ms)}`}</td><td>${f.fixes[0] ? `${esc(f.fixes[0].title)} → ${SEV[f.fixes[0].after.severity].toLowerCase()}` : '<span>needs a design decision</span>'}</td><td class="num">${f.fixes[0] ? money(f.fixes[0].monthlyDelta) : ''}</td></tr>`)
+    .map((f) => `<tr><td class="sev-${f.severity}"><b>${SEV[f.severity]}</b> ${esc(f.title)}</td><td>${f.kind === 'headroom' ? '—' : `${pct(f.impact.errorRate)} errors, peak p99 incl. failures ${ms(f.impact.peakP99Ms)}`}</td><td>${f.fixes[0] ? `${esc(f.fixes[0].title)} → ${SEV[f.fixes[0].after.severity].toLowerCase()}` : '<span>needs a design decision</span>'}</td><td class="num">${f.fixes[0] ? money(f.fixes[0].monthlyDelta) : ''}</td></tr>`)
     .join('')}</tbody></table>` : ''}
 <h2>Every incident</h2>
 ${r.findings.map(finding).join('\n')}

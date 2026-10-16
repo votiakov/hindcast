@@ -529,7 +529,7 @@ fn pool_latency(d: &NodeData, cap: f64, util: f64, queue: f64, bound_ms: f64) ->
 }
 
 /// share of a mixture's answers slower than a deadline
-fn mix_late(dist: &[[f64; 3]], deadline: f64) -> f64 {
+pub fn mix_late(dist: &[[f64; 3]], deadline: f64) -> f64 {
     let w: f64 = dist.iter().map(|c| c[0]).sum();
     if w <= 0.0 {
         return 0.0;
@@ -1246,6 +1246,23 @@ impl Engine {
                     out.push([ok, st.latency_ms, st.tail_ms]);
                 } else {
                     out.extend(mix_then(&st.dist, 0.0, 0.0, ok));
+                }
+            }
+        }
+        out
+    }
+
+    /// the users' failed requests this tick as (share of the traffic, ms): each client's failures at
+    /// the time they take to fail as this engine tracks it (`fail_ms`: a rejection at once, a call that
+    /// failed downstream after the time that took, a late one at its deadline), a mean with no spread
+    pub fn fail_mix(&self, nodes: &[SimNode]) -> Vec<[f64; 2]> {
+        let clients: Vec<&SimNode> = nodes.iter().filter(|n| n.data.kind == "client" && n.data.alive).collect();
+        let mut out = vec![];
+        for n in &clients {
+            if let Some(st) = self.nodes.get(&n.id) {
+                let failed = (1.0 - st.success).max(0.0) / clients.len() as f64;
+                if failed > 0.0 {
+                    out.push([failed, st.fail_ms]);
                 }
             }
         }

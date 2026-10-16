@@ -43,8 +43,13 @@ export interface SimResult {
     meanRps: number;
     meanErrorRate: number;
     peakErrorRate: number;
+    /** mean and peak of the per-second p99; a second with ≥ 1% failures reads as a timeout */
     meanP99Ms: number;
     peakP99Ms: number;
+    /** the run's p99 of successful answers only (the DES's p99Ms); absent when nothing succeeded */
+    p99AnswersMs?: number;
+    /** the run's p99 of every request, a failure at the time it took to fail (its tick's mean) */
+    p99WithFailuresMs?: number;
     meanCostPerHour: number;
     peakCostPerHour: number;
     /** share of time within SLO */

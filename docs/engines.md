@@ -171,7 +171,7 @@ icon in `canvas/icons.tsx`, colours in `theme/themes.ts`, and (if it has new kno
   component at ≥ 97% load), the fluid p50 and p99 of answers fall inside the DES's five-seed range
   ±25% + 5 ms on 97. The one outside is a cold-start cascade the per-tick fluid model can't stagger.
   The summary p99s are not the same quantity: the fluid one counts failures as timeouts once they pass
-  1%, the DES's is of successful answers only.
+  1%, the DES's is of successful answers only (see [What "p99" means](#what-p99-means-in-each-engine)).
 - **Metastable failure emerges.** 700 req/s with a 6 s spike to 1,600, client timeout 1 s, API queue 3 s:
 
   | client | errors during spike | errors 20–30 s | errors 50–60 s |
@@ -181,6 +181,25 @@ icon in `canvas/icons.tsx`, colours in `theme/themes.ts`, and (if it has new kno
   | 3 retries + backoff | 50 % | 100 % | 100 % |
   | retry budget | 63 % | 68 % | 0 % |
   | immediate + 0.3 s queue | 37 % | 0 % | 0 % |
+
+### What "p99" means in each engine
+
+The engines' default p99 figures are different quantities, and stay so until a decision is made on
+one definition (changing either would move every p99 reported so far, validation included):
+
+| field | fluid (`simulate`) | discrete-event (`simulate --engine des`) |
+|---|---|---|
+| `meanP99Ms`, `peakP99Ms` | mean and worst of the per-second p99; a second with ≥ 1 % failures reads as the timeout (`timeoutS`): **failures as timeouts** | mean and worst of the per-second p99 of that second's **successful answers** |
+| `p99Ms` (DES only), p50/p90/p99.9 | — | the run's percentiles of successful answers; a request still waiting when the run ends counts with what it waited |
+| `p99AnswersMs` | the run's p99 of successful answers (the answer mixtures pooled tick by tick, as `scripts/engine-crosscheck.ts` compares them) | the same number as `p99Ms` |
+| `p99WithFailuresMs` | the run's p99 of every request, a failure at the time it took to fail: each tick's mean time to fail (a rejection at once, a call that failed downstream after what that took, a late one at its deadline), with no spread of its own | the run's p99 of every request, each failure at the time it actually took |
+
+`p99AnswersMs` and `p99WithFailuresMs` are the ones to compare across engines. Either is left out
+where it can't be computed (no successful answer; no request). The fluid engine's figure with
+failures is a mean per tick, so where failures dominate and their times spread (a few fast
+rejections, a few long timeouts) it reads lower than the DES's. Where they're printed, the CLI, the
+audit reports and the app label each p99: "incl. failures" for the fluid engine's (failures as
+timeouts), "answers" for successful answers only.
 
 ### Dynamics (both engines)
 

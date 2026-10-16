@@ -473,12 +473,22 @@ pub struct DesSummary {
     pub mean_rps: f64,
     pub mean_error_rate: f64,
     pub peak_error_rate: f64,
+    /// percentiles over the whole run of the users' successful answers (a request still waiting when
+    /// the run ends counts with what it waited, a lower bound); failures are left out
     pub p50_ms: f64,
     pub p90_ms: f64,
     pub p99_ms: f64,
     pub p999_ms: f64,
+    /// the mean and the peak of the per-second p99 of that second's successful answers
     pub mean_p99_ms: f64,
     pub peak_p99_ms: f64,
+    /// the same figure as `p99Ms`, under the name both engines give it; absent when nothing succeeded
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub p99_answers_ms: Option<f64>,
+    /// the 99th percentile over the whole run of every user request, a failure counted at the time it
+    /// took to fail (a rejection at once, a timeout at its deadline); absent with no requests
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub p99_with_failures_ms: Option<f64>,
     pub mean_cost_per_hour: f64,
     pub peak_cost_per_hour: f64,
     pub slo_compliance: f64,
@@ -592,6 +602,10 @@ struct Des<'a> {
     orders: Vec<Vec<usize>>,
     clients: Vec<usize>,
     user_hist: Histogram,
+    /// every user request, failed ones at the time they took to fail
+    all_hist: Histogram,
+    /// successful answers only (`user_hist` also holds the requests still waiting at the end)
+    answers: u64,
     win_hist: Histogram,
     win_reqs: f64,
     win_fail: f64,
@@ -794,9 +808,11 @@ impl<'a> Des<'a> {
                 let ms = (self.now - t0) * 1000.0;
                 self.win_reqs += 1.0;
                 self.total_reqs += 1.0;
+                self.all_hist.record(ms);
                 if ok {
                     self.win_hist.record(ms);
                     self.user_hist.record(ms);
+                    self.answers += 1;
                 } else {
                     self.win_fail += 1.0;
                     self.total_fail += 1.0;
@@ -1956,6 +1972,8 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
         orders: vec![],
         clients: clients.clone(),
         user_hist: Histogram::new(),
+        all_hist: Histogram::new(),
+        answers: 0,
         win_hist: Histogram::new(),
         win_reqs: 0.0,
         win_fail: 0.0,
@@ -2015,6 +2033,7 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
         if let Cont::User { t0, job: false } = c {
             des.total_reqs += 1.0;
             des.user_hist.record((end - t0) * 1000.0);
+            des.all_hist.record((end - t0) * 1000.0);
         }
     }
 
@@ -2079,6 +2098,8 @@ pub fn run_des(spec: &Architecture, sc: &Scenario, cfg: &DesConfig) -> DesResult
             p999_ms: js_round(des.user_hist.quantile(0.999)),
             mean_p99_ms: js_round(mean(&|x| x.p99_ms)),
             peak_p99_ms: js_round(peak(&|x| x.p99_ms)),
+            p99_answers_ms: if des.answers > 0 { Some(js_round(des.user_hist.quantile(0.99))) } else { None },
+            p99_with_failures_ms: if des.total_reqs > 0.0 { Some(js_round(des.all_hist.quantile(0.99))) } else { None },
             mean_cost_per_hour: r3(mean(&|x| x.cost_per_hour)),
             peak_cost_per_hour: r3(peak(&|x| x.cost_per_hour)),
             slo_compliance: r3(1.0 - des.breach / (tln.len() as f64).max(1.0)),
@@ -2233,5 +2254,68 @@ mod reconnect_tests {
             let near = |x: f64| if back.is_infinite() { x.is_infinite() } else { (x - back).abs() <= 2.0 };
             assert!(near(ft) && near(dt), "reconnect {}: back at {} (fluid) and {} (des), want {}", r, ft, dt, back);
         }
+    }
+}
+
+/// the summaries' p99 under the names both engines share: `p99AnswersMs` (successful answers only)
+/// and `p99WithFailuresMs` (every request, a failure at the time it took), beside each engine's own
+/// `meanP99Ms`/`peakP99Ms`, which stay as they were (the fluid engine's count failures as timeouts)
+#[cfg(test)]
+mod p99_names_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn shop() -> serde_json::Value {
+        json!({ "components": [{ "id": "users", "kind": "client" }, { "id": "lb", "kind": "lb" }, { "id": "api", "kind": "server", "instances": 4, "runtime": "node" }, { "id": "db", "kind": "db", "tier": "M" }], "connections": ["users -> lb", "lb -> api", "api -> db"] })
+    }
+    fn fluid(sc: serde_json::Value) -> super::super::headless::SimResult {
+        let o = super::super::headless::SimOptions { answers: Some(true), ..Default::default() };
+        super::super::headless::simulate(&shop(), &sc, &o).unwrap()
+    }
+
+    #[test]
+    fn both_engines_report_both_figures_when_requests_fail() {
+        let sc = json!({ "duration": 30, "rps": 2500 });
+        let f = fluid(sc.clone());
+        let d = simulate_des(&shop(), &sc, &DesConfig::default()).unwrap();
+        assert!(f.summary.mean_error_rate > 0.01 && d.summary.mean_error_rate > 0.01, "errors fluid {} des {}", f.summary.mean_error_rate, d.summary.mean_error_rate);
+        for (name, s) in [("fluid", serde_json::to_value(&f.summary).unwrap()), ("des", serde_json::to_value(&d.summary).unwrap())] {
+            for k in ["p99AnswersMs", "p99WithFailuresMs", "meanP99Ms", "peakP99Ms"] {
+                assert!(s[k].as_f64().map(|x| x > 0.0).unwrap_or(false), "{} {}: {}", name, k, s[k]);
+            }
+        }
+        // the fluid engine's answers figure is the crosscheck's `answers` p99, binned
+        assert_eq!(f.summary.p99_answers_ms, Some(f.answers.as_ref().unwrap().p99_ms));
+        // the discrete-event engine's is its p99Ms under the shared name
+        assert_eq!(d.summary.p99_answers_ms, Some(d.summary.p99_ms));
+        // a failure counted at the time it took agrees between the engines here (requests shed at
+        // the api's bound), within the crosscheck's tolerance
+        let (fw, dw) = (f.summary.p99_with_failures_ms.unwrap(), d.summary.p99_with_failures_ms.unwrap());
+        assert!(fw >= dw / 1.25 - 5.0 && fw <= dw * 1.25 + 5.0, "p99 with failures fluid {} des {}", fw, dw);
+    }
+
+    #[test]
+    fn nothing_succeeded_leaves_the_answers_figure_out() {
+        let sc = json!({ "duration": 10, "rps": 100, "events": [{ "at": 0, "action": { "type": "kill-id", "id": "lb" } }] });
+        let d = simulate_des(&shop(), &sc, &DesConfig::default()).unwrap();
+        assert!(d.summary.mean_error_rate > 0.99, "errors {}", d.summary.mean_error_rate);
+        assert_eq!(d.summary.p99_answers_ms, None);
+        assert!(d.summary.p99_with_failures_ms.is_some());
+        assert!(serde_json::to_value(&d.summary).unwrap().get("p99AnswersMs").is_none());
+    }
+
+    #[test]
+    fn the_answers_figures_agree_on_a_healthy_board() {
+        // scripts/engine-crosscheck.ts's test: the fluid figure inside the DES's 5-seed range ±25% + 5 ms
+        let sc = json!({ "duration": 40, "rps": 500 });
+        let f = fluid(sc.clone());
+        assert!(f.summary.mean_error_rate < 0.001);
+        let des: Vec<f64> = (1..=5).map(|seed| simulate_des(&shop(), &sc, &DesConfig { seed: seed as f64, ..Default::default() }).unwrap().summary.p99_answers_ms.unwrap()).collect();
+        let lo = des.iter().cloned().fold(f64::INFINITY, f64::min) / 1.25 - 5.0;
+        let hi = des.iter().cloned().fold(0.0, f64::max) * 1.25 + 5.0;
+        let fa = f.summary.p99_answers_ms.unwrap();
+        assert!(fa >= lo && fa <= hi, "fluid {} des {:?}", fa, des);
+        // with nothing failing, the figure with failures is the answers' one
+        assert_eq!(f.summary.p99_with_failures_ms, f.summary.p99_answers_ms);
     }
 }

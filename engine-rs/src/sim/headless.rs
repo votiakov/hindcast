@@ -4,9 +4,10 @@
 //! come with it.
 
 use super::catalog::*;
-use super::engine::{mix_quantile, Engine, EngineConfig, NodeStats, SimEdge, SimNode};
+use super::engine::{mix_late, mix_quantile, Engine, EngineConfig, NodeStats, SimEdge, SimNode};
 use super::spec::{apply_variant, graph_of, parse_architecture, parse_scenario, Action, Architecture, Scenario};
 use crate::backtest::{js_max, js_sort_by};
+use crate::fmath::JsMath;
 use crate::math::{js_num, js_round, js_to_fixed};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
@@ -399,8 +400,18 @@ pub struct Summary {
     pub mean_rps: f64,
     pub mean_error_rate: f64,
     pub peak_error_rate: f64,
+    /// the mean and the peak of the per-second p99, where once 1% or more of that second's requests
+    /// fail the p99 is a timeout (`timeoutS`, default 5 s): failures count as timeouts
     pub mean_p99_ms: f64,
     pub peak_p99_ms: f64,
+    /// the 99th percentile over the whole run of the successful answers only (what the discrete-event
+    /// engine's `p99Ms` measures); absent when nothing succeeded
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub p99_answers_ms: Option<f64>,
+    /// the 99th percentile over the whole run of every request, a failure counted at the time it took
+    /// to fail (each tick's mean time to fail, as this engine tracks it: no spread); absent with no traffic
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub p99_with_failures_ms: Option<f64>,
     pub mean_cost_per_hour: f64,
     pub peak_cost_per_hour: f64,
     pub slo_compliance: f64,
@@ -489,6 +500,69 @@ pub struct SimOptions {
     pub answers: Option<bool>,
 }
 
+/// a run's answers and failures pooled tick by tick, merged into bins 0.25% wide (by mean and spread,
+/// failures by their time) so a day-long run keeps a few thousand parts, not one per tick
+#[derive(Default)]
+struct LatencyPool {
+    answers: IndexMap<(i64, i64), [f64; 3]>,
+    failures: IndexMap<i64, [f64; 2]>,
+}
+
+fn bin(x: f64) -> i64 {
+    ((1.0 + x.max(0.0)).js_ln() * 400.0).round() as i64
+}
+
+impl LatencyPool {
+    fn answer(&mut self, w: f64, mean: f64, tail: f64) {
+        if !(w > 0.0) || !mean.is_finite() || !tail.is_finite() {
+            return;
+        }
+        let a = self.answers.entry((bin(mean), bin(tail))).or_insert([0.0; 3]);
+        a[0] += w;
+        a[1] += w * mean;
+        a[2] += w * tail;
+    }
+    fn failure(&mut self, w: f64, ms: f64) {
+        if !(w > 0.0) || !ms.is_finite() {
+            return;
+        }
+        let a = self.failures.entry(bin(ms)).or_insert([0.0; 2]);
+        a[0] += w;
+        a[1] += w * ms;
+    }
+    fn answers_mix(&self) -> Vec<[f64; 3]> {
+        self.answers.values().map(|a| [a[0], a[1] / a[0], a[2] / a[0]]).collect()
+    }
+    /// the answers' 99th percentile, or None when nothing succeeded
+    fn p99_answers(&self) -> Option<f64> {
+        let mix = self.answers_mix();
+        if mix.is_empty() {
+            return None;
+        }
+        Some(js_round(mix_quantile(&mix, 0.99)))
+    }
+    /// the 99th percentile of answers and failures together, or None with no requests
+    fn p99_with_failures(&self) -> Option<f64> {
+        let mix = self.answers_mix();
+        let fails: Vec<[f64; 2]> = self.failures.values().map(|a| [a[0], a[1] / a[0]]).collect();
+        let (wa, wf) = (mix.iter().map(|c| c[0]).sum::<f64>(), fails.iter().map(|c| c[0]).sum::<f64>());
+        if wa + wf <= 0.0 {
+            return None;
+        }
+        let late = |d: f64| (wa * mix_late(&mix, d) + fails.iter().filter(|c| c[1] > d).map(|c| c[0]).sum::<f64>()) / (wa + wf);
+        let (mut lo, mut hi) = (0.0, mix.iter().map(|c| c[1] + 4.0 * c[2] + 1.0).chain(fails.iter().map(|c| c[1] + 1.0)).fold(0.0, f64::max));
+        for _ in 0..50 {
+            let mid = (lo + hi) / 2.0;
+            if late(mid) > 0.01 {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        Some(js_round(hi))
+    }
+}
+
 fn config(cfg: Option<&Value>) -> EngineConfig {
     let mut c = EngineConfig::default();
     if let Some(Value::Object(o)) = cfg {
@@ -562,6 +636,8 @@ pub fn simulate_parsed(spec: &Architecture, sc: &Scenario, o: &SimOptions) -> Si
     let (mut requests, mut failed, mut breach) = (0.0, 0.0, 0.0);
     // every tick's successful answers, pooled over the run as the discrete-event engine's histogram is
     let mut ans: Vec<[f64; 3]> = vec![];
+    // the same, and the failures, binned: the summary's p99AnswersMs and p99WithFailuresMs
+    let mut pool = LatencyPool::default();
     let (mut worst_t, mut worst_score) = (0.0, -1.0);
     let mut rand = crate::backtest::rng(12345.0);
     let has_out: std::collections::HashSet<String> = edges.iter().map(|e| e.source.clone()).collect();
@@ -595,6 +671,13 @@ pub fn simulate_parsed(spec: &Architecture, sc: &Scenario, o: &SimOptions) -> Si
         let gl = snap.global;
         if o.answers == Some(true) {
             ans.extend(engine.answer_mix(&nodes).into_iter().map(|c| [c[0] * traffic(t) * dt, c[1], c[2]]));
+        }
+        let sent = traffic(t) * dt;
+        for c in engine.answer_mix(&nodes) {
+            pool.answer(c[0] * sent, c[1], c[2]);
+        }
+        for c in engine.fail_mix(&nodes) {
+            pool.failure(c[0] * sent, c[1]);
         }
         requests += gl.rps * dt;
         failed += gl.rps * gl.error_rate * dt;
@@ -677,6 +760,8 @@ pub fn simulate_parsed(spec: &Architecture, sc: &Scenario, o: &SimOptions) -> Si
             peak_error_rate: round(peak(&|x| x.error_rate), 4),
             mean_p99_ms: js_round(mean(&|x| x.p99_ms)),
             peak_p99_ms: js_round(peak(&|x| x.p99_ms)),
+            p99_answers_ms: pool.p99_answers(),
+            p99_with_failures_ms: pool.p99_with_failures(),
             mean_cost_per_hour: round(mean(&|x| x.cost_per_hour), 3),
             peak_cost_per_hour: round(peak(&|x| x.cost_per_hour), 3),
             slo_compliance: round(1.0 - breach / sc.duration, 3),

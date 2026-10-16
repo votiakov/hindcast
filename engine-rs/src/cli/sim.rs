@@ -78,6 +78,7 @@ pub fn command(cmd: &str, f: &Flags, out: &mut Out) -> Result<Option<i32>, Strin
                 let slo = if r.meets_slo { green(&pad("met", 8)) } else { red(&pad(&pct(r.slo_compliance), 8)) };
                 out.log(&format!("{}{}{}{}{}{}{}", pad(&(i + 1).to_string(), 3), pad(&r.name, 32), slo, pad(&pct(r.mean_error_rate), 9), pad(&ms(r.peak_p99_ms), 10), pad(&format!("${}", loc(r.monthly_cost)), 10), dim(r.top_bottleneck.as_deref().unwrap_or("—"))));
             }
+            out.log(&dim("peak p99: the worst second's p99 incl. failures, as timeouts (fluid engine)"));
             out.log("");
             0
         }
@@ -220,7 +221,15 @@ fn print_result(r: &Value, out: &mut Out) {
     let met = if ok { green(&format!("met {} of the time", pct(s("sloCompliance")))) } else { red(&format!("met only {} of the time ({}s in breach)", pct(s("sloCompliance")), js_num(s("sloBreachSeconds")))) };
     out.log(&format!("  SLO (errors ≤ {}, p99 ≤ {}): {}", pct(gn(r, &["slo", "maxErrorRate"])), ms(gn(r, &["slo", "maxP99Ms"])), met));
     out.log(&format!("  errors  mean {}  peak {}   {}", pct(s("meanErrorRate")), pct(s("peakErrorRate")), dim(&format!("{} of {} requests failed", loc(s("failedRequests")), loc(s("requests"))))));
-    out.log(&format!("  p99     mean {}  peak {}   {}", ms(s("meanP99Ms")), ms(s("peakP99Ms")), dim(&format!("worst moment at t={}s", js_num(s("worstMomentS"))))));
+    // the two engines' per-second p99 are different quantities: the fluid engine's reads as a timeout
+    // once 1% of a second's requests fail, the discrete-event engine's is of the successful answers
+    let des = gs(r, &["engine"]) == "des";
+    out.log(&format!("  p99     mean {}  peak {}   {}", ms(s("meanP99Ms")), ms(s("peakP99Ms")), dim(&format!("{} · worst moment at t={}s", if des { "answers" } else { "incl. failures, as timeouts" }, js_num(s("worstMomentS"))))));
+    let run = |k: &str| match g(r, &["summary", k]) {
+        Value::Number(x) => ms(x.as_f64().unwrap_or(f64::NAN)),
+        _ => "—".into(),
+    };
+    out.log(&format!("  p99 run answers {}  incl. failures {}   {}", run("p99AnswersMs"), run("p99WithFailuresMs"), dim("over the whole run; failures at the time they took to fail")));
     out.log(&format!("  cost    ${}/h  {}", js_to_fixed(s("meanCostPerHour"), 2), dim(&format!("≈ ${}/month", loc(js_round(s("meanCostPerHour") * 730.0))))));
     let bn = g(r, &["bottlenecks"]).as_array().cloned().unwrap_or_default();
     if !bn.is_empty() {

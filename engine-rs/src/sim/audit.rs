@@ -325,7 +325,7 @@ fn explain_incident(inc: &Incident, i: &Impact, r: &SimResult, sev: &str, nm: &d
         parts.push(format!("Absorbed: users stayed within SLO{}.", if i.peak_p99_ms != 0.0 { format!(" (p99 peaked at {} ms)", js_num(i.peak_p99_ms)) } else { String::new() }));
     } else {
         parts.push(format!(
-            "{} of requests failed while it lasted (peak {}), p99 up to {}.",
+            "{} of requests failed while it lasted (peak {}), p99 incl. failures up to {}.",
             pct(i.error_rate),
             pct(i.peak_error_rate),
             if i.peak_p99_ms >= 1000.0 { format!("{} s", js_to_fixed(i.peak_p99_ms / 1000.0, 1)) } else { format!("{} ms", js_num(i.peak_p99_ms)) }

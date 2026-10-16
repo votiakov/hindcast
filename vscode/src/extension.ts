@@ -106,7 +106,7 @@ function showStatus(d: vscode.TextDocument | undefined) {
     [
       `**Hindcast** · ${s.scenario}${engine ? ` · ${engine.kind === 'wasm' ? 'engine (WebAssembly)' : 'hindcast CLI'}` : ''}`,
       '',
-      `peak p99 **${fmtMs(s.p99Ms)}** (SLO ${fmtMs(s.slo.maxP99Ms)}) · errors **${fmtPct(s.errorRate)}** (SLO ${fmtPct(s.slo.maxErrorRate)}) · **${fmtMoney(s.monthly)}** a month`,
+      `peak p99 incl. failures **${fmtMs(s.p99Ms)}** (SLO ${fmtMs(s.slo.maxP99Ms)}) · errors **${fmtPct(s.errorRate)}** (SLO ${fmtPct(s.slo.maxErrorRate)}) · **${fmtMoney(s.monthly)}** a month`,
       '',
       `within SLO ${fmtPct(s.sloCompliance)} of the minute${s.bottleneck ? ` · busiest: \`${s.bottleneck.id}\`${s.bottleneck.note ? ` — ${s.bottleneck.note}` : ''}` : ''}`,
       '',
