@@ -93,7 +93,9 @@ function FindingRow({ f, open, names }: { f: Finding; open: boolean; names: Map<
               <i className="au-bar">
                 <i style={{ width: `${Math.max(bar > 0 ? 3 : 0, bar * 100)}%` }} />
               </i>
-              <em>{f.severity === 'ok' ? '—' : pct(f.impact.errorRate)}</em>
+              <em title={f.impact.errorRate < 0.001 && f.severity !== 'ok' ? 'No request failed; graded on how slow they got (p99, failures included)' : 'Requests that failed during the incident'}>
+                {f.severity === 'ok' ? '—' : f.impact.errorRate < 0.001 ? `p99 ${ms(f.impact.peakP99Ms)}` : pct(f.impact.errorRate)}
+              </em>
             </>
           )}
         </span>
@@ -298,6 +300,10 @@ export function AuditPanel() {
           {!r.baseline.meetsSlo && <OutOfSlo r={r} names={names} />}
           {r.curve?.length > 1 && <LoadCurve curve={r.curve} now={r.load.rps} limit={r.headroom.maxRps} sloP99={r.slo.maxP99Ms} />}
           <div className="au-list">
+            <div className="au-list-head">
+              <span>incident, worst first</span>
+              <span>requests failed</span>
+            </div>
             {r.findings.map((f) => (
               <FindingRow key={f.id} f={f} open={audit.selected === f.id} names={names} />
             ))}

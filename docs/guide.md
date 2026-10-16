@@ -130,16 +130,29 @@ what happens in it, not recover afterwards.
 | lesson | levels |
 |---|---|
 | **Scale 101: From One Box to Web Scale** | Launch day · Front page of Hacker News · Going viral · Chaos Monday |
+| **Scale 201: To 40,000 req/s** | Where Scale 101 left off · Images, scripts, styles · 40,000 req/s · The off-peak bill |
+| **Design Pastebin** | Launch: 40 req/s · A paste goes viral · The database dies |
+| **Design Mint: Ten Writes for Every Read** | Transactions arrive · Month-end · The midnight sync |
+| **Size the Cache** | 64 GB of answers · 7,000 searches a second |
 | **Queues: Turn a Spike into a Backlog** | Thumbnails, while you wait · The launch email · The backlog that never drains |
+| **Event Streams: Partitions Are Parallelism** | One order, two services · Black Friday |
 | **Follow One Request: Timeouts and Retries** | A request that times out · Retries make it worse · Timeouts that do not line up |
 | **Retry Storms: When the Fix Becomes the Outage** | A normal Tuesday · The six-second blip · Database brownout |
+| **One Slow Dependency: Bulkheads** | Payments slow down · Keep checkout answering |
 | **Elastic: Paying for Peak vs Surviving It** | Paying for peak, all day · The lunch rush · The cache restarts |
 | **Zones: When a Whole Data Center Goes Dark** | Six instances, one zone · us-east-1a goes dark · Paying for two of everything |
+| **CAP, Live** | Two regions · The network splits, then us-east goes dark · Both, with a third |
+| **Shard the Database** | One database · A bigger box · Past the biggest box · Someone gets famous |
+| **Crawl the Web** | 1,000 pages a second · Crawl the whole web in a month · The web is not yours |
 | **Shipping an AI Feature to Real Traffic** | Launch the assistant · It went viral · Finance saw the bill |
+| **Size the Vector Index** | Ten million chunks · 300 queries/s · A launch: 1,200 queries/s |
 | **Does the Language Matter? Runtime Economics** | Twelve Node.js instances · Cut the compute bill · Black Friday: 3× traffic |
 
 - **Hint** after a few seconds out of SLO; **Show me** next to it puts the level's reference design
-  on the board (undoable). **Replay level** replays it with the design on the board.
+  on the board (undoable). **Replay level** resets the level with the design on the board; press ▶
+  (Space) to run it.
+- Terms such as p99, SLO, queue or timeout are underlined in the level's text: hover one for what
+  it means. ⌘K, then type a term, lists the whole glossary.
 - **Why it worked** after every pass: what the level taught, and what the system held.
 - The finish card recaps every level, gives up to three stars for the bill and leads to the next
   lesson. Progress (the level reached, the best stars) is kept in the browser and shown in the

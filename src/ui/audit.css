@@ -37,6 +37,7 @@
 .bad { color: var(--red); }
 
 .au-list { flex: 1; overflow: auto; }
+.au-list-head { display: flex; justify-content: space-between; padding: 6px 12px 4px 12px; border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: 10px; letter-spacing: 0.4px; color: var(--muted); }
 .au-row { border-bottom: 1px solid var(--border); border-left: 3px solid transparent; }
 .au-row.sev-critical { border-left-color: var(--red); }
 .au-row.sev-major { border-left-color: var(--amber); }

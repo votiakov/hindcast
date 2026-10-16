@@ -121,7 +121,9 @@ storms and timeouts emerge instead of being assumed. Trace any request hop by ho
 
 The accuracy record is in the repository, misses included, and the committed data regenerates
 every table from a clone. The main study runs the OpenTelemetry Astronomy Shop on a kind cluster
-on one laptop, with k6 replaying the arrival curve of NASA's July 1995 web log.
+(Kubernetes in Docker) on one laptop, with k6 (a load generator) replaying the arrival curve of
+NASA's July 1995 web log. A verdict is pass, fail or inconclusive: inconclusive is the model
+saying the change goes past what the history showed, and to load-test it instead.
 
 | check | result |
 |---|---|

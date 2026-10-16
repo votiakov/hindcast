@@ -4,6 +4,7 @@ import { useSim } from '../sim/store';
 import { LESSONS, TRACKS } from '../lessons';
 import { finalRps, goalStart } from '../lessons/types';
 import { progressOf, recordFinish, recordLevel } from '../lessons/progress';
+import { WithTerms } from './Term';
 
 function LessonPicker() {
   const id = useSim((s) => s.lesson.lesson.id);
@@ -132,17 +133,23 @@ export function LessonPanel() {
         Level {stepIndex + 1} / {lesson.steps.length}
       </div>
       <h3 className="step-title">{step.title}</h3>
-      <p className="step-story">{step.story}</p>
+      <p className="step-story">
+        <WithTerms text={step.story} />
+      </p>
 
       <div className="objective">
         <Target size={14} />
-        <span>{step.objective}</span>
+        <span>
+          <WithTerms text={step.objective} />
+        </span>
       </div>
 
       {step.goal && (
         <div className="hold">
           <div className="hold-label">
-            <span>{status}</span>
+            <span>
+              <WithTerms text={status} />
+            </span>
             <span>
               {Math.min(ls.holdT, step.goal.holdSeconds).toFixed(1)}s / {step.goal.holdSeconds}s
             </span>
@@ -173,14 +180,18 @@ export function LessonPanel() {
       {showHint && !ls.passed && (
         <div className="hint">
           <Lightbulb size={14} />
-          <span>{step.hint}</span>
+          <span>
+            <WithTerms text={step.hint ?? ''} />
+          </span>
         </div>
       )}
 
       {ls.passed && step.takeaway && (
         <div className="debrief">
           <div className="debrief-title">Why it worked</div>
-          <p>{step.takeaway}</p>
+          <p>
+            <WithTerms text={step.takeaway} />
+          </p>
           {held.current && (
             <p className="debrief-numbers">
               held: {pct(held.current.errorRate)} errors · p99 {Math.round(held.current.p99)} ms{showCost ? ` · $${held.current.cost.toFixed(2)}/h` : ''}
