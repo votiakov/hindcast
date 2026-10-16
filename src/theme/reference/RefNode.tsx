@@ -25,14 +25,19 @@ export function sizeTip(d: SystemNodeData): string {
 /** above this many instances the fleet folds back into pips */
 const FLEET_MAX = 12;
 
-type InstanceState = 'ok' | 'warm' | 'hot' | 'idle' | 'dead' | 'boot';
+type InstanceState = 'ok' | 'warm' | 'hot' | 'idle' | 'dead' | 'boot' | 'ejected';
+
+/** an instance's own fault and ejection, as the engine reports them */
+type InstanceInfo = { errorRate: number; extraMs: number; ejectedS: number };
+
+const faultText = (x: InstanceInfo) => [x.errorRate > 0 ? `${Math.round(x.errorRate * 100)}% errors` : '', x.extraMs >= 1 ? `+${x.extraMs >= 1000 ? `${(x.extraMs / 1000).toFixed(1)} s` : `${Math.round(x.extraMs)} ms`}` : ''].filter(Boolean).join(' ');
 
 /**
  * Each instance as a row, the balancer's traffic fanned out to the ones that serve: a dead one is
  * routed around, a booting one waits. Every serving instance takes an even share (the engine balances
  * evenly), so their bars match — what differs is which ones are there.
  */
-function Fleet({ name, states, util, motion }: { name: string; states: InstanceState[]; util: number; motion: boolean }) {
+function Fleet({ name, states, util, motion, info }: { name: string; states: InstanceState[]; util: number; motion: boolean; info?: InstanceInfo[] }) {
   const ROW = 22;
   const h = states.length * ROW;
   const mid = h / 2;
@@ -42,7 +47,7 @@ function Fleet({ name, states, util, motion }: { name: string; states: InstanceS
         {states.map((s, i) => {
           const y = i * ROW + ROW / 2;
           const d = `M0 ${mid} C14 ${mid} 12 ${y} 26 ${y}`;
-          const serving = s !== 'dead' && s !== 'boot' && s !== 'idle';
+          const serving = s !== 'dead' && s !== 'boot' && s !== 'idle' && s !== 'ejected';
           return (
             <g key={i}>
               <path d={d} className={`fan ${serving ? '' : 'off'}`} />
@@ -57,7 +62,7 @@ function Fleet({ name, states, util, motion }: { name: string; states: InstanceS
       </svg>
       <div className="ref-fleet-rows">
         {states.map((s, i) => (
-          <div key={i} className={`fr fr-${s}`} style={{ height: ROW }}>
+          <div key={i} className={`fr fr-${s} ${info?.[i] && faultText(info[i]) ? 'fr-fault' : ''}`} style={{ height: ROW }}>
             <span className="fr-n">
               {name}-{i + 1}
             </span>
@@ -67,6 +72,18 @@ function Fleet({ name, states, util, motion }: { name: string; states: InstanceS
               <span className="fr-note">booting</span>
             ) : s === 'idle' ? (
               <span className="fr-note">unreachable</span>
+            ) : s === 'ejected' ? (
+              <>
+                {info?.[i] && faultText(info[i]) && <span className="fr-note fr-why">{faultText(info[i])} →</span>}
+                <span className="fr-note fr-out" title="Outlier ejection: it answered too many errors in a row and gets no traffic until its time is up">
+                  ejected {Math.ceil(info?.[i]?.ejectedS ?? 0)} s
+                </span>
+              </>
+            ) : info?.[i] && faultText(info[i]) ? (
+              <>
+                <span className="fr-note">{faultText(info[i])}</span>
+                <span className="fr-v">{Math.round(util * 100)}%</span>
+              </>
             ) : (
               <>
                 <span className="fr-bar">
@@ -97,6 +114,10 @@ export function RefNode({ data, st, v, selected, showCost, running, motion = fal
   const status = users ?? (v.failedOver ? 'Failed over' : v.electing ? 'Electing' : v.promotedReplica ? 'Primary' : v.noTargets && failing ? 'No targets' : v.noOrigin && failing ? 'No origin' : STATUS[v.health]);
 
   const fleet = spec.scalable && each && v.instances + v.booting > 1 && v.instances + v.booting <= FLEET_MAX;
+  // instances out of the balancing (outlier ejection) are not unreachable: the engine counts them out of `reachable`
+  const insts = running ? st?.instances : undefined;
+  const ejected = insts?.filter((x, i) => i < v.instancesUp && x.ejectedS > 0).length ?? 0;
+  const inReach = reachable + ejected;
   return (
     <div className={`ref-node s-${v.health} ${fleet ? 'fleet' : ''} ${selected ? 'sel' : ''} ${controls ? 'open' : ''} ${v.promotedReplica ? 'promoted' : ''} ${motion ? 'live' : ''} ${trace ? `tr-${trace.state} ${trace.focus ? 'tr-focus' : ''}` : ''}`}>
       {trace?.note && <div className={`tr-mark ${trace.state === 'on' ? 'ok' : ''}`}>{trace.state === 'on' ? trace.note : `✕ ${trace.note}`}</div>}
@@ -163,8 +184,9 @@ export function RefNode({ data, st, v, selected, showCost, running, motion = fal
           name={data.name}
           util={util}
           motion={motion}
+          info={insts}
           states={[
-            ...Array.from({ length: v.instances }, (_, i): InstanceState => (i >= v.instancesUp ? 'dead' : i >= reachable ? 'idle' : healthOf(util, st?.dropRps ?? 0, st?.inRps ?? 0, true) === 'hot' ? 'hot' : util >= 0.7 ? 'warm' : 'ok')),
+            ...Array.from({ length: v.instances }, (_, i): InstanceState => (i >= v.instancesUp ? 'dead' : (insts?.[i]?.ejectedS ?? 0) > 0 ? 'ejected' : i >= inReach ? 'idle' : healthOf(util, st?.dropRps ?? 0, st?.inRps ?? 0, true) === 'hot' ? 'hot' : util >= 0.7 ? 'warm' : 'ok')),
             ...Array.from({ length: v.booting }, (): InstanceState => 'boot'),
           ]}
         />
@@ -175,8 +197,9 @@ export function RefNode({ data, st, v, selected, showCost, running, motion = fal
           {Array.from({ length: v.instances }, (_, i) => {
             // 'idle' styles an unreachable instance (dashed); one that is simply not busy is healthy
             const h = healthOf(util, st?.dropRps ?? 0, st?.inRps ?? 0, true);
-            const s = i >= v.instancesUp ? 'dead' : i >= reachable ? 'idle' : h === 'idle' ? 'ok' : h;
-            return <span key={i} className={`ri-${s}`} title={`${data.name}-${i + 1}: ${s === 'dead' ? 'down' : s === 'idle' ? 'unreachable (no load balancer)' : `${Math.round(util * 100)}%`}`} />;
+            const out = (insts?.[i]?.ejectedS ?? 0) > 0;
+            const s = i >= v.instancesUp ? 'dead' : out ? 'idle' : i >= inReach ? 'idle' : h === 'idle' ? 'ok' : h;
+            return <span key={i} className={`ri-${s}`} title={`${data.name}-${i + 1}: ${s === 'dead' ? 'down' : out ? `ejected for ${Math.ceil(insts?.[i]?.ejectedS ?? 0)} s` : s === 'idle' ? 'unreachable (no load balancer)' : `${Math.round(util * 100)}%`}`} />;
           })}
           {Array.from({ length: v.booting }, (_, i) => (
             <span key={`b${i}`} className="ri-boot" title="Booting" />

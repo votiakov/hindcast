@@ -142,6 +142,7 @@
 [data-theme='terminal'] .metric-sub { font: 10.5px var(--mono); color: var(--r-faint); white-space: nowrap; }
 [data-theme='terminal'] .metric-value { font: 500 14px/1.3 var(--mono); color: var(--r-ink); margin: 0; }
 [data-theme='terminal'] .metric.good .metric-value { color: var(--r-ok); }
+[data-theme='terminal'] .metric-value .metric-aside { font: 11px var(--mono); color: var(--r-muted); margin-left: 4px; }
 [data-theme='terminal'] .metric.warn .metric-value { color: var(--r-warn); }
 [data-theme='terminal'] .metric.bad { border-color: var(--r-line); background: var(--r-bad-tint); box-shadow: inset 0 -2px 0 var(--r-bad); }
 [data-theme='terminal'] .metric.bad .metric-value { color: var(--r-bad); }
@@ -250,6 +251,13 @@
 [data-theme='terminal'] .ref-fleet .fr-dead .fr-n { text-decoration: line-through; color: var(--r-muted); }
 [data-theme='terminal'] .ref-fleet .fr-dead .fr-note { color: var(--r-bad); }
 [data-theme='terminal'] .ref-fleet .fr-boot, [data-theme='terminal'] .ref-fleet .fr-idle { border-style: dashed; }
+[data-theme='terminal'] .ref-fleet .fr-fault .fr-note { flex: 1; color: var(--r-bad); }
+[data-theme='terminal'] .ref-fleet .fr-ejected { border-style: dashed; border-color: var(--r-warn); }
+[data-theme='terminal'] .ref-fleet .fr-ejected { gap: 6px; }
+[data-theme='terminal'] .ref-fleet .fr-ejected .fr-n { color: var(--r-muted); width: auto; max-width: 74px; flex: none; }
+[data-theme='terminal'] .ref-fleet .fr-ejected .fr-note { color: var(--r-warn); }
+[data-theme='terminal'] .ref-fleet .fr-ejected .fr-why { flex: 0 1 auto; min-width: 0; color: var(--r-bad); }
+[data-theme='terminal'] .ref-fleet .fr-ejected .fr-out { flex: none; margin-left: auto; }
 [data-theme='terminal'] .ref-node.live .ref-fleet .fr-boot { animation: ref-blink 1.2s ease-in-out infinite; }
 [data-theme='terminal'] .replica-toggle { display: flex; align-items: center; gap: 8px; margin: 10px; font: 11px var(--mono); color: var(--r-muted); }
 [data-theme='terminal'] .replica-toggle .seg { display: flex; border: 1px solid var(--r-line-strong); background: var(--r-bg); }

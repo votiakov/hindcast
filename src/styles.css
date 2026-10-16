@@ -66,6 +66,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .metric-top { display: flex; justify-content: space-between; align-items: baseline; }
 .metric-label { color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 600; }
 .metric-sub { color: var(--dim); font-size: 10px; font-family: var(--mono); }
+.metric-aside { color: var(--muted); font-size: 11px; font-family: var(--mono); }
 .metric-value { font-family: var(--mono); font-size: 19px; font-weight: 600; margin-top: 1px; }
 .metric.good .metric-value { color: var(--green); }
 .metric.warn .metric-value { color: var(--amber); }
@@ -363,6 +364,18 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .traffic .tl { color: var(--muted); font-size: 11px; }
 .traffic .tv { font-family: var(--mono); min-width: 64px; }
 .traffic input { width: 160px; accent-color: #22d3ee; }
+/* narrower screens: the sliders give up some travel so the whole bar fits */
+@media (max-width: 1500px) {
+  .controlbar .cb-row { gap: 8px; }
+  .controlbar .traffic input { width: 120px; }
+  .controlbar .traffic input.short { width: 56px; }
+  .controlbar .traffic .tv { min-width: 52px; }
+  .controlbar .traffic .tv.short { min-width: 30px; }
+  /* with the Critical slider too: shorter chip labels and traffic travel, so the bar still fits 1280 */
+  .controlbar:has(.traffic.prio) .cb-row { gap: 6px; }
+  .controlbar:has(.traffic.prio) .traffic input:not(.short) { width: 88px; }
+  .controlbar:has(.traffic.prio) .cb-long { display: none; }
+}
 select { background: #0a1122; color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; font-family: inherit; }
 .chip { display: inline-flex; align-items: center; gap: 5px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border); background: #0a1122; font-size: 12px; font-weight: 600; }
 .chip:hover { border-color: var(--border-strong); }

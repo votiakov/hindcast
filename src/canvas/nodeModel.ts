@@ -134,6 +134,8 @@ export function nodeView(d0: SystemNodeData, st: NodeStats | undefined, running:
   if (d.autoscale) tags.push({ text: `AUTOSCALE ${d.autoscale.min}–${d.autoscale.max}${st?.scaling && st.scaling.desired !== st.scaling.live ? ` · want ${st.scaling.desired}` : ''}`, tone: st?.scaling?.pending ? 'warn' : undefined });
   if (st && st.warmth < 0.98 && (d.kind === 'cache' || d.kind === 'cdn')) tags.push({ text: `COLD ${Math.round(st.warmth * 100)}%`, tone: 'bad' });
   if (d.faultRate) tags.push({ text: `FAULT ${Math.round(d.faultRate * 100)}% errors`, tone: 'bad' });
+  if (d.priorityReserve) tags.push({ text: `RESERVE ${Math.round(d.priorityReserve * 100)}% FOR CRITICAL`, tone: (st?.shedRps ?? 0) > 1 ? 'warn' : undefined });
+  if (d.ejectAfter) tags.push({ text: `EJECT AFTER ${d.ejectAfter} ERRORS` });
   if (d.faultLatencyMs) tags.push({ text: `FAULT +${fmtMs(d.faultLatencyMs)}`, tone: 'bad' });
   if (d.stallRate) tags.push({ text: `STALLS ${+(d.stallRate * 100).toFixed(2)}% × ${d.stallMs ?? 0}ms`, tone: 'warn' });
 
@@ -167,8 +169,23 @@ export function explain(d: SystemNodeData, st: NodeStats | undefined, v: NodeVie
   if (v.failedOver) return { tone: 'info', text: 'Primary is down. A replica was promoted and now takes writes; this node only forwards.' };
   if (v.electing) return { tone: 'bad', text: 'Primary lost. Electing a replica — writes fail until one is promoted; reads continue on replicas.' };
   if (d.kind === 'client' && d.everyS) return { tone: 'info', text: `A scheduled job, not users: ${fmt(d.batch ?? 0)} requests over ${d.batchS ?? 10} s every ${d.everyS >= 3600 ? `${d.everyS / 3600} h` : d.everyS >= 60 ? `${d.everyS / 60} min` : `${d.everyS} s`}. It competes with the users for what it calls; its own failures are not counted as theirs.` };
+  if (d.kind === 'client' && v.up && st.inRps > 0.5 && st.success < 0.99 && st.successCritical !== undefined && (d.lowPriorityShare ?? 0) > 0) {
+    const pct = (x: number) => `${Math.round((1 - x) * 1000) / 10}%`;
+    return { tone: (st.successCritical ?? 1) < 0.99 ? 'bad' : 'warn', text: `${pct(st.success)} of these users' requests fail: critical ${pct(st.successCritical ?? 1)}, best-effort ${pct(st.successBestEffort ?? 1)}. Where capacity is kept for critical requests, best-effort ones are shed first.` };
+  }
   if (d.kind === 'client' && v.up && st.inRps > 0.5 && st.success < 0.99) return { tone: st.success < 0.9 ? 'bad' : 'warn', text: `${Math.round((1 - st.success) * 1000) / 10}% of these users' requests fail. Follow the red links to where they are lost.` };
   if (!v.up) return { tone: 'bad', text: 'Unavailable. Every request routed here fails unless an upstream load balancer can route around it.' };
+  const ejected = (st.instances ?? []).map((x, i) => ({ ...x, i })).filter((x) => x.ejectedS > 0);
+  if (ejected.length)
+    return { tone: 'warn', text: `Outlier ejection: ${ejected.map((x) => `${d.name}-${x.i + 1}`).join(', ')} answered ${d.ejectAfter} errors in a row and ${ejected.length > 1 ? 'are' : 'is'} out of the balancing for ${Math.ceil(Math.max(...ejected.map((x) => x.ejectedS)))} s more; the other instances take its share. Then it comes back, and goes again if it still fails.` };
+  const bad = (d.instFaults ?? []).filter((f) => f.instance <= (d.instances ?? 1));
+  if (bad.length && !d.faultRate && !d.faultLatencyMs) {
+    const what = bad.map((f) => `${d.name}-${f.instance} ${[f.rate ? `fails ${Math.round(f.rate * 100)}%` : '', f.latencyMs ? `+${fmtMs(f.latencyMs)}` : '', f.degraded !== undefined && f.degraded < 1 ? `at ${Math.round(f.degraded * 100)}% capacity` : ''].filter(Boolean).join(', ')}`).join('; ');
+    const share = `1 of ${d.instances ?? 1}`;
+    return { tone: 'bad', text: `One bad instance: ${what}. It takes ${share} of the requests, so ${share} of the answers suffer while the rest look healthy.${d.ejectAfter ? (d.instances ?? 1) * ((d.maxEjectedPercent ?? 10) / 100) < 1 ? ` Ejection is on, but at most ${d.maxEjectedPercent ?? 10}% of ${d.instances ?? 1} instances may be ejected — none; raise it to ${Math.ceil(100 / (d.instances ?? 1))}%.` : '' : ' Outlier ejection (eject after N errors) would take it out of the balancing.'}` };
+  }
+  if ((st.shedRps ?? 0) > 1 && d.priorityReserve)
+    return { tone: 'warn', text: `Shedding best-effort: ${fmt(st.shedRps ?? 0)} req/s refused once it is ${Math.round((1 - d.priorityReserve) * 100)}% busy — ${Math.round(d.priorityReserve * 100)}% of its capacity is kept for critical requests, so they still get through.` };
   if (d.faultRate) return { tone: 'bad', text: `Injected fault: ${Math.round(d.faultRate * 100)}% of requests here fail — a bad deploy looks exactly like this. Callers with retries amplify it.` };
   if (d.faultLatencyMs) {
     // a server's or worker's injected latency is a wait (no worker held); other kinds' is work

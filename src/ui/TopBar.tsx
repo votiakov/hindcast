@@ -24,6 +24,37 @@ function Metric({ label, value, sub, tone, values, max, color }: { label: string
   );
 }
 
+const pctOf = (x: number) => `${x < 0.1 ? +(x * 100).toFixed(1) : Math.round(x * 100)}%`;
+
+/** each priority class on its own, once the users send best-effort requests: critical's errors and
+ *  p99 against the SLO, and the share of best-effort shed on its way */
+function ClassMetric({ g, maxErr, maxP99 }: { g: GlobalStats; maxErr: number; maxP99: number }) {
+  const c = g.critical;
+  const be = g.bestEffort;
+  if (!c || !be) return null;
+  const tone = c.rps < 0.5 ? undefined : c.errorRate > maxErr || c.p99 > maxP99 ? 'bad' : c.errorRate > maxErr / 2 || c.p99 > maxP99 * 0.7 ? 'warn' : 'good';
+  const shed = be.rps > 0.5 ? Math.min(1, be.shedRps / be.rps) : 0;
+  const p99 = c.p99 >= 1000 ? `${(c.p99 / 1000).toFixed(1)}s` : `${c.p99.toFixed(0)}ms`;
+  return (
+    <>
+      <div className={`metric ${tone ?? ''}`} title="The users' critical requests: their errors and p99, against the SLO">
+        <div className="metric-top">
+          <span className="metric-label">critical</span>
+        </div>
+        <div className="metric-value">
+          {pctOf(c.errorRate)} err <span className="metric-aside">p99 {p99}</span>
+        </div>
+      </div>
+      <div className="metric" title="The users' best-effort requests: the share shed on their way, so that critical ones keep capacity">
+        <div className="metric-top">
+          <span className="metric-label">best-effort</span>
+        </div>
+        <div className="metric-value">{shed > 0.001 ? `${pctOf(shed)} shed` : `${pctOf(be.errorRate)} err`}</div>
+      </div>
+    </>
+  );
+}
+
 function SingleMetrics({ onClick, lens }: { onClick: () => void; lens: React.ReactNode }) {
   const g = useSim((s) => s.boards.main.global);
   const goal = useSim((s) => (s.mode === 'lesson' && !s.lesson.finished ? s.lesson.lesson.steps[s.lesson.stepIndex].goal : undefined));
@@ -41,6 +72,7 @@ function SingleMetrics({ onClick, lens }: { onClick: () => void; lens: React.Rea
       <Metric label="Throughput" value={fmtRps(g.rps)} sub="req/s" values={h.map((x) => x.rps)} color="#22d3ee" />
       <Metric label="Error rate" value={`${(g.errorRate * 100).toFixed(2)}%`} sub={`SLO < ${+(maxErr * 100).toFixed(2)}%`} tone={errTone} values={h.map((x) => x.err)} max={0.2} color="#f43f5e" />
       <Metric label="p99" value={`${g.p99.toFixed(0)}ms`} sub={`SLO < ${maxP99}ms`} tone={p99Tone} values={h.map((x) => x.p99)} max={Math.max(maxP99 * 2, ...h.map((x) => x.p99))} color="#fbbf24" />
+      <ClassMetric g={g} maxErr={maxErr} maxP99={maxP99} />
       {showCost && <Metric label="Cost" value={`$${g.cost.toFixed(2)}`} sub={goal?.maxCost !== undefined ? `budget $${goal.maxCost.toFixed(2)}/h` : `/h · $${(g.cost * 730).toFixed(0)}/mo`} tone={costTone} values={h.map((x) => x.cost)} color="#a78bfa" />}
     </div>
   );

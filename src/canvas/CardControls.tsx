@@ -27,7 +27,9 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
   const caller = CALLERS.has(data.kind);
   const bounded = data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'external' && data.kind !== 'kv' && data.kind !== 'archive' && data.kind !== 'function' && data.kind !== 'queue' && data.kind !== 'stream';
   const calibratable = data.kind !== 'client' && data.kind !== 'gateway' && data.kind !== 'llmapi' && data.kind !== 'external' && data.kind !== 'kv' && data.kind !== 'archive' && data.kind !== 'function' && data.kind !== 'queue' && data.kind !== 'stream';
-  const tuned = (data.retries ?? 0) > 0 || !!data.breaker || !!data.timeoutMs || (data.routing && data.routing !== 'split') || (data.fanout ?? 1) > 1 || data.queueS !== undefined;
+  // kinds that can keep capacity for critical requests: a pool of workers or a rate limit
+  const prioritized = !['client', 'queue', 'stream', 'storage', 'archive', 'dns'].includes(data.kind);
+  const tuned = !!data.priorityReserve || !!data.ejectAfter || (data.retries ?? 0) > 0 || !!data.breaker || !!data.timeoutMs || (data.routing && data.routing !== 'split') || (data.fanout ?? 1) > 1 || data.queueS !== undefined;
   const [more, setMore] = useState(tuned);
   const [cal, setCal] = useState(false);
   const hasResilience = caller || data.kind !== 'client';
@@ -540,6 +542,44 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
               )}
             </div>
           )}
+          {prioritized && (
+            <div className="nc-row" title="Priority load shedding: the share of its capacity kept for critical requests. Best-effort ones (the users' non-critical share) are shed once it is busier than the rest">
+              <span className="nc-l">reserve for critical</span>
+              <select value={data.priorityReserve ?? 0} onChange={(e) => set({ priorityReserve: +e.target.value || undefined })}>
+                {pick(data.priorityReserve ?? 0, [0, 0.1, 0.2, 0.3, 0.5]).map((r) => (
+                  <option key={r} value={r}>
+                    {r === 0 ? 'none' : `${Math.round(r * 100)}%`}
+                  </option>
+                ))}
+              </select>
+              {!!data.priorityReserve && <span className="nc-hint">shedding best-effort at {Math.round((1 - data.priorityReserve) * 100)}% busy</span>}
+            </div>
+          )}
+          {spec.scalable && instances > 1 && (
+            <div className="nc-row" title="Outlier ejection (Envoy's consecutive_5xx): an instance that answers this many errors in a row gets no traffic for 30 s, then comes back. At most the share set here is out at once (Envoy's default 10% ejects none of fewer than 10)">
+              <span className="nc-l">eject after</span>
+              <select value={data.ejectAfter ?? 0} onChange={(e) => set({ ejectAfter: +e.target.value || undefined, maxEjectedPercent: +e.target.value ? (data.maxEjectedPercent ?? Math.max(10, Math.ceil(100 / instances))) : undefined })}>
+                {pick(data.ejectAfter ?? 0, [0, 3, 5, 10]).map((n) => (
+                  <option key={n} value={n}>
+                    {n === 0 ? 'off' : `${n} errors`}
+                  </option>
+                ))}
+              </select>
+              {!!data.ejectAfter && (
+                <>
+                  <span className="nc-l">at most</span>
+                  <select value={data.maxEjectedPercent ?? 10} onChange={(e) => set({ maxEjectedPercent: +e.target.value })}>
+                    {pick(data.maxEjectedPercent ?? 10, [10, 25, 50]).map((n) => (
+                      <option key={n} value={n}>
+                        {n}%
+                      </option>
+                    ))}
+                  </select>
+                  {(instances * (data.maxEjectedPercent ?? 10)) / 100 < 1 && <span className="nc-hint">none of {instances} may go</span>}
+                </>
+              )}
+            </div>
+          )}
           {bounded && (
             <div className="nc-row" title="Bounded queue: seconds of work this component holds before it sheds load">
               <span className="nc-l">queue</span>
@@ -576,6 +616,8 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
               else if (v === 'flush') apply(b, { type: 'flush-cache', id });
               else if (v.startsWith('row')) set({ hotRowShare: +v.slice(3) || undefined });
               else if (v.startsWith('hot')) apply(b, { type: 'hot-key', id, share: +v.slice(3) });
+              else if (v.startsWith('one-err')) apply(b, { type: 'inject-errors', id, rate: +v.slice(7), instance: Math.min(3, instances) });
+              else if (v.startsWith('one-lat')) apply(b, { type: 'inject-latency', id, ms: +v.slice(7), instance: Math.min(3, instances) });
               else if (v.startsWith('err')) apply(b, { type: 'inject-errors', id, rate: +v.slice(3) });
               else if (v.startsWith('lat')) apply(b, { type: 'inject-latency', id, ms: +v.slice(3) });
               else if (v.startsWith('deg')) apply(b, { type: 'degrade', id, factor: +v.slice(3) });
@@ -590,10 +632,12 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
             <option value="lat500">+500 ms</option>
             <option value="lat2000">+2 s</option>
             <option value="deg0.5">50% capacity</option>
+            {spec.scalable && instances > 1 && <option value="one-err0.3">#{Math.min(3, instances)} only: 30% errors</option>}
+            {spec.scalable && instances > 1 && <option value="one-lat500">#{Math.min(3, instances)} only: +500 ms</option>}
             {(data.kind === 'cache' || data.kind === 'cdn') && <option value="flush">flush cache</option>}
             {data.kind === 'db' && <option value={data.hotRowShare ? 'row0' : 'row0.3'}>{data.hotRowShare ? 'cool the hot row' : 'hot row (30% of writes on one row)'}</option>}
             {(data.kind === 'db' || data.kind === 'kv' || data.kind === 'storage') && <option value={data.hotKeyShare ? 'hot0' : 'hot0.3'}>{data.hotKeyShare ? 'cool the hot key' : data.kind === 'storage' ? 'hot prefix (30% on one)' : 'hot key (30% on one key)'}</option>}
-            {(data.faultRate || data.faultLatencyMs || data.degraded !== undefined) && <option value="restore">restore</option>}
+            {(data.faultRate || data.faultLatencyMs || data.degraded !== undefined || data.instFaults) && <option value="restore">restore</option>}
           </select>
         )}
         {calibratable && (

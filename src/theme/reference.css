@@ -366,6 +366,7 @@
 .ref-node .nc select { max-width: 118px; background: var(--r-surface); color: var(--r-ink); border: 1px solid var(--r-line-strong); border-radius: 3px; font: 11.5px var(--mono); padding: 1px 3px; }
 .nc input[type='range'] { width: 90px; accent-color: var(--r-accent); }
 .nc-v { font: 600 11.5px var(--mono); color: var(--r-ink); }
+.nc-hint { color: var(--r-faint); font: 10.5px var(--mono); }
 .nc-step { display: inline-flex; align-items: center; border: 1px solid var(--r-line-strong); border-radius: 3px; }
 .nc-step button { background: none; border: 0; color: var(--r-ink-2); padding: 1px 5px; display: grid; place-items: center; cursor: pointer; }
 .nc-step button:hover { color: var(--r-accent); }
