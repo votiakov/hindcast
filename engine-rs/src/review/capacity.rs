@@ -729,7 +729,9 @@ pub fn for_app(mv: &Value, dv: &Value, draws: f64) -> Result<Value, String> {
         }
     }
     if let Some(cs) = out.get_mut("combinedSavings").filter(|x| !x.is_null()) {
-        cs["change"] = g(&suggested, &["combinedSavings", "change"]).clone();
+        for k in ["change", "minutesOutOfSloDelta", "failedRequestsDelta", "confidence"] {
+            cs[k] = g(&suggested, &["combinedSavings", k]).clone();
+        }
     }
     // the stuck-caller sensitivity, worded as the report words it: an assumption
     if let Some(sb) = out.get_mut("nodeLoss").and_then(|nl| nl.get_mut("ifCallersStayBroken")).filter(|x| !x.is_null()) {
@@ -738,7 +740,11 @@ pub fn for_app(mv: &Value, dv: &Value, draws: f64) -> Result<Value, String> {
     if g(&r, &["commitment"]).is_null() {
         out.insert("commitmentAbsent".into(), json!(commitment_absent(mv)));
     }
-    out.insert("traffic".into(), json!({ "start": num(d.start), "stepS": num(d.step_s), "rps": (0..d.n.max(0.0) as usize).map(|i| num(traffic_at(&d, i))).collect::<Vec<_>>() }));
+    // the history open in the app, which may be shorter than the one the model was calibrated on (whose
+    // busiest moment history.peakRps is)
+    let rps: Vec<f64> = (0..d.n.max(0.0) as usize).map(|i| traffic_at(&d, i)).collect();
+    let peak = rps.iter().fold(0.0, |a: f64, x| a.max(*x));
+    out.insert("traffic".into(), json!({ "start": num(d.start), "stepS": num(d.step_s), "rps": rps.iter().map(|x| num(*x)).collect::<Vec<_>>(), "peakRps": num(r1(peak)) }));
     out.insert("markdown".into(), json!(md));
     Ok(Value::Object(out))
 }
@@ -751,7 +757,7 @@ fn commitment_absent(mv: &Value) -> String {
     }
     let svcs = g(mv, &["services"]).as_object().cloned().unwrap_or_default();
     if svcs.values().any(|sv| s(sv, &["cost", "source"]) == "bill") {
-        "costs come from the bill, which may already carry discounts: what a commitment saves is read off the bill, not a list price".into()
+        "costs come from the bill, which may already carry discounts — what a commitment saves is read off the bill, not a list price".into()
     } else {
         "no list-priced capacity runs all the time in this history".into()
     }

@@ -161,6 +161,12 @@ const openHash = (hash: string) => {
     useSim.getState().setMode('backtest');
     return true;
   }
+  // #backtest/review: the Backtest tab on its capacity review
+  if (hash === '#backtest/review') {
+    useBacktest.getState().setScreen('review');
+    useSim.getState().setMode('backtest');
+    return true;
+  }
   return VIEW_HASH[hash] ? (useSim.getState().setMode(VIEW_HASH[hash]), true) : openFromHash(hash);
 };
 if (!RENDER && location.hash) openHash(location.hash);

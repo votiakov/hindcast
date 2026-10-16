@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useBacktest, strategyName, type Tab } from './store';
+import { useBacktest, strategyName, type Screen, type Tab } from './store';
+import { ReviewView } from './Review';
 import { AXIS_W, Pane, TimeAxis, areaPath, bandPath, makeScale, path, useSize, yScale } from './chart';
 import { headline } from '../backtest/report';
 import type { StrategyResult } from '../backtest/backtest';
@@ -35,6 +36,8 @@ function Bar() {
   const setView = useBacktest((s) => s.setView);
   const computing = useBacktest((s) => s.computing);
   const setMode = useSim((s) => s.setMode);
+  const screen = useBacktest((s) => s.screen);
+  const setScreen = useBacktest((s) => s.setScreen);
   const n = r?.t.length ?? 0;
   const stepS = r?.window.stepS ?? 60;
   const ranges = [
@@ -58,16 +61,27 @@ function Bar() {
       <span className="bt-system">
         <span className="bt-dim">system</span> {w?.model.name ?? '—'}
       </span>
-      <span className="bt-dim">show</span>
-      <span className="bt-seg">
-        {ranges.map(([label, k]) => (
-          <button key={label} className={cur === k ? 'on' : ''} onClick={() => setView(label === 'whole run' ? null : [Math.max(0, (view?.[1] ?? n) - k), view?.[1] ?? n])}>
-            {label}
+      <span className="bt-seg bt-screens" role="tablist" aria-label="Screen">
+        {(['replay', 'review'] as Screen[]).map((x) => (
+          <button key={x} role="tab" aria-selected={screen === x} className={screen === x ? 'on' : ''} onClick={() => setScreen(x)} title={x === 'replay' ? 'The history replayed, with the changes tested against it' : 'The capacity review: headroom, busier days, losing a node, what to commit to, the fixes that pass'}>
+            {x === 'replay' ? 'Replay' : 'Review'}
           </button>
         ))}
       </span>
-      {r && <span className="bt-dim small">every {r.window.stepS >= 60 ? `${r.window.stepS / 60} min` : `${r.window.stepS} s`}</span>}
-      {r && !w?.outage && <Load />}
+      {screen === 'replay' && (
+        <>
+          <span className="bt-dim">show</span>
+          <span className="bt-seg">
+            {ranges.map(([label, k]) => (
+              <button key={label} className={cur === k ? 'on' : ''} onClick={() => setView(label === 'whole run' ? null : [Math.max(0, (view?.[1] ?? n) - k), view?.[1] ?? n])}>
+                {label}
+              </button>
+            ))}
+          </span>
+          {r && <span className="bt-dim small">every {r.window.stepS >= 60 ? `${r.window.stepS / 60} min` : `${r.window.stepS} s`}</span>}
+          {r && !w?.outage && <Load />}
+        </>
+      )}
       {computing && <span className="bt-chip dim">computing…</span>}
       <span className="bt-spacer" />
       {r && (
@@ -83,7 +97,7 @@ function Bar() {
           </option>
         ))}
       </select>
-      {r && (
+      {r && screen === 'replay' && (
         <button
           className="bt-chip"
           title="A Studio card / clip of the focused strategy, at post size"
@@ -99,7 +113,7 @@ function Bar() {
           Card ↗
         </button>
       )}
-      <select className="bt-select" aria-label="Replay a public outage" value={w?.outage?.outage.id ?? ''} onChange={(e) => (!e.target.value ? closeOutage() : e.target.value.startsWith('node:') ? openNodeLoss(e.target.value.slice(5)) : openOutage(e.target.value))}>
+      <select className="bt-select" aria-label="Replay a public outage" value={w?.outage?.outage.id ?? ''} onChange={(e) => (setScreen('replay'), !e.target.value ? closeOutage() : e.target.value.startsWith('node:') ? openNodeLoss(e.target.value.slice(5)) : openOutage(e.target.value))}>
         <option value="">{w?.outage ? '← back to the history' : 'Replay an outage…'}</option>
         {nodes.length > 0 && (
           <optgroup label="Lose a Kubernetes node at the peak">
@@ -445,8 +459,11 @@ function Watch() {
               <div className="bt-dim small">{w.model.cluster.autoscaled ? 'autoscaled: smaller requests save whole nodes' : 'a fixed pool: smaller requests free room on these nodes but save nothing until the pool shrinks'}</div>
             )}
           </div>
-          <a className="bt-dim small bt-review" href="docs/agents.html" target="_blank" rel="noreferrer" title="Headroom, 1.5× and 2× traffic, a node lost at the peak, CPU throttling, memory limits and leaks, the node pool, what to commit to — one Markdown report from the CLI or an agent">
-            the full capacity review: <code>review_capacity</code> (CLI / agents) ↗
+          <button className="bt-dim small bt-review" onClick={() => useBacktest.getState().setScreen('review')} title="Headroom, 1.5× and 2× traffic, a node lost at the peak, CPU throttling, memory limits and leaks, the node pool, what to commit to, the fixes that pass">
+            the full capacity review ↗
+          </button>
+          <a className="bt-dim small bt-review" href="docs/agents.html" target="_blank" rel="noreferrer" title="The same review as one Markdown report, from the CLI or an agent">
+            from the CLI / agents: <code>review_capacity</code> ↗
           </a>
         </>
       )}
@@ -728,6 +745,7 @@ export function BacktestView() {
   const w = useBacktest((s) => s.workspace);
   const r = useBacktest((s) => s.result);
   const loading = useBacktest((s) => s.loading);
+  const screen = useBacktest((s) => s.screen);
   const [drag, setDrag] = useState(false);
   useEffect(() => {
     if (!useBacktest.getState().workspace && !useBacktest.getState().loading) loadReferenceIndex().then(() => loadReference(lastReference()));
@@ -753,7 +771,9 @@ export function BacktestView() {
         <OutageBanner />
         <LoadBanner />
       </header>
-      {body === 'ready' ? (
+      {body === 'ready' && screen === 'review' ? (
+        <ReviewView />
+      ) : body === 'ready' ? (
         <>
           <div className="bt-main">
             <Panes />

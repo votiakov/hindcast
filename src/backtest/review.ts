@@ -92,10 +92,11 @@ export interface CapacityReview {
   commitment: { floor: number; unit: string; onDemandMonthly: number; options: { term: string; savesMonthly: number }[]; basis: string } | null;
   /** why there is no commitment to read, where there is none */
   commitmentAbsent?: string;
-  combinedSavings: { name: string; monthlyDelta: number; verdict: string; change: ReviewChange } | null;
+  combinedSavings: { name: string; monthlyDelta: number; minutesOutOfSloDelta: number; failedRequestsDelta: number; verdict: string; confidence?: 'high' | 'medium' | 'low'; change: ReviewChange } | null;
   summary: ReviewLine[];
-  /** the history's requests per second, bucket by bucket */
-  traffic: { start: number; stepS: number; rps: number[] };
+  /** the open history's requests per second, bucket by bucket, and its busiest bucket (history.peakRps
+   *  is the busiest moment of the history the model was calibrated on, which may be longer) */
+  traffic: { start: number; stepS: number; rps: number[]; peakRps: number };
   /** the same review as review_capacity writes it */
   markdown: string;
 }
