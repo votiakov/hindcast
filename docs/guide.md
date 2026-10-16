@@ -76,7 +76,7 @@ open**), each move made after a countdown shown in the callout:
 2. **scale out**: a load balancer and four instances; healthy.
 3. **3× traffic**: autoscaling grows the API to ten instances, and the database becomes the
    bottleneck.
-4. **a cache**: healthy again; the exits: learn it (Lessons: 7 lessons, 22 levels), design your own (Sandbox), check a
+4. **a cache**: healthy again; the exits: learn it (Lessons: 18 lessons, 54 levels), design your own (Sandbox), check a
    change on your real system's history (Backtest), let your AI agent do it, render it as a video.
 
 The chapter strip at the top shows the beat and jumps to any of them. The first click, key or
@@ -89,7 +89,7 @@ Sandbox). On a phone the system reads top to bottom and the callout docks at the
 
 ## Lessons
 
-Seven lessons, 22 guided levels with objectives the engine checks ("Serve 120 req/s with < 1%
+Eighteen lessons, 54 guided levels with objectives the engine checks ("Serve 120 req/s with < 1%
 errors and p99 < 300 ms for 5 s"). Each level sets up traffic (and sometimes a failure); you
 change the design until the objective holds. Some levels have a window: the system must ride out
 what happens in it, not recover afterwards.
@@ -98,6 +98,7 @@ what happens in it, not recover afterwards.
 |---|---|
 | **Scale 101: From One Box to Web Scale** | Launch day · Front page of Hacker News · Going viral · Chaos Monday |
 | **Queues: Turn a Spike into a Backlog** | Thumbnails, while you wait · The launch email · The backlog that never drains |
+| **Follow One Request: Timeouts and Retries** | A request that times out · Retries make it worse · Timeouts that do not line up |
 | **Retry Storms: When the Fix Becomes the Outage** | A normal Tuesday · The six-second blip · Database brownout |
 | **Elastic: Paying for Peak vs Surviving It** | Paying for peak, all day · The lunch rush · The cache restarts |
 | **Zones: When a Whole Data Center Goes Dark** | Six instances, one zone · us-east-1a goes dark · Paying for two of everything |

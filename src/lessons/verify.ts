@@ -1,7 +1,8 @@
 import { isSystem, type AppNode, type SystemEdge, type SystemNode } from '../sim/catalog';
 import { DEFAULT_ENGINE_CONFIG, Engine, type NodeStats } from '../sim/engine';
 import { applyAction } from '../sim/actions';
-import { applyChangesToGraph } from '../spec/convert';
+import { applyChangesToGraph, graphToSpec } from '../spec/convert';
+import { simulateDes } from '../sim/des/des';
 import { nodesInZone } from '../sim/zones';
 import { goalStart, trafficAt, type Lesson, type LessonStep } from './types';
 
@@ -132,4 +133,41 @@ export function referenceBoard(lesson: Lesson, index: number): Board {
   let board: Board = { nodes: lesson.initial.nodes as AppNode[], edges: lesson.initial.edges };
   for (let i = 0; i <= index && i < lesson.steps.length; i++) board = solve(board, lesson.steps[i]);
   return board;
+}
+
+/**
+ * The same level on the discrete-event engine (the one the tracer runs): the level's traffic and
+ * chaos as a scenario, and the goal checked second by second on its timeline. Coarser than the
+ * fluid check (one-second windows, one seed), for confirming both engines agree on a level.
+ */
+export function playLevelDes(board: Board, step: LessonStep, readRatio = 0.8, opts: { slack?: number; trafficScale?: number; seed?: number } = {}): LevelResult {
+  const goal = step.goal;
+  const start = goalStart(step);
+  const duration = Math.ceil(start + (goal?.holdSeconds ?? 0) + (opts.slack ?? 25));
+  const scale = opts.trafficScale ?? 1;
+  const tr = step.traffic;
+  const keys = 'keyframes' in tr ? tr.keyframes : [{ at: 0, rps: tr.from }, { at: Math.max(0, tr.rampSeconds), rps: tr.to }];
+  const traffic = [...keys.map((k) => ({ at: k.at, rps: k.rps * scale })), { at: duration, rps: keys[keys.length - 1].rps * scale }];
+  const spec = graphToSpec(board.nodes, board.edges);
+  const events = (step.chaos ?? []).map((c) => ({ at: c.at, action: c.action }));
+  const r = simulateDes(spec, { duration, traffic, readRatio, events }, { seed: opts.seed ?? 1 });
+  const worst: LevelResult['worst'] = { errorRate: 0, p99: 0, cost: 0 };
+  let hold = 0;
+  let req = 0;
+  let fail = 0;
+  for (const p of r.timeline) {
+    const end = p.t;
+    if (!goal || end <= start) continue;
+    worst.errorRate = Math.max(worst.errorRate, p.errorRate);
+    worst.p99 = Math.max(worst.p99, p.p99Ms);
+    worst.cost = Math.max(worst.cost, p.costPerHour);
+    req += p.rps;
+    fail += p.rps * p.errorRate;
+    worst.totalErrorRate = req > 0 ? fail / req : 0;
+    const ok = p.errorRate <= goal.maxErrorRate && p.p99Ms <= goal.maxP99 && (goal.maxCost === undefined || p.costPerHour <= goal.maxCost) && p.rps > 0;
+    hold = ok ? hold + 1 : 0;
+    if (hold >= goal.holdSeconds && (goal.maxTotalErrorRate === undefined || worst.totalErrorRate <= goal.maxTotalErrorRate)) return { passed: true, at: end, worst };
+    if (goal.deadline !== undefined && end > goal.deadline + 1e-9) return { passed: false, at: null, worst };
+  }
+  return { passed: !goal, at: null, worst };
 }

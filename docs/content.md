@@ -74,6 +74,7 @@ Built-in lessons:
 |---|---|---|
 | Scale 101 | single server limits, load balancers, caches, N+1 | LB + 4 instances; cache + 11 instances; 14 instances at 2,400 req/s |
 | Queues | synchronous vs async work, backlogs | a queue between the API and the worker; 3 workers for the sustained rate |
+| Follow One Request | read failures off the request tracer: a queue wait past the deadline, retries into the same full queue, a callee queue longer than its caller waits | database M; 2 retries in a 10% budget; a 0.25 s database queue at 700 req/s |
 | Retry Storms | metastable failures, retry budgets, bounded queues, breakers, brownouts | retry budget + short queue; cache under brownout (breaker alone flaps) |
 | Elastic | right-sizing, autoscaling warm-up, cold-cache stampede | 2 instances; autoscale 2–12 with a 10 s warm-up; database M |
 | Zones | failure domains, zone failure, replica failover, standby cost | API pool + replica in the second zone; smaller autoscaling pools in both zones |
