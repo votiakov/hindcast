@@ -14,6 +14,7 @@ import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gzipSync } from 'node:zlib';
 import { parse } from 'yaml';
 import { clientCsv, readK6, requestsCsv } from '../k6';
 import { agent, Workspace } from '../hindcast';
@@ -132,7 +133,10 @@ async function main() {
 
   // 3. ground truth from the client
   const reqs = readK6(join(out, 'raw', 'k6.csv'));
-  writeFileSync(join(out, 'requests.csv'), requestsCsv(reqs));
+  // gzipped as committed: the plain file is git-ignored, and a worktree removed before a manual gzip loses it
+  const csv = requestsCsv(reqs);
+  writeFileSync(join(out, 'requests.csv'), csv);
+  writeFileSync(join(out, 'requests.csv.gz'), gzipSync(csv));
   writeFileSync(join(out, 'client.csv'), clientCsv(reqs, 30));
   rmSync(join(out, 'raw', 'k6.csv'));
 

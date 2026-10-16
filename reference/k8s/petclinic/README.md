@@ -91,6 +91,16 @@ show this, because its pods were already warm.
 This is a known trap: Java services on Kubernetes with tight CPU limits that never warm up. The
 model does not know about it yet, and it is the next thing it learns.
 
+## What the repository keeps
+
+The measured side of each of the six runs (p99, errors and minutes out of SLO over every k6 request)
+is in [validation/validation.json](validation/validation.json). It was computed while the
+request logs existed. The per-request logs of those six runs were lost before they were committed:
+they sat in a git-ignored file awaiting compression when the working copy was removed. The recorder
+now writes the compressed log itself. `evaluate.ts petclinic` keeps the committed measurements
+and recomputes only the model's side. The ordinary day's log (`runs/history/requests.csv.gz`) is
+committed.
+
 ## Running it
 
 ```sh
