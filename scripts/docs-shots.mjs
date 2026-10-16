@@ -24,7 +24,7 @@ const backtest = async (p, ref) => {
   await p.waitForSelector('.bt-pane svg', { timeout: 30000 });
   if (ref) {
     await p.selectOption('select[aria-label="Reference system"]', ref);
-    await p.waitForFunction((n) => document.querySelector('.bt-system')?.textContent?.includes(n), ref === 'shop' ? 'Shop' : ref === 'petclinic' ? 'PetClinic' : 'HotROD', { timeout: 60000 });
+    await p.waitForFunction((n) => document.querySelector('select[aria-label="Reference system"]')?.selectedOptions[0]?.textContent?.includes(n), ref === 'shop' ? 'Shop' : ref === 'petclinic' ? 'PetClinic' : 'HotROD', { timeout: 60000 });
   }
   await p.waitForSelector('.bt-verdict', { timeout: 60000 });
   await wait(p, 1200);
@@ -34,7 +34,7 @@ const review = async (p, ref, name, height) => {
   await backtest(p);
   if (ref !== 'hotrod') {
     await p.selectOption('select[aria-label="Reference system"]', ref);
-    await p.waitForFunction((n) => document.querySelector('.bt-system')?.textContent?.includes(n), name, { timeout: 60000 });
+    await p.waitForFunction((n) => document.querySelector('select[aria-label="Reference system"]')?.selectedOptions[0]?.textContent?.includes(n), name, { timeout: 60000 });
   }
   await p.click('.bt-screens button:has-text("Review")');
   await p.waitForFunction((n) => document.querySelector('.rv-head h2')?.textContent?.includes(n), name, { timeout: 120000 });

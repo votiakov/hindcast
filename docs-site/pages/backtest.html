@@ -6,7 +6,7 @@
 <ol class="pins">
 <li data-pin="views"><h3>Views</h3><p>Every part of Hindcast is one click away: the backtest, the Live board, Lessons, Sandbox, Compare and Studio.</p></li>
 <li data-pin="screens"><h3>Replay or review</h3><p><b>Replay</b> is this chart. <b>Review</b> is the capacity review of the same system on one screen: headroom, busier days, losing a node, what to commit to, and the fixes that pass. <code>/#backtest/review</code> opens it directly.</p></li>
-<li data-pin="ranges"><h3>Range and resolution</h3><p>The whole run, or the last 24 h, 6 h, 1 h or 15 min. ⌘/ctrl + wheel zooms around the cursor. The resolution is the data's own: here every 30 s.</p></li>
+<li data-pin="ranges"><h3>Range and resolution</h3><p>The whole run, or the last 24 h, 6 h, 1 h or 15 min. ⌘/ctrl + wheel zooms around the cursor. The resolution is the data's own (here a point every 30 s): hover the control to see it. Next to it, <b>load ×1</b> replays the history at a multiple of its traffic.</p></li>
 <li data-pin="p99"><h3>p99 latency</h3><p>The p99 users saw, measured, as a line over a light area. The dashed grey line is the model replaying the system <em>as built</em>. Each strategy has its own coloured line with a shaded 10–90% band. The dashed red line is the SLO.</p></li>
 <li data-pin="incident"><h3>Incidents</h3><p>Shaded columns are stretches out of SLO. Here, the push to twice the normal load: the as-built system timed out for minutes. Click any moment to open it on the board as a replay.</p></li>
 <li data-pin="errors"><h3>Errors</h3><p>Measured error rate and each strategy's replay. "Clients retry twice, no budget" turns the overload into 100% errors: the retries pile on top of a saturated database lock.</p></li>
