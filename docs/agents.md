@@ -98,8 +98,9 @@ OpenTelemetry `rpc_server_*` metrics with `rpc_system="grpc"`), the review's ris
 of X may leave callers' gRPC channels broken; check keepalive/reconnect settings — the replay times
 only the platform's recovery*. The node-loss run on the reference cluster lasted 50% longer than
 the replay for exactly that reason. This advisory comes with traces too. The gRPC calls found this
-way also drive `check_node_loss`'s sensitivity for callers that stay broken (below). Collection from
-traces alone doesn't mark calls as gRPC, so a traced model without these metrics gets no sensitivity.
+way also drive `check_node_loss`'s sensitivity for callers that stay broken (below). Traces mark a
+call as gRPC on their own where its client or server span says so (`rpc.system = grpc`, a `grpc.*`
+attribute, or a `package.Service/Method` name), so a model built from trace files alone gets it too.
 
 ## Set up
 
@@ -714,9 +715,14 @@ so in `notes`) rather than running 30 draws for 4 minutes.
     quote, because the Rust HTTP client's span carries no peer attribute.
   - the service graph found 13. It can't name Valkey (`redis`, from `db.system`) or flagd (`unknown`).
   - Calls per request: the service graph came within 4% of what each service served. Span metrics
-    were 12–15% low for cart and product-catalog (the frontend's gRPC client spans undercount), and the
-    traces 2× high for ad and recommendation.
-  - Headroom: 361–363 req/s without traces, frontend first; 411 req/s with them, recommendation first.
+    were 12–15% low for cart and product-catalog (the frontend's gRPC client spans undercount). The
+    traces came within 4% for the busy services once the endpoint mix was taken from them: the
+    frontend's three replicas share one span-metric series per endpoint, which `rate()` overcounts by
+    a different factor for each, and the first traced numbers (2× high for ad and recommendation)
+    took the mix from those series. Where an entry service's endpoint series and its traces disagree
+    and the services behind it side with the traces, collection now uses the traces' mix and warns.
+  - Headroom: 361–363 req/s without traces, frontend first; 605 req/s with them, recommendation first
+    (411 before the mix fix).
   - Held-out p99: a typical error of 49–50% per 30 s bucket from either source. The traced run had
     no held-out check on this window.
   - valkey-cart and flagd, which have no spans, were modelled from CPU alone through their peer

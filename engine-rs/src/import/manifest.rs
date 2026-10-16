@@ -266,7 +266,19 @@ pub fn import_bundle(m: &Value, fs: &mut dyn FileAccess) -> Result<(Dataset, Vec
             continue;
         }
         const H: usize = 5;
-        let raw: Vec<Vec<Option<f64>>> = keys.iter().map(|k| dataset.endpoints[k].rps.clone().unwrap()).collect();
+        let mut raw: Vec<Vec<Option<f64>>> = keys.iter().map(|k| dataset.endpoints[k].rps.clone().unwrap()).collect();
+        if let Some(topo) = topology.as_mut() {
+            if let Some(m) = trace_mix(id, &keys, &raw, &edge, topo, &dataset, &filled, &b.edge_services) {
+                raw = m.raw;
+                log.push(ImportLog { file: "(traces)".into(), what: m.said.clone(), points: None });
+                let mut all = match topo.mix_from_traces.take() {
+                    Some(Value::Object(o)) => o,
+                    _ => serde_json::Map::new(),
+                };
+                all.insert(id.clone(), m.record);
+                topo.mix_from_traces = Some(Value::Object(all));
+            }
+        }
         let totals: Vec<f64> = (0..n).map(|i| raw.iter().fold(0.0, |a, r| a + r.get(i).copied().flatten().unwrap_or(0.0))).collect();
         let (mut seen, mut counted) = (0.0, 0.0);
         for i in 0..n {
@@ -334,10 +346,292 @@ pub fn import_bundle(m: &Value, fs: &mut dyn FileAccess) -> Result<(Dataset, Vec
     Ok((dataset, log))
 }
 
+pub(crate) struct TraceMix {
+    /// the endpoint series, each now the entry total in the traced share
+    pub raw: Vec<Vec<Option<f64>>>,
+    pub said: String,
+    pub record: Value,
+}
+
+/// The entry endpoints' mix as the traces sampled it, where the endpoint series disagree with it and the
+/// services behind the entry side with the traces.
+///
+/// The endpoint series of an entry service can be wrong in ways the edge's total doesn't fix: span
+/// metrics of a service with several replicas, exported without a per-replica label, merge each
+/// replica's counter into one series that jumps between them, and rate() reads every drop as a counter
+/// reset. Each endpoint's rate is then inflated by a different factor, so the mix (each endpoint's share
+/// of the edge's requests, which sets how often each path through the system is taken) is wrong even
+/// after scaling to the edge. A trace sample drawn independently of the endpoint (a head or
+/// probabilistic sampler) has the right mix; one kept by a tail sampler need not. So the traces' mix is
+/// used only where (1) it differs from the series' beyond what sampling explains (χ²), and (2) the
+/// requests the services behind the entry served, per entry request, agree with the traced mix at
+/// least twice as well as with the series' (median |log| error, over services with their own request
+/// metrics). Endpoints without traces keep their share.
+pub(crate) fn trace_mix(id: &str, keys: &[String], raw: &[Vec<Option<f64>>], edge: &[Option<f64>], topo: &Topology, dataset: &Dataset, filled: &IndexSet<String>, edge_services: &IndexSet<String>) -> Option<TraceMix> {
+    let n = dataset.n as usize;
+    let sum = |r: &Vec<Option<f64>>| (0..n).fold(0.0, |a, i| a + r.get(i).copied().flatten().unwrap_or(0.0));
+    let tot: Vec<f64> = raw.iter().map(sum).collect();
+    let all: f64 = tot.iter().sum();
+    if all <= 0.0 {
+        return None;
+    }
+    let share: Vec<f64> = tot.iter().map(|t| t / all).collect();
+    // each series' traced endpoint, as calibration matches them
+    let shapes: Vec<(&String, &crate::dataset::EndpointShape)> = topo.endpoints.iter().filter(|(_, e)| e.service == id).collect();
+    let of: Vec<Option<usize>> = keys
+        .iter()
+        .map(|k| shapes.iter().position(|(s, _)| *s == k).or_else(|| shapes.iter().position(|(s, _)| crate::calibrate::same_endpoint(s, k))))
+        .collect();
+    let mut groups: Vec<usize> = of.iter().flatten().copied().collect();
+    groups.sort_unstable();
+    groups.dedup();
+    let traced: f64 = groups.iter().map(|&g| shapes[g].1.traces).sum();
+    if groups.len() < 2 || traced < 100.0 {
+        return None;
+    }
+    let matched: f64 = (0..keys.len()).filter(|&k| of[k].is_some()).map(|k| share[k]).sum();
+    if matched <= 0.0 {
+        return None;
+    }
+    let series_of = |g: usize| (0..keys.len()).filter(|&k| of[k] == Some(g)).map(|k| share[k]).sum::<f64>();
+    // (1) beyond sampling noise
+    let mut chi2 = 0.0;
+    for &g in &groups {
+        let expected = (traced * series_of(g) / matched).max(0.5);
+        chi2 += (shapes[g].1.traces - expected).powi(2) / expected;
+    }
+    let df = (groups.len() - 1) as f64;
+    if chi2 <= df + 5.0 * (2.0 * df).sqrt() {
+        return None;
+    }
+    // the share each series gets under the traced mix
+    let mut traced_share = share.clone();
+    for &g in &groups {
+        let members: Vec<usize> = (0..keys.len()).filter(|&k| of[k] == Some(g)).collect();
+        let (gs, gt) = (series_of(g), matched * shapes[g].1.traces / traced);
+        for &k in &members {
+            traced_share[k] = if gs > 0.0 { gt * share[k] / gs } else { gt / members.len() as f64 };
+        }
+    }
+    // (2) what the services behind the entry served, per entry request
+    let visits = |s: &str, sh: &[f64]| (0..keys.len()).filter_map(|k| of[k].map(|g| sh[k] * shapes[g].1.visits.get(s).copied().unwrap_or(0.0))).sum::<f64>();
+    let behind: IndexSet<&String> = groups.iter().flat_map(|&g| shapes[g].1.visits.keys()).filter(|s| s.as_str() != id).collect();
+    let (mut e_series, mut e_traced) = (vec![], vec![]);
+    for s in behind {
+        if filled.contains(s.as_str()) || edge_services.contains(s.as_str()) {
+            continue;
+        }
+        let rps = match dataset.services.get(s.as_str()).and_then(|x| x.rps.as_ref()) {
+            Some(r) => r,
+            None => continue,
+        };
+        let (mut served, mut entered) = (0.0, 0.0);
+        for i in 0..n {
+            if let (Some(a), Some(e)) = (rps.get(i).copied().flatten(), edge.get(i).copied().flatten()) {
+                served += a;
+                entered += e;
+            }
+        }
+        if served * dataset.step_s < 50.0 || entered <= 0.0 {
+            continue;
+        }
+        let measured = served / entered;
+        let err = |v: f64| if v > 0.0 { (v / measured).ln().abs() } else { 10.0 };
+        e_series.push(err(visits(s, &share)));
+        e_traced.push(err(visits(s, &traced_share)));
+    }
+    if e_series.is_empty() {
+        return None;
+    }
+    let med = |mut v: Vec<f64>| {
+        crate::backtest::js_sort_by(&mut v, |a, b| a - b);
+        let m = v.len() / 2;
+        if v.len() % 2 == 1 { v[m] } else { (v[m - 1] + v[m]) / 2.0 }
+    };
+    let services = e_series.len();
+    let (es, et) = (med(e_series), med(e_traced));
+    if !(es > 0.1 && et < es * 0.5) {
+        return None;
+    }
+    let totals: Vec<f64> = (0..n).map(|i| raw.iter().fold(0.0, |a, r| a + r.get(i).copied().flatten().unwrap_or(0.0))).collect();
+    let out: Vec<Vec<Option<f64>>> = (0..keys.len())
+        .map(|k| {
+            if of[k].is_none() || traced_share[k] == 0.0 {
+                return raw[k].clone();
+            }
+            (0..n).map(|i| if totals[i] > 0.0 { Some(totals[i] * traced_share[k]) } else { raw[k].get(i).copied().flatten() }).collect()
+        })
+        .collect();
+    // the endpoint whose share moved most, for the sentence
+    let k = (0..keys.len()).max_by(|&a, &b| (traced_share[a] - share[a]).abs().total_cmp(&(traced_share[b] - share[b]).abs())).unwrap_or(0);
+    let pct = |x: f64| crate::math::js_num(crate::math::js_round(x * 100.0));
+    let gap = |e: f64| pct(e.exp() - 1.0);
+    let said = format!(
+        "{}: endpoint mix taken from the {} traces — the endpoint series put {}% of the requests on {} where the traces put {}%, and the traced mix matches what the {} services behind it served within {}% (the series' mix: {}%)",
+        id,
+        crate::strategy::locale_int(traced),
+        pct(share[k]),
+        keys[k].strip_prefix(&format!("{} ", id)).unwrap_or(&keys[k]),
+        pct(traced_share[k]),
+        services,
+        gap(et),
+        gap(es)
+    );
+    let round = |x: f64| crate::math::js_round(x * 1000.0) / 1000.0;
+    let record = serde_json::json!({
+        "traces": traced,
+        "chi2": crate::math::js_round(chi2 * 10.0) / 10.0,
+        "services": services,
+        "errorSeries": round(es.exp() - 1.0),
+        "errorTraced": round(et.exp() - 1.0),
+        "shares": keys.iter().enumerate().filter(|(k, _)| of[*k].is_some()).map(|(k, key)| (key.clone(), serde_json::json!([round(share[k]), round(traced_share[k])]))).collect::<serde_json::Map<String, Value>>(),
+    });
+    Some(TraceMix { raw: out, said, record })
+}
+
 /// /^\S+ [A-Z]+$/: an endpoint named only by its service and a method
 fn is_bare(eid: &str) -> bool {
     let mut it = eid.splitn(2, ' ');
     let a = it.next().unwrap_or("");
     let b = it.next().unwrap_or("");
     !a.is_empty() && !a.chars().any(char::is_whitespace) && !b.is_empty() && b.bytes().all(|c| c.is_ascii_uppercase())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::collections::HashMap;
+
+    struct Mem(HashMap<String, String>);
+    impl FileAccess for Mem {
+        fn read(&mut self, path: &str) -> Result<String, String> {
+            self.0.get(path).cloned().ok_or_else(|| format!("no file {}", path))
+        }
+        fn glob(&mut self, pattern: &str) -> Result<Vec<String>, String> {
+            Ok(vec![pattern.to_string()])
+        }
+    }
+
+    const T0: f64 = 1_700_000_000.0;
+    const BUCKETS: usize = 10;
+
+    fn matrix(series: &[(&str, &str, Option<&str>, f64)]) -> String {
+        let result: Vec<Value> = series
+            .iter()
+            .map(|(label, svc, span, rps)| {
+                let mut m = json!({ *label: svc });
+                if let Some(s) = span {
+                    m["span_name"] = json!(s);
+                }
+                json!({ "metric": m, "values": (0..BUCKETS).map(|i| json!([T0 + 60.0 * i as f64, rps.to_string()])).collect::<Vec<_>>() })
+            })
+            .collect();
+        json!({ "status": "success", "data": { "resultType": "matrix", "result": result } }).to_string()
+    }
+
+    fn tag(k: &str, v: &str) -> Value {
+        json!({ "key": k, "type": "string", "value": v })
+    }
+
+    /// `a` requests to GET /a (web → a over gRPC) and `b` to GET /b (web → b over HTTP), interleaved
+    /// over the window
+    fn traces(a: usize, b: usize) -> String {
+        let n = a + b;
+        let mut data = vec![];
+        for k in 0..n {
+            let to_a = k < a;
+            let id = format!("{:032x}", k + 1);
+            let slot = (k * 7919) % n;
+            let start = ((T0 + slot as f64 * 590.0 / n as f64) * 1e6) as i64;
+            let (route, callee) = if to_a { ("/a", "a") } else { ("/b", "b") };
+            let (client, server, ctags) = if to_a {
+                ("grpc.pkg.AService/Get", "pkg.AService/Get", vec![tag("span.kind", "client"), tag("rpc.system", "grpc")])
+            } else {
+                ("GET", "GET /x", vec![tag("span.kind", "client"), tag("http.method", "GET")])
+            };
+            let sid = |j: usize| format!("{:016x}", 3 * k + j);
+            data.push(json!({
+                "traceID": id,
+                "spans": [
+                    { "traceID": id, "spanID": sid(1), "operationName": format!("GET {}", route), "references": [], "startTime": start, "duration": 10000, "processID": "p1",
+                      "tags": [tag("span.kind", "server"), tag("http.method", "GET"), tag("http.route", route)] },
+                    { "traceID": id, "spanID": sid(2), "operationName": client, "references": [{ "refType": "CHILD_OF", "traceID": id, "spanID": sid(1) }], "startTime": start + 1000, "duration": 5000, "processID": "p1", "tags": ctags },
+                    { "traceID": id, "spanID": sid(3), "operationName": server, "references": [{ "refType": "CHILD_OF", "traceID": id, "spanID": sid(2) }], "startTime": start + 1500, "duration": 4000, "processID": "p2", "tags": [tag("span.kind", "server")] }
+                ],
+                "processes": { "p1": { "serviceName": "web" }, "p2": { "serviceName": callee } }
+            }));
+        }
+        json!({ "data": data }).to_string()
+    }
+
+    /// 10 req/s at the edge, the endpoint series saying `ep` req/s for GET /a and GET /b, services a
+    /// and b serving `served`, and a trace sample of `tr` requests to each
+    fn import(ep: (f64, f64), served: (f64, f64), tr: (usize, usize)) -> (Dataset, Vec<ImportLog>) {
+        let mut files = HashMap::new();
+        files.insert("edge.json".to_string(), matrix(&[("exported_service", "web", None, 10.0)]));
+        files.insert("ep.json".to_string(), matrix(&[("service_name", "web", Some("GET /a"), ep.0), ("service_name", "web", Some("GET /b"), ep.1)]));
+        files.insert("svc.json".to_string(), matrix(&[("service_name", "a", None, served.0), ("service_name", "b", None, served.1)]));
+        files.insert("traces.json".to_string(), traces(tr.0, tr.1));
+        let m = json!({
+            "name": "t",
+            "step": "60s",
+            "metrics": [
+                { "prometheus": "svc.json", "metric": "rps", "by": "service_name" },
+                { "prometheus": "ep.json", "metric": "rps", "by": "service_name", "endpointBy": "span_name", "template": true },
+                { "prometheus": "edge.json", "metric": "rps", "by": "exported_service", "edge": true }
+            ],
+            "traces": [{ "file": "traces.json", "series": { "rps": false, "latency": false, "endpoints": false } }]
+        });
+        import_bundle(&m, &mut Mem(files)).unwrap()
+    }
+
+    fn total(d: &Dataset, id: &str) -> f64 {
+        d.endpoints.get(id).and_then(|e| e.rps.as_ref()).map(|r| r.iter().flatten().sum::<f64>()).unwrap_or(0.0)
+    }
+
+    fn share_a(d: &Dataset) -> f64 {
+        let (a, b) = (total(d, "web GET /a"), total(d, "web GET /b"));
+        a / (a + b)
+    }
+
+    #[test]
+    fn an_endpoint_mix_the_services_behind_contradict_is_taken_from_the_traces() {
+        // the series count GET /a three times over (replicas' counters merged into one series); the
+        // services behind web served half the requests each, as the traces sampled them
+        let (d, log) = import((15.0, 5.0), (5.0, 5.0), (100, 100));
+        assert!((share_a(&d) - 0.5).abs() < 1e-9, "{}", share_a(&d));
+        // still the edge's total
+        let all = total(&d, "web GET /a") + total(&d, "web GET /b");
+        assert!((all - 10.0 * BUCKETS as f64).abs() < 1e-6, "{}", all);
+        assert!(log.iter().any(|l| l.what.starts_with("web: endpoint mix taken from the 200 traces")), "{:?}", log.iter().map(|l| &l.what).collect::<Vec<_>>());
+        let rec = d.topology.as_ref().unwrap().mix_from_traces.as_ref().unwrap();
+        assert_eq!(rec["web"]["shares"]["web GET /a"], json!([0.75, 0.5]));
+    }
+
+    #[test]
+    fn the_series_mix_stands_where_the_services_behind_side_with_it() {
+        // a tail sampler kept more of GET /b than came; the servers agree with the series
+        let (d, log) = import((7.5, 2.5), (7.5, 2.5), (100, 100));
+        assert!((share_a(&d) - 0.75).abs() < 1e-9, "{}", share_a(&d));
+        assert!(!log.iter().any(|l| l.what.contains("endpoint mix taken")));
+        assert!(d.topology.as_ref().unwrap().mix_from_traces.is_none());
+    }
+
+    #[test]
+    fn a_difference_sampling_explains_leaves_the_series_alone() {
+        // 108 against 92 of 200 is within what a 50/50 sample gives
+        let (d, _) = import((5.0, 5.0), (5.4, 4.6), (108, 92));
+        assert!((share_a(&d) - 0.5).abs() < 1e-9, "{}", share_a(&d));
+        assert!(d.topology.as_ref().unwrap().mix_from_traces.is_none());
+    }
+
+    #[test]
+    fn calls_the_spans_say_were_grpc_are_marked() {
+        let (d, _) = import((5.0, 5.0), (5.0, 5.0), (10, 10));
+        let edges = d.topology.as_ref().unwrap().edges.as_array().unwrap().clone();
+        let edge = |to: &str| edges.iter().find(|e| e["from"] == "web" && e["to"] == to).cloned().unwrap();
+        assert_eq!(edge("a")["grpc"], json!(true));
+        assert!(edge("b").get("grpc").is_none());
+    }
 }

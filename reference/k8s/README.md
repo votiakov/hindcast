@@ -342,30 +342,33 @@ run: the numbers below come from `quickstart` over that window (`--start/--end`,
 - **span metrics**: Prometheus alone, `--calls spanmetrics`. Client spans are matched by RPC name,
   else by the peer labels.
 - **service graph**: Prometheus alone, which reads the service graph first.
-- **traces**: `--jaeger`; 2,950 traces from the 10% sample.
+- **traces**: `--jaeger`; 2,950 traces from the 10% sample. The **traces** column is after the
+  endpoint-mix fix below, from the same 2,950 traces (kept with the run) and Prometheus over the same
+  window; **traces, before the fix** is the column as first published.
 
 The **measured** column is what each service's server spans counted over the window, divided by the
 requests ingress-nginx counted (134,483). For `valkey-cart` and `flagd`, which have no spans of their
-own, it is cart's client spans.
+own, it is cart's client spans. Calls per request from traces are the model's: each frontend
+endpoint's share of the requests times its traced visits.
 
-| | span metrics | service graph | traces | measured |
-|---|---|---|---|---|
-| call edges (traced graph: 15, flagd's self-call left out) | 15: 14 of the traced ones, missing shipping → quote; plus ad → flagd (a flag stream, 1 call) | 13 of 15, missing cart → valkey-cart and cart → flagd | 15 | |
-| calls per frontend request: product-catalog | 1.32 | 1.51 | 2.19 | 1.51 |
-| cart | 0.39 | 0.46 | 0.51 | 0.46 |
-| ad | 0.13 | 0.12 | 0.26 | 0.12 |
-| recommendation | 0.12 | 0.12 | 0.27 | 0.12 |
-| currency | 0.14 | 0.13 | 0.14 | 0.14 |
-| shipping | 0.084 | 0.080 | 0.079 | 0.083 |
-| checkout, payment, email, quote | 0.042–0.043 | 0.040–0.042 | 0.040 | 0.041–0.042 |
-| valkey-cart | 0.64 | — | 0.70 | 0.75 |
-| flagd | 0.036 | — | 0.079 | 0.042 |
-| capacity per replica: frontend | 120 req/s, CPU | 120 req/s, CPU | 220 req/s, 1 at a time | |
-| recommendation | 44 req/s, 6 at a time | 52 req/s, 4 at a time | 68 req/s, 1 at a time | |
-| the other nine traced services | the same in all three (CPU, from the same metrics) | | | |
-| valkey-cart, flagd | 4,100 and 461 req/s, CPU only (no latency metric) | not modelled (cost only) | 28,732 and 25,050 req/s | |
-| headroom | 362.8 req/s, frontend first (frontend's fit is poor, so the review calls it a guess) | 361 req/s, frontend first | 411.1 req/s, recommendation first | |
-| held-out p99 (the last 7 min) | 65.8 ms predicted, 56.8 measured; typical error per 30 s bucket 50% | 67.5 against 56.8; 49% | no check: the traced endpoints have no p99 series, because span names carry raw URLs | |
+| | span metrics | service graph | traces | traces, before the fix | measured |
+|---|---|---|---|---|---|
+| call edges (traced graph: 15, flagd's self-call left out) | 15: 14 of the traced ones, missing shipping → quote; plus ad → flagd (a flag stream, 1 call) | 13 of 15, missing cart → valkey-cart and cart → flagd | 15 | 15 | |
+| calls per frontend request: product-catalog | 1.32 | 1.51 | 1.48 | 2.19 | 1.51 |
+| cart | 0.39 | 0.46 | 0.48 | 0.51 | 0.46 |
+| ad | 0.13 | 0.12 | 0.12 | 0.26 | 0.12 |
+| recommendation | 0.12 | 0.12 | 0.12 | 0.27 | 0.12 |
+| currency | 0.14 | 0.13 | 0.13 | 0.14 | 0.14 |
+| shipping | 0.084 | 0.080 | 0.073 | 0.079 | 0.083 |
+| checkout, payment, email, quote | 0.042–0.043 | 0.040–0.042 | 0.037 | 0.040 | 0.041–0.042 |
+| valkey-cart | 0.64 | — | 0.79 | 0.70 | 0.75 |
+| flagd | 0.036 | — | 0.073 | 0.079 | 0.042 |
+| capacity per replica: frontend | 120 req/s, CPU | 120 req/s, CPU | 220 req/s, 1 at a time | 220 req/s, 1 at a time | |
+| recommendation | 44 req/s, 6 at a time | 52 req/s, 4 at a time | 68 req/s, 1 at a time | 68 req/s, 1 at a time | |
+| the other nine traced services | the same in all three (CPU, from the same metrics) | | | | |
+| valkey-cart, flagd | 4,100 and 461 req/s, CPU only (no latency metric) | not modelled (cost only) | 28,732 and 25,050 req/s | 28,732 and 25,050 req/s | |
+| headroom | 362.8 req/s, frontend first (frontend's fit is poor, so the review calls it a guess) | 361 req/s, frontend first | 605.1 req/s, recommendation first | 411.1 req/s, recommendation first | |
+| held-out p99 (the last 7 min) | 65.8 ms predicted, 56.8 measured; typical error per 30 s bucket 50% | 67.5 against 56.8; 49% | no check: the traced endpoints have no p99 series, because span names carry raw URLs | the same | |
 
 What it says:
 
@@ -375,9 +378,37 @@ What it says:
     fewer calls than cart and product-catalog served, and about 24% more than ad and checkout
     served. Calls into a service are scaled down where callers count more than it served (ad,
     checkout), never up.
-  - The traces overcount the busy calls, by about 2× for ad and recommendation and 1.45× for
-    product-catalog. The traced paths are averaged over the sampled traces. Why their mix differs from
-    the ingress's was not investigated here.
+  - With traces, after the fix below, product-catalog, cart, ad and recommendation came within 4% of
+    what was served; currency, shipping and the checkout path 9–12% low (108 checkouts in the sample).
+- **The traces' first numbers were wrong, and the traces were not.** The published column had ad and
+  recommendation about 2× high and product-catalog 1.45× high. The 2,950 traces were a fair sample:
+  their own server spans per trace came within 4% of what product-catalog, cart, ad and
+  recommendation served (1.48, 0.48, 0.122, 0.117). Two things went wrong after them:
+  - The model takes each frontend endpoint's share of the requests from the frontend's span-metric
+    series, and those were wrong. The frontend runs three replicas, and the collector's Prometheus
+    exporter writes their counters into one series with no label per replica, so the series jumps
+    between three counters (one URL's: 316, 293, 359, 310, 394 on consecutive scrapes) and `rate()`
+    reads every drop as a reset. Over the window the frontend's routed server spans summed to about
+    2.4 per ingress request (the importer's own note: "counted 242% of the requests the edge saw"), inflated by a different factor for each endpoint, so after scaling to the
+    ingress's total GET /api/data still had 16% of the requests where the traces (and ad's own count)
+    put 12%, and POST /api/cart 4% where the traces put 14%. The services behind the frontend run one
+    replica each, so their own counts were right.
+  - The comparison then weighted the traced paths by those series and missed /api/products: its
+    traced name (`/api/products/[productId]`, Next.js's route) is not the series' (`{id}`), so it got
+    almost no weight, which raised every other endpoint's share. The model itself matched the two and
+    said 1.77, 0.33, 0.17 and 0.17 for product-catalog, cart, ad and recommendation.
+
+  The importer now takes an entry service's endpoint mix from the traces where the two disagree
+  beyond what sampling explains (χ²) and the services behind the entry served what the traced mix
+  predicts at least twice as closely as the series' (here within 7%, against 65%). The collection
+  warns when it does. A tail-sampled trace set, whose mix the services' counts contradict, leaves the
+  series as they were. The headroom moved from 411 to 605 req/s, recommendation still first:
+  recommendation now carries 12% of the requests rather than 17%.
+- **gRPC from the spans.** A model built from traces now marks a call as gRPC where its client or
+  server span says so (`rpc.system = grpc`, a `grpc.*` attribute, or a name of the form
+  `package.Service/Method`), so `check_node_loss` gives traced models its `ifCallersStayBroken`
+  sensitivity without gRPC metrics. On this window the spans give the 11 calls the span-metric names
+  gave, plus cart → flagd.
 - **What each source can't see.**
   - The service graph names an uninstrumented callee only through the connector's
     `virtual_node_peer_attributes`, which default to `peer.service`, `db.name` and `db.system`. Cart's

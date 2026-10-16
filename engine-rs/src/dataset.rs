@@ -167,6 +167,10 @@ pub struct Topology {
     pub rate_corrected: Option<Map<f64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sampling_check: Option<f64>,
+    /// entry services whose endpoint mix was taken from the traces rather than the endpoint series,
+    /// with why (see import::manifest::trace_mix)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mix_from_traces: Option<Value>,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, Default)]
