@@ -231,6 +231,7 @@ async function telemetryOf(runs: string[], out: string, settle = false): Promise
 }
 
 // committed gzipped; the recorder leaves the plain file
+const hasRequests = (r: string) => existsSync(join(runDir(r), 'requests.csv')) || existsSync(join(runDir(r), 'requests.csv.gz'));
 const requestsOf = (r: string) => parseRequestLog(existsSync(join(runDir(r), 'requests.csv')) ? readFileSync(join(runDir(r), 'requests.csv'), 'utf8') : gunzipSync(readFileSync(join(runDir(r), 'requests.csv.gz'))).toString('utf8'));
 /** a run's requests after the settling period */
 function settled(log: RequestLog, start: number): RequestLog {
@@ -406,6 +407,10 @@ function predictionsOf(model: string, round: number): Record<string, Forecast> |
   return (JSON.parse(readFileSync(predictionsPath(round), 'utf8')) as { models: Record<string, Record<string, Forecast>> }).models[model];
 }
 
+/** the committed evaluation's rows, by model and run: the measurement of a run whose request log is not in the repository */
+type EarlierRow = { run: string; measured: { p99Ms: number; errorRate: number; minutesOutOfSlo: number; requests: number; addedOverAsBuilt: number }; series: { measured: ReturnType<typeof measuredSeries> } };
+const EARLIER: Record<string, Record<string, EarlierRow>> = {};
+
 /** score one calibrated model on every recorded case */
 async function score(label: string, ws: Workspace, base: string, evalDir: string, ordinaryDay: Dataset) {
   const m = reviveModel(ws.readJson<Model>('model.json'));
@@ -415,15 +420,20 @@ async function score(label: string, ws: Workspace, base: string, evalDir: string
   for (const c of CASES) {
     if (!recorded(c.run) || !recorded(c.asBuilt)) continue;
     const run = await telemetryOf([c.run], join(evalDir, 'runs', c.run));
-    const log = settled(requestsOf(c.run), meta(c.run).start);
+    // PetClinic's six runs were committed without their request logs: what k6 measured on them is
+    // kept from the evaluation that had the logs (the committed validation.json), and only the
+    // model's side is computed again
+    const kept = hasRequests(c.run) ? undefined : EARLIER[label]?.[c.run];
+    if (!hasRequests(c.run) && !kept) throw new Error(`${c.run}: no request log, and no earlier evaluation of it to keep the measurement from`);
+    const log = kept ? undefined : settled(requestsOf(c.run), meta(c.run).start);
     const head = c.head ? resolve(SYS, c.head) : undefined;
     // out-of-sample runs are scored on the verdict committed before they ran, not one computed after
     const committed = c.oos ? predictionsOf(label, c.oos)?.[c.run] : undefined;
     const now = forecast(c, ws, base);
     if (committed && committed.verdict !== now.verdict) console.warn(`(${label} ${c.run}: predicted ${committed.verdict} before the run; today's code says ${now.verdict})`);
     const exAnte = committed ?? now;
-    const actual = measured(log, m.slo);
-    const actualBase = measured(settled(requestsOf(c.asBuilt), meta(c.asBuilt).start), m.slo);
+    const actual = kept ? { ...kept.measured, p99: kept.measured.p99Ms } : measured(log!, m.slo);
+    const actualBase = kept ? undefined : measured(settled(requestsOf(c.asBuilt), meta(c.asBuilt).start), m.slo);
     const watch = c.service ?? EV.watch;
     const post = predicted(m, ws, run, meta(c.run).start, head, base, watch);
     // an autoscaler, to the spreadsheet, is its maximum
@@ -431,7 +441,7 @@ async function score(label: string, ws: Workspace, base: string, evalDir: string
     const nv = EV.naive === 'all' ? naiveAll(history, base, head, c.scale) : naive(history, !c.head ? 3 : hpaMax ? Number(hpaMax[1]) : c.head.includes('hpa') ? 'hpa' : replicasOfHead(c.head), c.scale, c.cpu);
     // reality's verdict, judged like verify_change's gate: more than 0.5 min out of SLO added over
     // the as-built system on the same day (for the as-built system itself: more than 0.5 min)
-    const added = c.run === c.asBuilt ? actual.minutesOutOfSlo : actual.minutesOutOfSlo - actualBase.minutesOutOfSlo;
+    const added = kept ? kept.measured.addedOverAsBuilt : c.run === c.asBuilt ? actual.minutesOutOfSlo : actual.minutesOutOfSlo - actualBase!.minutesOutOfSlo;
     const truth = added > 0.5 ? 'fail' : 'pass';
     const verdict = exAnte.verdict;
     const row = {
@@ -441,7 +451,7 @@ async function score(label: string, ws: Workspace, base: string, evalDir: string
       exAnte,
       exPost: { p99Ms: Math.round(post.p99), errorRate: post.errorRate, minutesOutOfSlo: post.minutesOutOfSlo, [`${repKey()}Peak`]: post.replicasPeak },
       measured: { p99Ms: Math.round(actual.p99), errorRate: actual.errorRate, minutesOutOfSlo: actual.minutesOutOfSlo, requests: actual.requests, addedOverAsBuilt: Math.round(added * 10) / 10 },
-      series: { predicted: post.series, measured: measuredSeries(log, run.start, run.n), [repKey()]: run.services[watch]?.replicas ?? [] },
+      series: { predicted: post.series, measured: kept ? kept.series.measured : measuredSeries(log!, run.start, run.n), [repKey()]: run.services[watch]?.replicas ?? [] },
       truth,
       naive: nv,
       agrees: { backtest: verdict === truth, naive: nv.verdict === truth },
@@ -516,6 +526,8 @@ async function main() {
   }
   if (!recorded('history')) throw new Error('record the history run first');
   const evalDir = join(SYS, 'validation');
+  if (existsSync(join(evalDir, 'validation.json')))
+    for (const mod of (JSON.parse(readFileSync(join(evalDir, 'validation.json'), 'utf8')) as { models: { id: string; rows: EarlierRow[] }[] }).models) EARLIER[mod.id] = Object.fromEntries(mod.rows.map((r) => [r.run, r]));
   // models are rebuilt every time; collected telemetry is kept (refreshed when the cluster is up)
   mkdirSync(evalDir, { recursive: true });
   for (const f of readdirSync(evalDir)) if (!['collected', 'runs'].includes(f) && !/^predictions-oos.*\.json$/.test(f)) rmSync(join(evalDir, f), { recursive: true, force: true });
@@ -562,7 +574,7 @@ async function main() {
       spec.description = `${c.head} — the manifests applied for real (${CASES.filter((x) => x.head === c.head).map((x) => x.run).join(', ')})`;
       strategies.push(toYaml(spec));
     }
-    refRuns.push({ label: c.run, dataset: await telemetryOf([c.run], join(evalDir, 'runs', c.run)), requests: requestsOf(c.run), strategy: spec });
+    refRuns.push({ label: c.run, dataset: await telemetryOf([c.run], join(evalDir, 'runs', c.run)), requests: hasRequests(c.run) ? requestsOf(c.run) : undefined, strategy: spec });
   }
   if (refRuns.length) m.accuracy.push(referenceAccuracy(m, refRuns, `recorded Kubernetes runs the model never saw: ${refRuns.map((r) => r.label).join(', ')}`));
   for (const a of m.accuracy) {
