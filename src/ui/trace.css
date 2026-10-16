@@ -18,7 +18,7 @@
 .ts-step b { font-weight: 500; color: var(--r-ink); padding: 0 7px; border-left: 1px solid var(--r-line); border-right: 1px solid var(--r-line); min-width: 44px; text-align: center; }
 .ts-toggle, .ts-act { border: 1px solid var(--r-line-strong); }
 .ts-toggle.on { color: var(--r-accent); border-color: var(--r-accent-line); background: var(--r-accent-tint); }
-.ts-verdict { color: var(--r-ok); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.ts-verdict { color: var(--r-ok); min-width: 0; flex: 1 1 auto; white-space: normal; line-height: 1.35; }
 .ts-verdict.bad { color: var(--r-bad); }
 .ts-gap { flex: 1; }
 .ts-x { background: none; border: 0; color: var(--r-muted); padding: 2px; display: grid; place-items: center; cursor: pointer; }
@@ -59,3 +59,17 @@
 .tr-label span { font: 10.5px var(--mono); color: var(--r-accent); background: var(--r-surface); border: 1px solid var(--r-accent-line); padding: 1px 5px; white-space: nowrap; }
 .tr-label span.q { color: var(--r-warn); border-color: var(--r-warn-line); }
 .tr-label span.bad { color: var(--r-bad); border-color: var(--r-bad-line); }
+
+/* in Compare: each side's own strip, across its pane (clear of the compact palette on side A) */
+.compare .pane .trace-strip { left: 12px; right: 12px; max-width: none; }
+.compare .pane:first-child .trace-strip { left: 86px; }
+
+/* the verdict: beside the controls, wrapping onto a second line when long; on a narrow strip (a
+   Compare pane, a board beside a panel) on its own line under them */
+.trace-strip { container-type: inline-size; }
+@container (max-width: 880px) {
+  .ts-head { flex-wrap: wrap; row-gap: 3px; gap: 3px 8px; }
+  .ts-title { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .ts-gap { display: none; }
+  .ts-verdict { order: 1; flex: 1 1 100%; }
+}

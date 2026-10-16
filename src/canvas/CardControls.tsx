@@ -589,16 +589,18 @@ export function CardControls({ id, data }: { id: string; data: SystemNodeData })
             calibrate
           </button>
         )}
-        {b === 'main' && (
-          <button className={`nc-act ${tracing ? 'on' : ''}`} onClick={() => {
-              if (tracing) return useTracer.getState().close();
-              useTracer.getState().start(b, id);
-              // the card folds away: the board shows the request's path
-              useSim.getState().onNodesChange(b, [{ type: 'select', id, selected: false }]);
-            }} title="Follow a sampled request through it: each hop's queue wait and work on the board, and where it failed">
-            trace
-          </button>
-        )}
+        <button
+          className={`nc-act ${tracing ? 'on' : ''}`}
+          onClick={() => {
+            if (tracing) return useTracer.getState().close();
+            useTracer.getState().start(b, id);
+            // the card folds away: the board shows the request's path
+            useSim.getState().onNodesChange(b, [{ type: 'select', id, selected: false }]);
+          }}
+          title="Follow a sampled request through it: each hop's queue wait and work on the board, and where it failed"
+        >
+          trace
+        </button>
         <span className="nc-gap" />
         <button className="nc-act" onClick={() => removeNode(b, id)} title="Delete (Backspace)">
           <Trash2 size={12} />

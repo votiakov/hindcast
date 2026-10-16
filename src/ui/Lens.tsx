@@ -154,11 +154,9 @@ export function Lens({ onClose }: { onClose: () => void }) {
                   </td>
                   <td className="lens-num">{f.rps >= 100 ? f.rps.toFixed(0) : f.rps.toFixed(1)}/s</td>
                   <td className="lens-tr">
-                    {b === 'main' && (
-                      <button className="lens-link" onClick={() => (useTracer.getState().start('main', f.id), onClose())} title={`Follow a sampled request through ${f.name} on the board`}>
-                        trace
-                      </button>
-                    )}
+                    <button className="lens-link" onClick={() => (useTracer.getState().start(b, f.id), onClose())} title={`Follow a sampled request through ${f.name} on the board`}>
+                      trace
+                    </button>
                   </td>
                 </tr>
               ))}

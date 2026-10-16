@@ -186,7 +186,7 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
             />
           )}
         </ReactFlow>
-        {interactive && id === 'main' && <TraceStrip board={id} />}
+        {interactive && <TraceStrip board={id} padding={padding} />}
       </div>
     </BoardContext.Provider>
   );
