@@ -16,6 +16,7 @@
 | `import-k8s <manifests.yaml …> [--name …] [--out arch.yaml]` | Kubernetes manifests → spec (HPAs become autoscaling) + assumptions to review |
 | `link <arch> [variants]` | URL that opens the architecture (or a comparison) in the app |
 | `catalog` | component catalogue as JSON |
+| `demo [--workspace dir] [--json]` | a recorded system built into the binary, no network or files: the Astronomy Shop's capacity review (with losing a node), four strategies backtested over its recorded day, and the accuracy record; `--workspace` writes the models, recorded days and strategies to a directory so every other command runs on them |
 | `agent <tool> '<json>' \| @file \| -` | any agent tool from a shell, JSON in and out (`agent list`); see [agents.md](agents.md) |
 
 ### Backtesting on real data

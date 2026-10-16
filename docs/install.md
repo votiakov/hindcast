@@ -16,8 +16,14 @@ run it. No Node or Rust is needed.
 ```sh
 curl -fsSLo hindcast https://github.com/votiakov/hindcast/releases/latest/download/hindcast-aarch64-apple-darwin
 chmod +x hindcast
+./hindcast demo                                    # a recorded system built in: no network, no files
 ./hindcast quickstart --prometheus http://localhost:9090 --last 24h
 ```
+
+`hindcast demo` shows the output on the OpenTelemetry Astronomy Shop recorded under load, with
+nothing to download: a capacity review, four strategies backtested, and the accuracy record.
+`hindcast demo --workspace ./hindcast-demo` writes that data to disk, so `backtest`, `outage`,
+`headroom` and the agent tools run on it too.
 
 The same binary is the MCP server (`hindcast mcp`) and runs every agent tool from a shell
 (`hindcast agent <tool> '<json>'`); `hindcast agent setup` writes the configuration for an MCP host.
@@ -57,7 +63,8 @@ running app and `npm run docs:build` rebuilds the pages.
 
 The data the accuracy tables come from is committed, so a backtest runs without any infrastructure.
 In the app, the **Backtest** tab opens on HotROD; the system picker switches to the Astronomy Shop,
-PetClinic and the shop on Kubernetes. From the CLI, in a clone:
+PetClinic and the shop on Kubernetes. With the binary alone, `hindcast demo` shows the Astronomy
+Shop and `hindcast demo --workspace <dir>` writes its files out. From the CLI, in a clone:
 
 ```sh
 hindcast backtest reference/shop/model.json reference/shop/dataset.json \

@@ -55,14 +55,20 @@ built from Datadog's API documentation, not a live account ([details](docs/agent
 ```sh
 curl -fsSLo hindcast https://github.com/votiakov/hindcast/releases/latest/download/hindcast-aarch64-apple-darwin
 chmod +x hindcast
+./hindcast demo    # a recorded system built into the binary: no network, no files
 ```
+
+`demo` runs on the OpenTelemetry Astronomy Shop recorded under load: the capacity review (including
+losing a node), four strategies backtested over the recorded day, and how the model did on runs it
+never saw. `./hindcast demo --workspace ./hindcast-demo` writes that data to disk so every other
+command runs on it.
 
 Other platforms, building from source and the app: [docs/install.md](docs/install.md).
 
 ### No cluster handy
 
-The recorded reference systems ship with the repository, so you can see real output with no
-infrastructure at all.
+`hindcast demo` needs only the binary. The other recorded reference systems ship with the
+repository, so you can see real output with no infrastructure at all.
 
 ```sh
 git clone --depth 1 https://github.com/votiakov/hindcast.git && cd hindcast
