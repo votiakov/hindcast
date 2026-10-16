@@ -289,7 +289,7 @@ describe('generated boards', () => {
       if (heavier < base - 0.02) bad.push(`#${k}: ${(base * 100).toFixed(1)}% errors at ${rps}/s, ${(heavier * 100).toFixed(1)}% at 3× the load`);
     });
     expect(bad.slice(0, 10)).toEqual([]);
-  });
+  }, 240_000); // three 40 s runs on each generated board: ~45 s on a laptop, over 60 s on a CI runner
 });
 
 describe('resilience behaviours', () => {
