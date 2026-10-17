@@ -33,11 +33,12 @@
 | `outage <model.json> <outage-id \| list> [strategy.yaml …] [--rps N] [--role primary-db=orders-db]` | replays a public outage against the model, as built and with strategies |
 | `diff-strategy --base <dir> --head <dir> [--model model.json] [--out strategy.yaml]` | Kubernetes manifests before/after → a strategy (replicas, CPU/memory, HPAs, arch) |
 | `verify-change --model model.json --dataset dataset.json (--base <dir> --head <dir> \| --terraform-plan plan.json \| <strategy.yaml …>) [--baseline-head <dir> \| --baseline strategy.yaml \| --baseline-terraform-plan plan.json] [--comment pr.md] [--fail-on fail\|inconclusive\|never]` | `verify_change` on files, for CI: verdict and confidence, the pull-request comment, exit 2 on a failing verdict; with a baseline (a stacked pull request), the change is judged on top of it ([ci.md](ci.md#stacked-pull-requests)) |
-| `loadtest plan [strategy.yaml …] [--base <dir> --head <dir>] [--service frontend[=0.9],…] [--workspace dir] [--scale 1.3 \| --peak 400] [--steps 5] [--hold 120] [--mix focused\|recorded] [--out loadtest.k6.js] [--json]` | `plan_load_test` on a workspace: the load test a low-confidence verdict asks for — which services to drive and to what req/s, through which endpoints, a step-load k6 script that stops at the SLO, and the calls that read it back in ([agents.md](agents.md#plan_load_test-the-load-test-a-verdict-asks-for)) |
+| `loadtest plan [strategy.yaml …] [--base <dir> --head <dir>] [--service frontend[=0.9],…] [--workspace dir] [--scale 1.3 \| --peak 400] [--last 7d] [--margin 1.1] [--steps 5] [--hold 120] [--mix focused\|recorded] [--out loadtest.k6.js] [--json]` | `plan_load_test` on a workspace: the load test a low-confidence verdict asks for — which services to drive and to what req/s, through which endpoints, a step-load k6 script that stops at the SLO, and the calls that read it back in ([agents.md](agents.md#plan_load_test-the-load-test-a-verdict-asks-for)) |
 
 Guide: [backtest.md](backtest.md); the model: [calibration.md](calibration.md). The CLI is one native
-binary (`npm run cli:build` → `engine-rs/target/release/hindcast`, no runtime needed); a Linux
-build of it is what the PR workflow ships.
+binary (`npm run cli:build` → `engine-rs/target/release/hindcast`, no runtime needed); the release
+workflow builds it for Linux, macOS and Windows. `verify-change`'s baseline flags, `loadtest plan`
+and `mermaid` are on `main` and not yet in a release ([install.md](install.md#release-or-main)).
 
 Every command accepts `--json`. Files may be YAML or JSON. Examples live in `examples/`:
 
@@ -66,9 +67,9 @@ users ─1.2ms─▶ api ══ 651ms queue + 69ms ══▶ db ✕ timeout (500
                └─ retry 1 ══ 500ms queue ══▶ db ✕ timeout (500 ms)
 ```
 
-`HINDCAST_APP_URL` (default `http://localhost:5173`) controls generated links. The CLI is `hindcast`
-(`bottleneck` still works as an alias), and every `HINDCAST_*` variable falls back to the old
-`BOTTLENECK_*` name.
+`HINDCAST_APP_URL` (default `http://localhost:5173`) controls generated links. Every `HINDCAST_*`
+variable falls back to the old `BOTTLENECK_*` name. `hindcast <command> --help` prints that
+command's usage, `hindcast --help` all of them.
 
 ## MCP server — `npm run mcp`
 

@@ -71,7 +71,7 @@ and where it is documented.
 | Two engines: fluid (fast, live) and discrete-event (every request; real tails, retry storms) | A C M | [engines.md](engines.md) |
 | Pricing: illustrative, AWS us-east-1, GCP us-central1 | A C | [catalog.md](catalog.md) |
 | Present mode, embeds (`?embed=1`), share links (`#spec=`, `#compare=`), PNG/SVG of the board, a Mermaid flowchart of it (`mermaid`) | A C | [tools.md](tools.md#app-links) |
-| One look (Terminal) with live motion; replicas grouped or each | A | [content.md](content.md#themes-srctheme) |
+| One look (Terminal) with live motion; replicas grouped or each | A | [content.md](content.md#look-srctheme) |
 
 ## Content
 

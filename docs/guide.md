@@ -154,7 +154,10 @@ what happens in it, not recover afterwards.
   with the answer and puts the level's reference design on the board (undoable). **Replay level** resets the level with the design on the board; press ▶
   (Space) to run it.
 - Terms such as p99, SLO, queue or timeout are underlined in the level's text: hover one for what
-  it means. ⌘K, then type a term, lists the whole glossary.
+  it means. ⌘K, then type a term, lists the whole glossary; the user guide's **Terms** page
+  (`/docs/terms.html`) has every term with its definition, alphabetical and filterable.
+- On a phone the board fits the screen above the lesson sheet and reads top to bottom, as Live
+  does.
 - **Why it worked** after every pass: what the level taught, and what the system held.
 - The finish card recaps every level, gives up to three stars for the bill and leads to the next
   lesson. Progress (the level reached, the best stars) is kept in the browser and shown in the
@@ -171,10 +174,13 @@ Authoring your own: [content.md](content.md#lessons-srclessons).
 Build anything and push traffic and failures through it.
 
 **Building**
-- The **component palette** (left): Users, CDN, Load Balancer, API Gateway, API Server, Worker,
-  Serverless Fn, Cache, Database, Read Replica, Object Storage, Queue, GPU Inference, LLM Provider
-  API. Drag onto the board or click; connect right handle → left handle. Every component's
-  numbers: [catalog.md](catalog.md).
+- The **component palette** (left), 22 kinds in groups: Users; DNS, CDN, Edge Function, Load
+  Balancer, API Gateway; API Server, Worker, Serverless Fn; Cache, Database, Read Replica,
+  Key-Value Store, Object Storage, Archive Storage, Search Index, Vector Database; Queue, Stream;
+  GPU Inference, LLM Provider API; External API. Drag onto the board or click; connect right
+  handle → left handle. Every component's numbers: [catalog.md](catalog.md).
+- **▸ start from an example**, the palette's first line, opens the design menu at its
+  templates.
 - **Zones**: group components into availability zones or regions; set the latency of any link.
 - **Templates**: start from a ready design (Design menu).
 - **Drop a file** on the board: an architecture spec (YAML/JSON), Kubernetes manifests, or
@@ -225,14 +231,20 @@ F fullscreen, Esc exits.
 ## Compare
 
 Two designs side by side under the same traffic and failures, with a **takeaway** computed by the
-engine. Built-in comparisons:
+engine. The 32 built-in comparisons:
 
 Monolith vs Microservices · Single DB vs HA Cluster · Sync vs Event-driven · Servers vs Serverless ·
 Brute Force vs CDN + Cache · Single-AZ vs Multi-AZ · Naive Retries vs Resilient Clients · LLM API vs
-Self-hosted GPUs · Node.js vs Go vs the Database · The Outage After the Fix · Retries at Every Layer ·
-Cells vs One Big Fleet · Never Drop a Request? Queue vs Shed · The Tail at Scale · When Your LLM
-Provider Goes Down · Peak-sized Fleet vs Autoscaling · One Region vs Two · Read Replicas vs One Bigger
-Database · Autoscaling: a 10 s Pod vs a 2-minute VM.
+Self-hosted GPUs · Node.js vs Go vs the Database · A Cache on a Write-Heavy App · Timelines: Fan-out
+on Write vs on Read · A Viral Post: More Shards or a Cache? · CAP, Live: Async vs Sync Replication ·
+A Database Box vs a Key-Value Store on Demand · DNS Failover: Why It Takes Minutes · Search
+Freshness: Refresh Every 30 s vs 1 s · Vector Search: Recall 0.99 vs 0.95 · Vector Search: When the
+Index Outgrows Memory · An Edge Function vs the Origin Round Trip · The Outage After the Fix ·
+Retries at Every Layer · Cells vs One Big Fleet · Never Drop a Request? Queue vs Shed · The Tail at
+Scale · When Your LLM Provider Goes Down · Peak-sized Fleet vs Autoscaling · One Region vs Two · Read
+Replicas vs One Bigger Database · Autoscaling: a 10 s Pod vs a 2-minute VM · One Slow Dependency:
+Shared Threads vs a Bulkhead · One Stock Counter vs a Split Counter · The Nightly Export: Primary vs
+a Read Replica.
 
 Every built-in comparison is played headlessly in the tests (`test/scenarios.test.ts`) and must
 show a visible difference in failed requests, time out of SLO, worst p99 or cost.
