@@ -48,6 +48,10 @@ runs:
   launch-cart250: { day: 13/Jul/1995, minutes: 40, scale: x83, manifests: variants/cart-250m.yaml }
   launch-rec2: { day: 13/Jul/1995, minutes: 40, scale: x83, manifests: variants/recommendation-2.yaml }
   normal-catalog125: { day: 12/Jul/1995, minutes: 40, scale: x83, manifests: variants/product-catalog-125m.yaml }
+  # the as-built launch day recorded a second time, nothing changed: how far two recordings of the
+  # same day differ (the email leak's kill lands in one bucket or four), the noise under the
+  # half-minute gate. Not a question, not scored
+  launch-b: { day: 13/Jul/1995, minutes: 40, scale: x83, manifests: shop.yaml }
   # a node failure for real: bnk8s-worker's container stops a minute before the ordinary day's
   # busiest moment (as built). check_node_loss predicts it from the placement at that instant
   normal-nodeloss: { day: 12/Jul/1995, minutes: 40, scale: x83, manifests: shop.yaml, kill: { node: bnk8s-worker, atS: 1160 } }
