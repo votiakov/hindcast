@@ -65,6 +65,15 @@ function k6(out: string, shapeFile: string, cfg: K8sReference, csv: boolean): Pr
   });
 }
 
+/** a recording measures CPU per request: on a Mac running on battery (Low Power Mode) the same work
+ *  costs about twice the CPU, so a run on battery can't be compared with one on mains power. Round 6's
+ *  change runs were recorded that way and voided; HINDCAST_ALLOW_BATTERY=1 records anyway */
+function onMains(): boolean {
+  if (process.platform !== 'darwin' || process.env.HINDCAST_ALLOW_BATTERY === '1') return true;
+  const batt = spawnSync('pmset', ['-g', 'batt'], { encoding: 'utf8' });
+  return batt.status !== 0 || batt.stdout.includes("'AC Power'");
+}
+
 async function main() {
   const [system, run] = process.argv.slice(2);
   if (!system || !run) throw new Error('usage: record.ts <system> <run>');
@@ -97,6 +106,7 @@ async function main() {
   }
   await sleep(30_000);
 
+  if (!onMains()) throw new Error('the laptop is on battery: plug it in (on battery, Low Power Mode doubles CPU per request), or set HINDCAST_ALLOW_BATTERY=1');
   // 2. replay the day (or step the load up)
   const shape = r.steps ? spawnSync('node', [join(LOAD, 'shape.mjs'), 'steps', ...r.steps.map(String)], { encoding: 'utf8' }) : spawnSync('node', [join(LOAD, 'fromLog.mjs'), resolve(sysDir, cfg.log), r.day!, String(r.minutes), r.scale!], { encoding: 'utf8' });
   if (shape.status !== 0) throw new Error(shape.stderr);
@@ -121,6 +131,10 @@ async function main() {
   await k6(out, 'shape.json', cfg, true);
   const end = Math.floor(Date.now() / 1000);
   if (kill) clearTimeout(kill);
+  // a run the machine slept through (a closed lid) has a gap in its traffic: it is not a recording of the day
+  const planned = r.steps ? JSON.parse(readFileSync(join(out, 'shape.json'), 'utf8')).at(-1)?.t ?? 0 : (r.minutes ?? 0) * 60;
+  if (planned && end - start > planned + 180) throw new Error(`the run took ${Math.round((end - start) / 60)} min for a ${Math.round(planned / 60)}-minute day: the machine slept or stalled, so the recording is void`);
+  if (!onMains()) throw new Error('the laptop went onto battery during the run (Low Power Mode changes CPU per request): the recording is void');
   if (r.kill && killedAt) {
     spawnSync('docker', ['start', r.kill.node], { stdio: 'ignore' });
     kubectl(['wait', '--for=condition=Ready', `node/${r.kill.node}`, '--timeout=300s'], { quiet: true });
