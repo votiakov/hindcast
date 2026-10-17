@@ -87,7 +87,7 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
       // next to the selected component (where a chain grows), else the middle of the view; then the
       // nearest spot nothing occupies, so a new card never lands on top of an existing one
       const sel = nodes.find((n) => n.selected);
-      // a cache or CDN goes between the selected component and what it calls: below the link it cuts in on
+      // a cache, CDN or load balancer goes between the selected component and what it calls: below the link it cuts in on
       const via = sel && kind !== ZONE_KIND ? insertTarget(useSim.getState().boards[id].nodes, useSim.getState().boards[id].edges, sel.id, kind) : null;
       const callee = via && nodes.find((n) => n.id === via.target);
       const start = sel && callee ? { x: (sel.position.x + callee.position.x) / 2 + 115, y: Math.max(sel.position.y, callee.position.y) + 240 + 60 } : sel ? { x: sel.position.x + 330 + 115, y: sel.position.y + 60 } : screenToFlowPosition({ x: r.left + r.width / 2, y: r.top + r.height / 2 });

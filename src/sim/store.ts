@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { addEdge, applyEdgeChanges, applyNodeChanges, type Connection, type EdgeChange, type NodeChange, type XYPosition } from '@xyflow/react';
-import { KINDS, defaultData, instancesUp, isSystem, type AppNode, type Kind, type SystemEdge, type SystemNode, type SystemNodeData, type ZoneData } from './catalog';
+import { KINDS, clustered, defaultData, instancesUp, isSystem, type AppNode, type Kind, type SystemEdge, type SystemNode, type SystemNodeData, type ZoneData } from './catalog';
 import { applyAction } from './actions';
 import { DEFAULT_ENGINE_CONFIG, Engine, type EdgeStats, type GlobalStats, type NodeStats, type SimEvent } from './engine';
 import { lesson1 } from '../lessons/lesson1';
@@ -335,16 +335,19 @@ const CACHED: Kind[] = ['db', 'kv', 'storage', 'search', 'vector', 'replica'];
 
 /**
  * A cache or CDN added after a component goes between it and what it calls (api → cache → db), so it
- * has an origin from the start; null when it has nothing to go in front of (or is not a cache)
+ * has an origin from the start; a load balancer or gateway goes in front of the server fleet it calls
+ * (users → lb → api), so the fleet's instances share the load. Null when it has nothing to go in front
+ * of (or is another kind)
  */
 export function insertTarget(nodes: AppNode[], edges: SystemEdge[], from: string, kind: Kind): SystemEdge | null {
-  if (kind !== 'cache' && kind !== 'cdn') return null;
+  if (kind !== 'cache' && kind !== 'cdn' && kind !== 'lb' && kind !== 'gateway') return null;
   const kindOf = (id: string) => {
     const n = nodes.find((x) => x.id === id);
     return n && isSystem(n) ? n.data.kind : null;
   };
   const out = edges.filter((e) => e.source === from && kindOf(e.target));
   if (!out.length) return null;
+  if (kind === 'lb' || kind === 'gateway') return out.find((e) => KINDS[kindOf(e.target)!].scalable && !clustered(kindOf(e.target)!)) ?? null;
   if (kind === 'cache') return [...out].sort((a, b) => rank(kindOf(a.target)!) - rank(kindOf(b.target)!))[0];
   return out[0];
 }

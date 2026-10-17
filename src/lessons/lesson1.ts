@@ -40,7 +40,8 @@ export const lesson1: Lesson = {
       hintAfter: 6,
       hint:
         'Scale out: select api-1 and add instances with the + button. Notice nothing changes? Clients only know one address — ' +
-        'drag a Load Balancer onto the board, wire Users → LB → api-1 and delete the old Users → api-1 edge (click it, press Backspace). ' +
+        'put a Load Balancer between them: select Users, then click Load Balancer in the components list and it is wired in ' +
+        '(or drag one in, wire Users → LB → api-1 and delete the old Users → api-1 link: click it, press Backspace). ' +
         'Servers near 100% CPU get slow long before they drop requests, so leave headroom.',
       solution: {
         note: 'Load balancer in front, four API instances behind it',
@@ -65,7 +66,8 @@ export const lesson1: Lesson = {
       goal: { maxErrorRate: 0.01, maxP99: 300, maxCost: 2.5, holdSeconds: 10 },
       hintAfter: 8,
       hint:
-        'Check the database CPU — it is the new bottleneck. Put a Cache in front of it (api-1 → Cache → DB) to absorb most reads. ' +
+        'Four api-1 instances take about 1,000 req/s, so add more — then check the database CPU: it is the next bottleneck. ' +
+        'Put a Cache in front of it (select api-1, click Cache: api-1 → Cache → DB) to absorb most reads. ' +
         'Scaling the DB to size L also works… but look at what it does to the bill.',
       solution: {
         note: 'A cache in front of the database, eleven API instances',

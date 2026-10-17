@@ -84,6 +84,20 @@ describe('a palette click with a component selected', () => {
     expect(links()).not.toContain('users>lb');
   });
 
+  it('puts a load balancer between the users and the server fleet they call', () => {
+    S().loadGraph('main', specToGraph({ version: 1, components: [{ id: 'users', kind: 'client' }, { id: 'api-1', kind: 'server' }, { id: 'db', kind: 'db' }], connections: ['users -> api-1', 'api-1 -> db'] }), 'one box');
+    S().addNode('main', 'lb', { x: 0, y: 0 }, 'users');
+    const lb = board().nodes.find((n) => n.type === 'system' && n.data.kind === 'lb')!;
+    expect(links()).toEqual([`users>${lb.id}`, `${lb.id}>api-1`, 'api-1>db'].sort());
+  });
+
+  it('appends a load balancer after a component that calls no server fleet', () => {
+    S().addNode('main', 'lb', { x: 0, y: 0 }, 'api-1');
+    const lb = board().nodes.find((n) => n.type === 'system' && n.data.kind === 'lb' && n.id !== 'lb')!;
+    expect(links()).toContain(`api-1>${lb.id}`);
+    expect(links()).toContain('api-1>db');
+  });
+
   it('appends any other kind after it, as before', () => {
     S().addNode('main', 'worker', { x: 0, y: 0 }, 'api-1');
     const w = board().nodes.find((n) => n.type === 'system' && n.data.kind === 'worker')!;

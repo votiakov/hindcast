@@ -89,7 +89,7 @@ export function Palette({ compact }: { compact?: boolean }) {
           </div>
         ))}
       </div>
-      {!isRail && <div className="palette-tip">Click: added after the selected component, linked (a cache or CDN goes between it and what it calls). Or drag it in. Connect: right handle → left. Select one to scale or break it.</div>}
+      {!isRail && <div className="palette-tip">Click: added after the selected component, linked (a cache, CDN or load balancer goes between it and what it calls). Or drag it in. Connect: right handle → left. Select one to scale or break it.</div>}
     </div>
   );
 }
