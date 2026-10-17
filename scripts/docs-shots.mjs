@@ -117,8 +117,6 @@ const SHOTS = {
     pins: {
       fix: ['.rv-fixes tbody tr', 'l', 1, 6],
       verdict: ['.rv-fixes tbody tr td:nth-child(2)', 'r', 0, 10],
-      saving: ['.rv-fixes tbody tr', 'l', 3, 6],
-      together: ['.rv-total', 'l', 0, 6],
       link: ['.rv-fixes .rv-link', 'l', 0, -6],
     },
   },

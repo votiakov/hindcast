@@ -76,17 +76,15 @@
 </section>
 
 <section class="screen" data-shot="bt-review-fixes">
-<figure class="shot"><div class="shot-frame"><a class="shot-full" href="shots/bt-review-fixes.png" target="_blank" rel="noopener" title="Open full size"><img src="shots/bt-review-fixes.png" width="1232" height="356" alt="Fixes and savings that pass — screenshot" loading="lazy"></a><a class="pin" href="#bt-review-fixes-fix" data-for="bt-review-fixes-fix" style="left:0.97%;top:28.21%" aria-label="Note 1">1</a><a class="pin" href="#bt-review-fixes-verdict" data-for="bt-review-fixes-verdict" style="left:59.36%;top:28.21%" aria-label="Note 2">2</a><a class="pin" href="#bt-review-fixes-saving" data-for="bt-review-fixes-saving" style="left:0.97%;top:45.32%" aria-label="Note 3">3</a><a class="pin" href="#bt-review-fixes-together" data-for="bt-review-fixes-together" style="left:0.97%;top:95.7%" aria-label="Note 4">4</a><a class="pin" href="#bt-review-fixes-link" data-for="bt-review-fixes-link" style="left:89.93%;top:28.23%" aria-label="Note 5">5</a></div></figure>
+<figure class="shot"><div class="shot-frame"><a class="shot-full" href="shots/bt-review-fixes.png" target="_blank" rel="noopener" title="Open full size"><img src="shots/bt-review-fixes.png" width="1232" height="116" alt="Fixes and savings that pass — screenshot" loading="lazy"></a><a class="pin" href="#bt-review-fixes-fix" data-for="bt-review-fixes-fix" style="left:0.97%;top:86.59%" aria-label="Note 1">1</a><a class="pin" href="#bt-review-fixes-verdict" data-for="bt-review-fixes-verdict" style="left:59.36%;top:86.59%" aria-label="Note 2">2</a><a class="pin" href="#bt-review-fixes-link" data-for="bt-review-fixes-link" style="left:89.93%;top:86.64%" aria-label="Note 3">3</a></div></figure>
 <div class="notes">
 <div>
 <h2>Fixes and savings that pass</h2>
-<p>The last part of the review: changes generated from the history (capacity for what ran out of it, cuts for what idled), each backtested over the recorded history and judged. HotROD here.</p>
+<p>The last part of the review: changes generated from the history (capacity for what ran out of it, cuts for what idled), each backtested over the recorded history and judged. HotROD here. Savings are the cuts that pass (they cost less and add no time out of SLO), listed under the fixes with all of them applied at once and backtested again, since cuts can add up to a problem none of them is alone. HotROD has none: its model misses p99 by more than half on data it never saw, so every cut is inconclusive at low confidence and stays off the list.</p>
 <ol class="pins">
 <li id="bt-review-fixes-fix" data-n="1"><h3>Fixes</h3><p>Changes that take time out of SLO off the recorded day, with the minutes and failed requests they remove and what they cost a month.</p></li>
-<li id="bt-review-fixes-verdict" data-n="2"><h3>Verdict and confidence</h3><p>Pass, fail or inconclusive, and how far to trust it. Low confidence means the change leans on a service the model doesn't explain well, or runs it past anything the history showed.</p></li>
-<li id="bt-review-fixes-saving" data-n="3"><h3>Savings</h3><p>Cuts that pass: they cost less and add no time out of SLO.</p></li>
-<li id="bt-review-fixes-together" data-n="4"><h3>All of them together</h3><p>The passing savings applied at once and backtested again, since cuts can add up to a problem none of them is alone.</p></li>
-<li id="bt-review-fixes-link" data-n="5"><h3>Its full backtest</h3><p>Opens the change on the replay screen as a strategy, focused, drawn against the system as built over the whole history.</p></li>
+<li id="bt-review-fixes-verdict" data-n="2"><h3>Verdict and confidence</h3><p>Pass, fail or inconclusive, and how far to trust it. Low confidence means the change leans on a service the model doesn't explain well, runs it past anything the history showed, or the model missed badly on data it never saw.</p></li>
+<li id="bt-review-fixes-link" data-n="3"><h3>Its full backtest</h3><p>Opens the change on the replay screen as a strategy, focused, drawn against the system as built over the whole history.</p></li>
 </ol>
 </div>
 </div>

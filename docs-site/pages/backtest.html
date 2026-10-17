@@ -47,12 +47,10 @@
 <section class="screen" data-shot="bt-review-fixes">
 <div>
 <h2>Fixes and savings that pass</h2>
-<p>The last part of the review: changes generated from the history (capacity for what ran out of it, cuts for what idled), each backtested over the recorded history and judged. HotROD here.</p>
+<p>The last part of the review: changes generated from the history (capacity for what ran out of it, cuts for what idled), each backtested over the recorded history and judged. HotROD here. Savings are the cuts that pass (they cost less and add no time out of SLO), listed under the fixes with all of them applied at once and backtested again, since cuts can add up to a problem none of them is alone. HotROD has none: its model misses p99 by more than half on data it never saw, so every cut is inconclusive at low confidence and stays off the list.</p>
 <ol class="pins">
 <li data-pin="fix"><h3>Fixes</h3><p>Changes that take time out of SLO off the recorded day, with the minutes and failed requests they remove and what they cost a month.</p></li>
-<li data-pin="verdict"><h3>Verdict and confidence</h3><p>Pass, fail or inconclusive, and how far to trust it. Low confidence means the change leans on a service the model doesn't explain well, or runs it past anything the history showed.</p></li>
-<li data-pin="saving"><h3>Savings</h3><p>Cuts that pass: they cost less and add no time out of SLO.</p></li>
-<li data-pin="together"><h3>All of them together</h3><p>The passing savings applied at once and backtested again, since cuts can add up to a problem none of them is alone.</p></li>
+<li data-pin="verdict"><h3>Verdict and confidence</h3><p>Pass, fail or inconclusive, and how far to trust it. Low confidence means the change leans on a service the model doesn't explain well, runs it past anything the history showed, or the model missed badly on data it never saw.</p></li>
 <li data-pin="link"><h3>Its full backtest</h3><p>Opens the change on the replay screen as a strategy, focused, drawn against the system as built over the whole history.</p></li>
 </ol>
 </div>
