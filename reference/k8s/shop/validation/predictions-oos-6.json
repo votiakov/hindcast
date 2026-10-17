@@ -1,0 +1,187 @@
+{
+ "madeAt": "2026-10-17T15:00:22.770Z",
+ "commit": "b93cfb8",
+ "models": {
+  "calm": {
+   "launch-e300-2": {
+    "verdict": "fail",
+    "confidence": "low",
+    "leans": null,
+    "minutesOutOfSlo": 19.3,
+    "peakP99Ms": 5000,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same; on Oct 13 at 17:00 UTC it would have caused 19 minutes out of SLO (frontend at 111% of capacity (297.3 req/s on 2 × 134.1 req/s), 2.0 s queue)",
+     "adds 15.8 min out of SLO (10–90%: 0 … 22.6)",
+     "fails 239,126 more requests than as built with \"email memory 0.15 → 0.29 GiB\" applied, more than the SLO's error budget over the whole window (1% of 462,605 requests: 4,626)",
+     "worst at 2026-10-13T17:04:30Z: frontend at 103% of capacity (275.2 req/s on 2 × 134.1 req/s), 32.4 s queue",
+     "worse for frontend GET /, frontend GET /api/cart, frontend GET /api/data, frontend GET /api/products/{id}, frontend GET /api/recommendations, frontend POST /api/cart, frontend POST /api/checkout against their own SLOs",
+     "frees 0.5 cores and 512 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 27% of it (30% before)",
+     "headroom drops from 408.1 to 272.2 req/s (the replayed traffic peaks at 365.1)"
+    ],
+    "warnings": [
+     "frontend would run at 136% of a capacity the history never tested (peak 41%): the outcome rests on an extrapolated limit",
+     "email: fair fit (latency reproduced within 30%), and the baseline it is stacked on changes it",
+     "product-catalog would run at 51% of capacity, past the history's 23%: its capacity there is extrapolated",
+     "recommendation: the model fits it poorly, and this change pushes it harder than the history did",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ],
+    "ooms": {}
+   },
+   "launch-e300-3-400": {
+    "verdict": "fail",
+    "confidence": "low",
+    "leans": null,
+    "minutesOutOfSlo": 7.5,
+    "peakP99Ms": 5000,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same; on Oct 13 at 17:03 UTC it would have caused 7 minutes out of SLO (frontend at 116% of capacity (365.1 req/s on 3 × 104.5 req/s), 3.2 s queue)",
+     "adds 5.3 min out of SLO (10–90%: 0 … 10.6)",
+     "fails 20,652 more requests than as built with \"email memory 0.15 → 0.29 GiB\" applied, more than the SLO's error budget over the whole window (1% of 462,605 requests: 4,626)",
+     "worst at 2026-10-13T17:09:30Z: frontend at 108% of capacity (339.7 req/s on 3 × 104.5 req/s), 8.8 s queue",
+     "worse for frontend GET /, frontend GET /api/cart, frontend GET /api/data, frontend GET /api/products/{id}, frontend GET /api/recommendations, frontend POST /api/cart, frontend POST /api/checkout against their own SLOs",
+     "frees 0.3 cores and 0 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 30% of it (30% before)",
+     "losing bnk8s-worker at the busiest moment: 7.3 min out of SLO as built with \"email memory 0.15 → 0.29 GiB\" applied, 10.5 with the change (78,026 failed requests)",
+     "headroom drops from 408.1 to 316.7 req/s (the replayed traffic peaks at 365.1)"
+    ],
+    "warnings": [
+     "frontend would run at 116% of a capacity the history never tested (peak 41%): the outcome rests on an extrapolated limit",
+     "email: fair fit (latency reproduced within 30%), and the baseline it is stacked on changes it",
+     "product-catalog would run at 51% of capacity, past the history's 23%: its capacity there is extrapolated",
+     "recommendation: the model fits it poorly, and this change pushes it harder than the history did",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ],
+    "ooms": {}
+   },
+   "launch-e300-catalog125": {
+    "verdict": "fail",
+    "confidence": "low",
+    "leans": null,
+    "minutesOutOfSlo": 4.5,
+    "peakP99Ms": 5000,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same; it would have caused 2 minutes out of SLO, the longest new incident starting Oct 13 at 17:04 UTC (product-catalog at 108% of capacity (590.5 req/s on 1 × 547.9 req/s), 1.4 s queue)",
+     "adds 1.8 min out of SLO (10–90%: 0 … 6)",
+     "worst at 2026-10-13T17:04:00Z: product-catalog at 108% of capacity (590.5 req/s on 1 × 547.9 req/s), 1.4 s queue",
+     "worse for frontend GET /api/cart, frontend GET /api/products/{id}, frontend GET /api/recommendations, frontend POST /api/checkout against their own SLOs",
+     "frees 0.13 cores and 0 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 30% of it (30% before)",
+     "headroom drops from 408.1 to 363 req/s (the replayed traffic peaks at 365.1)"
+    ],
+    "warnings": [
+     "frontend would run at 91% of a capacity the history never tested (peak 41%): the outcome rests on an extrapolated limit",
+     "email: fair fit (latency reproduced within 30%), and the baseline it is stacked on changes it",
+     "product-catalog would run at 108% of a capacity the history never tested (peak 23%): the outcome rests on an extrapolated limit",
+     "recommendation: the model fits it poorly, and this change pushes it harder than the history did",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ],
+    "ooms": {}
+   }
+  },
+  "load-tested": {
+   "launch-e300-2": {
+    "verdict": "fail",
+    "confidence": "low",
+    "leans": null,
+    "minutesOutOfSlo": 4,
+    "peakP99Ms": 5000,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same; it would have caused 4 minutes out of SLO, the longest new incident starting Oct 13 at 17:04 UTC (frontend at 108% of capacity (365.1 req/s on 2 × 168.7 req/s), 1.5 s queue)",
+     "adds 4 min out of SLO (10–90%: 3 … 4.6)",
+     "worst at 2026-10-13T17:04:00Z: frontend at 108% of capacity (365.1 req/s on 2 × 168.7 req/s), 1.5 s queue",
+     "worse for frontend GET /, frontend GET /api/cart, frontend GET /api/recommendations, frontend POST /api/cart against their own SLOs",
+     "frees 0.5 cores and 512 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 25% of it (29% before)",
+     "headroom drops from 513 to 342.3 req/s (the replayed traffic peaks at 365.1)"
+    ],
+    "warnings": [
+     "frontend: the model fits it poorly, and this change changes it",
+     "email: fair fit (latency reproduced within 30%), and the baseline it is stacked on changes it",
+     "the model's accuracy was never measured",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ],
+    "ooms": {
+     "email": [
+      276.7
+     ]
+    }
+   },
+   "launch-e300-3-400": {
+    "verdict": "inconclusive",
+    "confidence": "low",
+    "leans": "pass",
+    "minutesOutOfSlo": 0,
+    "peakP99Ms": 414,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same, with no change in time out of SLO",
+     "the backtest passes, but confidence is low (frontend: the model fits it poorly, and this change changes it) — load-test before trusting it: plan_load_test with the same changes designs that test",
+     "worse for frontend GET /api/recommendations against their own SLOs",
+     "frees 0.3 cores and 0 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 29% of it (29% before)",
+     "losing bnk8s-worker at the busiest moment: 6.5 min out of SLO as built with \"email memory 0.15 → 0.29 GiB\" applied, 7.5 with the change (52,128 failed requests)",
+     "headroom drops from 513 to 395.6 req/s (the replayed traffic peaks at 365.1)"
+    ],
+    "warnings": [
+     "frontend: the model fits it poorly, and this change changes it",
+     "email: fair fit (latency reproduced within 30%), and the baseline it is stacked on changes it",
+     "the model's accuracy was never measured",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ],
+    "ooms": {
+     "email": [
+      276.7
+     ]
+    }
+   },
+   "launch-e300-catalog125": {
+    "verdict": "pass",
+    "confidence": "medium",
+    "leans": null,
+    "minutesOutOfSlo": 0,
+    "peakP99Ms": 175,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same, with no change in time out of SLO",
+     "frees 0.12 cores and 0 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 29% of it (29% before)"
+    ],
+    "warnings": [
+     "frontend fits poorly and runs near its limit; the change leaves it as it was, so the comparison holds better than the absolute numbers",
+     "email: fair fit (latency reproduced within 30%), and the baseline it is stacked on changes it",
+     "product-catalog would run at 73% of capacity, past the history's 55%: its capacity there is extrapolated",
+     "the model's accuracy was never measured",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ],
+    "ooms": {
+     "email": [
+      276.7
+     ]
+    }
+   }
+  }
+ }
+}

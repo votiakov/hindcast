@@ -592,4 +592,9 @@ writeFileSync(join(HERE, 'variants', 'product-catalog-125m.yaml'), manifests({ f
 // round 5, scored against both recordings of the as-built launch day (predicted in validation/predictions-oos-5.json)
 writeFileSync(join(HERE, 'variants', 'checkout-125m.yaml'), manifests({ frontendReplicas: 3, over: { checkout: { cpu: '125m' } } }));
 writeFileSync(join(HERE, 'variants', 'frontend-3-400m.yaml'), manifests({ frontendReplicas: 3, frontendCpu: '400m' }));
-console.log('wrote shop.yaml and 15 variants');
+// round 6, stacked on email at 300 MiB so its leak can't stall checkout: three capacity changes judged
+// against two recordings of that baseline (predicted in validation/predictions-oos-6.json)
+writeFileSync(join(HERE, 'variants', 'e300-frontend-2.yaml'), manifests({ frontendReplicas: 2, emailMem: '300Mi' }));
+writeFileSync(join(HERE, 'variants', 'e300-frontend-3-400m.yaml'), manifests({ frontendReplicas: 3, frontendCpu: '400m', emailMem: '300Mi' }));
+writeFileSync(join(HERE, 'variants', 'e300-catalog-125m.yaml'), manifests({ frontendReplicas: 3, emailMem: '300Mi', over: { 'product-catalog': { cpu: '125m' } } }));
+console.log('wrote shop.yaml and 18 variants');

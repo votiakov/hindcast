@@ -128,6 +128,9 @@ const SHOP_CASES: Case[] = [
   { run: 'launch-catalog125', naive: 'all', asBuilt: 'launch', asBuiltAlso: 'launch-b', head: 'variants/product-catalog-125m.yaml', scale: LAUNCH, oos: 5, service: 'product-catalog', name: 'product-catalog at 125m', question: 'product-catalog at 125m instead of 250m, on launch day?' },
   { run: 'launch-checkout125', naive: 'all', asBuilt: 'launch', asBuiltAlso: 'launch-b', head: 'variants/checkout-125m.yaml', scale: LAUNCH, oos: 5, service: 'checkout', name: 'checkout at 125m', question: 'checkout at 125m instead of 250m, on launch day?' },
   { run: 'launch-3-400', asBuilt: 'launch', asBuiltAlso: 'launch-b', head: 'variants/frontend-3-400m.yaml', scale: LAUNCH, cpu: 0.4, oos: 5, question: '3 frontend replicas at 400m instead of 500m, on launch day?' },
+  { run: 'launch-e300-2', asBuilt: 'launch-email300', asBuiltAlso: 'launch-e300-b', baseline: 'variants/email-300mi.yaml', head: 'variants/e300-frontend-2.yaml', scale: LAUNCH, oos: 6, question: '2 frontend replicas instead of 3, on launch day, with email at 300 MiB?' },
+  { run: 'launch-e300-3-400', asBuilt: 'launch-email300', asBuiltAlso: 'launch-e300-b', baseline: 'variants/email-300mi.yaml', head: 'variants/e300-frontend-3-400m.yaml', scale: LAUNCH, cpu: 0.4, oos: 6, question: '3 frontend replicas at 400m instead of 500m, on launch day, with email at 300 MiB?' },
+  { run: 'launch-e300-catalog125', naive: 'all', asBuilt: 'launch-email300', asBuiltAlso: 'launch-e300-b', baseline: 'variants/email-300mi.yaml', head: 'variants/e300-catalog-125m.yaml', scale: LAUNCH, oos: 6, service: 'product-catalog', name: 'product-catalog at 125m', question: 'product-catalog at 125m instead of 250m, on launch day, with email at 300 MiB?' },
 ];
 const AS_BUILT_CPU = 0.5;
 const SHOP = (): Evaluation => ({
@@ -139,7 +142,7 @@ const SHOP = (): Evaluation => ({
   watch: 'frontend',
   publish: true,
   readme: join(ROOT, 'README.md'),
-  rounds: { 1: 'added after the throttle model was designed on the runs above', 4: 'chosen after the leak, JIT warm-up, the failed-request gate and holdout confidence were added: three changes away from the frontend, in .NET, Python and Go', 5: 'chosen after the as-built launch day was recorded twice; a change fails only if it is worse than both recordings (launch and launch-b)' },
+  rounds: { 1: 'added after the throttle model was designed on the runs above', 4: 'chosen after the leak, JIT warm-up, the failed-request gate and holdout confidence were added: three changes away from the frontend, in .NET, Python and Go', 5: 'chosen after the as-built launch day was recorded twice; a change fails only if it is worse than both recordings (launch and launch-b)', 6: 'stacked on email at 300 MiB, so the leak that decided rounds 4 and 5 cannot stall checkout; each change is judged against two recordings of that baseline (launch-email300 and launch-e300-b)' },
 });
 
 let SYS = '';
