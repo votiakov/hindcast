@@ -12,6 +12,34 @@ use std::path::Path;
 const STEPS: [f64; 8] = [30.0, 60.0, 120.0, 300.0, 600.0, 900.0, 1800.0, 3600.0];
 const KEY_METRICS: [&str; 7] = ["rps", "errorRate", "p99Ms", "cpuCores", "cpuLimitCores", "replicas", "memoryBytes"];
 
+/// workloads that watch a system rather than serve it (tracing, metrics, logs, dashboards), as their
+/// charts and operators name them: left out of the collected history unless system.include keeps one
+const OBSERVABILITY: [&str; 26] = [
+    "jaeger", "zipkin", "tempo", "otel-collector", "opentelemetry-collector", "otelcol", "otel-agent", "opentelemetry-operator", "prometheus", "alertmanager", "pushgateway", "grafana", "loki", "promtail", "kube-state-metrics", "thanos", "mimir", "cortex", "victoria-metrics", "vmagent", "vmalert", "pyroscope", "fluent-bit", "fluentd", "datadog-agent", "datadog-cluster-agent",
+];
+
+/// a workload's name read as observability tooling: one of OBSERVABILITY as a run of its dash- or
+/// underscore-separated words ("jaeger-query", "kube-prometheus-stack-operator", "monitoring-grafana"),
+/// or an exporter ("node-exporter", "redis-exporter")
+pub fn observability(name: &str) -> bool {
+    let words = |s: &str| s.to_lowercase().split(['-', '_', '.']).filter(|w| !w.is_empty()).map(String::from).collect::<Vec<_>>();
+    let w = words(name);
+    w.last().map(|l| l == "exporter").unwrap_or(false) || OBSERVABILITY.iter().any(|o| w.windows(words(o).len()).any(|run| run == words(o).as_slice()))
+}
+
+/// the services of a history that are observability tooling, less those system.include keeps
+fn observability_in<'a>(services: impl Iterator<Item = &'a String>, include: &[String]) -> Vec<String> {
+    let mut v: Vec<String> = services.filter(|id| observability(id) && !include.contains(id)).cloned().collect();
+    v.sort();
+    v.dedup();
+    v
+}
+
+/// what leaving them out says, and how to keep one
+pub fn observability_said(left: &[String]) -> String {
+    format!("left out as observability tooling, not part of the system: {}. To count one in, connect_telemetry with system.include [\"{}\"] (quickstart: --include {})", left.join(", "), left[0], left[0])
+}
+
 /// a window bound: epoch seconds (or ms), or a timestamp read as Date.parse reads it (UTC where no zone is given)
 fn to_epoch(v: &Value) -> f64 {
     match v {
@@ -625,7 +653,13 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
             ));
         }
     }
-    for id in strs(system.get("exclude")).unwrap_or_default().into_iter().chain(outside.iter().cloned()) {
+    let excluded = strs(system.get("exclude")).unwrap_or_default();
+    let watching: Vec<String> = observability_in(d["services"].as_object().map(|s| s.keys().filter(|id| !excluded.contains(*id) && !outside.contains(*id)).collect::<Vec<_>>()).unwrap_or_default().into_iter(), &strs(system.get("include")).unwrap_or_default());
+    if !watching.is_empty() {
+        warnings.push(observability_said(&watching));
+    }
+    let dropped: Vec<String> = excluded.into_iter().chain(outside.iter().cloned()).chain(watching.iter().cloned()).collect();
+    for id in dropped.iter().cloned() {
         if let Some(Value::Object(s)) = d.get_mut("services") {
             s.shift_remove(&id);
         }
@@ -689,7 +723,7 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
         let loose: Vec<String> = d["services"].as_object().map(|s| s.keys().filter(|id| !traced.contains(*id) && !named.contains(*id)).cloned().collect()).unwrap_or_default();
         for (id, shape) in &tsvc {
             let has_cpu = d["services"].get(id).and_then(|s| s.get("cpuCores")).and_then(|c| c.as_array()).map(|a| a.iter().any(|v| !v.is_null())).unwrap_or(false);
-            if hosted.get(id).map(|v| !v.is_null() && v.as_str() != Some("")).unwrap_or(false) || has_cpu {
+            if hosted.get(id).map(|v| !v.is_null() && v.as_str() != Some("")).unwrap_or(false) || has_cpu || watching.contains(id) {
                 continue;
             }
             let mut callers: indexmap::IndexSet<String> = indexmap::IndexSet::new();
@@ -771,6 +805,9 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
         None => {}
     }
     out.insert("ignored".into(), json!(ignore.clone().unwrap_or_default()));
+    if !watching.is_empty() {
+        out.insert("observability".into(), json!(watching));
+    }
     out.insert("traces".into(), if trace_note.is_empty() { Value::Null } else { json!(trace_note) });
     if inferred.is_some() {
         out.insert("withoutTraces".into(), prov.clone());
@@ -790,6 +827,22 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn observability_tooling_is_recognised_by_name() {
+        for w in ["jaeger", "jaeger-query", "otel-collector", "opentelemetry-collector", "otelcol-contrib", "prometheus", "kube-prometheus-stack-operator", "prometheus-kube-prometheus-prometheus", "monitoring-grafana", "alertmanager-main", "tempo", "loki", "promtail", "kube-state-metrics", "node-exporter", "prometheus-node-exporter", "redis-exporter", "fluent-bit", "datadog-agent"] {
+            assert!(observability(w), "{}", w);
+        }
+        for w in ["frontend", "cart", "checkout", "api-gateway", "otel-demo-frontend", "export-service", "exporter-api", "metrics-api", "logging-proxy", "flagd", "grafanalytics"] {
+            assert!(!observability(w), "{}", w);
+        }
+        let ids: Vec<String> = ["frontend", "jaeger", "otel-collector", "grafana"].iter().map(|x| x.to_string()).collect();
+        assert_eq!(observability_in(ids.iter(), &["grafana".to_string()]), vec!["jaeger".to_string(), "otel-collector".to_string()]);
+        assert_eq!(
+            observability_said(&["jaeger".to_string(), "otel-collector".to_string()]),
+            "left out as observability tooling, not part of the system: jaeger, otel-collector. To count one in, connect_telemetry with system.include [\"jaeger\"] (quickstart: --include jaeger)"
+        );
+    }
 
     fn dataset(services: &[&str], edges: &[(&str, &str)]) -> Value {
         json!({

@@ -160,6 +160,10 @@ export const CASES: string[][] = [
   // no request metrics left at all: nothing to replay, and the review says so
   ['quickstart', '--prometheus', `${TEL}/kps`, '--exclude', 'web', '--last', '6h', '--workspace', ws('qx')],
   agent('connect_telemetry', { workspace: ws('qn'), prometheus: { url: `${TEL}/kps` }, topologyFile: 'nowhere.yaml' }),
+  // a Jaeger and an OpenTelemetry Collector beside the app: named and left out, unless included
+  agent('connect_telemetry', { workspace: ws('qoc'), prometheus: { url: `${TEL}/kps-obs` } }),
+  ['quickstart', '--prometheus', `${TEL}/kps-obs`, '--last', '6h', '--workspace', ws('qo')],
+  ['quickstart', '--prometheus', `${TEL}/kps-obs`, '--include', 'jaeger', '--last', '6h', '--workspace', ws('qoi')],
   // api has no latency metric: resized within the history's peak (medium at most), and past it (low)
   agent('verify_change', { workspace: ws('qk'), changes: [{ strategy: { name: 'api 1 core', changes: [{ service: 'api', cpu: 1 }] } }], draws: 3 }),
   agent('verify_change', { workspace: ws('qk'), changes: [{ strategy: { name: 'api 0.35 cores', changes: [{ service: 'api', cpu: 0.35 }] } }], draws: 3 }),

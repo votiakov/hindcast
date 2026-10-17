@@ -149,7 +149,7 @@ pub fn parse_sources(v: &Value) -> Value {
     let mut out = JMap::new();
     let sys = o.get("system").and_then(|x| x.as_object()).cloned();
     let mut system = match &sys {
-        Some(s) => pick(s, &["name", "slo", "timeoutMs", "rename", "hostedBy", "ignore", "exclude", "entry", "placement"]),
+        Some(s) => pick(s, &["name", "slo", "timeoutMs", "rename", "hostedBy", "ignore", "exclude", "include", "entry", "placement"]),
         None => JMap::new(),
     };
     if !system.contains_key("name") {

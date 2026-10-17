@@ -308,6 +308,13 @@
        "items": {
         "type": "string"
        }
+      },
+      "include": {
+       "description": "workloads to keep that would be left out as observability tooling (jaeger, otel-collector, prometheus, grafana, *-exporter…), when they are part of the system being modelled",
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
       }
      },
      "additionalProperties": false

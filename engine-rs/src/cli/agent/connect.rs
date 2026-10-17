@@ -284,6 +284,29 @@ pub fn connect_telemetry(ws: &Workspace, input: &Value) -> Result<Value, String>
     if let Some(s) = scoped {
         out.insert("namespaces".into(), json!(format!("Kubernetes metrics kept to {} — where the traced services run (connect again with {}.namespaces to change)", s.join(", "), if next.get("datadog").is_some() { "datadog" } else { "prometheus" })));
     }
+    // what collect_telemetry will leave out as observability tooling, said before it does
+    let sys = out.get("system").cloned().unwrap_or_default();
+    let rename = sys.get("rename").and_then(|r| r.as_object()).cloned().unwrap_or_default();
+    let list = |k: &str| -> Vec<String> { sys.get(k).and_then(|x| x.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default() };
+    let (include, excluded) = (list("include"), list("exclude"));
+    let mut seen: indexmap::IndexSet<String> = trace_svcs.iter().cloned().collect();
+    for (src, r) in [("prometheus", out.get("prometheus")), ("datadog", out.get("datadog"))] {
+        let Some(r) = r else { continue };
+        let wns = r.get("workloadNamespaces").and_then(|w| w.as_object()).cloned().unwrap_or_default();
+        // only what the namespaces collected hold: the rest is left out anyway
+        let scope: Vec<String> = next.get(src).and_then(|p| p.get("namespaces")).and_then(|n| n.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
+        let inside = |w: &str| scope.is_empty() || wns.get(w).and_then(|n| n.as_array()).map(|a| a.iter().any(|n| n.as_str().map(|n| scope.iter().any(|s| s == n)).unwrap_or(false))).unwrap_or(true);
+        seen.extend(wns.keys().filter(|w| inside(w)).cloned().collect::<Vec<_>>());
+        for list in r.get("services").and_then(|s| s.as_object()).map(|s| s.values().cloned().collect::<Vec<_>>()).unwrap_or_default() {
+            seen.extend(list.as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).filter(|w| inside(w)).collect::<Vec<_>>()).unwrap_or_default());
+        }
+    }
+    let mut watching: Vec<String> = seen.iter().map(|w| rename.get(w).and_then(|x| x.as_str()).unwrap_or(w).to_string()).filter(|id| super::collect::observability(id) && !include.contains(id) && !excluded.contains(id)).collect();
+    watching.sort();
+    watching.dedup();
+    if !watching.is_empty() {
+        out.insert("observability".into(), json!(super::collect::observability_said(&watching).replacen("left out", "will be left out", 1)));
+    }
     out.insert("problems".into(), json!(problems));
     out.insert("next".into(), json!(if ready { "collect_telemetry (choose how much history with `last`, e.g. \"7d\")" } else { "fix the problems above and connect again" }));
     Ok(Value::Object(out))

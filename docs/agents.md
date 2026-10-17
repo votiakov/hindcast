@@ -28,7 +28,7 @@ hindcast quickstart --prometheus http://prometheus:9090 --jaeger http://jaeger:1
 #   --topology calls.yaml: who calls whom, where no trace or metric says
 #   --last 7d for more history (default: the last 24 h), or --start/--end for an exact window
 #   --calls spanmetrics: which metrics name the calls, where several do (prometheus.calls)
-#   --namespace shop, --exclude jaeger,otel-collector, --p99 500 --errors 0.01, --token-env PROM_TOKEN
+#   --namespace shop, --exclude other-app, --include grafana, --p99 500 --errors 0.01, --token-env PROM_TOKEN
 
 hindcast quickstart --datadog datadoghq.eu     # Datadog instead of Prometheus: keys from DD_API_KEY, DD_APP_KEY
 #   --dd-env prod, --dd-api-key-env MY_DD_API_KEY, --dd-app-key-env MY_DD_APP_KEY (see "Datadog")
@@ -349,6 +349,14 @@ cpuLimitCores, replicas, memoryBytes, traces`) and which are missing. It also wa
 that means: no CPU limit means no CPU capacity, no bill means list prices, and services in no
 trace may belong to another system (`system.exclude`).
 
+Observability tooling is not the system, so it is left out by default and named (`observability`
+in the result, and in `connect_telemetry`'s answer before collecting): Jaeger, Zipkin, Tempo, the
+OpenTelemetry Collector, Prometheus, Alertmanager, Grafana, Loki, Promtail, Thanos, Mimir, Cortex,
+VictoriaMetrics, Pyroscope, Fluent Bit, Fluentd, the Datadog agent, kube-state-metrics and every
+`*-exporter`, recognised by name (`jaeger-query`, `kube-prometheus-stack-operator` and
+`monitoring-grafana` all count). To model one as part of the system, list it in `system.include`
+(quickstart: `--include grafana`).
+
 **One overload in the history is worth more than a month of quiet days.** Capacity that the
 history never approached is an extrapolation, and the trust report says so. When the real history
 is calm, add a load test to it: `windows: [{ "start": …, "end": … }, { "start": …, "end": … }]`
@@ -666,7 +674,7 @@ Older names are recognised and reported as `nearMisses` with what to do, but not
 HTTP metrics under the pre-1.0 name (`http_server_duration_milliseconds_*`, with `http_method` and
 `http_status_code`) are read by the `http-server-legacy` preset. `selector`
 adds label matchers to every query (`cluster="prod-eu"`); `namespaces` scopes the Kubernetes and
-ingress metrics. `exclude` drops another system's services.
+ingress metrics. `exclude` drops another system's services; `include` keeps a workload that would be left out as observability tooling.
 
 Authentication: `tokenEnv` (bearer), `basicAuthEnv` (`user:password`) and `headersEnv` (e.g.
 `X-Scope-OrgID` for Mimir/Cortex/Tempo multi-tenancy), each naming an env var. Path prefixes

@@ -97,6 +97,16 @@ const WORLDS = {
     ],
   },
 };
+// the kube-prometheus-stack shop running its own Jaeger and OpenTelemetry Collector beside the app:
+// tooling that watches the system, left out of it unless included
+WORLDS['kps-obs'] = {
+  ...WORLDS.kps,
+  workloads: {
+    ...WORLDS.kps.workloads,
+    jaeger: { ns: 'shop', pods: ['jaeger-6d8f9b7c5d-j4k5l'], nodes: ['node-b'], cpu: (L) => 0.03 + 0.001 * L, limit: 0.5, mem: () => 300 * MI, memLimit: 512 * MI, throttled: () => 0.001 },
+    'otel-collector': { ns: 'shop', pods: ['otel-collector-7b6c5d4f3e-m9n8b'], nodes: ['node-a'], cpu: (L) => 0.02 + 0.002 * L, limit: 0.5, mem: () => 150 * MI, memLimit: 256 * MI, throttled: () => 0.001 },
+  },
+};
 // the same spans with the connector's default dimensions: no peer address on any of them
 WORLDS['spanmetrics-bare'] = { ...WORLDS.spanmetrics, peer: false };
 // the same spans and the collector's servicegraph connector: client → server edges from paired spans.

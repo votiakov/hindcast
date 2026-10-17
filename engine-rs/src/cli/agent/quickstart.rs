@@ -11,7 +11,7 @@ use serde_json::{json, Map as JMap, Value};
 use std::io::Write;
 use std::time::Instant;
 
-pub const USAGE: &str = "hindcast quickstart --prometheus <url> | --datadog <site> [--dd-env prod] [--dd-api-key-env DD_API_KEY] [--dd-app-key-env DD_APP_KEY] [--jaeger <url> | --tempo <url> | --topology calls.yaml] [--last 24h] [--name \"my system\"] [--namespace shop] [--exclude jaeger,otel-collector] [--p99 500] [--errors 0.01] [--token-env PROM_TOKEN] [--workspace .hindcast] [--json]";
+pub const USAGE: &str = "hindcast quickstart --prometheus <url> | --datadog <site> [--dd-env prod] [--dd-api-key-env DD_API_KEY] [--dd-app-key-env DD_APP_KEY] [--jaeger <url> | --tempo <url> | --topology calls.yaml] [--last 24h] [--name \"my system\"] [--namespace shop] [--exclude other-app] [--include grafana] [--p99 500] [--errors 0.01] [--token-env PROM_TOKEN] [--workspace .hindcast] [--json]";
 
 fn say(s: &str) {
     let e = std::io::stderr();
@@ -95,8 +95,10 @@ pub fn quickstart(f: &Flags, out: &mut Out) -> Result<i32, String> {
     if let Some(name) = f.get("name") {
         system.insert("name".into(), json!(name));
     }
-    if let Some(x) = f.get("exclude") {
-        system.insert("exclude".into(), json!(x.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect::<Vec<_>>()));
+    for k in ["exclude", "include"] {
+        if let Some(x) = f.get(k) {
+            system.insert(k.into(), json!(x.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect::<Vec<_>>()));
+        }
     }
     let mut slo = JMap::new();
     if let Some(x) = f.num("p99") {
@@ -191,7 +193,11 @@ pub fn quickstart(f: &Flags, out: &mut Out) -> Result<i32, String> {
     let num = |v: &Value| crate::math::js_num(v.as_f64().unwrap_or(0.0));
     say(&format!("      {} services, {} endpoints, {} h in {} s buckets; {}", num(&col["services"]), col["endpoints"].as_array().map(|a| a.len()).unwrap_or(0), num(&col["window"]["hours"]), num(&col["window"]["stepS"]), col["traces"].as_str().map(String::from).or_else(|| col["withoutTraces"]["said"].as_str().map(String::from)).unwrap_or_else(|| "no traces".into())));
     // what changes how to read the whole review, said where it happens rather than among the telemetry fixes
-    let (urgent, mut warnings): (Vec<String>, Vec<String>) = strs(&col["warnings"]).into_iter().partition(|w| w.contains("never call each other"));
+    let (urgent, mut warnings): (Vec<String>, Vec<String>) = strs(&col["warnings"]).into_iter().filter(|w| !w.starts_with("left out as observability tooling")).partition(|w| w.contains("never call each other"));
+    let watching = strs(&col["observability"]);
+    if !watching.is_empty() {
+        say(&format!("      left out as observability tooling: {} (--include {} to count it in)", watching.join(", "), watching[0]));
+    }
     for w in &urgent {
         say(&format!("      ! {}", w));
     }
