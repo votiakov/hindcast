@@ -12,6 +12,29 @@ export function healthOf(util: number, dropRps: number, inRps: number, up: boole
 }
 
 export const fmtMs = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms.toFixed(0)}ms`);
+/** what each number on a card means, shown on hover (keys: the row and meter labels, lower case) */
+export const STAT_TIPS: Record<string, string> = {
+  in: 'Requests a second arriving here, retries included.',
+  dropped: 'Requests a second refused or given up on here: its queue was full, or they waited too long in it.',
+  cap: 'The requests a second it can serve: every instance that gets traffic, together. Past it, work queues, then is dropped.',
+  sending: 'Requests a second these users send.',
+  success: 'The share of these users’ requests answered without an error, whichever component failed them.',
+  latency: 'How long these users wait for an answer, on average. The p99 at the top is the slow tail.',
+  hits: 'Requests a second the cache answers itself: reads it holds. Misses and writes go on to what is behind it.',
+  backlog: 'Messages waiting for a consumer.',
+  lag: 'How long the backlog would take to drain at the pace the consumers work now.',
+  cold: 'The share of invocations that wait for a new instance to start (a cold start).',
+  throttled: 'Invocations a second refused at the concurrency limit.',
+  limit: 'The requests a second it accepts before refusing the rest.',
+  '429s': 'Requests a second refused by the rate limit, with HTTP 429.',
+  refused: 'Requests a second refused above the request limit.',
+  cpu: 'How busy it is: the work arriving against what it can do. Past 100% more arrives than it can serve, so the rest waits in its queue or is dropped. The tick marks 70%, where waiting starts to climb steeply.',
+  backlog_meter: 'The backlog as a share of what the queue can hold.',
+  concurrency: 'Instances running at once against the concurrency limit.',
+  'limit used': 'Requests a second against the limit.',
+  warmth: 'How much of what it usually holds the cache holds now. A cold cache sends its misses on to the origin.',
+};
+
 /** req/s and counts: 1.5k, 2.0M, 1.0B */
 export const fmt = (n: number) => (!isFinite(n) ? '∞' : n >= 1e9 ? `${(n / 1e9).toFixed(1)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n >= 10 ? n.toFixed(0) : n.toFixed(1));
 

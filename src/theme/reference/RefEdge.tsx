@@ -78,7 +78,7 @@ function RefEdgeImpl({ id, sourceX, sourceY, targetX, targetY, sourcePosition, t
             </span>
           )}
           {live && !tr && (
-            <span className={`ref-rate ${failing ? 'bad' : ''}`}>
+            <span className={`ref-rate ${failing ? 'bad' : ''}`} title={`${Math.round(rps)} requests a second over this link${failing ? `; ${Math.round(err * 100)}% of them fail, where it leads or further on. The error rate at the top counts what the users see, over all their requests` : ''}`}>
               {rps >= 1000 ? `${(rps / 1000).toFixed(1)}k` : rps.toFixed(0)} req/s
               {failing && <b> · {Math.round(err * 100)}% err</b>}
             </span>

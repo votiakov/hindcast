@@ -272,6 +272,15 @@ describe('what a card says, for the first mistakes a learner makes', () => {
     expect(card.text).not.toContain('instances get traffic');
   });
 
+  it('every number on every kind of card explains itself on hover', async () => {
+    const { STAT_TIPS } = await import('../src/canvas/nodeModel');
+    for (const kind of Object.keys(KINDS) as Kind[]) {
+      const v = nodeView(defaultData(kind, 'x'), undefined, false, true);
+      for (const s of v.stats) expect(STAT_TIPS[s.label.toLowerCase()], `${kind}: ${s.label}`).toBeDefined();
+      if (v.meter) expect(STAT_TIPS[`${v.meter.label.toLowerCase()}_meter`] ?? STAT_TIPS[v.meter.label.toLowerCase()], `${kind}: ${v.meter.label}`).toBeDefined();
+    }
+  });
+
   it('a DNS name with nothing behind it says so, not that clients hold a stale answer; its capacity reads "no limit"', () => {
     const card = run([U, { id: 'dns', kind: 'dns' }], [['users', 'dns']], 100)('dns');
     expect(card.text).toMatch(/^Nothing behind this name/);

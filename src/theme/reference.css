@@ -132,6 +132,8 @@
 .ref-scale { padding: 4px 11px 9px; }
 .ref-scale-head { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--r-muted); margin-bottom: 4px; }
 .ref-scale-head span:last-child { font-family: var(--mono); color: var(--r-ink-2); }
+/* a card's numbers explain themselves on hover */
+.ref-rows dt[title], .ref-scale-head span[title] { cursor: help; }
 .ref-scale-track { position: relative; height: 5px; border-radius: 3px; background: var(--r-sunken); }
 .ref-scale-fill { height: 100%; border-radius: 3px; background: var(--s); transition: width 0.25s linear; }
 .s-ok .ref-scale-fill, .s-idle .ref-scale-fill { background: var(--r-accent); }
@@ -379,8 +381,9 @@
 .nc-toggle.on { color: var(--r-accent); border-color: var(--r-accent-line); background: var(--r-accent-tint); }
 .nc-more { align-self: flex-start; background: none; border: 0; padding: 1px 0; color: var(--r-muted); font: 10.5px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; }
 .nc-more:hover, .nc-more.open { color: var(--r-ink); }
-.nc-chaos { padding-top: 5px; border-top: 1px dotted var(--r-line); flex-wrap: nowrap; }
-.ref-node .nc-chaos select { max-width: 92px; min-width: 0; }
+/* wraps rather than squeezing "break it…" down to two letters */
+.nc-chaos { padding-top: 5px; border-top: 1px dotted var(--r-line); flex-wrap: wrap; }
+.ref-node .nc-chaos select { flex: none; max-width: 110px; }
 .nc-act { display: inline-flex; align-items: center; gap: 3px; background: none; border: 1px solid var(--r-line-strong); border-radius: 3px; color: var(--r-ink-2); font: 11px var(--mono); padding: 1px 6px; cursor: pointer; }
 .nc-act:hover { color: var(--r-ink); border-color: var(--r-muted); }
 .nc-act.danger { color: var(--r-bad); }

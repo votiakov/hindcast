@@ -2,7 +2,7 @@ import { Handle, Position } from '@xyflow/react';
 import { KINDS, TIERS, capacityOf, costOf, type SystemNodeData } from '../../sim/catalog';
 import type { NodeStats } from '../../sim/engine';
 import { KIND_ICONS } from '../../canvas/icons';
-import { explain, healthOf, type NodeView } from '../../canvas/nodeModel';
+import { STAT_TIPS, explain, healthOf, type NodeView } from '../../canvas/nodeModel';
 import { WithTerms } from '../../ui/Term';
 
 const STATUS: Record<NodeView['health'], string> = {
@@ -154,13 +154,13 @@ export function RefNode({ data, st, v, selected, showCost, running, motion = fal
       <dl className="ref-rows">
         {v.stats.map((s) => (
           <div key={s.label} className={s.bad ? 'bad' : ''}>
-            <dt>{s.label}</dt>
+            <dt title={STAT_TIPS[s.label.toLowerCase()]}>{s.label}</dt>
             <dd>{s.value}</dd>
           </div>
         ))}
         {showCost && data.kind !== 'client' && (
           <div>
-            <dt>cost{v.sku && <span className="ref-sku"> · {v.sku}</span>}</dt>
+            <dt title="What it costs an hour at this size and instance count.">cost{v.sku && <span className="ref-sku"> · {v.sku}</span>}</dt>
             <dd>${v.cost.toFixed(2)}/h</dd>
           </div>
         )}
@@ -169,7 +169,7 @@ export function RefNode({ data, st, v, selected, showCost, running, motion = fal
       {v.meter && (
         <div className="ref-scale">
           <div className="ref-scale-head">
-            <span>{v.meter.label.toLowerCase()}</span>
+            <span title={STAT_TIPS[`${v.meter.label.toLowerCase()}_meter`] ?? STAT_TIPS[v.meter.label.toLowerCase()]}>{v.meter.label.toLowerCase()}</span>
             <span>{v.meter.value}</span>
           </div>
           <div className="ref-scale-track">
