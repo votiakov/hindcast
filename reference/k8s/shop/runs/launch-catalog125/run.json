@@ -1,0 +1,13 @@
+{
+  "system": "shop",
+  "run": "launch-catalog125",
+  "start": 1792235045,
+  "end": 1792237446,
+  "day": "13/Jul/1995",
+  "minutes": 40,
+  "scale": "x83",
+  "steps": null,
+  "manifests": "variants/product-catalog-125m.yaml",
+  "note": null,
+  "recordedAt": "2026-10-17T11:44:53.309Z"
+}
