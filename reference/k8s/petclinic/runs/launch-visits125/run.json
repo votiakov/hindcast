@@ -1,0 +1,13 @@
+{
+  "system": "petclinic",
+  "run": "launch-visits125",
+  "start": 1792200300,
+  "end": 1792202700,
+  "day": "13/Jul/1995",
+  "minutes": 40,
+  "scale": "x55",
+  "steps": null,
+  "manifests": "variants/visits-125m.yaml",
+  "note": null,
+  "recordedAt": "2026-10-17T02:05:46.911Z"
+}
