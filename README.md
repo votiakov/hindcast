@@ -193,6 +193,11 @@ check when the change would have broken the SLO.
 It needs `pull-requests: write` for the comment. Inputs, outputs and a real comment:
 [docs/ci.md](docs/ci.md).
 
+Stacked pull requests: give the approved-but-undeployed PR as `baseline-ref`, and this one is judged
+on what it adds on top of it, not credited with the other's fix (`hindcast verify-change
+--baseline-head`, or `baseline` in `verify_change`). When a verdict comes back inconclusive,
+`hindcast loadtest plan` writes the load test it asks for.
+
 ## Also in the app
 
 The app runs entirely in the browser (the engine is WebAssembly) and uploads nothing.
