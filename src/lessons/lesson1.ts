@@ -38,6 +38,7 @@ export const lesson1: Lesson = {
       traffic: { from: 120, to: 700, rampSeconds: 8 },
       goal: { maxErrorRate: 0.01, maxP99: 300, holdSeconds: 10 },
       hintAfter: 6,
+      ask: 'Which card is red, and what is it short of? If you add a second server, how would Users know it is there?',
       hint:
         'Scale out: select api-1 and add instances with the + button. Notice nothing changes? Clients only know one address — ' +
         'put a Load Balancer between them: select Users, then click Load Balancer in the components list and it is wired in ' +
@@ -65,6 +66,7 @@ export const lesson1: Lesson = {
       traffic: { from: 700, to: 2000, rampSeconds: 10 },
       goal: { maxErrorRate: 0.01, maxP99: 300, maxCost: 2.5, holdSeconds: 10 },
       hintAfter: 8,
+      ask: 'With enough API instances, which card goes red next? How many of the requests it gets are reads someone already asked for?',
       hint:
         'Four api-1 instances take about 1,000 req/s, so add more — then check the database CPU: it is the next bottleneck. ' +
         'Put a Cache in front of it (select api-1, click Cache: api-1 → Cache → DB) to absorb most reads. ' +
@@ -92,6 +94,7 @@ export const lesson1: Lesson = {
       goal: { maxErrorRate: 0.01, maxP99: 300, holdSeconds: 15 },
       chaos: [{ at: 4, action: { type: 'kill', kind: 'server', pick: 'busiest' }, message: 'Instance failure!' }],
       hintAfter: 8,
+      ask: 'When one instance dies, where does its traffic go? Look at how busy the others are before it happens.',
       hint:
         'Run N+1: keep enough spare instances that losing one keeps the rest below ~80% CPU. ' +
         'Health checks already route around the dead instance — you just need room for its traffic.',

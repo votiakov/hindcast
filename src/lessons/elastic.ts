@@ -33,6 +33,7 @@ export const elastic: Lesson = {
       traffic: { from: 300, to: 300, rampSeconds: 0 },
       goal: { maxErrorRate: 0.01, maxP99: 300, maxCost: 1.05, holdSeconds: 6, startAfter: 2 },
       hintAfter: 8,
+      ask: 'Click api: how busy are its instances at 300 req/s? How many does that load need?',
       hint: 'Select api and remove instances with − until the cost fits. Two instances already serve 300 req/s at 60% — the rest is idle money.',
       solution: { note: 'Two instances for 300 req/s', changes: [{ op: 'set', id: 'api', fields: { instances: 2 } }] },
       takeaway: 'Idle instances are money with nothing to do: two serve 300 req/s at about 60% busy. Sizing for peak all day is the most common cloud bill there is.',
@@ -47,6 +48,7 @@ export const elastic: Lesson = {
       traffic: { keyframes: [{ at: 0, rps: 300 }, { at: 5, rps: 300 }, { at: 10, rps: 1500 }, { at: 80, rps: 1500 }] },
       goal: { maxErrorRate: 0.01, maxP99: 300, holdSeconds: 10, startAfter: 30 },
       hintAfter: 10,
+      ask: 'When the rush starts, how long do new instances take to serve? Watch the dashed ones.',
       hint:
         'Select api → autoscale, max 12. Watch the booting instances (dashed): with a 30 s warm-up you eat 30 s of errors at the start of every rush. ' +
         'Pick a shorter warm-up (a Kubernetes pod on an existing node: 5–15 s) or keep a higher minimum to absorb the first seconds.',
@@ -64,6 +66,7 @@ export const elastic: Lesson = {
       goal: { maxErrorRate: 0.01, maxP99: 500, holdSeconds: 25, startAfter: 15, deadline: 40.5 },
       chaos: [{ at: 20, action: { type: 'flush-cache', id: 'redis' }, message: 'redis restarted — the cache is empty' }],
       hintAfter: 8,
+      ask: 'Right after the cache restarts, every read is a miss. Where do they all go, and can it take them?',
       hint:
         'The database must survive the misses of a cold cache, not just the hits of a warm one. Size db up to M (2k req/s) — or add a read replica — ' +
         'then use Reset to replay the restart. Run the failure audit (shield icon in Sandbox) to find this class of problem before production does.',

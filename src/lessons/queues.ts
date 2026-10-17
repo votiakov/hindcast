@@ -43,6 +43,7 @@ export const queues: Lesson = {
       traffic: { keyframes: [{ at: 0, rps: 40 }, { at: 4, rps: 40 }, { at: 6, rps: 300 }, { at: 24, rps: 300 }, { at: 26, rps: 40 }, { at: 60, rps: 40 }] },
       goal: { maxErrorRate: 0.01, maxP99: 400, holdSeconds: 30, startAfter: 2, deadline: 32.5 },
       hintAfter: 6,
+      ask: 'Does the user need the thumbnail before the upload is accepted? Where could the work wait while the spike passes?',
       hint:
         'Users don’t need the thumbnail before the upload succeeds. Put a Queue between api and the worker (api → queue → thumbnails): ' +
         'the API gets an instant acknowledgement and the worker drains the queue at its own pace. Adding workers would also work — at three times the cost, for a spike that lasts twenty seconds.',
@@ -67,6 +68,7 @@ export const queues: Lesson = {
       traffic: { from: 40, to: 180, rampSeconds: 5 },
       goal: { maxErrorRate: 0.01, maxP99: 400, maxLagS: 5, holdSeconds: 15, startAfter: 8 },
       hintAfter: 8,
+      ask: 'Watch the queue: is the backlog shrinking or growing? Compare the jobs that arrive a second with the jobs done.',
       hint:
         'A queue absorbs bursts; it can’t make up for too little capacity. If jobs arrive faster than they are done, the backlog grows forever. ' +
         'Select thumbnails and add instances until it drains faster than it fills (behind a queue, workers need no load balancer).',

@@ -48,6 +48,7 @@ export const events: Lesson = {
       traffic: { from: 120, to: 600, rampSeconds: 5 },
       goal: { maxErrorRate: 0.01, maxP99: 500, maxLagS: 10, holdSeconds: 10 },
       hintAfter: 10,
+      ask: 'Add workers and watch: does every one of them get work? How many consumers can one partition feed?',
       hint: 'A subscriber runs at most one consumer per partition: with 2 partitions, the 3rd worker onwards sits idle. Give the stream 8 partitions, and each service 8 workers.',
       solution: {
         note: 'Eight partitions, eight workers per service',

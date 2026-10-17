@@ -3,6 +3,7 @@ import { CheckCircle2, ChevronRight, Eye, Lightbulb, RotateCcw, Star, Target } f
 import { useSim } from '../sim/store';
 import { LESSONS, TRACKS } from '../lessons';
 import { finalRps, goalStart } from '../lessons/types';
+import { hintStage } from '../lessons/hints';
 import { progressOf, recordFinish, recordLevel } from '../lessons/progress';
 import { WithTerms } from './Term';
 
@@ -37,7 +38,7 @@ export function LessonPanel() {
   const running = useSim((s) => s.running);
   const global = useSim((s) => s.boards.main.global);
   const showCost = useSim((s) => s.settings.cost);
-  const { nextStep, replayLevel, showSolution, pickLesson } = useSim.getState();
+  const { nextStep, replayLevel, showSolution, revealAnswer, pickLesson } = useSim.getState();
   const { lesson, stepIndex } = ls;
   const shownCount = useRef(0);
 
@@ -103,8 +104,7 @@ export function LessonPanel() {
   const step = lesson.steps[stepIndex];
   const holdPct = step.goal ? Math.min(1, ls.holdT / step.goal.holdSeconds) : 0;
   const ramping = ls.stepT < goalStart(step);
-  const struggling = ls.failT >= (step.hintAfter ?? 8) || ls.missed;
-  const showHint = step.hint && struggling;
+  const hint = hintStage(step, ls);
   const status = ls.passed
     ? 'Passed'
     : ls.missed
@@ -177,11 +177,22 @@ export function LessonPanel() {
         </div>
       )}
 
-      {showHint && !ls.passed && (
+      {hint !== 'none' && (
         <div className="hint">
           <Lightbulb size={14} />
           <span>
-            <WithTerms text={step.hint ?? ''} />
+            {step.ask && (
+              <span className={hint === 'answer' ? 'hint-ask answered' : 'hint-ask'}>
+                <WithTerms text={step.ask} />
+              </span>
+            )}
+            {hint === 'ask' ? (
+              <button className="hint-stuck" onClick={revealAnswer} title='Show what to change, and the "show me" button'>
+                [ I’m stuck: show the answer ]
+              </button>
+            ) : (
+              <WithTerms text={step.hint ?? ''} />
+            )}
           </span>
         </div>
       )}
@@ -213,7 +224,7 @@ export function LessonPanel() {
                 <RotateCcw size={14} /> Replay level
               </button>
             )}
-            {struggling && step.solution && !ls.shown && (
+            {hint === 'answer' && step.solution && !ls.shown && (
               <button className="btn" onClick={showSolution} title={`Put a design that passes on the board: ${step.solution.note}`}>
                 <Eye size={14} /> Show me
               </button>

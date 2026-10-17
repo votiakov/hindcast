@@ -149,8 +149,9 @@ what happens in it, not recover afterwards.
 | **Size the Vector Index** | Ten million chunks · 300 queries/s · A launch: 1,200 queries/s |
 | **Does the Language Matter? Runtime Economics** | Twelve Node.js instances · Cut the compute bill · Black Friday: 3× traffic |
 
-- **Hint** after a few seconds out of SLO; **Show me** next to it puts the level's reference design
-  on the board (undoable). **Replay level** resets the level with the design on the board; press ▶
+- **Hint** after a few seconds out of SLO: first a question that sends you to the evidence (trace a
+  request, find the red card), then, when you ask for it ("I'm stuck"), the answer; **Show me** comes
+  with the answer and puts the level's reference design on the board (undoable). **Replay level** resets the level with the design on the board; press ▶
   (Space) to run it.
 - Terms such as p99, SLO, queue or timeout are underlined in the level's text: hover one for what
   it means. ⌘K, then type a term, lists the whole glossary.

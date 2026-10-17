@@ -46,6 +46,7 @@ export const sizeCache: Lesson = {
       traffic: { from: 3000, to: 7000, rampSeconds: 6 },
       goal: { maxErrorRate: 0.01, maxP99: 300, holdSeconds: 10 },
       hintAfter: 8,
+      ask: 'Click the cache: what is its hit rate, and where do the misses go? What would more memory change?',
       hint: 'Size the cache up and watch its hit rate: 87% → 90% → 94%. Four times the memory removes about half the misses — enough here.',
       solution: { note: 'A cache four times the size', changes: [{ op: 'set', id: 'cache', fields: { tier: 'L' } }] },
       takeaway: 'Four times the memory took the hit rate from 87% to 94%: the hot keys already fit, so each doubling only reaches a little further into the long tail. Price that against a bigger database before you buy it.',

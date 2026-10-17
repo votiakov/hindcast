@@ -260,6 +260,8 @@
 [data-theme='terminal'] .hold-fill.passed { background: var(--r-ok); }
 [data-theme='terminal'] .hint { border-radius: 3px; background: var(--r-warn-tint); border: 0; border-left: 3px solid var(--r-warm); color: var(--r-ink); }
 [data-theme='terminal'] .hint svg { color: var(--r-warn); }
+[data-theme='terminal'] .hint-ask.answered { color: var(--r-muted); opacity: 1; }
+[data-theme='terminal'] .hint-stuck { color: var(--r-warn); }
 [data-theme='terminal'] .star { color: var(--r-line); }
 [data-theme='terminal'] .star.on { color: var(--r-warm); fill: var(--r-warm); filter: none; }
 [data-theme='terminal'] .lesson-done p { color: var(--r-ink-2); }

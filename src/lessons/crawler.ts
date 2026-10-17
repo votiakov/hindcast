@@ -55,6 +55,7 @@ export const crawler: Lesson = {
       traffic: { from: 1000, to: 3000, rampSeconds: 5 },
       goal: { maxErrorRate: 0.01, maxP99: 3000, maxLagS: 10, maxJobErrorRate: 0.01, holdSeconds: 10 },
       hintAfter: 10,
+      ask: 'How many pages a second does one crawler fetch, and how many do you need? Then check the index: is it keeping up?',
       hint: 'Count it through: 3,000 pages need 3,000 / 100 = 30+ crawlers (36 leaves headroom), and 12,000 index writes a second need more shards — 4 of size L.',
       solution: {
         note: 'A fleet and an index sized for the crawl',
@@ -74,6 +75,7 @@ export const crawler: Lesson = {
       goal: { maxErrorRate: 0.01, maxP99: 3000, maxLagS: 10, maxJobErrorRate: 0.01, holdSeconds: 10, startAfter: 4 },
       chaos: [{ at: 3, action: { type: 'inject-errors', id: 'web', rate: 0.12 }, message: 'One fetch in eight fails: the web is flaky' }],
       hintAfter: 8,
+      ask: 'Click the crawlers: are the failed fetches permanent, or would the same page load a moment later?',
       hint: 'Retry the fetch: give the crawlers 2 retries with backoff. A transient failure usually succeeds a moment later, and the web’s rate limit has room for the extra fetches.',
       solution: { note: 'Retries with backoff on the crawlers', changes: [{ op: 'set', id: 'crawlers', fields: { retries: 2, retryPolicy: 'backoff' } }] },
       takeaway: 'Someone else’s servers fail in ways you cannot fix. Retrying with backoff turns their transient failures into a little extra latency — a crawl can afford latency, not lost pages.',

@@ -45,6 +45,7 @@ export const pastebin: Lesson = {
       traffic: { keyframes: [{ at: 0, rps: 44 }, { at: 3, rps: 44 }, { at: 5, rps: 3000 }, { at: 25, rps: 3000 }, { at: 27, rps: 44 }] },
       goal: { maxErrorRate: 0.01, maxP99: 300, holdSeconds: 20, startAfter: 5, deadline: 26 },
       hintAfter: 8,
+      ask: 'Can a paste change once it is written? If not, who else could answer the reads?',
       hint:
         'Put a CDN in front (users → CDN → paste api): pastes are immutable, so the edge can serve almost every read. ' +
         'The misses and the writes still reach the API — give it a load balancer and a few instances for them.',
@@ -74,6 +75,7 @@ export const pastebin: Lesson = {
       goal: { maxErrorRate: 0.01, maxP99: 400, holdSeconds: 10, startAfter: 30, deadline: 50 },
       chaos: [{ at: 3, action: { type: 'kill-id', id: 'db' }, message: 'The database host failed' }],
       hintAfter: 8,
+      ask: 'While the database is down, which requests could still be answered, and from where?',
       hint:
         'Add a Read Replica behind the database (pastes → replica). While the primary is down the replica keeps serving reads; ' +
         'after the election (30 s here) it is promoted and takes the writes too.',

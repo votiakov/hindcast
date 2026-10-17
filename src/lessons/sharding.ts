@@ -42,6 +42,7 @@ export const sharding: Lesson = {
       traffic: { from: 1500, to: 3500, rampSeconds: 4 },
       goal: { maxErrorRate: 0.01, maxP99: 300, holdSeconds: 8 },
       hintAfter: 8,
+      ask: 'Click the database: what is it short of, and what sizes are there?',
       hint: 'Scale up first: size the database to L (×4 the capacity of S). Nothing else changes.',
       solution: { note: 'A size-L database', changes: [{ op: 'set', id: 'db', fields: { tier: 'L' } }] },
       takeaway: 'Scaling up is the cheapest change in effort: same database, bigger machine. It also has a ceiling.',
@@ -55,6 +56,7 @@ export const sharding: Lesson = {
       traffic: { from: 3500, to: 9000, rampSeconds: 6 },
       goal: { maxErrorRate: 0.01, maxP99: 300, holdSeconds: 10 },
       hintAfter: 8,
+      ask: 'The database is already the largest size. If one box cannot take every write, how could the writes be divided?',
       hint: 'Shard it: split the posts by user id across 3 databases (select the database → shards 3). Each holds a third of the users, and takes a third of the writes.',
       solution: { note: 'Three shards', changes: [{ op: 'set', id: 'db', fields: { shards: 3 } }] },
       takeaway: 'Sharding splits the data, so it splits the writes — the one thing replicas and caches cannot do. The price: a query across users now asks every shard.',
@@ -70,6 +72,7 @@ export const sharding: Lesson = {
       goal: { maxErrorRate: 0.01, maxP99: 300, maxCost: 12, holdSeconds: 10, startAfter: 5 },
       chaos: [{ at: 4, action: { type: 'hot-key', id: 'db', share: 0.3 }, message: 'A post went viral: 30% of traffic on one key' }],
       hintAfter: 8,
+      ask: 'Look at the shards: is the load spread evenly? Is everyone writing that post, or reading it?',
       hint: 'More shards cannot split one post — and each costs a size-L database. Put a cache in front of the database (api → cache → db): the viral post is read far more than written, and a cache answers it from memory.',
       solution: {
         note: 'A cache in front of the shards',

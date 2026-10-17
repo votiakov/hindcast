@@ -41,6 +41,7 @@ export const aiServing: Lesson = {
       traffic: { from: 20, to: 120, rampSeconds: 8 },
       goal: { maxErrorRate: 0.01, maxP99: 8000, holdSeconds: 10 },
       hintAfter: 6,
+      ask: 'What is the provider answering with when requests fail? Is it slow, or refusing you?',
       hint:
         'Rate limits are a hard wall — 429s are 60% of LLM API errors in production. Options: put a Cache (as a semantic cache, ~30–40% hits for repeated questions) ' +
         'in front of the provider; add a self-hosted GPU Inference pool and set api routing to "failover" so overflow spills to the provider; ' +
@@ -57,6 +58,7 @@ export const aiServing: Lesson = {
       traffic: { from: 120, to: 120, rampSeconds: 0 },
       goal: { maxErrorRate: 0.01, maxP99: 8000, maxCost: 100, holdSeconds: 10 },
       hintAfter: 8,
+      ask: 'What do you pay per request, and does that grow with traffic? What would cost the same however busy it gets?',
       hint:
         'Per-request pricing punishes sustained volume. Self-host an open model: GPU Inference instances cost ~$4/h each and serve ~6 req/s — ×4 with batching ' +
         '(select the node, enable batching). Keep the provider as a failover target for spikes (api → routing: failover, GPUs first) and keep the cache in front.',

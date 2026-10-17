@@ -45,6 +45,7 @@ export const mint: Lesson = {
       traffic: { from: 600, to: 2000, rampSeconds: 6 },
       goal: { maxErrorRate: 0.01, maxP99: 300, holdSeconds: 10 },
       hintAfter: 8,
+      ask: 'Which card is red, and is it reads or writes that fill it? Would a cache ever see them?',
       hint:
         'Try a Cache between the API and the database first, and watch the database stay red: writes go straight through it. ' +
         'What helps is capacity for writes: a larger database (size L) and enough API instances for 2,000 req/s.',
@@ -67,6 +68,7 @@ export const mint: Lesson = {
       traffic: { keyframes: [{ at: 0, rps: 1500 }, { at: 3, rps: 1500 }, { at: 4, rps: 8000 }, { at: 24, rps: 8000 }, { at: 25, rps: 1500 }] },
       goal: { maxErrorRate: 0.01, maxP99: 1000, maxLagS: 60, holdSeconds: 22, startAfter: 3, deadline: 40 },
       hintAfter: 8,
+      ask: 'Does the batch need its writes in the database before the API answers? Where could they wait until the database is ready?',
       hint:
         'Accept now, write later: put a Queue between the API and a pool of Workers that write to the database (ingest api → queue → workers → transactions). ' +
         'The API answers as soon as the batch is queued; the workers drain it at the pace the database can take.',

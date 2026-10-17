@@ -39,6 +39,7 @@ export const runtimes: Lesson = {
       traffic: { from: 2000, to: 2000, rampSeconds: 0 },
       goal: { maxErrorRate: 0.01, maxP99: 300, maxCost: 2.55, holdSeconds: 10 },
       hintAfter: 6,
+      ask: 'How much of the bill is the API, and what is it spending its CPU on? Could the same work take fewer instances?',
       hint:
         'Select api, change runtime to Go (≈2.5× throughput per instance for typical JSON APIs) or Rust (≈3.5×), then remove instances with − ' +
         'while the CPU bar stays below ~80%. Fewer instances = smaller bill. (Python goes the other way.)',
@@ -54,6 +55,7 @@ export const runtimes: Lesson = {
       traffic: { from: 2000, to: 6000, rampSeconds: 8 },
       goal: { maxErrorRate: 0.01, maxP99: 300, maxCost: 4, holdSeconds: 10 },
       hintAfter: 8,
+      ask: 'Which card goes red first at three times the traffic? Would a faster language help it?',
       hint:
         'The database is the wall now, and no language rewrite fixes it. Add a Cache between api and db (api → cache → db) to absorb most reads, ' +
         'then you may even downsize the database. Scale api instances to keep CPU < 80%.',

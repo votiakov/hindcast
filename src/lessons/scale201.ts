@@ -45,6 +45,7 @@ export const scale201: Lesson = {
       traffic: { from: 1500, to: 10000, rampSeconds: 6 },
       goal: { maxErrorRate: 0.01, maxP99: 300, holdSeconds: 10 },
       hintAfter: 8,
+      ask: 'Most of the new traffic is images, scripts and styles. Do those requests need to reach your servers at all?',
       hint: 'Put a CDN in front of the load balancer (users → CDN → lb). It answers the static reads at the edge; only misses and writes reach your origin.',
       solution: {
         note: 'A CDN in front of the load balancer',
@@ -67,6 +68,7 @@ export const scale201: Lesson = {
       traffic: { from: 10000, to: 40000, rampSeconds: 8 },
       goal: { maxErrorRate: 0.01, maxP99: 300, holdSeconds: 10 },
       hintAfter: 8,
+      ask: 'How many requests get past the edge and the cache to the API and the database? Which card runs out of room first?',
       hint: 'Count what reaches each part: ~4,400 req/s for the API (18–20 instances), and for the database the writes plus cache misses — a size up gives it the room.',
       solution: {
         note: 'The fleet and the database sized for what gets past the edge',
@@ -87,6 +89,7 @@ export const scale201: Lesson = {
       traffic: { keyframes: [{ at: 0, rps: 40000 }, { at: 6, rps: 40000 }, { at: 12, rps: 10000 }, { at: 60, rps: 10000 }] },
       goal: { maxErrorRate: 0.01, maxP99: 300, maxAvgCost: 2.9, holdSeconds: 50 },
       hintAfter: 10,
+      ask: 'Watch the API’s CPU once the peak is over. What are you paying for at night?',
       hint: 'Autoscale the API (min 5, max 24, target 60%, short cooldown): it gives instances back when the peak is over.',
       solution: {
         note: 'An autoscaled API fleet',

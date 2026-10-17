@@ -91,6 +91,8 @@ export interface LessonState {
   finished: boolean;
   /** "show me" was used on this level */
   shown: boolean;
+  /** the learner asked for the hint's answer on this level ("I'm stuck"); it stays out through replays */
+  answered: boolean;
   /** running $/h sum and count over the level, for average-bill goals */
   costSum: number;
   costN: number;
@@ -211,6 +213,8 @@ interface State {
   applyFix: (findingId: string, fixIndex: number) => void;
   /** lessons: put the current level's reference design on the board ("show me") */
   showSolution: () => void;
+  /** lessons: show the current level's answer and "show me" after its first-stage question */
+  revealAnswer: () => void;
   /** library id of the design open in the sandbox (null = unsaved) */
   designId: string | null;
   setDesign: (id: string | null, name: string) => void;
@@ -309,7 +313,7 @@ export const systemNodes = (nodes: AppNode[]) => nodes.filter(isSystem);
 export const scenarioById = (id: string | null): Scenario | undefined => findScenario(id);
 
 function freshLesson(lesson: Lesson): LessonState {
-  return { lesson, stepIndex: 0, stepT: 0, holdT: 0, failT: 0, passed: false, missed: false, firedChaos: [], chaosUndo: {}, finished: false, shown: false, costSum: 0, costN: 0, winReq: 0, winFail: 0 };
+  return { lesson, stepIndex: 0, stepT: 0, holdT: 0, failT: 0, passed: false, missed: false, firedChaos: [], chaosUndo: {}, finished: false, shown: false, answered: false, costSum: 0, costN: 0, winReq: 0, winFail: 0 };
 }
 
 function freshStudio(episodeId: string, aspect: Aspect, brandId: string): StudioState {
@@ -474,6 +478,7 @@ export const useSim = create<State>()((set, get) => {
       set({ lesson: { ...get().lesson, shown: true } });
       get().toast('info', `Shown: ${step.solution.note}. Press ▶ (or Reset to replay the level) and watch it hold.`);
     },
+    revealAnswer: () => set({ lesson: { ...get().lesson, answered: true } }),
     designId: null,
     setDesign: (designId, name) => set((s) => ({ designId, boards: { ...s.boards, main: { ...s.boards.main, title: name } } })),
     scrub: null,
@@ -819,7 +824,7 @@ export const useSim = create<State>()((set, get) => {
       // player's design without the faults this level injected, and nothing queued from this one
       patch('main', { nodes: undoChaos(board('main').nodes, ls.chaosUndo) });
       engines.main.reset();
-      set({ lesson: { ...ls, stepIndex: ls.stepIndex + 1, stepT: 0, holdT: 0, failT: 0, passed: false, missed: false, firedChaos: [], chaosUndo: {}, shown: false, costSum: 0, costN: 0, winReq: 0, winFail: 0 } });
+      set({ lesson: { ...ls, stepIndex: ls.stepIndex + 1, stepT: 0, holdT: 0, failT: 0, passed: false, missed: false, firedChaos: [], chaosUndo: {}, shown: false, answered: false, costSum: 0, costN: 0, winReq: 0, winFail: 0 } });
     },
     pickScenario: (id) => {
       if (id === null) {

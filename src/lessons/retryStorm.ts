@@ -44,6 +44,7 @@ export const retryStorm: Lesson = {
       traffic: { keyframes: [{ at: 0, rps: 700 }, { at: 3, rps: 700 }, { at: 4, rps: 1600 }, { at: 9, rps: 1600 }, { at: 10, rps: 700 }] },
       goal: { maxErrorRate: 0.01, maxP99: 500, holdSeconds: 10, startAfter: 12 },
       hintAfter: 6,
+      ask: 'The blip lasted six seconds. Why are errors still high long after it ended? Trace a request and count its retries.',
       hint:
         'This is a metastable failure. The 3-second queue fills with requests whose clients already gave up after 1s, so every response is "late"; ' +
         'clients retry 3×, quadrupling the load, which keeps the queue full forever. Break the loop: select Users and switch retries to "retry budget 10%" ' +
@@ -68,6 +69,7 @@ export const retryStorm: Lesson = {
       goal: { maxErrorRate: 0.05, maxP99: 2000, holdSeconds: 20, startAfter: 6 },
       chaos: [{ at: 3, action: { type: 'degrade', id: 'db', factor: 0.05 }, message: 'Database degraded to 5% capacity' }],
       hintAfter: 8,
+      ask: 'The database is slow, not down. Of what it is sent, how much is the same read again?',
       hint:
         'Try api → breaker + fallback first and watch it flap: open (fallback served) → probe → close → database overloaded again → open. ' +
         'Breakers buy time and protect, but they add no capacity. The fix that holds: put a Cache between api and db (api → cache → db) so most reads never touch the struggling database — writes still do, so the hit rate on reads has to be high.',

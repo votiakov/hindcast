@@ -64,6 +64,7 @@ export const cap: Lesson = {
         { at: 12, action: { type: 'fail-zone', id: 'east' }, message: 'us-east lost power' },
       ],
       hintAfter: 8,
+      ask: 'Which writes were lost? When the primary acknowledged them, did the replica have them yet?',
       hint: 'Select the primary → replica link and make it synchronous: a write is only acknowledged once the replica has it.',
       solution: { note: 'Synchronous replication', changes: [{ op: 'connect', from: 'db', to: 'rep', latencyMs: 70, replication: 'sync' }] },
       takeaway:
@@ -82,6 +83,7 @@ export const cap: Lesson = {
         { at: 12, action: { type: 'fail-zone', id: 'east' }, message: 'us-east lost power' },
       ],
       hintAfter: 8,
+      ask: 'Which link does the split cut? Is there somewhere a write could be confirmed that stays reachable?',
       hint:
         'Add a replica in us-central, replicated synchronously, and make us-west asynchronous again. Writes wait only for us-central, which the partition does not cut off; when us-east dies, the up-to-date replica is promoted.',
       solution: {

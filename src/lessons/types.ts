@@ -39,6 +39,10 @@ export interface LessonStep {
   /** traffic ramps linearly from -> to over rampSeconds, then holds; or follows keyframes */
   traffic: { from: number; to: number; rampSeconds: number } | { keyframes: { at: number; rps: number }[] };
   goal?: StepGoal;
+  /** the hint's first stage: a question that sends the learner to the evidence (a trace, a red card);
+   *  the answer (`hint`) and "show me" wait until they ask for it */
+  ask?: string;
+  /** the answer: what to change, and why */
   hint?: string;
   /** seconds of failing the goal before the hint appears */
   hintAfter?: number;

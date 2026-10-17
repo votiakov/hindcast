@@ -36,6 +36,7 @@ export const deadlines: Lesson = {
       traffic: { from: 200, to: 420, rampSeconds: 4 },
       goal: { maxErrorRate: 0.01, maxP99: 300, maxCost: 1.6, holdSeconds: 5 },
       hintAfter: 6,
+      ask: 'Trace a failed request: where did its second go?',
       hint:
         'The trace crosses the load balancer and the API in a few milliseconds, then spends almost all of its second in the queue in front of the database (the thick "queue" arrow into orders db) and ends "timeout (1 s)": the user gave up while the request was still waiting. ' +
         'The database takes 300 req/s and is sent 420, so its queue grows until every request waits longer than the user will. Give it the capacity: a Medium database takes 600 req/s. A cache does little here, because 9 in 10 requests are writes.',
@@ -57,6 +58,7 @@ export const deadlines: Lesson = {
       ],
       goal: { maxErrorRate: 0.01, maxP99: 500, holdSeconds: 10, startAfter: 16, deadline: 36 },
       hintAfter: 8,
+      ask: 'Pause just after the stall and trace a request: how many calls does one failure turn into?',
       hint:
         'With immediate retries the stall does not end for the users. Pause (Space) within 6 s of the "orders db stalls" notice, select orders db and press "trace": the database refuses the first call ("overloaded"), then "retry 1" and "retry 2" go straight back in, wait behind everyone else\'s retries in the API\'s queue, and are refused the same way. ' +
         'Every failure becomes three requests, so after the database recovers the load is still more than the API and the database can take. Backoff does not change that: it waits 50–100 ms before each retry, but still sends it. Keep the retries and cap them: set the users\' retry policy to "budget 10%". ' +
@@ -74,6 +76,7 @@ export const deadlines: Lesson = {
       traffic: { from: 420, to: 700, rampSeconds: 4 },
       goal: { maxErrorRate: 0.3, maxP99: 1000, maxCost: 1.6, holdSeconds: 10, startAfter: 8 },
       hintAfter: 8,
+      ask: 'Trace a request that timed out: when the user gives up, does the database know? What happens to the request it is holding?',
       hint:
         'The trace ends "timeout (1 s)" inside the database\'s queue: the user has left, but nothing tells the database. The request stays queued and is worked on when its turn comes, up to 3 s later, for nobody. ' +
         'The database is fully busy and almost none of its answers arrive in time. The simulation does not pass deadlines down with calls (no deadline propagation), so make the callee\'s bound fit inside the caller\'s timeout: ' +

@@ -48,6 +48,7 @@ export const zones: Lesson = {
       goal: { maxErrorRate: 0.01, maxP99: 300, holdSeconds: 15, startAfter: 15, deadline: 30.5 },
       chaos: [{ at: 5, action: { type: 'fail-zone', id: 'zone-a' }, message: 'us-east-1a is down: every component in it' }],
       hintAfter: 6,
+      ask: 'If everything in us-east-1a disappears, what is left to serve requests, and where does the data live?',
       hint:
         'Put capacity in us-east-1b: drag an API Server into the lower frame, connect lb → it and it → db, and give it enough instances to carry all the traffic alone. ' +
         'Then the data: connect a Read Replica from db and drag it into us-east-1b — when the primary dies, the replica is promoted (after 3 s here, to keep the lesson short; managed databases take 30–120 s).',
@@ -74,6 +75,7 @@ export const zones: Lesson = {
       goal: { maxErrorRate: 0.01, maxP99: 300, maxAvgCost: 1.85, holdSeconds: 15, startAfter: 15, deadline: 30.5 },
       chaos: [{ at: 5, action: { type: 'fail-zone', id: 'zone-a' }, message: 'us-east-1a is down: every component in it' }],
       hintAfter: 8,
+      ask: 'Before the failure, how busy is each zone’s pool? Which one needs full capacity, and when?',
       hint:
         'Only the survivor needs full capacity, and only after the failure. Keep a smaller pool in each zone and let them autoscale: ' +
         'select api and api-b → autoscale (min 4, max 8, a short warm-up) so the survivor grows when its twin disappears. Too small a minimum and the survivor drowns before new instances boot.',
