@@ -569,6 +569,27 @@ pub fn same_endpoint(a: &str, b: &str) -> bool {
     pa.0 == pb.0 && pa.1 == pb.1 && (pa.2.is_none() || pb.2.is_none() || pa.2 == pb.2)
 }
 
+/// the traced endpoint an endpoint series stands for: of those that are the same endpoint, the one with
+/// the most traces (the exact id on a tie). Traces can name one route two ways — the framework's
+/// ("/api/products/[productId]") and, on a few broken traces, the series' own template ("{id}") — and
+/// a call path read from 42 traces must not stand in for one read from 4,829
+pub fn traced_endpoint(shapes: &[(&String, &EndpointShape)], id: &str) -> Option<usize> {
+    let mut best: Option<usize> = None;
+    for (i, (s, e)) in shapes.iter().enumerate() {
+        if !(s.as_str() == id || same_endpoint(s, id)) {
+            continue;
+        }
+        let better = match best {
+            None => true,
+            Some(b) => e.traces > shapes[b].1.traces || (e.traces == shapes[b].1.traces && s.as_str() == id && shapes[b].0.as_str() != id),
+        };
+        if better {
+            best = Some(i);
+        }
+    }
+    best
+}
+
 // ---------- the node pool ----------
 
 fn requests_of_service(s: Option<&ServiceSeries>) -> Option<Requests> {
@@ -1071,14 +1092,12 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
             {
                 let done = s.done_rps.as_ref().or(s.rps.as_ref());
                 let entry: Vec<&crate::dataset::EndpointSeries> = d.endpoints.values().filter(|e| e.service == *id && e.rps.is_some()).collect();
+                let traced: Vec<(&String, &EndpointShape)> = topo.map(|t| t.endpoints.iter().collect()).unwrap_or_default();
                 let via: Vec<(&crate::dataset::EndpointSeries, f64)> = d
                     .endpoints
                     .iter()
                     .map(|(eid, e)| {
-                        let v = topo
-                            .and_then(|t| t.endpoints.iter().find(|(tid, _)| *tid == eid || same_endpoint(tid, eid)))
-                            .and_then(|(_, sh)| sh.visits.get(id).copied())
-                            .unwrap_or(0.0);
+                        let v = traced_endpoint(&traced, eid).and_then(|k| traced[k].1.visits.get(id).copied()).unwrap_or(0.0);
                         (e, v)
                     })
                     .filter(|(e, v)| *v > 0.0 && e.rps.is_some())
@@ -1521,11 +1540,11 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
     let empty_shapes = Map::new();
     let shapes: &Map<EndpointShape> = topo.map(|t| &t.endpoints).unwrap_or(&empty_shapes);
     let topo_ids: Vec<&String> = shapes.keys().collect();
+    let traced: Vec<(&String, &EndpointShape)> = shapes.iter().collect();
     let series_ids: Vec<String> = if !d.endpoints.is_empty() { d.endpoints.keys().cloned().collect() } else { topo_ids.iter().map(|s| (*s).clone()).collect() };
     let total_rps = series_ids.iter().fold(0.0, |s, id| s + mean_of(d.endpoints.get(id).and_then(|e| e.rps.as_ref())).unwrap_or(0.0));
     for id in &series_ids {
-        let sid = topo_ids.iter().find(|t| **t == id).or_else(|| topo_ids.iter().find(|t| same_endpoint(t, id)));
-        let shape = sid.map(|s| &shapes[*s]);
+        let shape = traced_endpoint(&traced, id).map(|k| traced[k].1);
         let ser = d.endpoints.get(id);
         let mut notes: Vec<String> = vec![];
         if shape.is_none() {
@@ -1822,5 +1841,31 @@ mod warmup_tests {
         assert_eq!(w.unwrap().source, "assumed");
         assert!(note.unwrap().contains("assumed"));
         assert!(warmup_of(Some("go"), &reps, &lam, Some(&cpu), Some(&c), 30.0).0.is_none());
+    }
+}
+
+#[cfg(test)]
+mod endpoint_match_tests {
+    use super::*;
+
+    fn shape(traces: f64, catalog: f64) -> EndpointShape {
+        let mut visits = Map::new();
+        visits.insert("frontend".to_string(), 1.0);
+        visits.insert("product-catalog".to_string(), catalog);
+        EndpointShape { service: "frontend".into(), traces, visits, ..Default::default() }
+    }
+
+    #[test]
+    fn a_series_reads_the_call_path_of_its_most_traced_name() {
+        // the framework's route name on 4,829 traces, the series' own template on 42 broken ones
+        let (framework, stray) = ("frontend GET /api/products/[productId]".to_string(), "frontend GET /api/products/{id}".to_string());
+        let (a, b) = (shape(4829.0, 1.0), shape(42.0, 0.57));
+        let shapes = vec![(&framework, &a), (&stray, &b)];
+        assert_eq!(traced_endpoint(&shapes, "frontend GET /api/products/{id}"), Some(0));
+        // the exact id wins a tie, and nothing stands for an endpoint the traces never saw
+        let c = shape(4829.0, 0.9);
+        let tied = vec![(&framework, &a), (&stray, &c)];
+        assert_eq!(traced_endpoint(&tied, "frontend GET /api/products/{id}"), Some(1));
+        assert_eq!(traced_endpoint(&shapes, "frontend GET /api/cart"), None);
     }
 }

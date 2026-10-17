@@ -236,10 +236,12 @@ pub fn import_bundle(m: &Value, fs: &mut dyn FileAccess) -> Result<(Dataset, Vec
         }
     }
     // a framework that wraps each request in two SERVER spans makes span metrics show the outer one as an
-    // endpoint named only by its method: where routed series exist, the method-only series are duplicates
+    // endpoint named only by its method: where routed series exist, the method-only series are duplicates.
+    // The wrapping is the framework's, on every request; traces that lost a span (a collector shedding
+    // under a load test) only pull the average below 2, so it is read from the majority of visits
     if let Some(topo) = &topology {
         for (id, shape) in &topo.services {
-            if shape.server_spans_per_visit.map(|k| k < 2.0).unwrap_or(true) {
+            if shape.server_spans_per_visit.map(|k| k < 1.5).unwrap_or(true) {
                 continue;
             }
             let mine: Vec<String> = dataset.endpoints.iter().filter(|(_, e)| e.service == *id).map(|(k, _)| k.clone()).collect();
@@ -380,7 +382,7 @@ pub(crate) fn trace_mix(id: &str, keys: &[String], raw: &[Vec<Option<f64>>], edg
     let shapes: Vec<(&String, &crate::dataset::EndpointShape)> = topo.endpoints.iter().filter(|(_, e)| e.service == id).collect();
     let of: Vec<Option<usize>> = keys
         .iter()
-        .map(|k| shapes.iter().position(|(s, _)| *s == k).or_else(|| shapes.iter().position(|(s, _)| crate::calibrate::same_endpoint(s, k))))
+        .map(|k| crate::calibrate::traced_endpoint(&shapes, k))
         .collect();
     let mut groups: Vec<usize> = of.iter().flatten().copied().collect();
     groups.sort_unstable();
@@ -624,6 +626,51 @@ mod tests {
         let (d, _) = import((5.0, 5.0), (5.4, 4.6), (108, 92));
         assert!((share_a(&d) - 0.5).abs() < 1e-9, "{}", share_a(&d));
         assert!(d.topology.as_ref().unwrap().mix_from_traces.is_none());
+    }
+
+    /// 100 requests to GET /a on web, the first `wrapped` of them inside an outer server span named only
+    /// by its method (a framework's), the rest having lost it; span metrics count both spans
+    fn import_wrapped(wrapped: usize) -> (Dataset, Vec<ImportLog>) {
+        let mut data = vec![];
+        for k in 0..100usize {
+            let id = format!("{:032x}", k + 1);
+            let start = ((T0 + k as f64 * 5.9) * 1e6) as i64;
+            let sid = |j: usize| format!("{:016x}", 2 * k + j);
+            let mut spans = vec![json!({ "traceID": id, "spanID": sid(1), "operationName": "GET /a", "references": [], "startTime": start + 100, "duration": 9000, "processID": "p1",
+                "tags": [tag("span.kind", "server"), tag("http.method", "GET"), tag("http.route", "/a")] })];
+            if k < wrapped {
+                spans[0]["references"] = json!([{ "refType": "CHILD_OF", "traceID": id, "spanID": sid(2) }]);
+                spans.push(json!({ "traceID": id, "spanID": sid(2), "operationName": "GET", "references": [], "startTime": start, "duration": 10000, "processID": "p1", "tags": [tag("span.kind", "server"), tag("http.method", "GET")] }));
+            }
+            data.push(json!({ "traceID": id, "spans": spans, "processes": { "p1": { "serviceName": "web" } } }));
+        }
+        let mut files = HashMap::new();
+        files.insert("edge.json".to_string(), matrix(&[("exported_service", "web", None, 10.0)]));
+        files.insert("ep.json".to_string(), matrix(&[("service_name", "web", Some("GET /a"), 10.0), ("service_name", "web", Some("GET"), wrapped as f64 / 10.0)]));
+        files.insert("traces.json".to_string(), json!({ "data": data }).to_string());
+        let m = json!({
+            "name": "t",
+            "step": "60s",
+            "metrics": [
+                { "prometheus": "ep.json", "metric": "rps", "by": "service_name", "endpointBy": "span_name", "template": true },
+                { "prometheus": "edge.json", "metric": "rps", "by": "exported_service", "edge": true }
+            ],
+            "traces": [{ "file": "traces.json", "series": { "rps": false, "latency": false, "endpoints": false } }]
+        });
+        import_bundle(&m, &mut Mem(files)).unwrap()
+    }
+
+    #[test]
+    fn the_outer_span_of_a_wrapped_request_is_dropped_though_some_traces_lost_it() {
+        // 90 of 100 visits carry the framework's outer span (1.9 server spans per visit): "GET" counts
+        // the requests GET /a already does
+        let (d, log) = import_wrapped(90);
+        assert!(!d.endpoints.contains_key("web GET"), "{:?}", d.endpoints.keys().collect::<Vec<_>>());
+        assert!((total(&d, "web GET /a") - 10.0 * BUCKETS as f64).abs() < 1e-6, "{}", total(&d, "web GET /a"));
+        assert!(log.iter().any(|l| l.what.starts_with("web: dropped \"web GET\"")), "{:?}", log.iter().map(|l| &l.what).collect::<Vec<_>>());
+        // a server span on a fifth of the visits is not a framework's on every request: kept
+        let (d, _) = import_wrapped(20);
+        assert!(d.endpoints.contains_key("web GET"));
     }
 
     #[test]
