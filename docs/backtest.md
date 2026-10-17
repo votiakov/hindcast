@@ -272,6 +272,7 @@ run and checked against runs the model never saw — a strategy actually applied
 to the breaking point. Targets: p99 within 20% (over every request of the run), breaking point within 15%,
 cost within 10% of the bill. Those checks pass (p99 off by 3–9%, breaking points by 0–14%, cost by
 0–3%), single runs each; the holdout (the end of each history, which holds an overload the earlier
-part never reached) misses p99 by 72–99%. On a kind cluster, verdicts committed before nine runs got
-3 right, 1 wrong and 5 inconclusive, against 6 right and 3 wrong for a plain CPU-ratio rule
-([reference/k8s](../reference/k8s/README.md)). The evidence is demo systems, not a production fleet.
+part never reached) misses p99 by 72–99%. On a kind cluster, verdicts committed before 18 runs of two systems
+got 8 right, 2 wrong and 8 inconclusive (Astronomy Shop 3/1/5, PetClinic 5/1/3), against 14 right
+and 4 wrong for a plain CPU-ratio rule ([reference/k8s](../reference/k8s/README.md),
+[PetClinic](../reference/k8s/petclinic/README.md)). The evidence is demo systems, not a production fleet.

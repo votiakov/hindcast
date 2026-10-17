@@ -49,7 +49,8 @@ from them. Full guide: [backtest.md](backtest.md). How the model is fitted:
 [calibration.md](calibration.md).
 
 **Opening data**
-- Three **reference systems** are built in (HotROD, Astronomy Shop, PetClinic): real recordings
+- Four **reference systems** are built in (HotROD, Astronomy Shop, PetClinic, and the Astronomy Shop
+  on Kubernetes): real recordings
   with their models and accuracy. Pick one from the system menu.
 - **Open files…** or drop files on the screen: a `hindcast.import.yaml` with its metric, trace and
   bill files, or a `dataset.json` + `model.json` from the CLI, plus any strategy `.yaml` files.
