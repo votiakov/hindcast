@@ -1,0 +1,90 @@
+# examples/backtest-ci/deploy/hotrod.yaml with two customer replicas: an approved pull request not yet
+# deployed, the baseline of the stacked verify-change golden cases.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  labels: { app: frontend }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: frontend } }
+  template:
+    metadata: { labels: { app: frontend } }
+    spec:
+      containers:
+        - name: frontend
+          image: jaegertracing/example-hotrod:latest
+          args: ["frontend", "-D", "100ms", "-W", "20"]
+          resources:
+            limits: { cpu: "1", memory: 256Mi }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: customer
+  labels: { app: customer }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: customer } }
+  template:
+    metadata: { labels: { app: customer } }
+    spec:
+      containers:
+        - name: customer
+          image: jaegertracing/example-hotrod:latest
+          args: ["customer", "-D", "100ms", "-W", "20"]
+          resources:
+            limits: { cpu: "500m", memory: 128Mi }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: customer-lb
+  labels: { app: customer-lb }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: customer-lb } }
+  template:
+    metadata: { labels: { app: customer-lb } }
+    spec:
+      containers:
+        - name: customer-lb
+          image: nginx:1.27-alpine
+          resources:
+            limits: { cpu: "250m", memory: 64Mi }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: driver
+  labels: { app: driver }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: driver } }
+  template:
+    metadata: { labels: { app: driver } }
+    spec:
+      containers:
+        - name: driver
+          image: jaegertracing/example-hotrod:latest
+          args: ["driver", "-D", "100ms", "-W", "20"]
+          resources:
+            limits: { cpu: "500m", memory: 128Mi }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: route
+  labels: { app: route }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: route } }
+  template:
+    metadata: { labels: { app: route } }
+    spec:
+      containers:
+        - name: route
+          image: jaegertracing/example-hotrod:latest
+          args: ["route", "-D", "100ms", "-W", "20"]
+          resources:
+            limits: { cpu: "500m", memory: 128Mi }

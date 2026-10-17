@@ -80,6 +80,9 @@ export interface BacktestResult {
   load?: { factor: number; peakRps: number };
   /** the busiest moment of the traffic replayed, req/s (all endpoints) */
   peakRps: number;
+  /** the baseline both sides were replayed with (BacktestOptions.baseline): the as-built result is the
+   *  system with it, and every strategy is stacked on it */
+  stackedOn?: { name: string; strategy: unknown; notes: string[] };
 }
 
 export interface BacktestOptions {
@@ -93,6 +96,10 @@ export interface BacktestOptions {
   load?: { scale?: number; peakRps?: number };
   /** time-boxed faults (incident and public-outage replays) */
   faults?: Fault[];
+  /** a strategy applied to both sides, its pods running before the window (an approved change not yet
+   *  deployed): the as-built replay becomes the system with it, and every strategy is stacked on it,
+   *  its settings written over the baseline's for the same service */
+  baseline?: unknown;
 }
 
 /** strategies ordered by time out of SLO (when it differs by more than half a minute), then by cost */

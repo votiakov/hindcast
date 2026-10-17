@@ -11,6 +11,7 @@ use serde_json::{json, Map as JMap, Value};
 use std::path::Path;
 
 pub const USAGE: &str = "hindcast verify-change --model model.json --dataset dataset.json (--base <dir> --head <dir> | --terraform-plan plan.json | <strategy.yaml …>)
+    [--baseline-head <dir> | --baseline strategy.yaml | --baseline-terraform-plan plan.json]
     [--last 14d] [--draws 30] [--gate-minutes 0.5] [--p99 500] [--errors 0.01] [--scale 2 | --peak 400]
     [--comment comment.md] [--json result.json] [--md report.md] [--html report.html] [--outputs $GITHUB_OUTPUT]
     [--title \"Hindcast backtest\"] [--comment-key <key>] [--run-url <url>] [--fail-on fail|inconclusive|never]";
@@ -100,8 +101,23 @@ pub fn command(cmd: &str, f: &Flags, out: &mut Out) -> Result<Option<i32>, Strin
         }
     };
     let mut inputs: Vec<Value> = vec![];
+    // a baseline in place on both sides: an approved change not yet deployed (a stacked pull request's base)
+    let baseline_head = value(f, "baseline-head");
+    let baselines: Vec<Value> = [
+        baseline_head.as_ref().map(|bh| json!({ "kubernetes": { "base": value(f, "base").unwrap_or_default(), "head": bh } })),
+        value(f, "baseline").map(|p| load(&p).map(|st| json!({ "strategy": st }))).transpose()?,
+        value(f, "baseline-terraform-plan").map(|p| json!({ "terraformPlan": p })),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    if baselines.len() > 1 {
+        return Err("one baseline: --baseline-head, --baseline or --baseline-terraform-plan".into());
+    }
     match (value(f, "base"), value(f, "head")) {
-        (Some(b), Some(h)) => inputs.push(json!({ "kubernetes": { "base": b, "head": h } })),
+        // the change is the head's edits over the baseline's manifests
+        (Some(b), Some(h)) => inputs.push(json!({ "kubernetes": { "base": baseline_head.clone().unwrap_or(b), "head": h } })),
+        (None, None) if baseline_head.is_some() => return Err("--baseline-head needs --base and --head: the manifests that run, with the baseline, and with the change on top of it".into()),
         (None, None) => {}
         _ => return Err("--base and --head go together: the manifests before and after the change".into()),
     }
@@ -115,6 +131,9 @@ pub fn command(cmd: &str, f: &Flags, out: &mut Out) -> Result<Option<i32>, Strin
         return Err(format!("nothing to verify: give --base/--head manifests, --terraform-plan, or strategy files\n{}", USAGE));
     }
     let mut o = JMap::new();
+    if let Some(b) = baselines.into_iter().next() {
+        o.insert("baseline".into(), b);
+    }
     if let Some(l) = value(f, "last") {
         o.insert("last".into(), json!(l));
     }
@@ -188,6 +207,9 @@ pub fn command(cmd: &str, f: &Flags, out: &mut Out) -> Result<Option<i32>, Strin
             _ => dim(v),
         };
         out.log(&format!("{} {}{}", bold("verdict"), paint(&verdict), if level.is_empty() { String::new() } else { format!(" · confidence {}", level) }));
+        if !g(&res, &["comparedWith"]).is_null() {
+            out.log(&dim(&format!("  compared with {}", s(&res, &["comparedWith"]))));
+        }
         for x in arr(&res, &["results"]) {
             out.log(&format!("  {} {}: {}", paint(&s(x, &["verdict"])), s(x, &["name"]), s(x, &["summary"])));
         }

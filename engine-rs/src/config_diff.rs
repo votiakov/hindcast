@@ -277,6 +277,35 @@ pub struct DiffResult {
     pub ignored: Vec<String>,
 }
 
+/// a diff's name (strategy_from_diff's "frontend CPU 1 → 0.05; customer 1 → 2 replicas") without the
+/// parts that say `left`, (service, setting) pairs a baseline already makes. The name unchanged when
+/// none of it is left
+pub fn name_without(name: &str, left: &[(String, String)]) -> String {
+    let says = |part: &str, svc: &str, field: &str| {
+        let rest = match part.strip_prefix(svc).and_then(|r| r.strip_prefix(' ')) {
+            Some(r) => r,
+            None => return false,
+        };
+        match field {
+            "autoscale" => rest.starts_with("autoscale "),
+            "replicas" => rest.ends_with(" replicas") || rest.starts_with("fixed at "),
+            "cpu" => rest.starts_with("CPU ") && !rest.starts_with("CPU request "),
+            "memoryGb" => rest.starts_with("memory ") && !rest.starts_with("memory request "),
+            "spread" => rest == "spread over nodes",
+            "cpuRequest" => rest.starts_with("CPU request "),
+            "memoryRequestGb" => rest.starts_with("memory request "),
+            "arch" => rest.starts_with("→ "),
+            _ => false,
+        }
+    };
+    let kept: Vec<&str> = name.split("; ").filter(|p| !left.iter().any(|(svc, f)| says(p, svc, f))).collect();
+    if kept.is_empty() {
+        name.to_string()
+    } else {
+        kept.join("; ")
+    }
+}
+
 /// the strategy that turns `before` into `after`, or None when nothing the model knows changed
 pub fn strategy_from_diff(before: &IndexMap<String, WorkloadConfig>, after: &IndexMap<String, WorkloadConfig>, name: Option<&str>, known: Option<&IndexSet<String>>) -> DiffResult {
     let mut changes: Vec<Value> = vec![];
@@ -365,6 +394,17 @@ pub fn strategy_from_diff(before: &IndexMap<String, WorkloadConfig>, after: &Ind
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_diffs_name_drops_what_a_baseline_already_sets() {
+        let name = "frontend CPU 1 → 0.05; customer 1 → 2 replicas; customer CPU request 0.5 → 1";
+        let left = |x: &[(&str, &str)]| x.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect::<Vec<_>>();
+        assert_eq!(name_without(name, &left(&[("customer", "replicas")])), "frontend CPU 1 → 0.05; customer CPU request 0.5 → 1");
+        // CPU is not the CPU request, and a service is not another whose name it starts
+        assert_eq!(name_without(name, &left(&[("customer", "cpu"), ("front", "cpu")])), name);
+        // all of it the baseline's: the name stays
+        assert_eq!(name_without("customer 1 → 2 replicas", &left(&[("customer", "replicas")])), "customer 1 → 2 replicas");
+    }
 
     fn deploy(name: &str, image: &str, env: Value, cpu: &str) -> Value {
         json!({ "kind": "Deployment", "metadata": { "name": name }, "spec": { "replicas": 1, "template": { "spec": { "containers": [{ "image": image, "env": env, "resources": { "limits": { "cpu": cpu } } }] } } } })

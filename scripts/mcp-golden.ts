@@ -91,6 +91,7 @@ const CASES: Case[] = [
   call('find_headroom', { workspace: ws('v') }),
   call('verify_change', { workspace: ws('v'), changes: [{ strategy: { name: 'customer ×3', changes: [{ service: 'customer', replicas: 3 }] } }], draws: 4 }, true),
   call('verify_change', { workspace: ws('v'), changes: [{ strategy: { name: 'cut', changes: [{ service: 'mysql', cpu: 0.25 }] } }], draws: 3, last: '20m', report: false }),
+  call('verify_change', { workspace: ws('v'), baseline: { strategy: { name: 'customer ×3', changes: [{ service: 'customer', replicas: 3 }] } }, changes: [{ strategy: { name: 'cut on ×3', changes: [{ service: 'mysql', cpu: 0.25 }] } }], draws: 3, last: '20m', report: false }),
   call('verify_change', { workspace: ws('v'), changes: [{ strategy: { name: 'nope', changes: [{ service: 'ghost', replicas: 2 }] } }] }),
   call('calibrate_model', { workspace: ws('n'), holdout: 0.2 }),
   call('check_node_loss', { workspace: ws('n') }, true),

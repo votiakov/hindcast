@@ -36,6 +36,9 @@ export interface NodeLossOptions {
   /** that sensitivity's time, s (default 252: how long the frontend's channel to cart stayed broken on
    *  the reference cluster — one observation, an assumption) */
   reconnectS?: number;
+  /** a strategy already in place (an approved change not yet deployed): the loss is replayed on the
+   *  system with it, and `strategy`, if any, stacked on it */
+  baseline?: unknown;
 }
 
 export interface NodeLossReport {

@@ -38,6 +38,9 @@ pub struct NodeLossOptions {
     pub grpc_calls: Option<Vec<(String, String)>>,
     /// that sensitivity's time (default REFERENCE_RECONNECT_S)
     pub reconnect_s: Option<f64>,
+    /// a strategy already in place on both sides (verify_change's baseline): the loss is replayed on the
+    /// system with it, and the strategy, if any, stacked on it
+    pub baseline: Option<Value>,
 }
 
 /// the answer again, if callers' connections to the lost services stay broken after they are back
@@ -217,9 +220,14 @@ fn busiest(d: &Dataset, model: &Model, load: Option<&LoadOpts>) -> Result<(crate
 }
 
 pub fn node_loss(model: &Model, d: &Dataset, o: &NodeLossOptions) -> Result<NodeLossReport, String> {
+    // where the pods are and what they request: the strategy's replicas, over the baseline's when there is one
+    let shape = match (o.baseline.as_ref().filter(|b| !b.is_null()), o.strategy.as_ref().filter(|s| !s.is_null())) {
+        (Some(b), Some(s)) => Some(crate::strategy::stack_strategies(b, s)),
+        (b, s) => s.or(b).cloned(),
+    };
     let mut spread: Map<Map<f64>> = match &o.pods {
         Some(p) => p.iter().filter(|(id, _)| model.services.get(*id).map(|s| s.hosted_by.is_none()).unwrap_or(false)).map(|(k, v)| (k.clone(), v.clone())).collect(),
-        None => pods_per_node(model, o.strategy.as_ref())?,
+        None => pods_per_node(model, shape.as_ref())?,
     };
     let c = model.cluster.as_ref();
     let zones_on = o.zones == Some(true);
@@ -251,7 +259,7 @@ pub fn node_loss(model: &Model, d: &Dataset, o: &NodeLossOptions) -> Result<Node
     let (traffic, peak, at) = busiest(d, model, o.load.as_ref())?;
     let start = o.at_s.unwrap_or((at as f64 * traffic.step_s - 60.0).max(0.0));
     let want = match c {
-        Some(c) => Some(requested(model, c.other.cpu, c.other.memory_gb, o.strategy.as_ref())?),
+        Some(c) => Some(requested(model, c.other.cpu, c.other.memory_gb, shape.as_ref())?),
         None => None,
     };
     let nodes_in = |unit: &str| -> f64 {
@@ -277,7 +285,7 @@ pub fn node_loss(model: &Model, d: &Dataset, o: &NodeLossOptions) -> Result<Node
     let strategies: Vec<Value> = o.strategy.iter().filter(|s| !s.is_null()).cloned().collect();
     let draws = o.draws.unwrap_or(8.0);
     let gate = o.gate_minutes.unwrap_or(0.5);
-    let bopts = |faults: Option<Vec<Fault>>| BacktestOptions { draws: Some(draws), seed: Some(11.0), observed: None, traffic: Some(traffic.clone()), load: None, faults };
+    let bopts = |faults: Option<Vec<Fault>>| BacktestOptions { draws: Some(draws), seed: Some(11.0), observed: None, traffic: Some(traffic.clone()), load: None, faults, baseline: o.baseline.clone() };
     let base = backtest(model, d, &strategies, &bopts(None))?;
     let pick = |r: &BacktestResult| if strategies.is_empty() { r.baseline.clone() } else { r.strategies[0].clone() };
     let reference = pick(&base);
@@ -650,7 +658,7 @@ pub fn outage_scenario(model: &Model, outage: &Outage, base_rps: Option<f64>, ro
 
 pub fn replay_outage(model: &Model, outage: &Outage, strategies: &[Value], base_rps: Option<f64>, roles: &Map<Vec<String>>, draws: Option<f64>) -> Result<(OutageReplay, BacktestResult), String> {
     let replay = outage_scenario(model, outage, base_rps, roles);
-    let result = backtest(model, &replay.dataset, strategies, &BacktestOptions { draws: Some(draws.unwrap_or(10.0)), seed: None, observed: Some(false), traffic: None, load: None, faults: Some(replay.faults.iter().map(|f| f.fault()).collect()) })?;
+    let result = backtest(model, &replay.dataset, strategies, &BacktestOptions { draws: Some(draws.unwrap_or(10.0)), seed: None, observed: Some(false), traffic: None, load: None, faults: Some(replay.faults.iter().map(|f| f.fault()).collect()), baseline: None })?;
     Ok((replay, result))
 }
 

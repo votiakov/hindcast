@@ -717,6 +717,124 @@ pub fn normalize_strategy(v: &Value) -> Result<Value, String> {
     Ok(Value::Object(out))
 }
 
+// ---- a change stacked on a baseline (verify_change's `baseline`: an approved change not yet deployed)
+
+/// what a change entry is about: ("service", id) or ("endpoint", id)
+fn target_of(c: &JMap<String, Value>) -> (String, String) {
+    match (c.get("service").and_then(|x| x.as_str()), c.get("endpoint").and_then(|x| x.as_str())) {
+        (Some(s), _) => ("service".into(), s.into()),
+        (None, Some(e)) => ("endpoint".into(), e.into()),
+        _ => (String::new(), String::new()),
+    }
+}
+
+/// two settings the same: numbers by value (2 and 2.0 alike), objects field by field
+fn same(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Number(x), Value::Number(y)) => x.as_f64() == y.as_f64(),
+        (Value::Object(x), Value::Object(y)) => x.len() == y.len() && x.iter().all(|(k, v)| y.get(k).is_some_and(|w| same(v, w))),
+        (Value::Array(x), Value::Array(y)) => x.len() == y.len() && x.iter().zip(y).all(|(v, w)| same(v, w)),
+        _ => a == b,
+    }
+}
+
+/// a strategy's changes, one entry per service or endpoint: a later entry's settings written over an
+/// earlier one's, field by field (a fixed replica count and an autoscaler replace each other)
+fn merged(entries: impl IntoIterator<Item = Value>) -> Vec<JMap<String, Value>> {
+    let mut out: Vec<JMap<String, Value>> = vec![];
+    for c in entries {
+        let c = match c {
+            Value::Object(o) => o,
+            _ => continue,
+        };
+        let key = target_of(&c);
+        match out.iter_mut().find(|x| target_of(x) == key) {
+            Some(into) => {
+                for (k, v) in c {
+                    if k == "replicas" {
+                        into.shift_remove("autoscale");
+                    } else if k == "autoscale" {
+                        into.shift_remove("replicas");
+                    }
+                    into.insert(k, v);
+                }
+            }
+            None => out.push(c),
+        }
+    }
+    out
+}
+
+fn changes_of(v: &Value) -> Vec<Value> {
+    v.get("changes").and_then(|c| c.as_array()).cloned().unwrap_or_default()
+}
+
+/// a change stacked on a baseline: the system as the baseline leaves it, with the change's settings
+/// written over the baseline's for the same service or endpoint. Every setting in a strategy is the
+/// state it leaves (replicas: 2, cpu: 0.25), read against the model as built, so the two together are
+/// one strategy: applying one after the other would scale a capacity the baseline already scaled
+pub fn stack_strategies(baseline: &Value, change: &Value) -> Value {
+    let mut out = JMap::new();
+    out.insert("name".into(), change.get("name").cloned().unwrap_or(Value::Null));
+    if let Some(d) = change.get("description").filter(|x| !x.is_null()) {
+        out.insert("description".into(), d.clone());
+    }
+    let all = changes_of(baseline).into_iter().chain(changes_of(change));
+    out.insert("changes".into(), Value::Array(merged(all).into_iter().map(Value::Object).collect()));
+    Value::Object(out)
+}
+
+/// what a change sets beyond a baseline: its settings, less those the baseline already makes the same
+/// (a pull request branched from the baseline's, diffed from what runs, repeats the baseline's own
+/// edits). Returns the change so trimmed and what was left out, as (service or endpoint, setting); a
+/// runtime is a label, kept with the settings it describes
+pub fn beyond_baseline(baseline: &Value, change: &Value) -> (Value, Vec<(String, String)>) {
+    let base = merged(changes_of(baseline));
+    let mut kept: Vec<Value> = vec![];
+    let mut left: Vec<(String, String)> = vec![];
+    for c in merged(changes_of(change)) {
+        let key = target_of(&c);
+        let b = base.iter().find(|x| target_of(x) == key);
+        let mut x = JMap::new();
+        for (k, v) in &c {
+            if k == &key.0 || k == "runtime" || !b.and_then(|b| b.get(k)).is_some_and(|w| same(v, w)) {
+                x.insert(k.clone(), v.clone());
+            } else {
+                left.push((key.1.clone(), k.clone()));
+            }
+        }
+        if x.keys().any(|k| k != &key.0 && k != "runtime") {
+            kept.push(Value::Object(x));
+        }
+    }
+    let mut out = change.as_object().cloned().unwrap_or_default();
+    out.insert("changes".into(), Value::Array(kept));
+    (Value::Object(out), left)
+}
+
+/// the plan as built with a baseline applied, its pods already running: the baseline ships before the
+/// window, so its own rollout (restarted pods starting cold) is in neither side of the comparison
+pub fn apply_baseline(model: &Model, base: &Plan, baseline: &Value) -> Result<Applied, String> {
+    let mut a = apply_strategy(model, base, &parse_strategy(baseline)?)?;
+    for s in a.plan.services.values_mut() {
+        s.restart = false;
+    }
+    Ok(a)
+}
+
+/// a change applied on top of a baseline (stack_strategies): the pods that restart are the ones the
+/// change itself restarts, and its notes are its own (those the baseline makes alone left out)
+pub fn apply_stacked(model: &Model, base: &Plan, baseline: &Value, change: &Value) -> Result<Applied, String> {
+    let mut a = apply_strategy(model, base, &parse_strategy(&stack_strategies(baseline, change))?)?;
+    let own = apply_strategy(model, base, &parse_strategy(change)?)?;
+    for (id, s) in a.plan.services.iter_mut() {
+        s.restart = own.plan.services.get(id).is_some_and(|x| x.restart);
+    }
+    let theirs = apply_strategy(model, base, &parse_strategy(baseline)?)?.notes;
+    a.notes.retain(|x| !theirs.contains(x));
+    Ok(a)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -760,6 +878,23 @@ mod tests {
         // a CPU-bound service with a latency fit still takes its width from the cores
         let a = resize(&shop(false), 2.0);
         assert_eq!(a.plan.services["frontend"].servers, 2.0);
+    }
+
+    #[test]
+    fn a_change_stacked_on_a_baseline_wins_field_by_field() {
+        let baseline = json!({ "name": "pr 1", "changes": [{ "service": "frontend", "autoscale": { "min": 1, "max": 3 }, "cpu": 1 }, { "service": "cart", "replicas": 2 }] });
+        let change = json!({ "name": "pr 2", "changes": [{ "service": "frontend", "replicas": 4 }, { "endpoint": "*", "timeoutMs": 800 }] });
+        // a fixed count replaces the baseline's autoscaler; its CPU and cart stay as the baseline left them
+        assert_eq!(
+            stack_strategies(&baseline, &change),
+            json!({ "name": "pr 2", "changes": [{ "service": "frontend", "cpu": 1, "replicas": 4 }, { "service": "cart", "replicas": 2 }, { "endpoint": "*", "timeoutMs": 800 }] })
+        );
+        // the baseline's own settings repeated by the change are the baseline's (2 and 2.0 alike); a
+        // runtime stays with the settings it labels
+        let repeated = json!({ "name": "pr 2", "changes": [{ "service": "cart", "replicas": 2.0, "runtime": "dotnet" }, { "service": "frontend", "cpu": 1, "memoryGb": 1, "runtime": "jvm" }] });
+        let (beyond, left) = beyond_baseline(&baseline, &repeated);
+        assert_eq!(beyond, json!({ "name": "pr 2", "changes": [{ "service": "frontend", "memoryGb": 1, "runtime": "jvm" }] }));
+        assert_eq!(left, vec![("cart".to_string(), "replicas".to_string()), ("frontend".into(), "cpu".into())]);
     }
 
     #[test]

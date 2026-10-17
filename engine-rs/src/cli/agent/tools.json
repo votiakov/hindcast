@@ -463,7 +463,7 @@
  {
   "name": "verify_change",
   "title": "Verify an infrastructure change against real history",
-  "description": "Backtest one or more changes over the collected history, before they ship: $ per month saved or spent (with its 10–90% band), minutes out of SLO added or removed, failed requests, the worst moment and why, endpoints that get worse, headroom before and after. A change is a strategy (object or YAML), a Kubernetes manifest diff (base/head), a Terraform plan (`terraform show -json`), or edited manifests against the live cluster snapshot from read_cluster. Each result has verdict pass | fail | inconclusive and a confidence (high | medium | low) that says which services the change pushes past anything the history showed. Writes an HTML and Markdown report for a human. A low-confidence result that asks for a load test: plan_load_test with the same changes designs it.",
+  "description": "Backtest one or more changes over the collected history, before they ship: $ per month saved or spent (with its 10–90% band), minutes out of SLO added or removed, failed requests, the worst moment and why, endpoints that get worse, headroom before and after. A change is a strategy (object or YAML), a Kubernetes manifest diff (base/head), a Terraform plan (`terraform show -json`), or edited manifests against the live cluster snapshot from read_cluster. Each result has verdict pass | fail | inconclusive and a confidence (high | medium | low) that says which services the change pushes past anything the history showed. With a baseline (an approved change not yet deployed, e.g. the pull request this one is stacked on), the baseline is applied to both sides, already running, and every verdict, delta and gate is about the change on top of it. Writes an HTML and Markdown report for a human. A low-confidence result that asks for a load test: plan_load_test with the same changes designs it.",
   "inputSchema": {
    "$schema": "https://json-schema.org/draft/2020-12/schema",
    "type": "object",
@@ -580,6 +580,112 @@
        }
       ]
      }
+    },
+    "baseline": {
+     "description": "a change already approved but not yet deployed, in any shape a change takes: applied to the as-built side and to every change's side, its pods running before the window, so each change is judged on what it adds on top of it (\"assuming PR #1 goes in, is PR #2 safe?\"). For a Kubernetes baseline give the change's base as the baseline's head, or as what runs: settings the change makes the same as the baseline are left to the baseline",
+     "anyOf": [
+      {
+       "type": "object",
+       "properties": {
+        "strategy": {
+         "anyOf": [
+          {
+           "type": "string"
+          },
+          {
+           "type": "object",
+           "propertyNames": {
+            "type": "string"
+           },
+           "additionalProperties": {}
+          }
+         ],
+         "description": "a strategy object or YAML: { name, changes: [{ service, replicas | autoscale | cpu | memoryGb | cpuRequest | memoryRequestGb | arch | perf | capacityRps | cache | readReplicas | zone | region | runtime } | { endpoint, retries, timeoutMs }] }"
+        }
+       },
+       "required": [
+        "strategy"
+       ],
+       "additionalProperties": false
+      },
+      {
+       "type": "object",
+       "properties": {
+        "kubernetes": {
+         "type": "object",
+         "properties": {
+          "base": {
+           "type": "string",
+           "description": "manifests before: a directory, a file, or YAML text"
+          },
+          "head": {
+           "type": "string",
+           "description": "manifests after"
+          }
+         },
+         "required": [
+          "base",
+          "head"
+         ],
+         "additionalProperties": false
+        }
+       },
+       "required": [
+        "kubernetes"
+       ],
+       "additionalProperties": false
+      },
+      {
+       "type": "object",
+       "properties": {
+        "terraformPlan": {
+         "anyOf": [
+          {
+           "type": "string"
+          },
+          {
+           "type": "object",
+           "propertyNames": {
+            "type": "string"
+           },
+           "additionalProperties": {}
+          }
+         ],
+         "description": "path to `terraform show -json plan.out` output, or the JSON itself"
+        }
+       },
+       "required": [
+        "terraformPlan"
+       ],
+       "additionalProperties": false
+      },
+      {
+       "type": "object",
+       "properties": {
+        "cluster": {
+         "type": "object",
+         "properties": {
+          "head": {
+           "type": "string",
+           "description": "the edited manifests (directory, file or YAML text)"
+          },
+          "snapshot": {
+           "description": "a read_cluster snapshot (default: the latest)",
+           "type": "string"
+          }
+         },
+         "required": [
+          "head"
+         ],
+         "additionalProperties": false
+        }
+       },
+       "required": [
+        "cluster"
+       ],
+       "additionalProperties": false
+      }
+     ]
     },
     "last": {
      "description": "only the last part of the history, e.g. \"7d\"",

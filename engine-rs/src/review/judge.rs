@@ -120,6 +120,17 @@ pub fn headline(st: &Value, base: &Value) -> String {
     }
 }
 
+/// what a change is compared with, in words: "as built", or "as built with <baseline> applied" when
+/// both sides were replayed with a baseline (the backtest's as-built result is named after it)
+pub fn as_built_words(base: &Value) -> String {
+    let name = s(base, &["name"]);
+    if name.is_empty() || name == "As built" {
+        "as built".into()
+    } else {
+        format!("a{}", name.trim_start_matches('A'))
+    }
+}
+
 /// a change in failed requests worth a word in the headline: at least 100 and a tenth of what failed
 /// as built, e.g. "12,400 fewer failed requests (38% fewer)"
 fn failed_change(st: &Value, base: &Value) -> Option<String> {
@@ -138,7 +149,7 @@ fn failed_change(st: &Value, base: &Value) -> Option<String> {
         " (over 99% fewer)".to_string()
     } else if d > 0.0 && pct >= 1000.0 {
         // past 10× a percentage reads as noise: say what failed as built instead
-        format!(" (from {} as built)", js_locale(js_round(was)))
+        format!(" (from {} {})", js_locale(js_round(was)), as_built_words(base))
     } else {
         format!(" ({}% {})", js_num(pct), word)
     };
@@ -204,8 +215,12 @@ pub fn breaking(m: &crate::model::Model, plan: &crate::types::Plan) -> (f64, Opt
 
 /// the load a change sustains from the moment it rolls out, its restarted pods still cold (None: it
 /// restarts nothing that starts cold)
-fn breaking_cold(m: &crate::model::Model, spec: &Value) -> Option<f64> {
-    let mut plan = crate::strategy::apply_strategy(m, &crate::backtest::base_plan(m, None), &crate::strategy::parse_strategy(spec).ok()?).ok()?.plan;
+fn breaking_cold(m: &crate::model::Model, spec: &Value, baseline: Option<&Value>) -> Option<f64> {
+    let base = crate::backtest::base_plan(m, None);
+    let mut plan = match baseline {
+        Some(b) => crate::strategy::apply_stacked(m, &base, b, spec).ok()?.plan,
+        None => crate::strategy::apply_strategy(m, &base, &crate::strategy::parse_strategy(spec).ok()?).ok()?.plan,
+    };
     if !plan.services.values().any(|s| s.restart && s.warmup.is_some()) {
         return None;
     }
@@ -221,12 +236,14 @@ fn breaking_cold(m: &crate::model::Model, spec: &Value) -> Option<f64> {
 #[allow(clippy::too_many_arguments)]
 pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &Value, cal: Option<&Value>, gate: f64, before: (f64, Option<String>), after: (f64, Option<String>), d: Option<&crate::dataset::Dataset>) -> Result<Value, String> {
     let dm = g(st, &["delta", "minutesOutOfSlo"]);
-    let mut touched: indexmap::IndexSet<String> = indexmap::IndexSet::new();
-    for c in arr(spec, &["changes"]) {
-        if let Some(svc) = c.get("service").and_then(|x| x.as_str()) {
-            touched.insert(svc.to_string());
-        }
-    }
+    let services_of = |spec: &Value| -> indexmap::IndexSet<String> { arr(spec, &["changes"]).iter().filter_map(|c| c.get("service").and_then(|x| x.as_str()).map(String::from)).collect() };
+    let touched = services_of(spec);
+    // a baseline both sides were replayed with (verify_change's `baseline`): the change is judged on top of it
+    let baseline = Some(g(r, &["stackedOn", "strategy"])).filter(|b| b.is_object());
+    // the services the baseline changes count as touched for confidence: both sides rest on the model's
+    // reading of them as the baseline leaves them, which the history never showed
+    let by_baseline: indexmap::IndexSet<String> = baseline.map(services_of).unwrap_or_default().into_iter().filter(|id| !touched.contains(id)).collect();
+    let built = as_built_words(g(r, &["baseline"]));
     let hist_peak = cal.map(|c| g(c, &["historyPeakUtil"]).clone()).unwrap_or_else(|| g(r, &["baseline", "peakUtil"]).clone());
     let mut cost_basis: indexmap::IndexSet<String> = indexmap::IndexSet::new();
     for id in &touched {
@@ -246,6 +263,8 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
             let hp = hist_peak.get(id).and_then(|x| x.as_f64()).unwrap_or(0.0);
             let host = s(&sv, &["hostedBy"]);
             let t = touched.contains(id) || (!host.is_empty() && touched.contains(&host));
+            let tb = by_baseline.contains(id) || (!host.is_empty() && by_baseline.contains(&host));
+            let t = t || tb;
             let relevant = t || pp > 0.6 || pp > hp.max(0.2) * 1.25;
             let basis = if pp <= hp.max(0.3) * 1.1 { "within what the history showed" } else if hp >= LIMIT_SEEN || truthy(g(&sv, &["capacity", "overloadedRps"])) { "near a limit the history reached" } else { "beyond anything the history showed" };
             if relevant {
@@ -253,6 +272,9 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
                 // no latency metric: a known, labelled basis, not a fit that failed
                 if g(&sv, &["capacity", "cpuAlone"]).as_bool().unwrap_or(false) {
                     x["cpuOnly"] = json!(true);
+                }
+                if tb && !touched.contains(id) {
+                    x["byBaseline"] = json!(true);
                 }
                 services.push((x, relevant));
             }
@@ -293,7 +315,14 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
             lower(to, why.clone(), &mut warnings, &mut level, &mut low_why);
             cpu_said.push((to, why));
         } else if poor && (touched_x || harder) {
-            lower("low", format!("{}: the model fits it {}, and this change {}", svc, if fit == "poor" { "poorly" } else { "not at all" }, if touched_x { "changes it" } else { "pushes it harder than the history did" }), &mut warnings, &mut level, &mut low_why);
+            let how = if g(x, &["byBaseline"]).as_bool().unwrap_or(false) {
+                "the baseline it is stacked on changes it"
+            } else if touched_x {
+                "this change changes it"
+            } else {
+                "this change pushes it harder than the history did"
+            };
+            lower("low", format!("{}: the model fits it {}, and {}", svc, if fit == "poor" { "poorly" } else { "not at all" }, how), &mut warnings, &mut level, &mut low_why);
         } else if poor && pu > 0.6 {
             lower("medium", format!("{} fits {} and runs near its limit; the change leaves it as it was, so the comparison holds better than the absolute numbers", svc, if fit == "poor" { "poorly" } else { "not at all" }), &mut warnings, &mut level, &mut low_why);
         } else if basis == "beyond anything the history showed" && pu >= 0.8 {
@@ -301,7 +330,7 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
         } else if basis == "beyond anything the history showed" {
             lower("medium", format!("{} would run at {} of capacity, past the history's {}: its capacity there is extrapolated", svc, pct(pu), pct(hpu)), &mut warnings, &mut level, &mut low_why);
         } else if fit == "fair" && touched_x {
-            lower("medium", format!("{}: fair fit (latency reproduced within 30%)", svc), &mut warnings, &mut level, &mut low_why);
+            lower("medium", format!("{}: fair fit (latency reproduced within 30%){}", svc, if g(x, &["byBaseline"]).as_bool().unwrap_or(false) { ", and the baseline it is stacked on changes it" } else { "" }), &mut warnings, &mut level, &mut low_why);
         }
     }
     let missed: Vec<(&Value, String)> = arr(mv, &["accuracy"]).iter().flat_map(|a| arr(a, &["checks"]).into_iter().map(move |c| (c, s(a, &["method"])))).filter(|(c, _)| !g(c, &["pass"]).as_bool().unwrap_or(false) && s(c, &["metric"]) != "errors").collect();
@@ -347,8 +376,9 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
     let fb = n(base, &["summary", "failedRequests", "p50"]);
     if fd > allowed {
         reasons.push(format!(
-            "fails {} more requests than as built{}, more than the SLO's error budget over the whole window ({}){}",
+            "fails {} more requests than {}{}, more than the SLO's error budget over the whole window ({}){}",
             js_locale(js_round(fd)),
+            built,
             if fb >= 1.0 { format!(" (+{}% of {})", js_num(js_round(fd / fb * 100.0)), js_locale(js_round(fb))) } else { String::new() },
             budget_words(r, allowed),
             if p50 > gate {
@@ -424,8 +454,8 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
     let mut node_loss_check: Option<Value> = None;
     if let Some(d) = d {
         if g(mv, &["services"]).as_object().map(|x| x.values().any(|s| truthy(g(s, &["pods"])))).unwrap_or(false) {
-            let was = crate::resilience::pods_per_node(m, None)?;
-            let now = crate::resilience::pods_per_node(m, Some(spec))?;
+            let was = crate::resilience::pods_per_node(m, baseline)?;
+            let now = crate::resilience::pods_per_node(m, Some(&baseline.map(|b| crate::strategy::stack_strategies(b, spec)).unwrap_or_else(|| spec.clone())))?;
             let new_single: Vec<String> = touched.iter().filter(|id| was.get(*id).map(|w| w.len() > 1).unwrap_or(false) && now.get(*id).map(|w| w.len() == 1).unwrap_or(false)).cloned().collect();
             let mut weight: indexmap::IndexMap<String, f64> = indexmap::IndexMap::new();
             for id in &touched {
@@ -444,7 +474,7 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
             }
             if let Some((node, _)) = best {
                 let node = node.clone();
-                let opts = |strategy: Option<Value>| crate::resilience::NodeLossOptions { nodes: Some(vec![node.clone()]), draws: Some(4.0), strategy, ..Default::default() };
+                let opts = |strategy: Option<Value>| crate::resilience::NodeLossOptions { nodes: Some(vec![node.clone()]), draws: Some(4.0), strategy, baseline: baseline.cloned(), ..Default::default() };
                 let a = to_json(&crate::resilience::node_loss(m, d, &opts(None))?);
                 let b = to_json(&crate::resilience::node_loss(m, d, &opts(Some(spec.clone())))?);
                 let (at, bt) = (g(&a, &["results", "0", "total"]).clone(), g(&b, &["results", "0", "total"]).clone());
@@ -455,7 +485,7 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
                 }
                 let (am, bm) = (n(&at, &["minutesOutOfSlo"]), n(&bt, &["minutesOutOfSlo"]));
                 if bm > am + gate {
-                    reasons.push(format!("losing {} at the busiest moment: {} min out of SLO as built, {} with the change ({} failed requests)", node, js_num(r1(am)), js_num(r1(bm)), js_locale(js_round(n(&bt, &["failedRequests"])))));
+                    reasons.push(format!("losing {} at the busiest moment: {} min out of SLO {}, {} with the change ({} failed requests)", node, js_num(r1(am)), built, js_num(r1(bm)), js_locale(js_round(n(&bt, &["failedRequests"])))));
                 } else if am > gate && bm < am - gate {
                     reasons.push(format!("losing {} at the busiest moment: {} → {} min out of SLO", node, js_num(r1(am)), js_num(r1(bm))));
                 }
@@ -475,7 +505,7 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
     // the replay rolls the change out at its first moment; at a busier one the restarted pods meet it cold.
     // Kept as a reason to withhold a pass, not only a warning: tried as a warning (2026-10-17), it turned
     // one hedge right and one into a wrong pass, on a rollout that met load (PetClinic normal-cust125)
-    if let Some(cold) = breaking_cold(m, spec).filter(|c| *c < after.0 * 0.9) {
+    if let Some(cold) = breaking_cold(m, spec, baseline).filter(|c| *c < after.0 * 0.9) {
         if cold < peak && verdict == "pass" {
             verdict = "inconclusive";
             reasons.push(format!("while its restarted pods are still cold the system sustains {} req/s, below the peak it has to serve ({}): rolled out at a busy moment, it would not warm up. Roll it out when traffic is low, or warm the pods before they take traffic", js_num(r1(cold)), js_num(r1(peak))));

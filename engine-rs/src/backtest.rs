@@ -6,10 +6,10 @@ use crate::engine::run_plan;
 use crate::math::{js_num, js_round, js_to_fixed};
 use crate::dataset::Dataset;
 use crate::model::{Model, Slo};
-use crate::strategy::{apply_strategy, locale_int, parse_strategy};
+use crate::strategy::{apply_baseline, apply_stacked, apply_strategy, locale_int, parse_strategy};
 use crate::types::*;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 
 // ---------- JavaScript semantics the summaries depend on ----------
 
@@ -441,6 +441,10 @@ pub struct BacktestResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub load: Option<Load>,
     pub peak_rps: f64,
+    /// the baseline both sides were replayed with (BacktestOptions.baseline): its name, the strategy, and
+    /// what applying it did
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stacked_on: Option<Value>,
 }
 
 #[derive(Deserialize, Clone, Debug, Default)]
@@ -459,6 +463,9 @@ pub struct BacktestOptions {
     pub traffic: Option<Traffic>,
     pub load: Option<LoadOpts>,
     pub faults: Option<Vec<Fault>>,
+    /// a strategy applied to both sides, warm before the window: the as-built replay becomes the
+    /// system with it, and every strategy is stacked on it (strategy::apply_stacked) and compared with that
+    pub baseline: Option<Value>,
 }
 
 fn range_of(xs: &[f64]) -> Ranged {
@@ -704,9 +711,24 @@ pub fn backtest(model: &Model, d: &Dataset, strategies: &[Value], o: &BacktestOp
         }
     }
     let observed = if o.observed == Some(false) { None } else { Some(observed_replicas(d, model)) };
-    let base = base_plan(model, observed.as_ref());
+    let as_built = base_plan(model, observed.as_ref());
+    let stacked_on = o.baseline.as_ref().filter(|b| !b.is_null());
+    let (base, base_notes) = match stacked_on {
+        Some(b) => {
+            let a = apply_baseline(model, &as_built, b)?;
+            (a.plan, a.notes)
+        }
+        None => (as_built.clone(), vec![]),
+    };
     let parsed = strategies.iter().map(parse_strategy).collect::<Result<Vec<_>, _>>()?;
-    let applied = parsed.iter().map(|s| apply_strategy(model, &base, s).map(|a| (s, a))).collect::<Result<Vec<_>, _>>()?;
+    let applied = parsed
+        .iter()
+        .zip(strategies)
+        .map(|(s, v)| match stacked_on {
+            Some(b) => apply_stacked(model, &as_built, b, v),
+            None => apply_strategy(model, &base, s),
+        }.map(|a| (s, a)))
+        .collect::<Result<Vec<_>, _>>()?;
     let slo = &model.slo;
 
     // every draw of every plan (each plan's draws from the same seed, in order), replayed in one batch
@@ -818,7 +840,13 @@ pub fn backtest(model: &Model, d: &Dataset, strategies: &[Value], o: &BacktestOp
         }
     };
 
-    let baseline = pack("As built".into(), Some("the calibrated model with nothing changed".into()), vec![], &base, runs_of(0));
+    let baseline = match stacked_on {
+        Some(b) => {
+            let name = b.get("name").and_then(|x| x.as_str()).unwrap_or_default();
+            pack(format!("As built with \"{}\" applied", name), Some(format!("the calibrated model with \"{}\" applied, its pods running before the window", name)), base_notes.clone(), &base, runs_of(0))
+        }
+        None => pack("As built".into(), Some("the calibrated model with nothing changed".into()), vec![], &base, runs_of(0)),
+    };
     let results: Vec<StrategyResult> = applied.iter().enumerate().map(|(k, (spec, a))| pack(spec.name.clone(), spec.description.clone(), a.notes.clone(), &a.plan, runs_of(k + 1))).collect();
     let ranking = rank_strategies(&results);
     let peak_rps = scale_traffic(&traffic, Some(1.0), None)?.peak_rps;
@@ -835,5 +863,6 @@ pub fn backtest(model: &Model, d: &Dataset, strategies: &[Value], o: &BacktestOp
         draws: draws as f64,
         load,
         peak_rps,
+        stacked_on: stacked_on.map(|b| json!({ "name": b.get("name").cloned().unwrap_or(Value::Null), "strategy": b, "notes": base_notes })),
     })
 }

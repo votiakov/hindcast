@@ -391,6 +391,50 @@ pub fn strategies_from(ws: &Workspace, inputs: &[Value], m: &Value) -> Result<(V
     Ok((strategies, notes))
 }
 
+/// the baseline a change is stacked on (verify_change's `baseline`): one change in any of the shapes a
+/// change takes, read the same way. None, with a note, when it changes nothing the model can backtest
+fn baseline_from(ws: &Workspace, b: Option<&Value>, m: &Value) -> Result<(Option<Value>, Vec<String>), String> {
+    let b = match b.filter(|x| !x.is_null()) {
+        Some(b) => b,
+        None => return Ok((None, vec![])),
+    };
+    let kinds = ["strategy", "kubernetes", "terraformPlan", "cluster"];
+    let given: Vec<&str> = kinds.iter().copied().filter(|k| b.get(*k).is_some()).collect();
+    if given.len() != 1 {
+        return Err(format!("baseline: one change, in one of the shapes a change takes ({}), not {}", kinds.join(", "), if given.is_empty() { "none of them".to_string() } else { given.join(" and ") }));
+    }
+    let (mut st, notes) = strategies_from(ws, std::slice::from_ref(b), m)?;
+    let mut notes: Vec<String> = notes.into_iter().map(|x| format!("baseline: {}", x)).collect();
+    if st.is_empty() {
+        notes.push("baseline: nothing in it the model can backtest, so each change is compared with the system as built".into());
+        return Ok((None, notes));
+    }
+    Ok((Some(st.remove(0)), notes))
+}
+
+/// a Kubernetes change read against a Kubernetes baseline: from the baseline's head (a pull request
+/// branched from the baseline's), or from what runs, the baseline's own edits left to it. Said either way
+fn kubernetes_against(k: &Value, inputs: &[Value]) -> Vec<String> {
+    let (base, head) = (s(k, &["base"]), s(k, &["head"]));
+    let mut out = vec![];
+    for c in inputs.iter().filter_map(|c| c.get("kubernetes")) {
+        let from = s(c, &["base"]);
+        if from == head {
+            out.push(format!("kubernetes diff {} → {}: read from the baseline's head, so it holds this change's edits alone", from, s(c, &["head"])));
+        } else if from == base {
+            out.push(format!("kubernetes diff {} → {}: read from what runs, as the baseline is; what it sets the same as the baseline is left to the baseline", from, s(c, &["head"])));
+        } else {
+            out.push(format!("kubernetes diff {} → {}: its base is neither what the baseline starts from ({}) nor the baseline's head ({}), so its edits are applied on top of the baseline as they are", from, s(c, &["head"]), base, head));
+        }
+    }
+    out
+}
+
+/// a strategy's name in quotes, for "as built with \"…\" applied"
+fn quoted(st: &Value) -> String {
+    format!("\"{}\"", s(st, &["name"]))
+}
+
 pub use crate::review::judge::{draws_for, judge, slice_last};
 use crate::review::judge::breaking;
 
@@ -438,7 +482,37 @@ pub fn verify_with(ws: &Workspace, mv: Value, dv: Value, cal: Option<Value>, inp
         }
     }
     let d = dataset_of(&dv)?;
-    let (strategies, mut notes) = strategies_from(ws, inputs, &mv)?;
+    let (baseline, mut notes) = baseline_from(ws, o.get("baseline"), &mv)?;
+    let (strategies, more) = strategies_from(ws, inputs, &mv)?;
+    notes.extend(more);
+    let strategies = match &baseline {
+        Some(b) => {
+            if let Some(k) = o.get("baseline").and_then(|x| x.get("kubernetes")) {
+                notes.extend(kubernetes_against(k, inputs));
+            }
+            let mut out = vec![];
+            for st in strategies {
+                let (mut beyond, left) = crate::strategy::beyond_baseline(b, &st);
+                if !left.is_empty() {
+                    let mut by: indexmap::IndexMap<&str, Vec<&str>> = indexmap::IndexMap::new();
+                    for (id, k) in &left {
+                        by.entry(id.as_str()).or_default().push(k.as_str());
+                    }
+                    notes.push(format!("\"{}\" also sets what the baseline sets ({}): those are the baseline's, not counted as this change's", s(&st, &["name"]), by.iter().map(|(id, ks)| format!("{}: {}", id, ks.join(", "))).collect::<Vec<_>>().join("; ")));
+                    // a diff's name says what it changed: not the baseline's part
+                    if s(&st, &["description"]) == "from the pull request diff" {
+                        beyond["name"] = json!(crate::config_diff::name_without(&s(&st, &["name"]), &left));
+                    }
+                }
+                if arr(&beyond, &["changes"]).is_empty() {
+                    notes.push(format!("\"{}\" sets nothing the baseline doesn't already: on top of it, it changes nothing", s(&st, &["name"])));
+                }
+                out.push(beyond);
+            }
+            out
+        }
+        None => strategies,
+    };
     if strategies.is_empty() {
         return Ok(Verified { out: json!({ "verdict": "nothing to verify", "notes": notes, "results": [] }), rv: Value::Null, mv, dv, strategies });
     }
@@ -454,7 +528,7 @@ pub fn verify_with(ws: &Workspace, mv: Value, dv: Value, cal: Option<Value>, inp
         }
     };
     let load = o.get("traffic").filter(|t| t.get("scale").is_some() || t.get("peakRps").is_some()).map(|t| crate::backtest::LoadOpts { scale: t.get("scale").and_then(|x| x.as_f64()), peak_rps: t.get("peakRps").and_then(|x| x.as_f64()) });
-    let r = crate::backtest::backtest(&m, &d, &strategies, &crate::backtest::BacktestOptions { draws: Some(draws), load, ..Default::default() })?;
+    let r = crate::backtest::backtest(&m, &d, &strategies, &crate::backtest::BacktestOptions { draws: Some(draws), load, baseline: baseline.clone(), ..Default::default() })?;
     let mut rv = to_json(&r);
     rv.as_object_mut().unwrap().insert("accuracy".into(), g(&mv, &["accuracy"]).clone());
     if !g(&rv, &["load"]).is_null() {
@@ -473,11 +547,17 @@ pub fn verify_with(ws: &Workspace, mv: Value, dv: Value, cal: Option<Value>, inp
         }
     }
     let base = crate::backtest::base_plan(&m, None);
-    let before = breaking(&m, &base);
+    let before = match &baseline {
+        Some(b) => breaking(&m, &crate::strategy::apply_baseline(&m, &base, b)?.plan),
+        None => breaking(&m, &base),
+    };
     let mut results = vec![];
     for (i, st) in arr(&rv, &["strategies"]).iter().enumerate() {
         let spec = &strategies[i];
-        let applied = crate::strategy::apply_strategy(&m, &base, &crate::strategy::parse_strategy(spec)?)?;
+        let applied = match &baseline {
+            Some(b) => crate::strategy::apply_stacked(&m, &base, b, spec)?,
+            None => crate::strategy::apply_strategy(&m, &base, &crate::strategy::parse_strategy(spec)?)?,
+        };
         let after = breaking(&m, &applied.plan);
         results.push(judge(&mv, &m, &rv, st, spec, cal.as_ref(), gate, before.clone(), after, Some(&d))?);
     }
@@ -486,11 +566,17 @@ pub fn verify_with(ws: &Workspace, mv: Value, dv: Value, cal: Option<Value>, inp
     let bsum = g(&rv, &["baseline", "summary"]);
     let mut out = JMap::new();
     out.insert("verdict".into(), json!(worst));
+    if let Some(b) = &baseline {
+        out.insert("comparedWith".into(), json!(format!("as built with {} applied: the baseline is in place on both sides, its pods running before the window, and each change is judged on what it adds on top of it", quoted(b))));
+    }
     out.insert("model".into(), json!({ "name": g(&mv, &["name"]), "fittedOn": { "start": iso(n(fitted, &["start"])), "end": iso(n(fitted, &["end"])) }, "ageDays": num(r1((now_s() - n(fitted, &["end"])) / 86400.0)), "accuracy": accuracy_of(&mv) }));
     out.insert("window".into(), json!({ "start": iso(n(&rv, &["window", "start"])), "end": iso(n(&rv, &["window", "end"])), "hours": num(r1((n(&rv, &["window", "end"]) - n(&rv, &["window", "start"])) / 3600.0)) }));
     out.insert("slo".into(), g(&rv, &["slo"]).clone());
     out.insert("gate".into(), json!(crate::review::judge::gate_words(gate, &rv)));
     out.insert("asBuilt".into(), json!({ "monthly": num(r2(n(bsum, &["monthly", "p50"]))), "minutesOutOfSlo": num(r1(n(bsum, &["minutesOutOfSlo", "p50"]))), "failedRequests": num(js_round(n(bsum, &["failedRequests", "p50"]))), "requests": num(js_round(n(bsum, &["requests", "p50"]))) }));
+    if let Some(b) = &baseline {
+        out.insert("baseline".into(), json!({ "name": g(b, &["name"]), "changes": g(b, &["changes"]), "notes": g(&rv, &["stackedOn", "notes"]) }));
+    }
     out.insert("results".into(), json!(results));
     out.insert("ranking".into(), g(&rv, &["ranking"]).clone());
     out.insert("notes".into(), json!(notes));
@@ -529,9 +615,20 @@ pub fn verify_change(ws: &Workspace, inputs: &[Value], o: &Value) -> Result<Valu
         let bundle = format!("{}/{}.hindcast.json", rd, slug);
         std::fs::write(&html, crate::cli::reports::verify_html(&out, &rv, &mv)).map_err(|e| e.to_string())?;
         std::fs::write(&md, crate::cli::reports::verify_markdown(&out, &rv, &mv, None)).map_err(|e| e.to_string())?;
-        std::fs::write(format!("{}/{}.strategies.yaml", rd, slug), strategies.iter().map(crate::yaml_out::to_yaml).collect::<Vec<_>>().join("---\n")).map_err(|e| e.to_string())?;
+        // stacked on a baseline: the baseline, then each change with it, as strategies against the system as
+        // built (a backtest of them, in the app or the CLI, shows all three)
+        let replayable: Vec<Value> = match g(&rv, &["stackedOn", "strategy"]) {
+            b if b.is_object() => std::iter::once(b.clone()).chain(strategies.iter().map(|st| {
+                let mut x = crate::strategy::stack_strategies(b, st);
+                x["name"] = json!(format!("{} on {}", s(st, &["name"]), s(b, &["name"])));
+                x
+            }))
+            .collect(),
+            _ => strategies.clone(),
+        };
+        std::fs::write(format!("{}/{}.strategies.yaml", rd, slug), replayable.iter().map(crate::yaml_out::to_yaml).collect::<Vec<_>>().join("---\n")).map_err(|e| e.to_string())?;
         let stamp = iso_full(now_s())[..16].replacen('T', " ", 1);
-        let b = json!({ "name": g(&mv, &["name"]), "source": format!("verified by an agent, {} UTC", stamp), "dataset": dv, "model": mv, "strategies": strategies.iter().map(crate::yaml_out::to_yaml).collect::<Vec<_>>() });
+        let b = json!({ "name": g(&mv, &["name"]), "source": format!("verified by an agent, {} UTC", stamp), "dataset": dv, "model": mv, "strategies": replayable.iter().map(crate::yaml_out::to_yaml).collect::<Vec<_>>() });
         std::fs::write(&bundle, crate::convert::js_stringify(&b)).map_err(|e| e.to_string())?;
         reports = Some(json!({ "html": html, "markdown": md, "bundle": bundle }));
     }
@@ -724,6 +821,92 @@ mod tests {
         let r = json!({ "window": { "start": 0, "end": 86400 }, "slo": { "p99Ms": 1000, "errorRate": 0.01 }, "baseline": { "peakUtil": {}, "summary": { "requests": { "p50": 500000.0 }, "failedRequests": { "p50": 0.0 } } } });
         let st = json!({ "peakUtil": {}, "delta": { "minutesOutOfSlo": { "p50": 0, "lo": 0, "hi": 0 }, "failedRequests": { "p50": 0, "lo": 0, "hi": 0 }, "monthly": { "p50": -10 } } });
         judge(&mv, &m, &r, &st, &json!({ "name": "x", "changes": [] }), None, 0.5, (100.0, None), (100.0, None), None).unwrap()
+    }
+
+    /// the reference cluster (email leaks until it is OOM-killed at launch load) verified at the launch
+    /// day's 2.22×, `changes` stacked on `baseline`
+    fn on_launch_day(baseline: Option<Value>, changes: &[Value]) -> Verified {
+        let v: Value = serde_json::from_str(include_str!("../../../../public/reference/k8s-shop.json")).unwrap();
+        let inputs: Vec<Value> = changes.iter().map(|c| json!({ "strategy": c })).collect();
+        let mut o = json!({ "draws": 3, "traffic": { "scale": 2.22 } });
+        if let Some(b) = baseline {
+            o["baseline"] = json!({ "strategy": b });
+        }
+        verify_with(&Workspace::new(Some("/nonexistent")), v["model"].clone(), v["dataset"].clone(), None, &inputs, &o).unwrap()
+    }
+
+    fn events(st: &Value) -> Vec<String> {
+        arr(st, &["events"]).iter().map(|e| s(e, &["what"])).collect()
+    }
+
+    #[test]
+    fn a_baseline_that_fixes_an_oom_leaves_a_later_change_only_its_own_effect() {
+        let email = json!({ "name": "email with 300 MiB", "changes": [{ "service": "email", "memoryGb": 0.293 }] });
+        let frontend = json!({ "name": "frontend ×2", "changes": [{ "service": "frontend", "replicas": 2 }] });
+        // as built, email is OOM-killed; a change that carries the fix with it is credited with it
+        let plain = on_launch_day(None, &[json!({ "name": "frontend ×2 and email", "changes": [{ "service": "frontend", "replicas": 2 }, { "service": "email", "memoryGb": 0.293 }] })]);
+        assert!(events(g(&plain.rv, &["baseline"])).iter().any(|e| e.starts_with("email: OOM-killed")), "{:?}", events(g(&plain.rv, &["baseline"])));
+        // with the fix as the baseline, neither side is OOM-killed and the change is frontend alone
+        let v = on_launch_day(Some(email.clone()), &[frontend.clone()]);
+        assert!(!events(g(&v.rv, &["baseline"])).iter().any(|e| e.contains("OOM")));
+        assert!(!events(&arr(&v.rv, &["strategies"])[0]).iter().any(|e| e.contains("OOM")));
+        assert_eq!(s(&v.out, &["comparedWith"]).split(':').next().unwrap(), "as built with \"email with 300 MiB\" applied");
+        assert_eq!(g(&v.out, &["baseline", "name"]), &json!("email with 300 MiB"));
+        // its deltas are frontend ×2 over the system with the fix, the same as replaying the two apart
+        let m: crate::model::Model = serde_json::from_value(v.mv.clone()).unwrap();
+        let d: crate::dataset::Dataset = serde_json::from_value(v.dv.clone()).unwrap();
+        let apart = to_json(&crate::backtest::backtest(&m, &d, &[email.clone(), crate::strategy::stack_strategies(&email, &frontend)], &crate::backtest::BacktestOptions { draws: Some(3.0), load: Some(crate::backtest::LoadOpts { scale: Some(2.22), peak_rps: None }), ..Default::default() }).unwrap());
+        let sum = |st: &Value, k: &str| n(st, &["summary", k, "p50"]);
+        for k in ["minutesOutOfSlo", "failedRequests", "monthly"] {
+            assert_eq!(sum(g(&v.rv, &["baseline"]), k), sum(&arr(&apart, &["strategies"])[0], k), "{}", k);
+            assert_eq!(sum(&arr(&v.rv, &["strategies"])[0], k), sum(&arr(&apart, &["strategies"])[1], k), "{}", k);
+        }
+        // and the fix is not the change's: without the baseline the same pull request cut email's failures too
+        let r = &arr(&v.out, &["results"])[0];
+        let rp = &arr(&plain.out, &["results"])[0];
+        assert!(n(rp, &["reliability", "failedRequestsDelta", "p50"]) < n(r, &["reliability", "failedRequestsDelta", "p50"]), "{} vs {}", n(rp, &["reliability", "failedRequestsDelta", "p50"]), n(r, &["reliability", "failedRequestsDelta", "p50"]));
+        // stacked on the fix, the pull request that carries it too is frontend ×2 alone, said in the notes
+        let both = on_launch_day(Some(email), &[json!({ "name": "frontend ×2 and email", "changes": [{ "service": "frontend", "replicas": 2 }, { "service": "email", "memoryGb": 0.293 }] })]);
+        let rb = &arr(&both.out, &["results"])[0];
+        assert_eq!(g(rb, &["change", "changes"]), &json!([{ "service": "frontend", "replicas": 2 }]));
+        assert_eq!(g(rb, &["reliability"]), g(r, &["reliability"]));
+        assert!(arr(&both.out, &["notes"]).iter().any(|x| s(x, &[]).contains("also sets what the baseline sets (email: memoryGb)")), "{:?}", arr(&both.out, &["notes"]));
+    }
+
+    #[test]
+    fn a_baseline_the_same_as_the_change_adds_nothing() {
+        let email = json!({ "name": "email with 300 MiB", "changes": [{ "service": "email", "memoryGb": 0.293 }] });
+        let v = on_launch_day(Some(email.clone()), &[email]);
+        let r = &arr(&v.out, &["results"])[0];
+        for k in [&["reliability", "minutesOutOfSloDelta"][..], &["reliability", "failedRequestsDelta"], &["cost", "monthlyDelta"]] {
+            for q in ["p50", "lo", "hi"] {
+                let mut p = k.to_vec();
+                p.push(q);
+                assert_eq!(n(r, &p), 0.0, "{:?}", p);
+            }
+        }
+        assert_eq!(s(r, &["summary"]), "costs the same, with no change in time out of SLO");
+        assert!(arr(&v.out, &["notes"]).iter().any(|x| s(x, &[]) == "\"email with 300 MiB\" sets nothing the baseline doesn't already: on top of it, it changes nothing"));
+    }
+
+    #[test]
+    fn the_baselines_own_rollout_is_not_the_changes_cold_start() {
+        // cart on .NET: a new CPU limit restarts its pods cold
+        let cart = json!({ "name": "cart at 250m", "changes": [{ "service": "cart", "cpu": 0.25, "runtime": "dotnet" }] });
+        let frontend = json!({ "name": "frontend ×4", "changes": [{ "service": "frontend", "replicas": 4 }] });
+        let cold = |st: &Value| events(st).into_iter().filter(|e| e.starts_with("cart:") && e.contains(" cold (a ")).count();
+        // as the change itself, cart's restart is in the replay
+        let own = on_launch_day(None, &[cart.clone()]);
+        assert!(cold(&arr(&own.rv, &["strategies"])[0]) > 0);
+        // as the baseline, it is running before the window on both sides: no cold start in either
+        let v = on_launch_day(Some(cart), &[frontend]);
+        assert_eq!(cold(g(&v.rv, &["baseline"])), 0);
+        assert_eq!(cold(&arr(&v.rv, &["strategies"])[0]), 0);
+        let r = &arr(&v.out, &["results"])[0];
+        assert!(!arr(r, &["reasons"]).iter().any(|x| s(x, &[]).contains("cart restarts")), "{:?}", arr(r, &["reasons"]));
+        // cart, changed by the baseline, counts as touched for confidence, marked as the baseline's
+        let x = arr(r, &["confidence", "services"]).into_iter().find(|x| s(x, &["service"]) == "cart").cloned().unwrap();
+        assert_eq!((g(&x, &["touched"]), g(&x, &["byBaseline"])), (&json!(true), &json!(true)));
     }
 
     #[test]

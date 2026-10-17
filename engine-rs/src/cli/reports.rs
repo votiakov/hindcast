@@ -106,7 +106,7 @@ pub fn backtest_markdown(r: &Value, model: &Value) -> String {
     l.push(String::new());
     l.push("| # | strategy | $/month vs as built | minutes out of SLO | failed requests | verdict |".into());
     l.push("|---|---|---|---|---|---|".into());
-    l.push(format!("| – | As built | {}/month | {} | {} | |", money(n(base, &["summary", "monthly", "p50"])), range(g(base, &["summary", "minutesOutOfSlo"]), &mins), range(g(base, &["summary", "failedRequests"]), &count)));
+    l.push(format!("| – | {} | {}/month | {} | {} | |", s(base, &["name"]), money(n(base, &["summary", "monthly", "p50"])), range(g(base, &["summary", "minutesOutOfSlo"]), &mins), range(g(base, &["summary", "failedRequests"]), &count)));
     for (i, k) in arr(r, &["ranking"]).iter().enumerate() {
         let st = strategy_named(r, &s(k, &["name"]));
         l.push(format!("| {} | {} | {} | {} | {} | {} |", i + 1, s(st, &["name"]), range(g(st, &["delta", "monthly"]), &signed), range(g(st, &["summary", "minutesOutOfSlo"]), &mins), range(g(st, &["summary", "failedRequests"]), &count), headline(st, base)));
@@ -436,6 +436,7 @@ pub fn verify_comment(out: &Value, r: &Value, marker: &str, title: Option<&str>,
         }
         return l.join("\n") + "\n";
     }
+    l.extend(compared_with(out));
     l.extend(decision_markdown(out, r));
     l.push(String::new());
     l.push("#### The evidence".into());
@@ -460,7 +461,7 @@ pub fn verify_comment(out: &Value, r: &Value, marker: &str, title: Option<&str>,
         };
         let sgn = |x: f64, k: String| if x > 0.0 { format!("+{}", k) } else if x < 0.0 { format!("−{}", k) } else { k };
         l.push(format!("- **$ / month:** {}/month ({})", band(md, &signed), s(x, &["cost", "basis"])));
-        l.push(format!("- **minutes out of SLO:** {} — {} min in all with the change, {} min as built", band(dm, &|v| sgn(v, format!("{} min", js_num(r1(v.abs()))))), js_num(n(x, &["reliability", "minutesOutOfSlo"])), js_num(r1(n(out, &["asBuilt", "minutesOutOfSlo"])))));
+        l.push(format!("- **minutes out of SLO:** {} — {} min in all with the change, {} min {}", band(dm, &|v| sgn(v, format!("{} min", js_num(r1(v.abs()))))), js_num(n(x, &["reliability", "minutesOutOfSlo"])), js_num(r1(n(out, &["asBuilt", "minutesOutOfSlo"]))), crate::review::judge::as_built_words(g(r, &["baseline"]))));
         l.push(format!("- **failed requests:** {}", band(fr, &|v| sgn(v, loc(js_round(v.abs()))))));
         let w = g(x, &["reliability", "worst"]);
         if !s(w, &["why"]).is_empty() {
@@ -468,7 +469,7 @@ pub fn verify_comment(out: &Value, r: &Value, marker: &str, title: Option<&str>,
             let base_worst = g(r, &["baseline", "worst"]);
             // the same moment and cause as built: the system's weak spot, not the change's doing
             let same = n(base_worst, &["t"]) == t && s(base_worst, &["why"]) == s(w, &["why"]);
-            l.push(format!("- **worst moment:** {} — p99 {} ms, {}% errors; {}{}", when(t), js_num(n(w, &["p99Ms"])), js_num(js_round(n(w, &["errorRate"]) * 100.0)), s(w, &["why"]), if same { " (the same as built: not this change's doing)" } else { "" }));
+            l.push(format!("- **worst moment:** {} — p99 {} ms, {}% errors; {}{}", when(t), js_num(n(w, &["p99Ms"])), js_num(js_round(n(w, &["errorRate"]) * 100.0)), s(w, &["why"]), if same { format!(" (the same {}: not this change's doing)", crate::review::judge::as_built_words(g(r, &["baseline"]))) } else { String::new() }));
         }
         l.push(String::new());
         for (head, items) in why_and_caveats(x) {
@@ -509,6 +510,14 @@ pub fn verify_comment(out: &Value, r: &Value, marker: &str, title: Option<&str>,
     l.join("\n") + "\n"
 }
 
+/// what the changes were compared with, when not the system as built: verify_change's `baseline`
+fn compared_with(out: &Value) -> Vec<String> {
+    match g(out, &["comparedWith"]) {
+        Value::Null => vec![],
+        c => vec![format!("**Compared with** {}.", s(c, &[])), String::new()],
+    }
+}
+
 /// a verdict's reasons beyond its headline and its confidence warnings, each under its heading: the
 /// low-confidence pass is the decision's own line and the worst moment a line of the evidence, so neither is said again
 fn why_and_caveats(x: &Value) -> Vec<(String, Vec<String>)> {
@@ -528,6 +537,7 @@ fn why_and_caveats(x: &Value) -> Vec<(String, Vec<String>)> {
 pub fn verify_markdown(out: &Value, r: &Value, model: &Value, title: Option<&str>) -> String {
     let verdict = s(out, &["verdict"]);
     let mut l: Vec<String> = vec![format!("# {} {}: {} — {}", verdict_mark(&verdict), title.unwrap_or("Hindcast backtest"), verdict, verdict_words(&verdict)), String::new()];
+    l.extend(compared_with(out));
     l.extend(decision_markdown(out, r));
     l.push(String::new());
     for x in arr(out, &["results"]) {
@@ -552,6 +562,9 @@ pub fn verify_html(out: &Value, r: &Value, model: &Value) -> String {
     let inline = |x: &str| esc(x).split('`').enumerate().map(|(i, p)| if i % 2 == 1 { format!("<code>{}</code>", p) } else { p.to_string() }).collect::<String>();
     let verdict = s(out, &["verdict"]);
     let mut h = format!("<p class=\"verdict\">{} <b>{}</b> — {}</p>", verdict_mark(&verdict), esc(&verdict), verdict_words(&verdict));
+    if let Value::String(c) = g(out, &["comparedWith"]) {
+        h += &format!("<p class=\"sub\">Compared with {}.</p>", esc(c));
+    }
     let results = arr(out, &["results"]);
     for (i, (name, rows)) in decision(out, r).into_iter().enumerate() {
         // the caveats the decision counts, folded under it
