@@ -570,6 +570,41 @@ Two lessons for the method, not the model:
 - a fixed half-minute threshold needs a noise floor for incidents the system has as built;
 - the reality side of the comparison would be steadier with each day recorded twice.
 
+## How noisy is reality? The launch day recorded twice
+
+The half-minute gate assumes two recordings of the same day would agree to within half a minute.
+To check, the as-built launch day was recorded a second time with nothing changed (`launch-b`,
+declared in [shop/reference.yaml](shop/reference.yaml) before it ran). The two runs scored the same
+way (every k6 request after the first two minutes, 30-second buckets, SLO p99 1 s and errors 3%):
+
+| run | minutes out of SLO | failed requests | why |
+|---|---|---|---|
+| `launch` | 0.5 | 5 | one slow bucket at minute 16; email's OOM kill at minute 26 cost nothing |
+| `launch-b` | 1.5 | 571 | email's OOM kill at minute 26.5: checkout timeouts for three buckets |
+
+The difference is one minute, from the same incident landing on traffic or not, on an
+unchanged system. That is twice the gate. Every launch-day change in this study was scored against
+`launch`, the luckier of the two. Against `launch-b`:
+
+| run | minutes out | added over `launch` | added over `launch-b` | scored | against `launch-b` | the model said |
+|---|---|---|---|---|---|---|
+| `launch-2` | 11.5 | +11 | +10 | fail | fail | fail |
+| `launch-hpa` | 1.5 | +1 | 0 | fail | **pass** | fail (in sample) |
+| `launch-2c` | 3.5 | +3 | +2 | fail | fail | inconclusive |
+| `launch-2-750` | 4.5 | +4 | +3 | fail | fail | inconclusive |
+| `launch-email300` | 0 | −0.5 | −1.5 | pass | pass | inconclusive, leans pass |
+| `launch-cart250` | 1.5 | +1 | 0 | fail | **pass** | inconclusive, leans pass |
+| `launch-rec2` | 2 | +1.5 | +0.5 | fail | **pass** | inconclusive, leans pass |
+
+The published scores above stay as they were scored, against `launch`. The gate was fixed before
+the runs, and choosing a baseline afterwards is what the record must not do. Read against
+`launch-b`, round 4's two "failures" are passes. The model leaned pass on both, and the CPU rule's
+two wrong calls there become right.
+
+**From round 5 on** (declared here, before any round 5 exists), a change on a day recorded twice as
+built fails only if it adds more than half a minute out of SLO, or more failed requests than the
+error budget, over **both** as-built recordings.
+
 ## A second system: PetClinic
 
 [petclinic/](petclinic/README.md) runs Spring PetClinic Microservices on the same cluster and the
