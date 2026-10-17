@@ -535,7 +535,8 @@ async function main() {
     for (const mod of (JSON.parse(readFileSync(join(evalDir, 'validation.json'), 'utf8')) as { models: { id: string; rows: EarlierRow[] }[] }).models) EARLIER[mod.id] = Object.fromEntries(mod.rows.map((r) => [r.run, r]));
   // models are rebuilt every time; collected telemetry is kept (refreshed when the cluster is up)
   mkdirSync(evalDir, { recursive: true });
-  for (const f of readdirSync(evalDir)) if (!['collected', 'runs'].includes(f) && !/^predictions-oos.*\.json$/.test(f)) rmSync(join(evalDir, f), { recursive: true, force: true });
+  // validation.json stays until it is rewritten: it holds what k6 measured on runs whose request logs are gone
+  for (const f of readdirSync(evalDir)) if (!['collected', 'runs', 'validation.json'].includes(f) && !/^predictions-oos.*\.json$/.test(f)) rmSync(join(evalDir, f), { recursive: true, force: true });
   const base = resolve(SYS, EV.manifests);
 
   const calm = await calibrated('calm', ['history'], evalDir, cfg.slo);
