@@ -1,5 +1,11 @@
 name: ci
-on: [push, pull_request]
+# Not on every push: a private repository's Actions minutes are limited, and every change is checked
+# locally before it is pushed. Pull requests, release tags and a manual run still get the full check.
+on:
+  pull_request:
+  workflow_dispatch:
+  push:
+    tags: ['v*.*.*']
 jobs:
   check:
     runs-on: ubuntu-latest
