@@ -5361,6 +5361,2695 @@
       "backtest": true,
       "naive": true
      }
+    },
+    {
+     "run": "launch-visits125",
+     "question": "visits-service at 125m instead of 250m, on launch day?",
+     "oos": 2,
+     "exAnte": {
+      "verdict": "inconclusive",
+      "confidence": "medium",
+      "leans": "pass",
+      "minutesOutOfSlo": 0,
+      "peakP99Ms": 21,
+      "monthlyDelta": {
+       "p50": 0,
+       "lo": 0,
+       "hi": 0
+      },
+      "reasons": [
+       "costs the same, with no change in time out of SLO",
+       "visits-service restarts on its new 125m CPU limit and a JVM needs ~30 core-seconds of JIT compilation to warm up (assumed): until then a request costs ×5 its warm CPU; in the replay it is warm 7.9 min after it starts",
+       "frees 0.13 cores and 0 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 39% of it (39% before)",
+       "while its restarted pods are still cold the system sustains 123.4 req/s, below the peak it has to serve (237.8): rolled out at a busy moment, it would not warm up. Roll it out when traffic is low, or warm the pods before they take traffic"
+      ],
+      "warnings": [
+       "visits-service would run at 66% of capacity, past the history's 9%: its capacity there is extrapolated",
+       "customers-service would run at 40% of capacity, past the history's 18%: its capacity there is extrapolated",
+       "only 0.6 h of history: daily and weekly peaks may be missing",
+       "visits-service's warm-up is assumed, not measured on it: the JVM defaults (×5 CPU while cold, 30 core-seconds of compilation, 6% of the limit for the compiler under load), fitted on one Spring Boot service; nothing in the history shows one of its pods starting"
+      ],
+      "ooms": {}
+     },
+     "retrodiction": {
+      "verdict": "inconclusive",
+      "confidence": "medium",
+      "leans": "pass",
+      "minutesOutOfSlo": 0,
+      "reasons": [
+       "costs the same, with no change in time out of SLO",
+       "visits-service restarts on its new 125m CPU limit and a JVM needs ~30 core-seconds of JIT compilation to warm up (assumed): until then a request costs ×5 its warm CPU; in the replay it is warm 7.9 min after it starts",
+       "frees 0.13 cores and 0 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 39% of it (39% before)",
+       "while its restarted pods are still cold the system sustains 123.4 req/s, below the peak it has to serve (237.8): rolled out at a busy moment, it would not warm up. Roll it out when traffic is low, or warm the pods before they take traffic"
+      ],
+      "warnings": [
+       "visits-service would run at 66% of capacity, past the history's 9%: its capacity there is extrapolated",
+       "customers-service would run at 40% of capacity, past the history's 18%: its capacity there is extrapolated",
+       "only 0.6 h of history: daily and weekly peaks may be missing",
+       "visits-service's warm-up is assumed, not measured on it: the JVM defaults (×5 CPU while cold, 30 core-seconds of compilation, 6% of the limit for the compiler under load), fitted on one Spring Boot service; nothing in the history shows one of its pods starting"
+      ]
+     },
+     "exPost": {
+      "p99Ms": 10,
+      "errorRate": 0,
+      "minutesOutOfSlo": 0,
+      "replicasPeak": 0.9999999999999999
+     },
+     "measured": {
+      "p99Ms": 8,
+      "errorRate": 0,
+      "minutesOutOfSlo": 0,
+      "requests": 199108,
+      "addedOverAsBuilt": 0
+     },
+     "series": {
+      "predicted": {
+       "rps": [
+        31.3,
+        32.8,
+        52.9,
+        51.9,
+        52.8,
+        46.1,
+        52.9,
+        51,
+        51.6,
+        45.8,
+        36.1,
+        32.6,
+        35.9,
+        42.8,
+        41.9,
+        29.5,
+        35.3,
+        34.1,
+        42,
+        39.6,
+        41.4,
+        42.1,
+        51.3,
+        68.4,
+        73.6,
+        94,
+        112,
+        90.5,
+        148.3,
+        207.4,
+        199.7,
+        235.3,
+        202.5,
+        226.5,
+        225.8,
+        156.1,
+        135.9,
+        153.5,
+        150.8,
+        148.8,
+        143,
+        146.8,
+        131.2,
+        117,
+        98.1,
+        107.3,
+        118.2,
+        128.9,
+        108.6,
+        117,
+        111.1,
+        105.2,
+        108.5,
+        119.4,
+        117.9,
+        115.3,
+        108,
+        78.4,
+        27.2,
+        68.5,
+        71.4,
+        72.6,
+        74.3,
+        66.5,
+        48.9,
+        54.8,
+        31.3,
+        4.9,
+        34.4,
+        40.4,
+        45,
+        57.4,
+        52.8,
+        51.1,
+        62,
+        49.3,
+        50.1,
+        49,
+        58.6,
+        54.3,
+        49.2
+       ],
+       "p99Ms": [
+        11,
+        11,
+        13,
+        13,
+        13,
+        12,
+        13,
+        13,
+        13,
+        12,
+        11,
+        11,
+        11,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        10,
+        10,
+        10,
+        10,
+        10,
+        10,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9
+       ],
+       "errorRate": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+       ],
+       "replicas": [
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999
+       ]
+      },
+      "measured": [
+       {
+        "rps": 0,
+        "p99Ms": null,
+        "errorRate": null
+       },
+       {
+        "rps": 0,
+        "p99Ms": null,
+        "errorRate": null
+       },
+       {
+        "rps": 0,
+        "p99Ms": null,
+        "errorRate": null
+       },
+       {
+        "rps": 0,
+        "p99Ms": null,
+        "errorRate": null
+       },
+       {
+        "rps": 49.2,
+        "p99Ms": 14,
+        "errorRate": 0
+       },
+       {
+        "rps": 50.4,
+        "p99Ms": 45,
+        "errorRate": 0
+       },
+       {
+        "rps": 52.6,
+        "p99Ms": 11,
+        "errorRate": 0
+       },
+       {
+        "rps": 51.4,
+        "p99Ms": 12,
+        "errorRate": 0
+       },
+       {
+        "rps": 41.2,
+        "p99Ms": 10,
+        "errorRate": 0
+       },
+       {
+        "rps": 34.5,
+        "p99Ms": 13,
+        "errorRate": 0
+       },
+       {
+        "rps": 34.1,
+        "p99Ms": 12,
+        "errorRate": 0
+       },
+       {
+        "rps": 38.4,
+        "p99Ms": 14,
+        "errorRate": 0
+       },
+       {
+        "rps": 42,
+        "p99Ms": 10,
+        "errorRate": 0
+       },
+       {
+        "rps": 38.6,
+        "p99Ms": 11,
+        "errorRate": 0
+       },
+       {
+        "rps": 28.6,
+        "p99Ms": 15,
+        "errorRate": 0
+       },
+       {
+        "rps": 35.6,
+        "p99Ms": 12,
+        "errorRate": 0
+       },
+       {
+        "rps": 38.9,
+        "p99Ms": 10,
+        "errorRate": 0
+       },
+       {
+        "rps": 40.6,
+        "p99Ms": 10,
+        "errorRate": 0
+       },
+       {
+        "rps": 40,
+        "p99Ms": 10,
+        "errorRate": 0
+       },
+       {
+        "rps": 41.2,
+        "p99Ms": 10,
+        "errorRate": 0
+       },
+       {
+        "rps": 43.5,
+        "p99Ms": 10,
+        "errorRate": 0
+       },
+       {
+        "rps": 58.9,
+        "p99Ms": 12,
+        "errorRate": 0
+       },
+       {
+        "rps": 70.4,
+        "p99Ms": 8,
+        "errorRate": 0
+       },
+       {
+        "rps": 77.3,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 102.7,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 103.5,
+        "p99Ms": 31,
+        "errorRate": 0
+       },
+       {
+        "rps": 107.2,
+        "p99Ms": 35,
+        "errorRate": 0
+       },
+       {
+        "rps": 168.7,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 215.1,
+        "p99Ms": 8,
+        "errorRate": 0
+       },
+       {
+        "rps": 209.1,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 218.9,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 208.5,
+        "p99Ms": 5,
+        "errorRate": 0
+       },
+       {
+        "rps": 242.2,
+        "p99Ms": 5,
+        "errorRate": 0
+       },
+       {
+        "rps": 203.8,
+        "p99Ms": 5,
+        "errorRate": 0
+       },
+       {
+        "rps": 124,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 151.2,
+        "p99Ms": 5,
+        "errorRate": 0
+       },
+       {
+        "rps": 157.3,
+        "p99Ms": 5,
+        "errorRate": 0
+       },
+       {
+        "rps": 149.1,
+        "p99Ms": 5,
+        "errorRate": 0
+       },
+       {
+        "rps": 148.2,
+        "p99Ms": 5,
+        "errorRate": 0
+       },
+       {
+        "rps": 141.5,
+        "p99Ms": 5,
+        "errorRate": 0
+       },
+       {
+        "rps": 143,
+        "p99Ms": 5,
+        "errorRate": 0
+       },
+       {
+        "rps": 126.1,
+        "p99Ms": 5,
+        "errorRate": 0
+       },
+       {
+        "rps": 112.9,
+        "p99Ms": 5,
+        "errorRate": 0
+       },
+       {
+        "rps": 95.8,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 112.6,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 121.8,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 127.2,
+        "p99Ms": 5,
+        "errorRate": 0
+       },
+       {
+        "rps": 106.7,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 115.5,
+        "p99Ms": 5,
+        "errorRate": 0
+       },
+       {
+        "rps": 108.4,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 106,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 111.5,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 119.8,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 117.8,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 111.5,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 106.2,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 56.8,
+        "p99Ms": 8,
+        "errorRate": 0
+       },
+       {
+        "rps": 34.5,
+        "p99Ms": 9,
+        "errorRate": 0
+       },
+       {
+        "rps": 74.3,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 71.9,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 69.7,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 73.7,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 64.4,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 47.3,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 51.5,
+        "p99Ms": 8,
+        "errorRate": 0
+       },
+       {
+        "rps": 18.3,
+        "p99Ms": 10,
+        "errorRate": 0
+       },
+       {
+        "rps": 8.3,
+        "p99Ms": 10,
+        "errorRate": 0
+       },
+       {
+        "rps": 42.5,
+        "p99Ms": 9,
+        "errorRate": 0
+       },
+       {
+        "rps": 40.3,
+        "p99Ms": 10,
+        "errorRate": 0
+       },
+       {
+        "rps": 49.9,
+        "p99Ms": 8,
+        "errorRate": 0
+       },
+       {
+        "rps": 58.1,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 49.3,
+        "p99Ms": 8,
+        "errorRate": 0
+       },
+       {
+        "rps": 56.5,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 58.7,
+        "p99Ms": 8,
+        "errorRate": 0
+       },
+       {
+        "rps": 46.1,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 52.8,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 47.5,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 62.3,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 50.8,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 49.4,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 0.9,
+        "p99Ms": 7,
+        "errorRate": 0
+       }
+      ],
+      "replicas": [
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1
+      ]
+     },
+     "truth": "pass",
+     "naive": {
+      "service": "customers-service",
+      "historyPeakUtil": 0.28108569772649467,
+      "predictedPeakUtil": 0.6240102489528182,
+      "verdict": "pass"
+     },
+     "agrees": {
+      "backtest": false,
+      "naive": true
+     }
+    },
+    {
+     "run": "launch-cust175",
+     "question": "customers-service at 175m instead of 250m, on launch day?",
+     "oos": 2,
+     "exAnte": {
+      "verdict": "inconclusive",
+      "confidence": "low",
+      "leans": "pass",
+      "minutesOutOfSlo": 0.3,
+      "peakP99Ms": 951,
+      "monthlyDelta": {
+       "p50": 0,
+       "lo": 0,
+       "hi": 0
+      },
+      "reasons": [
+       "costs the same, with no change in time out of SLO",
+       "no added time out of SLO at the median, but 7.2 min in the worst 10% of capacity draws",
+       "customers-service restarts on its new 175m CPU limit and a JVM needs ~30 core-seconds of JIT compilation to warm up (assumed): until then a request costs ×5 its warm CPU; in the replay it is warm 10.2 min after it starts",
+       "worst at 2026-10-16T14:48:00Z: customers-service at 96% of capacity (57.5 req/s on 1 × 60.0 req/s (normally 300.2)), 114 ms wait",
+       "frees 0.08 cores and 0 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 39% of it (39% before)",
+       "headroom drops from 629.5 to 417.9 req/s (the replayed traffic peaks at 237.8)",
+       "while its restarted pods are still cold the system sustains 83.3 req/s (417.9 once warm)"
+      ],
+      "warnings": [
+       "customers-service would run at 96% of a capacity the history never tested (peak 18%): the outcome rests on an extrapolated limit",
+       "only 0.6 h of history: daily and weekly peaks may be missing",
+       "customers-service's warm-up is assumed, not measured on it: the JVM defaults (×5 CPU while cold, 30 core-seconds of compilation, 6% of the limit for the compiler under load), fitted on one Spring Boot service; nothing in the history shows one of its pods starting"
+      ],
+      "ooms": {}
+     },
+     "retrodiction": {
+      "verdict": "inconclusive",
+      "confidence": "low",
+      "leans": "pass",
+      "minutesOutOfSlo": 0.3,
+      "reasons": [
+       "costs the same, with no change in time out of SLO",
+       "no added time out of SLO at the median, but 7.2 min in the worst 10% of capacity draws",
+       "fails no more requests than the error budget allows at the median, but 41,303 more in the worst 10% of capacity draws, past the window's budget (1% of 307,845 requests: 3,078)",
+       "customers-service restarts on its new 175m CPU limit and a JVM needs ~30 core-seconds of JIT compilation to warm up (assumed): until then a request costs ×5 its warm CPU; in the replay it is warm 10.2 min after it starts",
+       "worst at 2026-10-16T14:48:00Z: customers-service at 96% of capacity (57.5 req/s on 1 × 60.0 req/s (normally 300.2)), 114 ms wait",
+       "frees 0.08 cores and 0 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 39% of it (39% before)",
+       "headroom drops from 629.5 to 417.9 req/s (the replayed traffic peaks at 237.8)",
+       "while its restarted pods are still cold the system sustains 83.3 req/s (417.9 once warm)"
+      ],
+      "warnings": [
+       "customers-service would run at 96% of a capacity the history never tested (peak 18%): the outcome rests on an extrapolated limit",
+       "only 0.6 h of history: daily and weekly peaks may be missing",
+       "customers-service's warm-up is assumed, not measured on it: the JVM defaults (×5 CPU while cold, 30 core-seconds of compilation, 6% of the limit for the compiler under load), fitted on one Spring Boot service; nothing in the history shows one of its pods starting"
+      ]
+     },
+     "exPost": {
+      "p99Ms": 11,
+      "errorRate": 0,
+      "minutesOutOfSlo": 0,
+      "replicasPeak": 0.9999999999999999
+     },
+     "measured": {
+      "p99Ms": 9,
+      "errorRate": 0,
+      "minutesOutOfSlo": 0,
+      "requests": 199253,
+      "addedOverAsBuilt": 0
+     },
+     "series": {
+      "predicted": {
+       "rps": [
+        29.5,
+        33.6,
+        55.6,
+        52.5,
+        53.3,
+        46.8,
+        53.7,
+        50.7,
+        52.1,
+        44.9,
+        34.2,
+        32.6,
+        36.8,
+        43.4,
+        39.8,
+        29.2,
+        35.4,
+        35.1,
+        39.8,
+        39.9,
+        38.5,
+        41.7,
+        53.3,
+        67.9,
+        73.2,
+        94.1,
+        112.2,
+        91.5,
+        152.8,
+        202.4,
+        200.6,
+        233.6,
+        204.2,
+        232.8,
+        222.9,
+        157.4,
+        132.5,
+        153.7,
+        155.9,
+        147.3,
+        143.5,
+        146.1,
+        136.5,
+        118.4,
+        95.6,
+        106.7,
+        117.7,
+        127.4,
+        109.6,
+        119.2,
+        112.6,
+        104.1,
+        110.4,
+        121.7,
+        117.9,
+        114,
+        109.2,
+        79.7,
+        28.6,
+        71,
+        69.4,
+        73.4,
+        72.4,
+        64.7,
+        48.8,
+        53.9,
+        31.3,
+        5.1,
+        35.2,
+        38.7,
+        44.5,
+        57.8,
+        55.4,
+        53.1,
+        59.9,
+        50.2,
+        48.8,
+        45.6,
+        58.7,
+        52.9,
+        46.9
+       ],
+       "p99Ms": [
+        12,
+        13,
+        22,
+        19,
+        20,
+        16,
+        20,
+        18,
+        19,
+        15,
+        13,
+        12,
+        13,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        10,
+        10,
+        10,
+        10,
+        10,
+        10,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9
+       ],
+       "errorRate": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+       ],
+       "replicas": [
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999
+       ]
+      },
+      "measured": [
+       {
+        "rps": 0,
+        "p99Ms": null,
+        "errorRate": null
+       },
+       {
+        "rps": 0,
+        "p99Ms": null,
+        "errorRate": null
+       },
+       {
+        "rps": 0,
+        "p99Ms": null,
+        "errorRate": null
+       },
+       {
+        "rps": 0,
+        "p99Ms": null,
+        "errorRate": null
+       },
+       {
+        "rps": 1.2,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 50,
+        "p99Ms": 57,
+        "errorRate": 0
+       },
+       {
+        "rps": 52.1,
+        "p99Ms": 8,
+        "errorRate": 0
+       },
+       {
+        "rps": 52,
+        "p99Ms": 52,
+        "errorRate": 0
+       },
+       {
+        "rps": 51.4,
+        "p99Ms": 13,
+        "errorRate": 0
+       },
+       {
+        "rps": 39.3,
+        "p99Ms": 9,
+        "errorRate": 0
+       },
+       {
+        "rps": 33.5,
+        "p99Ms": 10,
+        "errorRate": 0
+       },
+       {
+        "rps": 33,
+        "p99Ms": 57,
+        "errorRate": 0
+       },
+       {
+        "rps": 40.1,
+        "p99Ms": 9,
+        "errorRate": 0
+       },
+       {
+        "rps": 42.3,
+        "p99Ms": 9,
+        "errorRate": 0
+       },
+       {
+        "rps": 36.4,
+        "p99Ms": 9,
+        "errorRate": 0
+       },
+       {
+        "rps": 30.3,
+        "p99Ms": 27,
+        "errorRate": 0
+       },
+       {
+        "rps": 35.4,
+        "p99Ms": 13,
+        "errorRate": 0
+       },
+       {
+        "rps": 37.7,
+        "p99Ms": 10,
+        "errorRate": 0
+       },
+       {
+        "rps": 38.6,
+        "p99Ms": 10,
+        "errorRate": 0
+       },
+       {
+        "rps": 40,
+        "p99Ms": 9,
+        "errorRate": 0
+       },
+       {
+        "rps": 39.5,
+        "p99Ms": 8,
+        "errorRate": 0
+       },
+       {
+        "rps": 43.6,
+        "p99Ms": 8,
+        "errorRate": 0
+       },
+       {
+        "rps": 59.8,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 69.5,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 78.9,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 102.5,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 102.5,
+        "p99Ms": 38,
+        "errorRate": 0
+       },
+       {
+        "rps": 109.2,
+        "p99Ms": 92,
+        "errorRate": 0
+       },
+       {
+        "rps": 171,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 208.1,
+        "p99Ms": 23,
+        "errorRate": 0
+       },
+       {
+        "rps": 215,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 215.7,
+        "p99Ms": 28,
+        "errorRate": 0
+       },
+       {
+        "rps": 209.8,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 246.4,
+        "p99Ms": 5,
+        "errorRate": 0
+       },
+       {
+        "rps": 203.5,
+        "p99Ms": 5,
+        "errorRate": 0
+       },
+       {
+        "rps": 126.7,
+        "p99Ms": 22,
+        "errorRate": 0
+       },
+       {
+        "rps": 148.4,
+        "p99Ms": 24,
+        "errorRate": 0
+       },
+       {
+        "rps": 156.8,
+        "p99Ms": 5,
+        "errorRate": 0
+       },
+       {
+        "rps": 149.9,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 149.3,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 142.6,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 145.2,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 128.8,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 111.5,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 95.5,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 112.9,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 119.4,
+        "p99Ms": 110,
+        "errorRate": 0
+       },
+       {
+        "rps": 124.1,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 110.7,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 116.4,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 109.8,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 107.8,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 113.2,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 122.5,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 115.6,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 112.2,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 105.8,
+        "p99Ms": 24,
+        "errorRate": 0
+       },
+       {
+        "rps": 58.6,
+        "p99Ms": 9,
+        "errorRate": 0
+       },
+       {
+        "rps": 36.8,
+        "p99Ms": 11,
+        "errorRate": 0
+       },
+       {
+        "rps": 74.7,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 70.5,
+        "p99Ms": 8,
+        "errorRate": 0
+       },
+       {
+        "rps": 71.7,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 70.9,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 61.5,
+        "p99Ms": 8,
+        "errorRate": 0
+       },
+       {
+        "rps": 48.2,
+        "p99Ms": 9,
+        "errorRate": 0
+       },
+       {
+        "rps": 49.9,
+        "p99Ms": 9,
+        "errorRate": 0
+       },
+       {
+        "rps": 19.3,
+        "p99Ms": 12,
+        "errorRate": 0
+       },
+       {
+        "rps": 9.2,
+        "p99Ms": 13,
+        "errorRate": 0
+       },
+       {
+        "rps": 41.9,
+        "p99Ms": 10,
+        "errorRate": 0
+       },
+       {
+        "rps": 38.9,
+        "p99Ms": 10,
+        "errorRate": 0
+       },
+       {
+        "rps": 49.3,
+        "p99Ms": 9,
+        "errorRate": 0
+       },
+       {
+        "rps": 59.7,
+        "p99Ms": 8,
+        "errorRate": 0
+       },
+       {
+        "rps": 50,
+        "p99Ms": 9,
+        "errorRate": 0
+       },
+       {
+        "rps": 58,
+        "p99Ms": 8,
+        "errorRate": 0
+       },
+       {
+        "rps": 57.9,
+        "p99Ms": 8,
+        "errorRate": 0
+       },
+       {
+        "rps": 49,
+        "p99Ms": 9,
+        "errorRate": 0
+       },
+       {
+        "rps": 48.4,
+        "p99Ms": 10,
+        "errorRate": 0
+       },
+       {
+        "rps": 46.7,
+        "p99Ms": 9,
+        "errorRate": 0
+       },
+       {
+        "rps": 61.3,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 49.8,
+        "p99Ms": 9,
+        "errorRate": 0
+       },
+       {
+        "rps": 46.4,
+        "p99Ms": 9,
+        "errorRate": 0
+       }
+      ],
+      "replicas": [
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1
+      ]
+     },
+     "truth": "pass",
+     "naive": {
+      "service": "customers-service",
+      "historyPeakUtil": 0.28108569772649467,
+      "predictedPeakUtil": 0.8914432127897404,
+      "verdict": "pass"
+     },
+     "agrees": {
+      "backtest": false,
+      "naive": true
+     }
+    },
+    {
+     "run": "launch-cust-hpa",
+     "question": "An HPA (1–3 customers-service pods at 60% CPU) instead of 1 fixed, on launch day?",
+     "oos": 2,
+     "exAnte": {
+      "verdict": "pass",
+      "confidence": "medium",
+      "leans": null,
+      "minutesOutOfSlo": 0,
+      "peakP99Ms": 9,
+      "monthlyDelta": {
+       "p50": 0,
+       "lo": 0,
+       "hi": 0
+      },
+      "reasons": [
+       "costs the same, with no change in time out of SLO"
+      ],
+      "warnings": [
+       "customers-service would run at 40% of capacity, past the history's 18%: its capacity there is extrapolated",
+       "only 0.6 h of history: daily and weekly peaks may be missing"
+      ],
+      "ooms": {}
+     },
+     "retrodiction": {
+      "verdict": "pass",
+      "confidence": "medium",
+      "leans": null,
+      "minutesOutOfSlo": 0,
+      "reasons": [
+       "costs the same, with no change in time out of SLO"
+      ],
+      "warnings": [
+       "customers-service would run at 40% of capacity, past the history's 18%: its capacity there is extrapolated",
+       "only 0.6 h of history: daily and weekly peaks may be missing"
+      ]
+     },
+     "exPost": {
+      "p99Ms": 9,
+      "errorRate": 0,
+      "minutesOutOfSlo": 0,
+      "replicasPeak": 0.9999999999999999
+     },
+     "measured": {
+      "p99Ms": 9,
+      "errorRate": 0,
+      "minutesOutOfSlo": 0,
+      "requests": 199272,
+      "addedOverAsBuilt": 0
+     },
+     "series": {
+      "predicted": {
+       "rps": [
+        0,
+        4.8,
+        51.6,
+        54.6,
+        49.9,
+        50.9,
+        51.8,
+        52.1,
+        52.8,
+        49,
+        39.4,
+        33.1,
+        32.8,
+        43.5,
+        42.3,
+        37.3,
+        28.8,
+        35.2,
+        40,
+        39.9,
+        38.3,
+        42.1,
+        43.8,
+        60.8,
+        71.9,
+        81.7,
+        106.8,
+        97.6,
+        115.7,
+        181.4,
+        212.5,
+        219.5,
+        208.1,
+        209.6,
+        247.8,
+        193.8,
+        122.7,
+        143.3,
+        156.6,
+        150.5,
+        145.7,
+        141.4,
+        142.5,
+        130.1,
+        110.8,
+        99.2,
+        115.1,
+        120.3,
+        121.9,
+        110.3,
+        116,
+        105.4,
+        107,
+        111.1,
+        118.7,
+        121.1,
+        113.4,
+        100.1,
+        53,
+        39.7,
+        73.1,
+        73.4,
+        70.7,
+        71.1,
+        62.1,
+        47.8,
+        48.3,
+        17.9,
+        11.9,
+        41.5,
+        40.8,
+        52.5,
+        59.1,
+        48.2,
+        59.3,
+        56,
+        48,
+        48.8,
+        48.8,
+        60.2,
+        48.9
+       ],
+       "p99Ms": [
+        0,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9
+       ],
+       "errorRate": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+       ],
+       "replicas": [
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999,
+        0.9999999999999999
+       ]
+      },
+      "measured": [
+       {
+        "rps": 0,
+        "p99Ms": null,
+        "errorRate": null
+       },
+       {
+        "rps": 0,
+        "p99Ms": null,
+        "errorRate": null
+       },
+       {
+        "rps": 0,
+        "p99Ms": null,
+        "errorRate": null
+       },
+       {
+        "rps": 0,
+        "p99Ms": null,
+        "errorRate": null
+       },
+       {
+        "rps": 20.6,
+        "p99Ms": 39,
+        "errorRate": 0
+       },
+       {
+        "rps": 54.8,
+        "p99Ms": 52,
+        "errorRate": 0
+       },
+       {
+        "rps": 51.8,
+        "p99Ms": 57,
+        "errorRate": 0
+       },
+       {
+        "rps": 51.7,
+        "p99Ms": 10,
+        "errorRate": 0
+       },
+       {
+        "rps": 46.7,
+        "p99Ms": 10,
+        "errorRate": 0
+       },
+       {
+        "rps": 36.5,
+        "p99Ms": 11,
+        "errorRate": 0
+       },
+       {
+        "rps": 32.3,
+        "p99Ms": 24,
+        "errorRate": 0
+       },
+       {
+        "rps": 35.7,
+        "p99Ms": 49,
+        "errorRate": 0
+       },
+       {
+        "rps": 44.9,
+        "p99Ms": 34,
+        "errorRate": 0
+       },
+       {
+        "rps": 41.7,
+        "p99Ms": 12,
+        "errorRate": 0
+       },
+       {
+        "rps": 31.7,
+        "p99Ms": 12,
+        "errorRate": 0
+       },
+       {
+        "rps": 32.1,
+        "p99Ms": 13,
+        "errorRate": 0
+       },
+       {
+        "rps": 34.8,
+        "p99Ms": 11,
+        "errorRate": 0
+       },
+       {
+        "rps": 42.2,
+        "p99Ms": 10,
+        "errorRate": 0
+       },
+       {
+        "rps": 38.1,
+        "p99Ms": 11,
+        "errorRate": 0
+       },
+       {
+        "rps": 40.6,
+        "p99Ms": 10,
+        "errorRate": 0
+       },
+       {
+        "rps": 41.4,
+        "p99Ms": 11,
+        "errorRate": 0
+       },
+       {
+        "rps": 48.8,
+        "p99Ms": 11,
+        "errorRate": 0
+       },
+       {
+        "rps": 65.7,
+        "p99Ms": 8,
+        "errorRate": 0
+       },
+       {
+        "rps": 73,
+        "p99Ms": 8,
+        "errorRate": 0
+       },
+       {
+        "rps": 88.9,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 114,
+        "p99Ms": 17,
+        "errorRate": 0
+       },
+       {
+        "rps": 88.6,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 139.6,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 197.2,
+        "p99Ms": 45,
+        "errorRate": 0
+       },
+       {
+        "rps": 206.6,
+        "p99Ms": 72,
+        "errorRate": 0
+       },
+       {
+        "rps": 230.7,
+        "p99Ms": 8,
+        "errorRate": 0
+       },
+       {
+        "rps": 200.5,
+        "p99Ms": 33,
+        "errorRate": 0
+       },
+       {
+        "rps": 219.7,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 237,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 176.6,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 120.4,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 146.8,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 156.9,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 148.9,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 142.1,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 146,
+        "p99Ms": 8,
+        "errorRate": 0
+       },
+       {
+        "rps": 138.1,
+        "p99Ms": 8,
+        "errorRate": 0
+       },
+       {
+        "rps": 123.1,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 102.4,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 106.4,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 115.2,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 126,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 111.7,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 117.4,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 112.8,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 102.5,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 107.5,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 116.1,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 119.9,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 117.9,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 111.3,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 89.3,
+        "p99Ms": 6,
+        "errorRate": 0
+       },
+       {
+        "rps": 33.3,
+        "p99Ms": 11,
+        "errorRate": 0
+       },
+       {
+        "rps": 60.1,
+        "p99Ms": 8,
+        "errorRate": 0
+       },
+       {
+        "rps": 72.1,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 72.5,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 72.3,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 65.2,
+        "p99Ms": 8,
+        "errorRate": 0
+       },
+       {
+        "rps": 55.5,
+        "p99Ms": 9,
+        "errorRate": 0
+       },
+       {
+        "rps": 54.3,
+        "p99Ms": 8,
+        "errorRate": 0
+       },
+       {
+        "rps": 39.3,
+        "p99Ms": 10,
+        "errorRate": 0
+       },
+       {
+        "rps": 8.5,
+        "p99Ms": 13,
+        "errorRate": 0
+       },
+       {
+        "rps": 24.5,
+        "p99Ms": 12,
+        "errorRate": 0
+       },
+       {
+        "rps": 41.2,
+        "p99Ms": 9,
+        "errorRate": 0
+       },
+       {
+        "rps": 42.8,
+        "p99Ms": 10,
+        "errorRate": 0
+       },
+       {
+        "rps": 56.7,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 56.6,
+        "p99Ms": 8,
+        "errorRate": 0
+       },
+       {
+        "rps": 48.2,
+        "p99Ms": 9,
+        "errorRate": 0
+       },
+       {
+        "rps": 62.6,
+        "p99Ms": 7,
+        "errorRate": 0
+       },
+       {
+        "rps": 52,
+        "p99Ms": 8,
+        "errorRate": 0
+       },
+       {
+        "rps": 48.4,
+        "p99Ms": 8,
+        "errorRate": 0
+       },
+       {
+        "rps": 47.5,
+        "p99Ms": 9,
+        "errorRate": 0
+       },
+       {
+        "rps": 53.9,
+        "p99Ms": 8,
+        "errorRate": 0
+       },
+       {
+        "rps": 56.5,
+        "p99Ms": 8,
+        "errorRate": 0
+       },
+       {
+        "rps": 48.8,
+        "p99Ms": 9,
+        "errorRate": 0
+       },
+       {
+        "rps": 26.3,
+        "p99Ms": 9,
+        "errorRate": 0
+       }
+      ],
+      "replicas": [
+       1,
+       1,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       2,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1
+      ]
+     },
+     "truth": "pass",
+     "naive": {
+      "service": "api-gateway",
+      "historyPeakUtil": 0.18278956374980343,
+      "predictedPeakUtil": 0.40579283152456364,
+      "verdict": "pass"
+     },
+     "agrees": {
+      "backtest": true,
+      "naive": true
+     }
     }
    ],
    "trust": {
@@ -5547,5 +8236,5 @@
   }
  ],
  "nodeLosses": [],
- "evaluatedAt": "2026-10-17T00:59:13.137Z"
+ "evaluatedAt": "2026-10-17T03:47:41.470Z"
 }

@@ -51,7 +51,29 @@ Backtest verdicts: **4 right**, 1 inconclusive (it said to load-test; 0 of them 
 
 Retrodiction: 5 right, 1 inconclusive, 0 wrong, of 6 — in sample, not a score. (The out-of-sample table's “model on the day’s real traffic” column is always today’s code, so it carries the same caveat.)
 
-p99 of the model on each day's real traffic, against the measured p99: within 20% in **4 of 6** runs; the others off by 29–100%.
+*Out of sample* — chosen after round 1 was scored and the model learned JIT warm-up from its miss; predicted from the same ordinary day and committed before any of these runs was recorded; the verdicts are the ones committed in `validation/predictions-oos-2.json` before each run was recorded:
+
+| run | question | measured (k6, every request) | backtest before the day | model on the day’s real traffic | naive CPU ratio |
+|---|---|---|---|---|---|
+| `launch-visits125` | visits-service at 125m instead of 250m, on launch day? | **pass**: p99 8 ms, errors 0.00%, 0 min out of SLO | inconclusive ⚠️ leans pass (medium confidence), 0 min | p99 10 ms, errors 0.00%, 0 min | pass ✅ at 62% CPU |
+| `launch-cust175` | customers-service at 175m instead of 250m, on launch day? | **pass**: p99 9 ms, errors 0.00%, 0 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0.3 min | p99 11 ms, errors 0.00%, 0 min | pass ✅ at 89% CPU |
+| `launch-cust-hpa` | An HPA (1–3 customers-service pods at 60% CPU) instead of 1 fixed, on launch day? | **pass**: p99 9 ms, errors 0.00%, 0 min out of SLO | pass ✅ (medium confidence), 0 min | p99 9 ms, errors 0.00%, 0 min | pass ✅ at 41% CPU |
+
+Backtest verdicts: **1 right**, 2 inconclusive (it said to load-test; 2 of them leaned the right way), 0 wrong, of 3. Naive CPU ratio: 3 right.
+
+*Retrodiction, not a prediction* — what today's code says from the same ordinary day, after the model learned JIT warm-up. The warm-up's defaults (×5 CPU per request while cold, 30 core-seconds of compilation, 6% of the limit for the compiler under load) were fitted on `launch-cust125` and `normal-cust125` after they were recorded, so this is the model explaining runs it was shaped on, in sample:
+
+| run | measured | committed before the run (scored above) | today’s code on the ordinary day (retrodiction) |
+|---|---|---|---|
+| `launch-visits125` | **pass**, 0 min out of SLO | inconclusive ⚠️ leans pass (medium confidence), 0 min | inconclusive ⚠️ leans pass (medium confidence), 0 min |
+| `launch-cust175` | **pass**, 0 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0.3 min | inconclusive ⚠️ leans pass (low confidence), 0.3 min |
+| `launch-cust-hpa` | **pass**, 0 min out of SLO | pass ✅ (medium confidence), 0 min | pass ✅ (medium confidence), 0 min |
+
+Retrodiction: 1 right, 2 inconclusive, 0 wrong, of 3 — in sample, not a score. (The out-of-sample table's “model on the day’s real traffic” column is always today’s code, so it carries the same caveat.)
+
+**Every out-of-sample round together** (9 runs): Backtest verdicts: **5 right**, 3 inconclusive (it said to load-test; 2 of them leaned the right way), 1 wrong, of 9. Naive CPU ratio: 8 right, 1 wrong (a rule like that never abstains).
+
+p99 of the model on each day's real traffic, against the measured p99: within 20% in **5 of 9** runs; the others off by 22–100%.
 
 
 
@@ -143,6 +165,40 @@ customers-service, and at that load the pod warms. The run failed because its ro
 model can't know when a team will deploy. What it can do is say how much load a cold pod takes and
 leave the verdict open. The next out-of-sample round should test the warm-up on runs it was not
 fitted on.
+
+## Round 2: testing the warm-up on runs it was not fitted on
+
+After round 1 the model learned JIT warm-up from its miss. Three new questions were then chosen,
+and their verdicts committed in [validation/predictions-oos-2.json](validation/predictions-oos-2.json)
+before any of the runs was recorded: a different JVM at the same cut, an in-between limit, and pods
+an autoscaler adds. All three changes passed in reality.
+
+**1 right, 2 inconclusive (both leaned the right way), 0 wrong. The plain CPU rule got 3 right.**
+On this round the model was never wrong, but it hedged twice where the rule just answered.
+
+- **visits-service at 125m: inconclusive, leans pass.** The replay warmed the pod 7.9 minutes after
+  the rollout. The recording shows it cold for about the first 5 minutes (2.2 ms of CPU per request,
+  throttled in 69% of periods), then warm. What made the verdict inconclusive was a second check:
+  the model works out how much traffic the system can carry while the new pods are cold. Here that
+  was 123 req/s, below the day's peak of 238. A rollout at a busy moment would not warm up, so the
+  verdict says to roll out when traffic is low. This rollout happened at the day's quiet start, and
+  it warmed up. The check answers a question about rollout timing that the replayed day doesn't ask.
+  It is right as a warning, too strict as a reason to withhold the verdict.
+- **customers-service at 175m: inconclusive, leans pass, low confidence.** The replay had the pod
+  cold for 10.2 minutes. The recording shows no cold stretch at all: 1.19 ms of CPU per request in
+  the first five minutes, the same as as built. The recorder's 5-minute warm-up traffic before the run
+  (10 → 100 req/s) compiled the hot paths even at 175m, and the replay doesn't include that traffic.
+  The warm-up's assumed cost, fitted at 125m, was too pessimistic here. Low confidence also came from
+  the capacity: the change runs customers-service at 96% of a capacity the history never tested.
+- **customers-service on an HPA of 1–3: pass**, right. The pod started cold (5.4 ms of CPU per
+  request in the first five minutes), the autoscaler added a second, and the day stayed in SLO.
+
+Across both rounds (9 runs) the model got 5 right, 1 wrong and 3 inconclusive, and the CPU rule got
+8 right and 1 wrong. The model's one wrong answer came before it knew warm-up. On these runs its
+inconclusives cost more right answers than they saved wrong ones. Two changes follow from this
+round. They are made after seeing it, so a later round has to test them:
+the cold-capacity check becomes a warning instead of a reason to withhold the verdict, and the
+warm-up's compile work is set from a pod start in the history where there is one.
 
 ## What the repository keeps
 

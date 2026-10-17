@@ -505,7 +505,7 @@ same days, as a check on a system the model was not shaped on. Its six verdicts 
 before any of its runs was recorded. The model got 4 right, 1 wrong and 1 inconclusive, and the
 plain CPU rule got 5 right. The miss was a JVM whose CPU limit was halved. It never finished
 warming up under load: about four times the CPU per request for half an hour, a cold start the
-model did not know about. It has since learned JIT warm-up; replayed on these runs afterwards, in sample, it gets 5 right and 1 inconclusive.
+model did not know about. It has since learned JIT warm-up; replayed on these runs afterwards, in sample, it gets 5 right and 1 inconclusive. A second round, with its verdicts committed before it ran, tested the warm-up on three new changes. All three passed. The model got 1 right and 2 inconclusive (both leaning pass), and the rule got 3 right.
 
 ## Running it
 
