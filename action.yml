@@ -38,6 +38,18 @@ inputs:
     description: Use these files as the manifests before the change, instead of reading base-ref from git.
     required: false
     default: ''
+  baseline-ref:
+    description: 'A stacked pull request: the commit whose manifests are an approved change not yet deployed (the pull request this one is stacked on, e.g. github.event.pull_request.base.sha), applied to both sides. Then base-ref is what runs (e.g. origin/main) and the change is judged on top of the baseline.'
+    required: false
+    default: ''
+  baseline-manifests:
+    description: Use these files as the baseline's manifests, instead of reading baseline-ref from git.
+    required: false
+    default: ''
+  baseline-strategy:
+    description: A strategy file to apply to both sides as the baseline, instead of baseline manifests.
+    required: false
+    default: ''
   last:
     description: Replay only the most recent part of the history, e.g. 14d. Empty replays all of it.
     required: false
@@ -164,6 +176,9 @@ runs:
         INPUT_BASE_REF: ${{ inputs.base-ref }}
         INPUT_HEAD_REF: ${{ inputs.head-ref }}
         INPUT_BASE_MANIFESTS: ${{ inputs.base-manifests }}
+        INPUT_BASELINE_REF: ${{ inputs.baseline-ref }}
+        INPUT_BASELINE_MANIFESTS: ${{ inputs.baseline-manifests }}
+        INPUT_BASELINE_STRATEGY: ${{ inputs.baseline-strategy }}
         INPUT_LAST: ${{ inputs.last }}
         INPUT_DRAWS: ${{ inputs.draws }}
         INPUT_GATE_MINUTES: ${{ inputs.gate-minutes }}

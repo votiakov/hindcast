@@ -503,6 +503,49 @@ from CPU and memory limits, used when there is no bill) or `unpriced`.
 the history never tested. The MCP instructions tell agents to say so and recommend a load test, and
 the reason that says "load-test before trusting it" names `plan_load_test`, which designs it.
 
+#### Stacked changes: `baseline`
+
+"Assuming PR #1 (approved, not deployed yet) goes in, is PR #2 safe?" Give PR #1 as `baseline`, in
+any shape a change takes, and PR #2 in `changes`:
+
+```json
+{ "baseline": { "kubernetes": { "base": "deploy/", "head": "pr-1/deploy/" } },
+  "changes": [{ "kubernetes": { "base": "pr-1/deploy/", "head": "pr-2/deploy/" } }] }
+```
+
+The baseline is applied to both sides: the as-built replay becomes the system with PR #1, and each
+change is replayed on top of it. Every verdict, delta (minutes out of SLO, failed requests, $/month),
+the gate and the headroom are then about what the change adds to the baseline. The answer says so
+in `comparedWith` ("as built with \"customer 1 → 2 replicas\" applied: …"), lists the baseline in
+`baseline` (its name, changes and what applying it did), and `asBuilt` holds that side's numbers.
+"As built" in the reasons and reports reads "as built with … applied" the same way.
+
+- **Stacking.** A strategy states the state it leaves (`replicas: 2`, `cpu: 0.25`), read against the
+  model as built, so the two become one strategy: the change's settings written over the baseline's,
+  service by service and field by field (a fixed replica count and an autoscaler replace each
+  other). Applying one after the other would scale a capacity the baseline already scaled.
+- **Kubernetes.** The change's `base` can be the baseline's head (a PR branched from PR #1: its own
+  edits alone), or what runs, like the baseline's. Settings the change makes the same as the
+  baseline are left to the baseline either way: a branch from PR #1 diffed from what runs repeats
+  PR #1's edits, and they are not counted as PR #2's (`notes` says which; a diff's name loses
+  them too). A change that sets nothing beyond the baseline is replayed as no change: zero deltas.
+  On the CLI, `--baseline-head <dir>` does this: the baseline is `--base` → `--baseline-head`, the
+  change `--baseline-head` → `--head`.
+- **Rollout.** The baseline ships before the window, so its pods are running and warm on both
+  sides: its own restart (a JIT runtime starting cold) is never counted as the change's. The
+  change's side restarts only the pods the change itself replaces.
+- **Confidence.** A service the baseline changes counts as touched on both sides (`touched: true,
+  byBaseline: true` in `confidence.services`): the comparison rests on the model's reading of it
+  as the baseline leaves it, which the history never showed. A poorly fitted service the baseline
+  changes leaves confidence low, as it would if the change touched it. The cost basis, the warm-up
+  reasons and "would run on one node" stay the change's own.
+- **Node loss, OOM kills, requests on the nodes** are all read on the stacked system: losing the
+  busiest node is compared between as built with the baseline and with the change on top, and an
+  OOM kill the baseline fixes is gone from both sides.
+
+The reports' `.strategies.yaml` and `.hindcast.json` hold the baseline and each change stacked on
+it, as strategies against the system as built: opened in the app, they show all three.
+
 ### `plan_load_test`: the load test a verdict asks for
 
 The most common reason a verdict is inconclusive is a service the change would run at a share of
@@ -774,7 +817,7 @@ or dropped on the app's Backtest screen.
 | `collect_telemetry` | `last` \| `start`/`end` \| `windows[]`, `stepS?`, `maxTraces?` | window, coverage per service, endpoints, warnings |
 | `calibrate_model` | `holdout?` (0.3), `slo?`, `timeoutMs?`, `listPrices?` | services with capacity, band, limit, basis, cost; accuracy; trust lists |
 | `model_status` | — | what the workspace holds, warnings, next step |
-| `verify_change` | `changes[]`, `last?`, `traffic?{scale \| peakRps}`, `gateMinutes?`, `draws?` (30, fewer on long histories to fit ~40 s) | per change: verdict, confidence, cost, reliability, headroom, reasons; reports and `app.open` |
+| `verify_change` | `changes[]`, `baseline?` (one change, applied to both sides), `last?`, `traffic?{scale \| peakRps}`, `gateMinutes?`, `draws?` (30, fewer on long histories to fit ~40 s) | per change: verdict, confidence, cost, reliability, headroom, reasons; `comparedWith` with a baseline; reports and `app.open` |
 | `suggest_changes` | `goal?` (reliability \| cost \| both), `traffic?` ({scale} \| {peakRps}), `last?`, `draws?`, `gateMinutes?`, `idleBelow?` | saturated services; fixes and savings that pass, each judged; the savings combined; rejected candidates |
 | `find_headroom` | `strategy?` | req/s within SLO, what binds, history peak |
 | `review_capacity` | `draws?` | headroom, 1.5× and 2× load, node loss and its fix, throttled and memory-bound services, node pool fill, fixes and savings; a Markdown report |

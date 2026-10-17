@@ -91,6 +91,24 @@ if [ -n "${INPUT_MANIFESTS:-}" ]; then
     say "before: $manifests at ${base_commit:0:12} ($ref)"
   fi
   args+=(--base "$base" --head "$head")
+  # a stacked pull request: the baseline's manifests, applied to both sides; the change is head over them
+  if [ -n "${INPUT_BASELINE_MANIFESTS:-}" ]; then
+    [ -e "$INPUT_BASELINE_MANIFESTS" ] || fail "baseline-manifests: no file or directory $INPUT_BASELINE_MANIFESTS (in $(pwd))"
+    args+=(--baseline-head "$INPUT_BASELINE_MANIFESTS")
+    say "baseline: $INPUT_BASELINE_MANIFESTS"
+  elif [ -n "${INPUT_BASELINE_REF:-}" ]; then
+    baseline_commit="$(commit_of "$INPUT_BASELINE_REF")"
+    extract "$baseline_commit" "$manifests" "$out/baseline"
+    args+=(--baseline-head "$out/baseline")
+    say "baseline: $manifests at ${baseline_commit:0:12} ($INPUT_BASELINE_REF)"
+  fi
+elif [ -n "${INPUT_BASELINE_REF:-}${INPUT_BASELINE_MANIFESTS:-}" ]; then
+  fail "baseline-ref and baseline-manifests are manifests: set manifests too (or give the baseline as baseline-strategy)"
+fi
+if [ -n "${INPUT_BASELINE_STRATEGY:-}" ]; then
+  [ -z "${INPUT_BASELINE_REF:-}${INPUT_BASELINE_MANIFESTS:-}" ] || fail "one baseline: baseline-ref, baseline-manifests or baseline-strategy"
+  [ -f "$INPUT_BASELINE_STRATEGY" ] || fail "baseline-strategy: no file $INPUT_BASELINE_STRATEGY (in $(pwd))"
+  args+=(--baseline "$INPUT_BASELINE_STRATEGY")
 fi
 if [ -n "${INPUT_TERRAFORM_PLAN:-}" ]; then
   [ -f "$INPUT_TERRAFORM_PLAN" ] || fail "terraform-plan: no file $INPUT_TERRAFORM_PLAN (in $(pwd)); write it with terraform show -json plan.out > plan.json"

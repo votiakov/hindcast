@@ -92,6 +92,9 @@ your own; each is judged on its own and the step's verdict is the worst of them.
 | `base-ref` | the pull request's base commit; elsewhere `HEAD^` | the commit to compare the manifests with |
 | `head-ref` | the working tree | read the head manifests from this commit instead |
 | `base-manifests` | | files to use as the manifests before the change, instead of reading `base-ref` |
+| `baseline-ref` | | a stacked pull request: the commit whose manifests are an approved change not yet deployed, applied to both sides ([below](#stacked-pull-requests)) |
+| `baseline-manifests` | | files to use as the baseline's manifests, instead of reading `baseline-ref` |
+| `baseline-strategy` | | a strategy file to apply to both sides as the baseline |
 | `last` | `14d` | replay only the most recent part of the history; empty replays all of it |
 | `draws` | `30` | capacity draws behind the 10–90% bands |
 | `gate-minutes` | `0.5` | minutes out of SLO a change may add over the window before it fails (it also fails on more failed requests than the SLO's error budget over the window, whatever this is) |
@@ -245,6 +248,53 @@ SLO. Confidence is low because the frontend would run past anything the 41-minut
 and the comment says so. A change the model cannot backtest (an image tag, a label) posts "nothing
 to verify" and passes.
 
+### Stacked pull requests
+
+PR #1 is approved but not deployed yet; PR #2 is branched from it. Compared with what runs, PR #2's
+verdict would mix in PR #1's effect. With a baseline, both sides of the comparison have PR #1
+applied, and the verdict, the deltas and the gate are about PR #2 alone:
+
+```yaml
+on:
+  pull_request:
+    paths: ['deploy/**']
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: votiakov/hindcast@v1
+        with:
+          model: .hindcast/model.json
+          dataset: .hindcast/dataset.json
+          manifests: deploy/
+          base-ref: origin/main                                       # what runs
+          # the pull request this one targets: PR #1's head, applied to both sides
+          baseline-ref: ${{ github.event.pull_request.base.ref != 'main' && github.event.pull_request.base.sha || '' }}
+```
+
+A pull request into `main` has no baseline (`baseline-ref` empty) and is compared with what runs, as
+before. One stacked on another's branch gets PR #1's manifests (at `baseline-ref`) as the baseline,
+and its change is read from them to its head. The comment opens with what it was compared with:
+
+```
+**Compared with** as built with "customer 1 → 2 replicas" applied: the baseline is in place on
+both sides, its pods running before the window, and each change is judged on what it adds on top of it.
+```
+
+and "as built" in its lines reads the same ("13.5 min as built with "customer 1 → 2 replicas"
+applied"). The baseline's pods are taken as running before the window on both sides, so its own
+rollout is never PR #2's cold start; a service PR #1 changes counts as touched for confidence,
+since both sides now rest on the model's reading of it. `baseline-strategy` takes a strategy file
+instead, for a baseline that isn't in manifests. How the two are stacked is in
+[agents.md](agents.md#stacked-changes-baseline).
+
 ### Testing the action without a pull request
 
 `base-ref`, `head-ref` and `base-manifests` make it run anywhere. This repository's CI runs the
@@ -273,6 +323,15 @@ INPUT_DATASET=reference/hotrod/dataset.json INPUT_MANIFESTS=test/cli-fixtures/ho
 INPUT_BASE_MANIFESTS=examples/backtest-ci/deploy bash action/verify.sh
 ```
 
+and stacked, the 50m cut on top of an approved second customer replica:
+
+```sh
+HINDCAST_BIN=engine-rs/target/release/hindcast INPUT_MODEL=reference/hotrod/model.json \
+INPUT_DATASET=reference/hotrod/dataset.json INPUT_MANIFESTS=test/cli-fixtures/hotrod-customer-2-frontend-50m.yaml \
+INPUT_BASE_MANIFESTS=examples/backtest-ci/deploy INPUT_BASELINE_MANIFESTS=test/cli-fixtures/hotrod-customer-2.yaml \
+bash action/verify.sh
+```
+
 It prints the verdict, writes the comment, the JSON result and the reports to a temporary
 directory, and ends on `gate: failed` or `gate: passed`: what the action's last step would make
 of it. The script itself exits 0 on any verdict (in a workflow, that last step fails the job).
@@ -284,6 +343,7 @@ your system before adding the workflow.
 ```
 hindcast verify-change --model model.json --dataset dataset.json
     (--base <dir> --head <dir> | --terraform-plan plan.json | <strategy.yaml …>)
+    [--baseline-head <dir> | --baseline strategy.yaml | --baseline-terraform-plan plan.json]
     [--last 14d] [--draws 30] [--gate-minutes 0.5] [--p99 500] [--errors 0.01] [--scale 2 | --peak 400]
     [--comment comment.md] [--json result.json] [--md report.md] [--html report.html] [--outputs $GITHUB_OUTPUT]
     [--title "Hindcast backtest"] [--comment-key <key>] [--run-url <url>] [--fail-on fail|inconclusive|never]
@@ -295,3 +355,16 @@ confidence. `--comment` writes the pull-request comment above, `--json` the tool
 comment's `marker=…` as `key=value` lines. The exit code is 0, or 2 when the verdict is one
 `--fail-on` names (default `fail`), and 1 on an error. Without `--draws`, the number of draws is
 fitted to a time budget, so pass it in CI for repeatable bands.
+
+`--baseline-head <dir>` stacks the change on an approved one not yet deployed: the baseline is
+`--base` → `--baseline-head`, applied to both sides, and the change is `--baseline-head` → `--head`.
+`--baseline` (a strategy file) and `--baseline-terraform-plan` give the baseline in those shapes.
+
+```sh
+hindcast verify-change --model reference/hotrod/model.json --dataset reference/hotrod/dataset.json \
+  --base examples/backtest-ci/deploy --baseline-head test/cli-fixtures/hotrod-customer-2.yaml \
+  --head test/cli-fixtures/hotrod-customer-2-frontend-50m.yaml --draws 4
+# verdict fail · confidence low
+#   compared with as built with "customer 1 → 2 replicas" applied: …
+#   fail frontend CPU 1 → 0.05: saves $23/month; it would have caused 18 minutes out of SLO, …
+```
