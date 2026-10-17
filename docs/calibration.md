@@ -326,7 +326,10 @@ Targets: p99 within 20%, breaking point within 15%, cost within 10%. Current res
 
 - A limit the history never approached is an extrapolation; the band says how wide. A history with
   one overload in it is worth more than a month of quiet days.
-- Cold starts (JIT warm-up, empty caches after a deploy) are not modelled for the backtest.
+- JIT warm-up is modelled for JVM and .NET pods that start during a replay
+  ([backtest.md](backtest.md)). Its defaults come from one service, and the history measures only
+  the core-seconds, and only when it shows a pod starting. A rollout that keeps the replica count
+  is invisible in the collected series. Empty caches after a deploy are not modelled.
 - Errors that are not load-related (bad deploys, bugs) are a baseline rate, not predicted.
 - CPU per request is linear in load. On 4 cores PetClinic's CPU per request rose from 4.1 to 5.9 ms
   as load grew; the model doesn't see that from a 2-core history, and leaves it to the band.

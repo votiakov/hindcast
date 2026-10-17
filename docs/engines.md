@@ -17,8 +17,8 @@ Both are written in Rust; the app runs them as WebAssembly (`src/sim/engine.ts` 
 
 Both model routing (split / fan-out / failover), retries (immediate / backoff / budget), deadlines,
 circuit breakers with fallback, bounded queues, DB failover to replicas, zones, language runtimes,
-serverless cold starts, GPU inference and hosted LLM APIs, target-tracking autoscaling with warm-up,
-cache warmth, injected errors and latency, and network latency per link. The test suite checks that
+serverless cold starts, a JVM's JIT warm-up on new instances, GPU inference and hosted LLM APIs,
+target-tracking autoscaling with warm-up, cache warmth, injected errors and latency, and network latency per link. The test suite checks that
 the two engines agree where they should.
 
 Both are directional models — excellent for comparing designs, finding bottlenecks and teaching;
@@ -230,6 +230,21 @@ Shared code keeps the engines consistent (`src/sim/autoscale.ts`, `cacheWarmth` 
   instances within `[min, max]`. Launched instances are billed immediately and serve after `warmupS`.
   Scale-in removes at most half the surplus per step, only after `cooldownS` without scaling activity.
   Instances killed by chaos are replaced (like an auto-scaling group replacing unhealthy hosts).
+- **JIT warm-up** — a server or worker with `runtime: java` gets JIT warm-up on every instance its
+  scaler boots, replacements included (`jit_warmup` in `catalog.rs`). The instance starts cold: it
+  works ×5 as long on each request until it has compiled for 15 s of its whole CPU (the JVM's 30
+  core-seconds on 2 vCPU per size step: S 15 s, M 7.5 s, L 3.75 s). It compiles with the share of
+  its CPU the requests leave idle, and 6% when they take all of it. The balancer deals cold instances
+  the same share as warm ones, so both engines scale the component's capacity by
+  `(warm + cold ÷ 5) ÷ instances` (the DES through its pool's service time, reconfigured when an
+  instance turns warm). They pay the compilation from their own utilisation: per tick in the fluid
+  engine, per 1 s window in the DES. A `warm` event says when it is done. These are the backtest's
+  JVM defaults ([backtest.md](backtest.md)), fitted on one Spring Boot service; other runtimes start
+  warm. Hand check (`jit_warmup_tests`): instances of 150 req/s, autoscaled 1–3 at 60%, booting in
+  5 s. At 120 req/s the second instance boots cold at ~6 s, and the pair serves 150 + 30 = 180
+  req/s at 67%, so it compiles in 15 ÷ 0.33 = 45 s and is warm at ~51 s (fluid 51.3 s, DES 54 s). At
+  260 req/s the three serve 210 cold, the new ones never get idle CPU, and 19% of requests fail for
+  the whole run (fluid 19.6%, DES 19.2%), where Go's instances at the same capacity fail none.
 - **Cache warmth** — a cache that dies, restarts or is flushed comes back empty: effective hit rate =
   `hitRate × (1 − e^(−t / warmupS))`. The origin briefly sees nearly all traffic: the thundering herd.
   Fluid and DES agree on the resulting error spike within about one percentage point.

@@ -798,8 +798,9 @@ so in `notes`) rather than running 30 draws for 4 minutes.
 
 - The model is as good as the history: limits the history never approached are extrapolations,
   and the verdicts say so.
-- Cold starts after a deploy, garbage-collection pauses and errors unrelated to load are not
-  predicted ([calibration.md](calibration.md)).
+- A JIT runtime's warm-up after a deploy is modelled, with assumed parameters unless the history
+  shows a pod starting. Empty caches after a deploy, garbage-collection pauses and errors unrelated
+  to load are not predicted ([calibration.md](calibration.md)).
 - List prices are on-demand: no Savings Plans, Reserved Instances or committed-use discounts. Give
   the bill for real numbers.
 - Supported trace backends: Jaeger and Tempo APIs, and OTLP/Jaeger files. Datadog's traces,

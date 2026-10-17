@@ -132,6 +132,23 @@ A summary; every rule, and the recording that taught it, is in [calibration.md](
   after how many requests it reaches its limit, and the replay counts each container's requests
   and OOM-kills it there. A busier day reaches the limit sooner: the reference shop's `email` leaks
   ~10 KB a request and is killed at minute ~22 of every launch day, never on an ordinary one.
+- **JIT warm-up** (a JVM or .NET, named by the traces' `telemetry.sdk.language` /
+  `process.runtime.name` or by a Kubernetes diff's pod template: an image named for the runtime,
+  `JAVA_TOOL_OPTIONS`, `DOTNET_*`). A pod that starts during the replay starts cold. That covers the
+  change's own rollout (a new CPU or memory limit, requests, arch or spread replaces the pods at the
+  replay's first moment), an autoscaler's scale-out, a node loss's replacements and a restart after an
+  OOM kill. While cold, a request costs ×5 the CPU it costs warm (the balancer gives a cold pod the
+  same share as a warm one, so the deployment's capacity drops by that much). The pod warms up after
+  30 core-seconds of compilation. The compiler gets the CPU the requests leave idle under the limit,
+  and 6% of the limit when they take all of it. A saturated pod therefore barely compiles and stays
+  slow, while an idle one is warm in minutes. These are the JVM's defaults, fitted on one Spring Boot
+  service ([reference/k8s/petclinic](../reference/k8s/petclinic/README.md#what-the-model-learned-from-the-miss-in-sample)),
+  and the verdict calls them *assumed*. Where the history shows a pod starting (the replica count
+  rising), calibration measures the core-seconds instead, as the CPU above the fitted line afterwards
+  (an upper bound). .NET gets ×2 and 10 core-seconds, a guess. Node's V8 warms its hot paths within
+  seconds and is not modelled cold, and neither are Go, Rust or C++. The verdict reports headroom
+  once warm, and what the system sustains while the restarted pods are cold. When that is below the
+  peak, a rollout at a busy moment would not warm up, and the verdict is at best inconclusive.
 - **Nodes** (Kubernetes, from kube-state-metrics): node size, node count, every pod's requests. On a
   cluster compute is what the nodes cost, priced from their allocatable size at EC2 m6i on-demand
   rates unless `hints.cluster.nodePriceHour` says otherwise. The services pay that less the share

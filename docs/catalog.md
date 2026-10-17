@@ -55,6 +55,10 @@ code far less):
 With a runtime set, serverless price = $0.20 / 1M requests + $0.0000166667 per GB-second
 (memory × duration), i.e. Lambda-like.
 
+A Java server or worker that autoscales starts each new instance cold (JIT warm-up). It works ×5
+as long per request until it has compiled for 15 s of an S instance's CPU, using what its requests
+leave idle ([engines.md](engines.md#dynamics-both-engines)).
+
 ## Pricing profiles
 
 Costs follow the active **pricing profile** (Settings → Pricing in the app, `pricing:` at the root of

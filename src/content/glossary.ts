@@ -42,6 +42,7 @@ export const GLOSSARY: Record<string, string> = {
   CDN: 'Content delivery network: caches near the users answer what they can; the rest goes to the origin.',
   origin: 'The system behind a cache or CDN that answers its misses.',
   'cold start': 'The time a new serverless instance (or container) takes before its first request: loading the runtime and code.',
+  'JIT warm-up': 'A new JVM or .NET instance runs slow, interpreted code until its compiler has compiled the hot paths. The compiler needs CPU the requests leave free, so an instance that is busy from its first second can stay slow.',
   'provisioned concurrency': 'Serverless instances kept warm ahead of demand, so they start no cold; billed by the hour, used or not.',
   autoscaling: 'Adding instances when load rises and removing them when it falls. New ones serve only after their warm-up.',
   'warm-up': 'How long a new instance takes before it serves: booting, starting the runtime, filling caches.',
