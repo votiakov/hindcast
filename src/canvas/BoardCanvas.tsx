@@ -12,6 +12,7 @@ import { NoteNode } from './NoteNode';
 import { SectionNode } from './SectionNode';
 import { fitSections, membersOf } from '../sim/sections';
 import { TraceStrip } from '../ui/TraceStrip';
+import { narrowScreen, phoneLayout, turnFor, unturned } from './phoneLayout';
 
 export const DND_TYPE = 'application/x-bottleneck-kind';
 export const ZONE_KIND = 'zone';
@@ -43,8 +44,11 @@ const LEGIBLE_ZOOM = 0.85;
 
 export function BoardCanvas({ id, padding, minimap = true, interactive = true, fitDuration = 400, children, legible = false }: Props) {
   const stored = useSim((s) => s.boards[id].nodes);
+  // a phone turns a Sandbox or lesson board to read downwards, as Live does; only as drawn, the saved layout stays
+  const phone = useSim((s) => (s.mode === 'sandbox' || s.mode === 'lesson') && id === 'main') && narrowScreen();
+  const turn = useMemo(() => (phone ? turnFor(stored) : null), [phone, stored]);
   // sections are drawn around their members as they are now
-  const nodes = useMemo(() => fitSections(stored), [stored]);
+  const nodes = useMemo(() => fitSections(turn ? phoneLayout(stored, turn) : stored), [stored, turn]);
   const edges = useSim((s) => s.boards[id].edges);
   const version = useSim((s) => s.boards[id].version);
   const { onNodesChange, onEdgesChange, onConnect, addNode, addZone, moveNodes, setFocus } = useSim.getState();
@@ -90,7 +94,8 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
       // a cache, CDN or load balancer goes between the selected component and what it calls: below the link it cuts in on
       const via = sel && kind !== ZONE_KIND ? insertTarget(useSim.getState().boards[id].nodes, useSim.getState().boards[id].edges, sel.id, kind) : null;
       const callee = via && nodes.find((n) => n.id === via.target);
-      const start = sel && callee ? { x: (sel.position.x + callee.position.x) / 2 + 115, y: Math.max(sel.position.y, callee.position.y) + 240 + 60 } : sel ? { x: sel.position.x + 330 + 115, y: sel.position.y + 60 } : screenToFlowPosition({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+      const mid = screenToFlowPosition({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+      const start = sel && callee ? { x: (sel.position.x + callee.position.x) / 2 + 115, y: Math.max(sel.position.y, callee.position.y) + 240 + 60 } : sel ? { x: sel.position.x + 330 + 115, y: sel.position.y + 60 } : turn ? unturned(mid, turn) : mid;
       const taken = (q: XYPosition) => nodes.some((n) => Math.abs(n.position.x - (q.x - 115)) < 260 && Math.abs(n.position.y - (q.y - 60)) < 200);
       let p = start;
       for (let k = 0; k < 40 && taken(p); k++) {
@@ -109,7 +114,7 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
       delete adders[id];
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, add, screenToFlowPosition, flowToScreenPosition, fitView]);
+  }, [id, add, screenToFlowPosition, flowToScreenPosition, fitView, turn]);
 
   const onDrop = useCallback(
     (e: React.DragEvent) => {
@@ -117,9 +122,10 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
       const kind = e.dataTransfer.getData(DND_TYPE) as Kind | typeof ZONE_KIND;
       if (!kind || (kind !== ZONE_KIND && !KINDS[kind])) return;
       setFocus(id);
-      add(kind, screenToFlowPosition({ x: e.clientX, y: e.clientY }));
+      const at = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      add(kind, turn ? unturned(at, turn) : at);
     },
-    [id, add, screenToFlowPosition, setFocus],
+    [id, add, screenToFlowPosition, setFocus, turn],
   );
 
   // dragging a zone carries the nodes inside it; a section, its members (those not already dragged along)
@@ -169,7 +175,8 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
           edges={edges}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
-          onNodesChange={(c) => onNodesChange(id, c)}
+          // turned for a phone, a card stays where the turn puts it: no drag or resize reaches the saved layout
+          onNodesChange={(c) => onNodesChange(id, turn ? c.filter((x) => x.type !== 'position' && !(x.type === 'dimensions' && x.setAttributes)) : c)}
           onEdgesChange={(c) => onEdgesChange(id, c)}
           onConnect={(c) => onConnect(id, c)}
           onNodeDragStart={onNodeDragStart}
@@ -182,7 +189,7 @@ export function BoardCanvas({ id, padding, minimap = true, interactive = true, f
           maxZoom={2}
           proOptions={{ hideAttribution: true }}
           deleteKeyCode={interactive ? ['Backspace', 'Delete'] : null}
-          nodesDraggable={interactive}
+          nodesDraggable={interactive && !turn}
           nodesConnectable={interactive}
           elementsSelectable={interactive}
           panOnDrag={interactive}

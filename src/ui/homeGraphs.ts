@@ -1,4 +1,5 @@
 import { graph } from '../scenarios/build';
+import { narrowScreen, turned } from '../canvas/phoneLayout';
 type Graph = ReturnType<typeof graph>;
 
 /**
@@ -40,11 +41,11 @@ export const HOME_GRAPHS = [
   ),
 ];
 
-/** phones: the chain reads top to bottom instead of left to right */
-export const narrowScreen = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 700px)').matches;
+export { narrowScreen };
 
+/** phones: the chain reads top to bottom instead of left to right (a chain: no fan-out to spread) */
 function vertical(g: Graph): Graph {
-  return { ...g, nodes: g.nodes.map((n) => ({ ...n, position: { x: (n.position.y - 200) * 0.5, y: n.position.x * 0.65 } })) };
+  return { ...g, nodes: g.nodes.map((n) => ({ ...n, position: turned(n.position, { across: 0.5, down: 0.65 }) })) };
 }
 
 /** the i-th home graph, laid out for this screen */

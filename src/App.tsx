@@ -39,8 +39,9 @@ import './ui/phone.css';
 import { manualClock } from './sim/clock';
 import { narrowScreen } from './ui/homeGraphs';
 
-/** phones: no palette on the left, and the lesson is a sheet over the bottom half — fit the board above it */
-const PHONE_PADDING = (mode: Mode) => ({ top: '20px', left: '16px', right: '16px', bottom: `${mode === 'lesson' ? Math.round(window.innerHeight * 0.5) : 96}px` }) as const;
+/** phones: no palette on the left, and the lesson is a sheet over the bottom half — fit the board above it
+ *  (elsewhere, above the run's timeline and controls) */
+const PHONE_PADDING = (mode: Mode) => ({ top: '20px', left: '16px', right: '16px', bottom: `${mode === 'lesson' ? Math.round(window.innerHeight * 0.5) : 136}px` }) as const;
 
 
 /** what ⌘C / ⌘X copied, and how many times it was pasted (each paste lands a step further) */
