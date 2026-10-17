@@ -152,11 +152,11 @@ pub fn command(cmd: &str, f: &Flags, out: &mut Out) -> Result<Option<i32>, Strin
     }
     if !rv.is_null() {
         if let Some(p) = value(f, "md") {
-            write(&p, &reports::backtest_markdown(&rv, &mv))?;
+            write(&p, &reports::verify_markdown(&res, &rv, &mv, title.as_deref()))?;
             written.push(p);
         }
         if let Some(p) = value(f, "html") {
-            write(&p, &reports::backtest_html(&rv, &mv))?;
+            write(&p, &reports::verify_html(&res, &rv, &mv))?;
             written.push(p);
         }
     }

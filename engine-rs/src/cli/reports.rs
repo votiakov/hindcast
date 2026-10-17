@@ -87,7 +87,7 @@ pub fn backtest_markdown(r: &Value, model: &Value) -> String {
     l.push(format!("# Backtest — {}", s(r, &["model"])));
     l.push(String::new());
     l.push(format!(
-        "Replayed **{}** of real traffic ({} → {} UTC, {}s buckets) through the calibrated model, {} draws per strategy. Ranges are 10th–90th percentiles.",
+        "Replayed **{}** of real traffic ({} → {} UTC, {}s buckets) through the calibrated model, {} draws per strategy (replays with each service's capacity drawn from its fitted range). Ranges are 10th–90th percentiles: 8 in 10 draws fall inside.",
         if hours >= 48.0 { format!("{} days", js_to_fixed(hours / 24.0, 1)) } else { format!("{} hours", js_to_fixed(hours, 1)) },
         &iso(n(r, &["window", "start"]))[..16],
         &iso(n(r, &["window", "end"]))[..16],
@@ -231,7 +231,7 @@ fn replayed_span(r: &Value) -> String {
 /// the line under a comment's verdicts: what was replayed, how many draws
 fn replayed_line(r: &Value) -> String {
     let load = if g(r, &["load"]).is_null() { String::new() } else { format!(" at ×{} its load (busiest moment {} req/s)", js_to_fixed(n(r, &["load", "factor"]), 2), js_num(js_round(n(r, &["load", "peakRps"])))) };
-    format!("<sub>Replayed {} of production traffic{} through the calibrated model · {} draws · ranges are 10th–90th percentiles</sub>", replayed_span(r), load, js_num(n(r, &["draws"])))
+    format!("<sub>Replayed {} of production traffic{} through the calibrated model · {} draws (capacities varied within their fitted ranges) · ranges are 10th–90th percentiles: 8 in 10 draws fall inside</sub>", replayed_span(r), load, js_num(n(r, &["draws"])))
 }
 
 /// as built and each strategy: $/month, minutes out of SLO, failed requests, worst moment
@@ -308,14 +308,122 @@ fn verdict_mark(v: &str) -> &'static str {
     }
 }
 
+/// a verdict as whoever signs it off reads it
+fn verdict_words(v: &str) -> &'static str {
+    match v {
+        "pass" => "safe on this history",
+        "fail" => "would have broken the SLO",
+        "inconclusive" => "not proven either way",
+        _ => "nothing to judge",
+    }
+}
+
+/// "the target: 99% of requests within 1,000 ms and under 1% failing", the SLO said once in words
+fn slo_words(slo: &Value) -> String {
+    format!("the target of 99% of requests answered within {} ms and under {}% failing", loc(n(slo, &["p99Ms"])), js_num(r1(n(slo, &["errorRate"]) * 100.0)))
+}
+
+/// what an accuracy check measures, in words
+fn metric_words(metric: &str) -> &str {
+    match metric {
+        "p99" => "latency (p99)",
+        "breaking-point" => "the load it breaks at",
+        "cost" => "cost",
+        m => m,
+    }
+}
+
+/// The decision a change asks for, five lines per change: what is asked, what it saves or costs a month
+/// and a year, the risk to users, how sure the backtest is and why, and what to do next. Every number is
+/// one from the verdict below it; the engineer's detail follows it in each report.
+pub fn decision(out: &Value, r: &Value) -> Vec<(String, Vec<(&'static str, String)>)> {
+    let span = replayed_span(r);
+    arr(out, &["results"])
+        .iter()
+        .map(|x| {
+            let v = s(x, &["verdict"]);
+            let mut rows: Vec<(&'static str, String)> = vec![];
+            rows.push(("Ask", format!("approve {}", s(x, &["name"]))));
+            // money: a month and a year, on the basis it was priced on
+            let md = n(x, &["cost", "monthlyDelta", "p50"]);
+            let per_year = |m: f64| format!("${}/month, about ${} a year", loc(js_round(m.abs())), loc(js_round(m.abs() * 12.0)));
+            let mut money = if md.abs() < 1.0 { "no change in cost".to_string() } else if md < 0.0 { format!("saves {}", per_year(md)) } else { format!("costs {} more", per_year(md)) };
+            money.push_str(match s(x, &["cost", "basis"]).as_str() {
+                "your bill" => ", priced from your bill",
+                "list price" => ", at cloud list prices (not your bill: discounts are not in them)",
+                "node share at list price" => ", as its share of the nodes at list prices",
+                "unpriced" => " (the changed services have no price)",
+                _ => "",
+            });
+            if arr(x, &["reasons"]).iter().any(|r| s(r, &[]).contains("node spend doesn't change")) {
+                money.push_str(". On a fixed node pool the bill only drops once the pool shrinks");
+            }
+            rows.push(("Money", money));
+            // the risk: what users would have seen beyond the system as built, over the history replayed
+            let (dm, dm_hi) = (n(x, &["reliability", "minutesOutOfSloDelta", "p50"]), n(x, &["reliability", "minutesOutOfSloDelta", "hi"]));
+            let fd = js_round(n(x, &["reliability", "failedRequestsDelta", "p50"]));
+            let mut risk = if dm.abs() < 0.05 && fd == 0.0 {
+                format!("none seen: no added time out of SLO and no added failed requests, replaying {} of production traffic", span)
+            } else {
+                let minutes = if dm.abs() < 0.05 { "no added time out of SLO".to_string() } else { format!("{} min {} out of SLO", js_num(r1(dm.abs())), if dm > 0.0 { "more" } else { "less" }) };
+                let failed = if fd == 0.0 { String::new() } else { format!(" and {} {} failed requests", loc(fd.abs()), if fd > 0.0 { "more" } else { "fewer" }) };
+                format!("{}{}, replaying {} of production traffic", minutes, failed, span)
+            };
+            if dm < 0.05 && dm_hi > 0.5 {
+                risk.push_str(&format!("; in the worst 1 in 10 replays it adds {} min", js_num(r1(dm_hi))));
+            }
+            let single: Vec<String> = arr(x, &["nodeLoss", "newSinglePoints"]).iter().map(|s| s.as_str().unwrap_or("").to_string()).collect();
+            if !single.is_empty() {
+                risk.push_str(&format!("; it leaves {} on one node", single.join(", ")));
+            }
+            rows.push(("Risk to users", risk));
+            // how sure: the level and the one reason that set it, the model's own misses said in words
+            let level = s(x, &["confidence", "level"]);
+            let because = s(x, &["confidence", "because"]);
+            let missed: Vec<String> = arr(out, &["model", "accuracy"]).iter().flat_map(|a| arr(a, &["checks"])).filter(|c| !g(c, &["pass"]).as_bool().unwrap_or(true) && s(c, &["metric"]) != "errors").map(|c| format!("{} by {} (target: within {})", metric_words(&s(c, &["metric"])), s(c, &["error"]), s(c, &["tolerance"]))).collect();
+            let why = if because.starts_with("the model missed") && !missed.is_empty() { format!("on history it was not fitted to, the model missed {}", missed.join(", and ")) } else { because };
+            let more = arr(x, &["confidence", "warnings"]).len().saturating_sub(if why.is_empty() { 0 } else { 1 });
+            rows.push(("How sure", format!("{}{}{}", if level.is_empty() { "unknown".to_string() } else { level.clone() }, if why.is_empty() { String::new() } else { format!(": {}", why) }, if more > 0 { format!(" ({} more caveat{} below)", more, if more == 1 { "" } else { "s" }) } else { String::new() })));
+            let next = match v.as_str() {
+                "pass" if level == "high" => "ship it: it held on this history".to_string(),
+                "pass" => "ship it, reading the caveats below".to_string(),
+                "fail" => "don't ship it as it is".to_string(),
+                "inconclusive" => format!("load-test it before relying on it (`hindcast loadtest plan` writes the test): the replay {} it, but not with enough confidence to call it", if s(x, &["leans"]) == "fail" { "fails" } else { "passes" }),
+                _ => String::new(),
+            };
+            if !next.is_empty() {
+                rows.push(("Next", next));
+            }
+            (s(x, &["name"]), rows)
+        })
+        .collect()
+}
+
+/// the decision as Markdown: a table per change, then what the words stand for
+fn decision_markdown(out: &Value, r: &Value) -> Vec<String> {
+    let mut l: Vec<String> = vec![];
+    for (name, rows) in decision(out, r) {
+        l.push(format!("**{}**", name));
+        l.push(String::new());
+        l.push("| | |".into());
+        l.push("|---|---|".into());
+        for (k, v) in rows {
+            l.push(format!("| **{}** | {} |", k, v.replace('|', "\\|")));
+        }
+        l.push(String::new());
+    }
+    l.push(format!("<sub>SLO: {}. Time out of SLO: minutes that missed it. p99: the time 99% of requests finish within.</sub>", slo_words(g(out, &["slo"]))));
+    l
+}
+
 /// the pull-request comment and job summary of `hindcast verify-change`: verify_change's verdict and
 /// confidence per change, the backtest table it was judged on, why, and how far to trust it
 pub fn verify_comment(out: &Value, r: &Value, marker: &str, title: Option<&str>, run_url: Option<&str>) -> String {
     let verdict = s(out, &["verdict"]);
     let mut l: Vec<String> = vec![marker.into()];
-    l.push(format!("### {} {}: {}", verdict_mark(&verdict), title.unwrap_or("Hindcast backtest"), verdict));
-    l.push(String::new());
     let results = arr(out, &["results"]);
+    l.push(format!("### {} {}: {}{}", verdict_mark(&verdict), title.unwrap_or("Hindcast backtest"), verdict, if results.is_empty() { String::new() } else { format!(" — {}", verdict_words(&verdict)) }));
+    l.push(String::new());
     if results.is_empty() {
         l.push("No change here that the model can backtest (replicas, CPU and memory limits and requests, autoscalers, CPU architecture).".into());
         l.push(String::new());
@@ -328,9 +436,13 @@ pub fn verify_comment(out: &Value, r: &Value, marker: &str, title: Option<&str>,
         }
         return l.join("\n") + "\n";
     }
+    l.extend(decision_markdown(out, r));
+    l.push(String::new());
+    l.push("#### The evidence".into());
+    l.push(String::new());
     for x in &results {
         let v = s(x, &["verdict"]);
-        let leans = if v == "inconclusive" { format!(" (leans {})", s(x, &["leans"])) } else { String::new() };
+        let leans = if v == "inconclusive" { format!(" (leans {}: what the replay says before confidence)", s(x, &["leans"])) } else { String::new() };
         l.push(format!("**{}** — **{}**{} · confidence **{}**", s(x, &["name"]), v, leans, s(x, &["confidence", "level"])));
         l.push(String::new());
         l.push(format!("It {}.", s(x, &["summary"])));
@@ -348,26 +460,21 @@ pub fn verify_comment(out: &Value, r: &Value, marker: &str, title: Option<&str>,
         };
         let sgn = |x: f64, k: String| if x > 0.0 { format!("+{}", k) } else if x < 0.0 { format!("−{}", k) } else { k };
         l.push(format!("- **$ / month:** {}/month ({})", band(md, &signed), s(x, &["cost", "basis"])));
-        l.push(format!("- **minutes out of SLO:** {}, {} min in all with the change",band(dm, &|v| sgn(v, format!("{} min", js_num(r1(v.abs()))))), js_num(n(x, &["reliability", "minutesOutOfSlo"]))));
+        l.push(format!("- **minutes out of SLO:** {} — {} min in all with the change, {} min as built", band(dm, &|v| sgn(v, format!("{} min", js_num(r1(v.abs()))))), js_num(n(x, &["reliability", "minutesOutOfSlo"])), js_num(r1(n(out, &["asBuilt", "minutesOutOfSlo"])))));
         l.push(format!("- **failed requests:** {}", band(fr, &|v| sgn(v, loc(js_round(v.abs()))))));
         let w = g(x, &["reliability", "worst"]);
         if !s(w, &["why"]).is_empty() {
-            l.push(format!("- **worst moment:** {} — p99 {} ms, {}% errors; {}", when(crate::accuracy::parse_iso_ms(&s(w, &["at"])).map(|ms| ms as f64 / 1000.0).unwrap_or(f64::NAN)), js_num(n(w, &["p99Ms"])), js_num(js_round(n(w, &["errorRate"]) * 100.0)), s(w, &["why"])));
+            let t = crate::accuracy::parse_iso_ms(&s(w, &["at"])).map(|ms| ms as f64 / 1000.0).unwrap_or(f64::NAN);
+            let base_worst = g(r, &["baseline", "worst"]);
+            // the same moment and cause as built: the system's weak spot, not the change's doing
+            let same = n(base_worst, &["t"]) == t && s(base_worst, &["why"]) == s(w, &["why"]);
+            l.push(format!("- **worst moment:** {} — p99 {} ms, {}% errors; {}{}", when(t), js_num(n(w, &["p99Ms"])), js_num(js_round(n(w, &["errorRate"]) * 100.0)), s(w, &["why"]), if same { " (the same as built: not this change's doing)" } else { "" }));
         }
         l.push(String::new());
-        let reasons = arr(x, &["reasons"]);
-        if reasons.len() > 1 {
-            l.push("Why:".into());
-            for r in &reasons[1..] {
-                l.push(format!("- {}", s(r, &[])));
-            }
-            l.push(String::new());
-        }
-        let warns = arr(x, &["confidence", "warnings"]);
-        if !warns.is_empty() {
-            l.push(format!("Confidence {}:", s(x, &["confidence", "level"])));
-            for w in warns {
-                l.push(format!("- {}", s(w, &[])));
+        for (head, items) in why_and_caveats(x) {
+            l.push(format!("{}:", head));
+            for i in items {
+                l.push(format!("- {}", i));
             }
             l.push(String::new());
         }
@@ -400,6 +507,69 @@ pub fn verify_comment(out: &Value, r: &Value, marker: &str, title: Option<&str>,
         l.push(format!("<sub>[Workflow run]({})</sub>", u));
     }
     l.join("\n") + "\n"
+}
+
+/// a verdict's reasons beyond its headline and its confidence warnings, each under its heading: the
+/// low-confidence pass is the decision's own line and the worst moment a line of the evidence, so neither is said again
+fn why_and_caveats(x: &Value) -> Vec<(String, Vec<String>)> {
+    let reasons: Vec<String> = arr(x, &["reasons"]).iter().skip(1).map(|r| s(r, &[])).filter(|r| !r.starts_with("the backtest passes, but confidence is low") && !r.starts_with("worst at ")).collect();
+    let warns: Vec<String> = arr(x, &["confidence", "warnings"]).iter().map(|w| s(w, &[])).collect();
+    let mut out = vec![];
+    if !reasons.is_empty() {
+        out.push(("Why".to_string(), reasons));
+    }
+    if !warns.is_empty() {
+        out.push((format!("Confidence {}", s(x, &["confidence", "level"])), warns));
+    }
+    out
+}
+
+/// the Markdown report of `hindcast verify-change`: the verdict and the decision it asks for, then the backtest it was judged on
+pub fn verify_markdown(out: &Value, r: &Value, model: &Value, title: Option<&str>) -> String {
+    let verdict = s(out, &["verdict"]);
+    let mut l: Vec<String> = vec![format!("# {} {}: {} — {}", verdict_mark(&verdict), title.unwrap_or("Hindcast backtest"), verdict, verdict_words(&verdict)), String::new()];
+    l.extend(decision_markdown(out, r));
+    l.push(String::new());
+    for x in arr(out, &["results"]) {
+        for (head, items) in why_and_caveats(x) {
+            l.push(format!("{} — {}:", s(x, &["name"]), head));
+            for i in items {
+                l.push(format!("- {}", i));
+            }
+            l.push(String::new());
+        }
+    }
+    l.push(format!("<sub>{}</sub>", cap_first(&s(out, &["gate"]))));
+    l.push(String::new());
+    l.push("---".into());
+    l.push(String::new());
+    l.join("\n") + "\n" + &backtest_markdown(r, model)
+}
+
+/// the HTML report of `hindcast verify-change`: the backtest's charts under the decision the change asks for
+pub fn verify_html(out: &Value, r: &Value, model: &Value) -> String {
+    // `code` spans kept as code
+    let inline = |x: &str| esc(x).split('`').enumerate().map(|(i, p)| if i % 2 == 1 { format!("<code>{}</code>", p) } else { p.to_string() }).collect::<String>();
+    let verdict = s(out, &["verdict"]);
+    let mut h = format!("<p class=\"verdict\">{} <b>{}</b> — {}</p>", verdict_mark(&verdict), esc(&verdict), verdict_words(&verdict));
+    let results = arr(out, &["results"]);
+    for (i, (name, rows)) in decision(out, r).into_iter().enumerate() {
+        // the caveats the decision counts, folded under it
+        let more = results.get(i).map(|x| why_and_caveats(x)).unwrap_or_default().into_iter().map(|(head, items)| format!("<p class=\"sub\">{}</p><ul>{}</ul>", esc(&head), items.iter().map(|x| format!("<li>{}</li>", inline(x))).collect::<String>())).collect::<String>();
+        h += &format!(
+            "<section class=\"decision\"><h3>{}</h3><dl>{}</dl>{}</section>",
+            esc(&name),
+            rows.iter().map(|(k, v)| format!("<dt>{}</dt><dd>{}</dd>", k, inline(v))).collect::<String>(),
+            if more.is_empty() { String::new() } else { format!("<details><summary>Why, and the caveats</summary>{}</details>", more) }
+        );
+    }
+    h += &format!("<p class=\"sub\">SLO: {}. Time out of SLO: minutes that missed it. {}.</p>", esc(&slo_words(g(out, &["slo"]))), esc(&cap_first(&s(out, &["gate"]))));
+    backtest_html_led(r, model, Some(h))
+}
+
+fn cap_first(x: &str) -> String {
+    let mut c = x.chars();
+    c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
 }
 
 /// src/backtest/accuracy.ts accuracyLines, over a record's JSON
@@ -569,6 +739,11 @@ fn chart(title: &str, t: &[f64], lines: &[Line], o: &ChartOpts) -> String {
 }
 
 pub fn backtest_html(r: &Value, model: &Value) -> String {
+    backtest_html_led(r, model, None)
+}
+
+/// the HTML report under a lead of its own (the decision a change asks for) in place of the strategies' headlines
+fn backtest_html_led(r: &Value, model: &Value, lead: Option<String>) -> String {
     let ms = |v: f64| if v >= 1000.0 { format!("{}s", js_to_fixed(v / 1000.0, 1)) } else { format!("{}ms", js_num(js_round(v))) };
     let pct = |v: f64| format!("{}%", js_to_fixed(v * 100.0, if v < 0.1 { 1 } else { 0 }));
     let usd = |v: f64| format!("${}", if v < 10.0 { js_to_fixed(v, 2) } else { loc(js_round(v)) });
@@ -606,11 +781,11 @@ pub fn backtest_html(r: &Value, model: &Value) -> String {
         )
     };
     let charts = [
-        chart("p99 latency", &t, &with(vec![measured("measured", "p99Ms"), as_built("p99Ms")], strat("p99Ms")), &ChartOpts { unit: &ms, log: true, threshold: Some((slo_p99, "SLO")), cap: None }),
-        chart("Errors", &t, &with(vec![measured("measured", "errorRate"), as_built("errorRate")], strat("errorRate")), &ChartOpts { unit: &pct, log: false, threshold: Some((slo_err, "SLO")), cap: Some(1.0) }),
+        chart("p99 latency: the time 99% of requests finish within", &t, &with(vec![measured("measured", "p99Ms"), as_built("p99Ms")], strat("p99Ms")), &ChartOpts { unit: &ms, log: true, threshold: Some((slo_p99, "SLO")), cap: None }),
+        chart("Errors: the share of requests that failed", &t, &with(vec![measured("measured", "errorRate"), as_built("errorRate")], strat("errorRate")), &ChartOpts { unit: &pct, log: false, threshold: Some((slo_err, "SLO")), cap: Some(1.0) }),
         chart("Cost, $/hour", &t, &with(vec![measured("measured (bill)", "costPerHour"), as_built("costPerHour")], strat("costPerHour")), &ChartOpts { unit: &usd, log: false, threshold: None, cap: None }),
         chart("Cumulative cost, $", &t, &with(vec![as_built("cumulativeCost")], strat("cumulativeCost")), &ChartOpts { unit: &usd, log: false, threshold: None, cap: None }),
-        chart("Error budget used", &t, &with(vec![as_built("errorBudget")], strat("errorBudget")), &ChartOpts { unit: &pct, log: false, threshold: Some((1.0, "budget")), cap: None }),
+        chart("Error budget used: the failures the SLO allows over the window, spent", &t, &with(vec![as_built("errorBudget")], strat("errorBudget")), &ChartOpts { unit: &pct, log: false, threshold: Some((1.0, "budget")), cap: None }),
     ];
     format!(
         "{head}<title>Backtest — {model}</title>\n{style}\n<h1><span>Hindcast · backtest on real traffic</span>{model}</h1>\n<div class=\"sub\">{start} → {end} UTC · {step}s buckets{load} · {draws} draws · bands = 10th–90th percentile · SLO p99 ≤ {p99} ms, errors ≤ {err}</div>\n{verdicts}\n{c0}\n{c1}\n{c2}\n{c3}\n{c4}\n<h2>Model accuracy</h2>\n{accuracy}\n<details><summary>Full report (Markdown)</summary><pre>{md}</pre></details>\n</main></body></html>",
@@ -624,7 +799,7 @@ pub fn backtest_html(r: &Value, model: &Value) -> String {
         draws = js_num(n(r, &["draws"])),
         p99 = js_num(slo_p99),
         err = pct(slo_err),
-        verdicts = strategies.iter().map(|(st, c)| format!("<p class=\"verdict\" style=\"border-left-color:{c}\"><b style=\"color:{c}\">{}</b> {}.</p>", esc(&s(st, &["name"])), esc(&headline(st, base)), c = c)).collect::<Vec<_>>().join(""),
+        verdicts = lead.unwrap_or_else(|| strategies.iter().map(|(st, c)| format!("<p class=\"verdict\" style=\"border-left-color:{c}\"><b style=\"color:{c}\">{}</b> {}.</p>", esc(&s(st, &["name"])), esc(&headline(st, base)), c = c)).collect::<Vec<_>>().join("")),
         c0 = charts[0],
         c1 = charts[1],
         c2 = charts[2],
@@ -647,6 +822,10 @@ h2{font:600 12px "IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;margin:32
 table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}th{font:500 11px "IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;color:var(--dim)}
 .num{font-family:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;white-space:nowrap}.pass{color:var(--green)}.miss{color:var(--red)}
 .verdict{font-size:17px;margin:12px 0;color:var(--hi);border-left:2px solid var(--amber);padding-left:12px}
+.decision{margin:12px 0 16px;border:1px solid var(--line);background:var(--pane);padding:10px 14px}.decision h3{font:600 14px "IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;color:var(--amber);margin:0 0 6px}
+.decision dl{display:grid;grid-template-columns:120px 1fr;gap:6px 14px;margin:0;font-size:15px}.decision dt{color:var(--dim);font:500 12px/22px "IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;text-transform:uppercase;letter-spacing:.06em}.decision dd{margin:0;color:var(--hi)}
+code{font:12px "IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;color:var(--amber)}
+@media (max-width:600px){.decision dl{grid-template-columns:1fr}}
 details{margin-top:24px}pre{white-space:pre-wrap;font:12px "IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;color:var(--text)}a{color:var(--amber)}
 </style></head><body><main>"#;
 

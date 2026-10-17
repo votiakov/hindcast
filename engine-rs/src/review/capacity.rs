@@ -165,7 +165,7 @@ pub fn review_markdown(r: &Value) -> String {
     let mut l: Vec<String> = vec![
         format!("# Capacity review — {}", s(r, &["system"])),
         String::new(),
-        format!("History {} – {} UTC, busiest moment {} req/s. SLO: p99 ≤ {} ms, errors ≤ {}%.", when(&s(r, &["history", "from"])), when(&s(r, &["history", "to"])), js_num(n(r, &["history", "peakRps"])), js_num(n(r, &["slo", "p99Ms"])), js_to_fixed(n(r, &["slo", "errorRate"]) * 100.0, 1)),
+        format!("History {} – {} UTC, busiest moment {} req/s (requests a second). SLO, the target: p99 ≤ {} ms (99% of requests answered within it), errors ≤ {}%; time out of SLO is the minutes that missed it.", when(&s(r, &["history", "from"])), when(&s(r, &["history", "to"])), js_num(n(r, &["history", "peakRps"])), js_num(n(r, &["slo", "p99Ms"])), js_to_fixed(n(r, &["slo", "errorRate"]) * 100.0, 1)),
         String::new(),
     ];
     if let Some(said) = g(r, &["calibrated", "said"]).as_str() {
@@ -190,6 +190,10 @@ pub fn review_markdown(r: &Value) -> String {
             Some(why) => l.push(format!("**Out of SLO at any load** — {}. That is no capacity limit: the model misses the SLO with almost no traffic, so fix or explain that first.", why)),
             None => l.push(format!("Within SLO up to **{} req/s**{}; {}.", js_num(n(r, &["headroom", "rps"])), if truthy(over) { format!(" — {}× the busiest moment", js_num(n(r, &["headroom", "overPeak"]))) } else { String::new() }, match g(r, &["headroom", "limitedBy"]) { Value::Null => "nothing saturates in the range searched".to_string(), x => format!("{} saturates first", s(x, &[])) })),
         }
+        if let Some(m) = mix_note(r) {
+            l.push(String::new());
+            l.push(m);
+        }
         l.push(String::new());
         let st = g(r, &["stability"]);
         if !arr(st, &["windows"]).is_empty() {
@@ -202,10 +206,10 @@ pub fn review_markdown(r: &Value) -> String {
         }
         let t = g(r, &["today"]);
         if !t.is_null() {
-            l.push(format!("- **The recorded day, replayed:** {}", if g(t, &["holds"]).as_bool().unwrap_or(false) { "holds".to_string() } else { format!("{} min out of SLO, {} failed requests — {}", js_num(n(t, &["minutesOutOfSlo"])), js_locale(n(t, &["failedRequests"])), s(t, &["worst"])) }));
+            l.push(format!("- **The recorded day, replayed:** {}", if g(t, &["holds"]).as_bool().unwrap_or(false) { holds_with(n(t, &["minutesOutOfSlo"])) } else { format!("{} min out of SLO, {} failed requests — {}", js_num(n(t, &["minutesOutOfSlo"])), js_locale(n(t, &["failedRequests"])), s(t, &["worst"])) }));
         }
         for b in arr(r, &["busier"]) {
-            l.push(format!("- **{}× today's traffic:** {}", js_num(n(b, &["scale"])), if g(b, &["holds"]).as_bool().unwrap_or(false) { "holds".to_string() } else { format!("{} min out of SLO, {} failed requests — {}", js_num(n(b, &["minutesOutOfSlo"])), js_locale(n(b, &["failedRequests"])), s(b, &["worst"])) }));
+            l.push(format!("- **{}× today's traffic:** {}", js_num(n(b, &["scale"])), if g(b, &["holds"]).as_bool().unwrap_or(false) { holds_with(n(b, &["minutesOutOfSlo"])) } else { format!("{} min out of SLO, {} failed requests — {}", js_num(n(b, &["minutesOutOfSlo"])), js_locale(n(b, &["failedRequests"])), s(b, &["worst"])) }));
         }
         l.push(String::new());
     }
@@ -263,6 +267,10 @@ pub fn review_markdown(r: &Value) -> String {
     if !th.is_empty() || !mem.is_empty() {
         l.push("## Limits that bind".into());
         l.push(String::new());
+        if !th.is_empty() {
+            l.push("Throttled services are slowed by their CPU limit (the CPU quota) before their CPU looks busy: what they serve per replica is capped below what the limit suggests.".into());
+            l.push(String::new());
+        }
         for t in th {
             l.push(format!("- **{}** is held back by its CPU quota: throttling takes over at {}% of its {}-core limit ({} req/s per replica)", s(t, &["service"]), js_num(js_round(n(t, &["kneeShareOfLimit"]) * 100.0)), template_str(t.get("cpuLimit")), js_num(n(t, &["perReplicaRps"]))));
         }
@@ -555,6 +563,11 @@ fn summary_lines(r: &Value, app: bool) -> Vec<String> {
             }
         ),
     });
+    if let Some(m) = mix_note(r) {
+        if let Some(last) = l.last_mut() {
+            last.push_str(&format!(" {}", m));
+        }
+    }
     if let Some(u) = uncertain(r) {
         l.push(format!("- **Headroom uncertain:** {}", u));
     }
@@ -562,7 +575,7 @@ fn summary_lines(r: &Value, app: bool) -> Vec<String> {
     // a fixed pool is paid for whole, whatever the pods on it use
     let fixed = !p.is_null() && !g(p, &["autoscaled"]).as_bool().unwrap_or(false);
     let monthly = if fixed { n(p, &["nodes"]) * n(p, &["monthlyPerNode"]) } else { n(today, &["monthly"]) };
-    let mut cost = if monthly > 0.0 { format!("about **{}/month** as run", usd_plain(monthly)) } else { if app { "no price — the model has neither a bill nor list prices".to_string() } else { "no price — connect the bill (`connect_telemetry` with `bill`) or a pricing profile".to_string() } };
+    let mut cost = if monthly > 0.0 { format!("about **{}/month** as run ({} a year)", usd_plain(monthly), usd_plain(monthly * 12.0)) } else { if app { "no price — the model has neither a bill nor list prices".to_string() } else { "no price — connect the bill (`connect_telemetry` with `bill`) or a pricing profile".to_string() } };
     if !p.is_null() {
         cost.push_str(&format!(", on {} node{} {}% full at the busiest moment", js_num(n(p, &["nodes"])), if n(p, &["nodes"]) == 1.0 { "" } else { "s" }, js_num(js_round(n(p, &["peakFill"]) * 100.0))));
     }
@@ -617,7 +630,7 @@ fn summary_lines(r: &Value, app: bool) -> Vec<String> {
         let held = if h.is_null() {
             if app { " Its predictions were not checked on held-back history.".to_string() } else { " Its predictions were not checked on held-back history (see calibrate_model's warnings).".to_string() }
         } else {
-            format!(" On history it was not fitted to, its p99 was off by {}% ({}).", js_num(js_round(n(h, &["error"]) * 100.0)), if g(h, &["pass"]).as_bool().unwrap_or(false) { "inside the 20% tolerance" } else { "outside the 20% tolerance: read every number as directional" })
+            format!(" On history it was not fitted to, its latency predictions (p99) were off by {}% ({}).", js_num(js_round(n(h, &["error"]) * 100.0)), if g(h, &["pass"]).as_bool().unwrap_or(false) { "inside the 20% tolerance" } else { "outside the 20% tolerance: read every number as directional" })
         };
         let cpu: Vec<String> = arr(t, &["cpuOnly"]).iter().map(|x| s(x, &[])).collect();
         let missing = g(t, &["withoutTraces"]).as_str().map(|w| format!(" {}.", cap(w))).unwrap_or_default();
@@ -670,6 +683,28 @@ fn configurations_said(t: &Value) -> String {
         mixed.join(", "),
         if older.is_empty() { String::new() } else { format!(", except {}", older.join("; ")) }
     )
+}
+
+/// "holds", with the time out of SLO it did spend where that is not none (a half minute is within what holds)
+fn holds_with(m: f64) -> String {
+    if m > 0.0 {
+        format!("holds ({} min out of SLO, within the half minute allowed)", js_num(m))
+    } else {
+        "holds".into()
+    }
+}
+
+/// The headroom is found on the history's average mix of requests, the busier days by replaying its
+/// moments as they came: where a busier day the headroom covers fails anyway, the moments asked more of
+/// the limiting service than the average does, and the headroom reads higher than the day allows
+fn mix_note(r: &Value) -> Option<String> {
+    if g(r, &["headroom", "atAnyLoad"]).is_string() {
+        return None;
+    }
+    let over = n(r, &["headroom", "overPeak"]);
+    let b = arr(r, &["busier"]).into_iter().find(|b| !g(b, &["holds"]).as_bool().unwrap_or(true) && n(b, &["scale"]) <= over)?;
+    let k = js_num(n(b, &["scale"]));
+    Some(format!("That is on the history's average mix of requests; replayed moment by moment, a {}× day already goes out of SLO, so read the real headroom as under {}×.", k, k))
 }
 
 /// the minutes a failure adds out of SLO; none where the history was already out of it then

@@ -320,12 +320,15 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
     if hours < 24.0 {
         lower("medium", format!("only {} h of history: daily and weekly peaks may be missing", js_num(r1(hours))), &mut warnings, &mut level, &mut low_why);
     }
+    // notes on the cost: warnings that don't lower confidence
+    let mut cost_notes: Vec<String> = vec![];
     if cost_basis.contains("none") && n(st, &["delta", "monthly", "p50"]).abs() < 0.005 {
-        warnings.push("the changed services have no price (no bill, no CPU limit): the cost delta reads $0".into());
+        cost_notes.push("the changed services have no price (no bill, no CPU limit): the cost delta reads $0".into());
     }
     if cost_basis.contains("pricing") {
-        warnings.push("costs are AWS Fargate list prices, not your bill: discounts and Savings Plans are not in them".into());
+        cost_notes.push("costs are AWS Fargate list prices, not your bill: discounts and Savings Plans are not in them".into());
     }
+    warnings.extend(cost_notes.iter().cloned());
     // ---- verdict
     let (p50, lo, hi) = (n(dm, &["p50"]), n(dm, &["lo"]), n(dm, &["hi"]));
     // the requests it fails beyond as built, against the error budget over the window
@@ -514,7 +517,14 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
         o.insert("nodeLoss".into(), nl);
     }
     o.insert("headroom".into(), json!({ "beforeRps": num(r1(before.0)), "afterRps": num(r1(after.0)), "limitedBy": after.1, "historyPeakRps": g(mv, &["traffic", "peak"]).as_f64().map(|p| num(r1(p))).unwrap_or(Value::Null), "replayedPeakRps": num(r1(peak)) }));
-    o.insert("confidence".into(), json!({ "level": level, "services": services, "warnings": warnings }));
+    let mut confidence = json!({ "level": level, "services": services, "warnings": warnings });
+    // the one warning that set the level, said first where someone decides on the verdict: the first
+    // that took it to low, or else the first that lowered it at all
+    let because = if level == "low" { low_why } else { warnings.iter().find(|w| !cost_notes.contains(w)).cloned() };
+    if let Some(b) = because.filter(|_| level != "high") {
+        confidence["because"] = json!(b);
+    }
+    o.insert("confidence".into(), confidence);
     o.insert("notes".into(), g(st, &["notes"]).clone());
     o.insert("howToRead".into(), json!(format!("{}/month; {}; confidence {}", money(n(st, &["delta", "monthly", "p50"])), match verdict { "pass" => "safe on this history", "fail" => "would have broken the SLO", _ => "not proven either way" }, level)));
     Ok(Value::Object(o))

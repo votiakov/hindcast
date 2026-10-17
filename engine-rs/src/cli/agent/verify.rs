@@ -527,8 +527,8 @@ pub fn verify_change(ws: &Workspace, inputs: &[Value], o: &Value) -> Result<Valu
         let html = format!("{}/{}.html", rd, slug);
         let md = format!("{}/{}.md", rd, slug);
         let bundle = format!("{}/{}.hindcast.json", rd, slug);
-        std::fs::write(&html, crate::cli::reports::backtest_html(&rv, &mv)).map_err(|e| e.to_string())?;
-        std::fs::write(&md, crate::cli::reports::backtest_markdown(&rv, &mv)).map_err(|e| e.to_string())?;
+        std::fs::write(&html, crate::cli::reports::verify_html(&out, &rv, &mv)).map_err(|e| e.to_string())?;
+        std::fs::write(&md, crate::cli::reports::verify_markdown(&out, &rv, &mv, None)).map_err(|e| e.to_string())?;
         std::fs::write(format!("{}/{}.strategies.yaml", rd, slug), strategies.iter().map(crate::yaml_out::to_yaml).collect::<Vec<_>>().join("---\n")).map_err(|e| e.to_string())?;
         let stamp = iso_full(now_s())[..16].replacen('T', " ", 1);
         let b = json!({ "name": g(&mv, &["name"]), "source": format!("verified by an agent, {} UTC", stamp), "dataset": dv, "model": mv, "strategies": strategies.iter().map(crate::yaml_out::to_yaml).collect::<Vec<_>>() });

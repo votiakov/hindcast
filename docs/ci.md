@@ -163,25 +163,41 @@ then pin a full release tag (`@v1.2.0`) or a commit. The action needs a release 
 ### What the comment looks like
 
 The backtest-ci example's HotROD model, on a pull request that cuts the frontend's CPU limit from 1
-to 50 millicores (`test/cli-fixtures/hotrod-frontend-50m.yaml`), as the action writes it:
+to 50 millicores (`test/cli-fixtures/hotrod-frontend-50m.yaml`), as the action writes it. The
+table on top is for whoever approves the change: what is asked, the money a month and a year, the
+risk to users, how sure the backtest is and the one reason why, and the next step. The evidence an
+engineer reviews follows it, and `--md` / `--html` reports open with the same table:
 
 ````markdown
 <!-- hindcast-verify-change -->
-### ❌ Hindcast backtest: fail
+### ❌ Hindcast backtest: fail — would have broken the SLO
+
+**frontend CPU 1 → 0.05**
+
+| | |
+|---|---|
+| **Ask** | approve frontend CPU 1 → 0.05 |
+| **Money** | saves $23/month, about $276 a year, priced from your bill |
+| **Risk to users** | 18 min more out of SLO and 7,212 more failed requests, replaying the last 41 minutes of production traffic |
+| **How sure** | low: frontend would run at 150% of a capacity the history never tested (peak 7%): the outcome rests on an extrapolated limit (3 more caveats below) |
+| **Next** | don't ship it as it is |
+
+<sub>SLO: the target of 99% of requests answered within 1,000 ms and under 3% failing. Time out of SLO: minutes that missed it. p99: the time 99% of requests finish within.</sub>
+
+#### The evidence
 
 **frontend CPU 1 → 0.05** — **fail** · confidence **low**
 
 It saves $23/month; it would have caused 18 minutes out of SLO, the longest new incident starting Oct 7 at 16:28 UTC (frontend at 71% of capacity (3.9 req/s on 1 × 5.5 req/s), 132 ms wait).
 
 - **$ / month:** −$23.03/month (your bill)
-- **minutes out of SLO:** +18 min (+14 min … +19.5 min), 32 min in all with the change
+- **minutes out of SLO:** +18 min (+14 min … +19.5 min) — 32 min in all with the change, 13.8 min as built
 - **failed requests:** +7,212 (+6,611 … +8,151)
 - **worst moment:** Oct 7 at 16:49 UTC — p99 5000 ms, 100% errors; frontend at 202% of capacity (11.2 req/s on 1 × 5.5 req/s), 203.5 s queue
 
 Why:
 - adds 18 min out of SLO (10–90%: 14 … 19.5)
 - fails 7,212 more requests than as built (+510% of 1,413), more than the SLO's error budget over the whole window (3% of 11,657 requests: 350)
-- worst at 2026-10-07T16:49:30Z: frontend at 202% of capacity (11.2 req/s on 1 × 5.5 req/s), 203.5 s queue
 - worse for frontend GET /dispatch against their own SLOs
 - headroom drops from 6.1 to 3.9 req/s (the history peaked at 11.2)
 
@@ -191,7 +207,7 @@ Confidence low:
 - the model missed p99 (holdout, off by 72%) on data it never saw: off by more than half on what the verdict is counted from (latency, the breaking point), so a replay can't be trusted to place the SLO's edge
 - only 0.7 h of history: daily and weekly peaks may be missing
 
-<sub>Replayed the last 41 minutes of production traffic through the calibrated model · 30 draws · ranges are 10th–90th percentiles</sub>
+<sub>Replayed the last 41 minutes of production traffic through the calibrated model · 30 draws (capacities varied within their fitted ranges) · ranges are 10th–90th percentiles: 8 in 10 draws fall inside</sub>
 
 | | $/month | minutes out of SLO | failed requests | worst moment |
 |---|---|---|---|---|
@@ -222,8 +238,6 @@ changes:
     cpu: 0.05
 ```
 </details>
-
-<sub>[Workflow run](https://github.com/your-org/your-repo/actions/runs/123)</sub>
 ````
 
 The check failed, as it should: the cut saves $23 a month and would have added 18 minutes out of
