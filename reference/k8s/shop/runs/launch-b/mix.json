@@ -1,0 +1,234 @@
+[
+ {
+  "name": "frontend GET /",
+  "method": "GET",
+  "path": "/",
+  "weight": 1
+ },
+ {
+  "name": "frontend GET /api/products/{productId}",
+  "method": "GET",
+  "path": "/api/products/{p}",
+  "weight": 10,
+  "vars": {
+   "p": [
+    "0PUK6V6EV0",
+    "1YMWWN1N4O",
+    "2ZYFJ3GM2N",
+    "66VCHSJNUP",
+    "6E92ZMYYFZ",
+    "9SIQT8TOJO",
+    "L9ECAV7KIM",
+    "LS4PSXUNUM",
+    "OLJCESPC7Z",
+    "HQTGWGPNH4"
+   ]
+  }
+ },
+ {
+  "name": "frontend GET /api/recommendations",
+  "method": "GET",
+  "path": "/api/recommendations?productIds={p}",
+  "weight": 3,
+  "vars": {
+   "p": [
+    "0PUK6V6EV0",
+    "1YMWWN1N4O",
+    "2ZYFJ3GM2N",
+    "66VCHSJNUP",
+    "6E92ZMYYFZ",
+    "9SIQT8TOJO",
+    "L9ECAV7KIM",
+    "LS4PSXUNUM",
+    "OLJCESPC7Z",
+    "HQTGWGPNH4"
+   ]
+  }
+ },
+ {
+  "name": "frontend GET /api/data",
+  "method": "GET",
+  "path": "/api/data?contextKeys={c}",
+  "weight": 3,
+  "vars": {
+   "c": [
+    "binoculars",
+    "telescopes",
+    "accessories",
+    "assembly",
+    "travel",
+    "books"
+   ]
+  }
+ },
+ {
+  "name": "frontend GET /api/cart",
+  "method": "GET",
+  "path": "/api/cart?sessionId={user}&currencyCode=USD",
+  "weight": 3,
+  "vars": {
+   "user": [
+    "k6-user-1",
+    "k6-user-2",
+    "k6-user-3",
+    "k6-user-4",
+    "k6-user-5",
+    "k6-user-6",
+    "k6-user-7",
+    "k6-user-8",
+    "k6-user-9",
+    "k6-user-10",
+    "k6-user-11",
+    "k6-user-12",
+    "k6-user-13",
+    "k6-user-14",
+    "k6-user-15",
+    "k6-user-16",
+    "k6-user-17",
+    "k6-user-18",
+    "k6-user-19",
+    "k6-user-20",
+    "k6-user-21",
+    "k6-user-22",
+    "k6-user-23",
+    "k6-user-24",
+    "k6-user-25",
+    "k6-user-26",
+    "k6-user-27",
+    "k6-user-28",
+    "k6-user-29",
+    "k6-user-30",
+    "k6-user-31",
+    "k6-user-32",
+    "k6-user-33",
+    "k6-user-34",
+    "k6-user-35",
+    "k6-user-36",
+    "k6-user-37",
+    "k6-user-38",
+    "k6-user-39",
+    "k6-user-40"
+   ]
+  }
+ },
+ {
+  "name": "frontend POST /api/cart",
+  "method": "POST",
+  "path": "/api/cart",
+  "weight": 3,
+  "headers": {
+   "Content-Type": "application/json"
+  },
+  "vars": {
+   "user": [
+    "k6-user-1",
+    "k6-user-2",
+    "k6-user-3",
+    "k6-user-4",
+    "k6-user-5",
+    "k6-user-6",
+    "k6-user-7",
+    "k6-user-8",
+    "k6-user-9",
+    "k6-user-10",
+    "k6-user-11",
+    "k6-user-12",
+    "k6-user-13",
+    "k6-user-14",
+    "k6-user-15",
+    "k6-user-16",
+    "k6-user-17",
+    "k6-user-18",
+    "k6-user-19",
+    "k6-user-20",
+    "k6-user-21",
+    "k6-user-22",
+    "k6-user-23",
+    "k6-user-24",
+    "k6-user-25",
+    "k6-user-26",
+    "k6-user-27",
+    "k6-user-28",
+    "k6-user-29",
+    "k6-user-30",
+    "k6-user-31",
+    "k6-user-32",
+    "k6-user-33",
+    "k6-user-34",
+    "k6-user-35",
+    "k6-user-36",
+    "k6-user-37",
+    "k6-user-38",
+    "k6-user-39",
+    "k6-user-40"
+   ],
+   "p": [
+    "0PUK6V6EV0",
+    "1YMWWN1N4O",
+    "2ZYFJ3GM2N",
+    "66VCHSJNUP",
+    "6E92ZMYYFZ",
+    "9SIQT8TOJO",
+    "L9ECAV7KIM",
+    "LS4PSXUNUM",
+    "OLJCESPC7Z",
+    "HQTGWGPNH4"
+   ]
+  },
+  "body": "{\"item\": {\"productId\": \"{p}\", \"quantity\": 1}, \"userId\": \"{user}\"}"
+ },
+ {
+  "name": "frontend POST /api/checkout",
+  "method": "POST",
+  "path": "/api/checkout?currencyCode=USD",
+  "weight": 1,
+  "headers": {
+   "Content-Type": "application/json"
+  },
+  "vars": {
+   "user": [
+    "k6-user-1",
+    "k6-user-2",
+    "k6-user-3",
+    "k6-user-4",
+    "k6-user-5",
+    "k6-user-6",
+    "k6-user-7",
+    "k6-user-8",
+    "k6-user-9",
+    "k6-user-10",
+    "k6-user-11",
+    "k6-user-12",
+    "k6-user-13",
+    "k6-user-14",
+    "k6-user-15",
+    "k6-user-16",
+    "k6-user-17",
+    "k6-user-18",
+    "k6-user-19",
+    "k6-user-20",
+    "k6-user-21",
+    "k6-user-22",
+    "k6-user-23",
+    "k6-user-24",
+    "k6-user-25",
+    "k6-user-26",
+    "k6-user-27",
+    "k6-user-28",
+    "k6-user-29",
+    "k6-user-30",
+    "k6-user-31",
+    "k6-user-32",
+    "k6-user-33",
+    "k6-user-34",
+    "k6-user-35",
+    "k6-user-36",
+    "k6-user-37",
+    "k6-user-38",
+    "k6-user-39",
+    "k6-user-40"
+   ]
+  },
+  "body": "{\"email\": \"larry_sergei@example.com\", \"address\": {\"streetAddress\": \"1600 Amphitheatre Parkway\", \"zipCode\": \"94043\", \"city\": \"Mountain View\", \"state\": \"CA\", \"country\": \"United States\"}, \"userCurrency\": \"USD\", \"creditCard\": {\"creditCardNumber\": \"4432-8015-6152-0454\", \"creditCardExpirationMonth\": 1, \"creditCardExpirationYear\": 2039, \"creditCardCvv\": 672}, \"userId\": \"{user}\"}"
+ }
+]
