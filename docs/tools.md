@@ -33,6 +33,7 @@
 | `outage <model.json> <outage-id \| list> [strategy.yaml …] [--rps N] [--role primary-db=orders-db]` | replays a public outage against the model, as built and with strategies |
 | `diff-strategy --base <dir> --head <dir> [--model model.json] [--out strategy.yaml]` | Kubernetes manifests before/after → a strategy (replicas, CPU/memory, HPAs, arch) |
 | `verify-change --model model.json --dataset dataset.json (--base <dir> --head <dir> \| --terraform-plan plan.json \| <strategy.yaml …>) [--comment pr.md] [--fail-on fail\|inconclusive\|never]` | `verify_change` on files, for CI: verdict and confidence, the pull-request comment, exit 2 on a failing verdict ([ci.md](ci.md)) |
+| `loadtest plan [strategy.yaml …] [--base <dir> --head <dir>] [--service frontend[=0.9],…] [--workspace dir] [--scale 1.3 \| --peak 400] [--steps 5] [--hold 120] [--mix focused\|recorded] [--out loadtest.k6.js] [--json]` | `plan_load_test` on a workspace: the load test a low-confidence verdict asks for — which services to drive and to what req/s, through which endpoints, a step-load k6 script that stops at the SLO, and the calls that read it back in ([agents.md](agents.md#plan_load_test-the-load-test-a-verdict-asks-for)) |
 
 Guide: [backtest.md](backtest.md); the model: [calibration.md](calibration.md). The CLI is one native
 binary (`npm run cli:build` → `engine-rs/target/release/hindcast`, no runtime needed); a Linux
@@ -91,12 +92,12 @@ Registered for Claude Code in `.mcp.json` (restart Claude Code in this folder an
 | `open_in_app` | `architecture`, `compare_with?` (variant), `scenario?` | URL for the app (sandbox, or side-by-side comparison playing the scenario) |
 | `backtest_strategy` | `model?`, `dataset?` (paths; default the workspace's), `strategies[]` (objects or YAML), `last?`, `draws?` | the backtest of each strategy over the recorded history: $/month, minutes out of SLO, worst moment, incidents, ranking, the model's accuracy |
 | `replay_outage` | `model?`, `outage`, `strategies?`, `rps?` | a public outage replayed against the model, as built and with strategies |
-| `connect_telemetry` … `read_cluster` | see [agents.md](agents.md#tool-reference) | eleven tools for an agent working on a live system: connect, collect, calibrate, verify (strategies, Kubernetes diffs, Terraform plans), suggest fixes and savings, headroom, the capacity review, node loss, design checks, cluster snapshots, status |
+| `connect_telemetry` … `read_cluster` | see [agents.md](agents.md#tool-reference) | twelve tools for an agent working on a live system: connect, collect, calibrate, verify (strategies, Kubernetes diffs, Terraform plans), suggest fixes and savings, headroom, the capacity review, the load test a verdict asks for, node loss, design checks, cluster snapshots, status |
 
 Prompts: `verify-infra-change` and `check-my-design` ([agents.md](agents.md#prompts)).
 
 Suggested assistant workflow for a live system: `model_status` → `connect_telemetry` → `collect_telemetry` →
-`calibrate_model` → `verify_change` ([agents.md](agents.md)). For a design on paper: `import_terraform` (or `list_components` → write the spec from the user's description
+`calibrate_model` → `verify_change`, and `plan_load_test` when a verdict is inconclusive for want of evidence ([agents.md](agents.md)). For a design on paper: `import_terraform` (or `list_components` → write the spec from the user's description
 from k8s manifests, diagrams, metrics) → confirm assumptions, request rates and SLOs with the user → `validate_architecture` → `simulate`/`analyze` the
 current state → propose variants → `compare_architectures` / `optimize_cost` → `open_in_app` to hand
 over a live demo.

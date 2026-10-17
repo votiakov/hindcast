@@ -278,4 +278,7 @@ or `hindcast backtest … --card card.json`). Details: [content.md](content.md).
 ## Outside the app
 
 The same engines run headless: the **CLI** (`npm run sim -- …`) and an **MCP server** for AI
-assistants, with a live canvas in hosts that support MCP Apps. See [tools.md](tools.md).
+assistants, with a live canvas in hosts that support MCP Apps. See [tools.md](tools.md). A
+verdict the app marks low confidence (a service pushed past anything the history showed) can be
+settled with a load test: `hindcast loadtest plan` (the `plan_load_test` tool) writes it from the
+same workspace, with the calls that read it back in ([agents.md](agents.md#plan_load_test-the-load-test-a-verdict-asks-for)).

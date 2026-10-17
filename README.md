@@ -150,7 +150,9 @@ saying the change goes past what the history showed, and to load-test it instead
 
 So the model is wrong less often than the rule because it abstains more, not because it's right
 more often. When a change pushes a service past anything the history showed, the answer comes
-back low confidence with "load-test before trusting it". Those abstentions are not yet a skill:
+back low confidence with "load-test before trusting it", and `hindcast loadtest plan` (the
+`plan_load_test` tool) writes that load test: which services to drive and to what rate, a k6
+script that stops itself at the SLO, and the calls that read it back in. Those abstentions are not yet a skill:
 of the 8, 5 changes passed for real and 3 failed, and the replay's own margin doesn't tell them
 apart ([the list](reference/k8s/README.md#a-second-system-petclinic)). Read an inconclusive as
 "this change goes past what the history can vouch for", not as a hidden fail. The evidence so far is demo systems and a
@@ -160,7 +162,7 @@ laptop cluster, not a production fleet; the one check on production telemetry (A
 
 ## Agents
 
-The same binary is an MCP server with 26 tools, 11 of them for working on a live system. An agent connects to your Prometheus and Jaeger or
+The same binary is an MCP server with 27 tools, 12 of them for working on a live system. An agent connects to your Prometheus and Jaeger or
 Tempo, collects a day to two weeks of history, calibrates, reads the trust report, and checks a
 change before proposing it. The answer is pass, fail or inconclusive, with the money, the SLO
 minutes and which services the change pushes past anything the history showed.

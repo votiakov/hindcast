@@ -85,7 +85,7 @@ and where it is documented.
 
 | capability | docs |
 |---|---|
-| MCP server (stdio or HTTP) with 26 tools, including backtests, outage replays and request traces | [tools.md](tools.md#mcp-server--npm-run-mcp) |
+| MCP server (stdio or HTTP) with 27 tools, including backtests, outage replays and request traces | [tools.md](tools.md#mcp-server--npm-run-mcp) |
 | Agent tools: `connect_telemetry` (probes Prometheus presets, services, traffic history; Jaeger/Tempo services, entry services, load generators; renames), `collect_telemetry` (a window, traces spread over it), `calibrate_model` (trust report), `verify_change` (verdict + confidence + evidence + HTML report + a link that opens it on the backtest screen), `suggest_changes` (fixes for what saturated and savings for what idled, backtested, the safe savings tried together), `find_headroom`, `verify_design`, `read_cluster`, `model_status` | [agents.md](agents.md) |
 | Changes from Terraform plans (ECS, app autoscaling, ASG/EC2, RDS, Cloud Run, kubernetes_*), Kubernetes diffs, and edited manifests against a read-only cluster snapshot | [agents.md](agents.md#4-verify_change-the-verdict) |
 | AWS Fargate list prices from CPU and memory limits when there is no bill | [agents.md](agents.md#how-confidence-is-decided) |

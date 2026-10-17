@@ -500,7 +500,63 @@ The cost basis is stated separately: `your bill`, `list price` (AWS Fargate on-d
 from CPU and memory limits, used when there is no bill) or `unpriced`.
 
 **A pass at low confidence is not "safe".** It means the backtest found no problem on capacities
-the history never tested. The MCP instructions tell agents to say so and recommend a load test.
+the history never tested. The MCP instructions tell agents to say so and recommend a load test, and
+the reason that says "load-test before trusting it" names `plan_load_test`, which designs it.
+
+### `plan_load_test`: the load test a verdict asks for
+
+The most common reason a verdict is inconclusive is a service the change would run at a share of
+capacity the history never reached. `plan_load_test` takes the same `changes` as `verify_change`
+(or `services: [{ service, utilization? }]` to drive one directly) and plans the test that would
+give the model that evidence. It runs nothing: the script is a file in the workspace.
+
+```json
+{ "changes": [{ "kubernetes": { "base": "deploy/", "head": "deploy-hpa/" } }],
+  "traffic": { "scale": 1.3 } }
+```
+
+- **Which services, up to what rate.** Every service the change pushes past the history's peak
+  (the services `verify_change`'s confidence names as "beyond anything the history showed", and
+  CPU-only services run past their peak), to the share of capacity the change needs ×`margin`
+  (1.1), at most 90%: past 85% the history counts as having reached the limit. The rate is that
+  share × capacity per replica × the replicas where the test runs (the model's, or `replicas`).
+- **At which entry endpoints.** The recorded endpoint mix, narrowed to the endpoints that reach
+  those services (`mix: "recorded"` keeps them all). Who calls whom sets how much of each entry
+  request reaches each service, so the entry rate that takes every target to its share is solved
+  from it. Every other service the mix reaches is listed per step: one that would saturate before
+  the targets are reached is said, since the thresholds would stop the test there.
+- **The script.** A k6 script (plain JavaScript, `loadtests/<name>.k6.js`): one
+  `ramping-arrival-rate` scenario per endpoint, in its share of the mix, stepping from the
+  history's peak to the target in `steps` (5) steps, each held `holdS` (two calibration buckets,
+  at least 2 minutes) so a bucket of each lands whole in the history. Per-step `thresholds` with
+  `abortOnFail` on the SLO's error rate and p99 stop it at the first step that hurts. The base URL
+  and an optional Authorization header come from env var names (`BASE_URL`, `AUTH_HEADER`, or
+  `baseUrlEnv`/`authEnv`); no credential is written. Path placeholders (`{id}`), request bodies
+  and, without traces, the routes of an endpoint the history only knows as "web (all requests)"
+  are `INPUTS` at the top: `setup()` refuses to start until they are filled (`script.fillIn` lists
+  them).
+- **Where and what it costs.** Staging with production's limits (the same CPU and memory limits and
+  replica counts; autoscalers paused, or new pods spread the load and the share never reaches the
+  target), and only if its telemetry reaches the Prometheus or Datadog the workspace reads;
+  otherwise production off-peak (the history's quietest hour, when it is a day or longer). The cost
+  is in minutes, requests, the failed requests the thresholds allow and their share of a 30-day
+  error budget, and the environment at the model's prices.
+- **The follow-up, exactly.** `collect_telemetry` with `windows`: the history as collected and the
+  test's window; `calibrate_model` with `holdout: 0` (the default holds back the last 30% of the
+  history, which is now the test); then `verify_change` with the same changes and `window` set to
+  the ordinary history, so the model learns from the test but replays the day. `expect` says what
+  should change: the "never tested" warning goes away for each service the test drove to its
+  target, and whether anything else (a poor fit, an accuracy miss) still holds confidence low.
+
+**Tried on the Shop's committed stress run.** With the ordinary day alone, an HPA of 2–5 frontend
+replicas at 1.3× traffic is inconclusive (leans pass): frontend at 80% of a capacity the history
+never tested (peak 41%). The plan drives frontend to 88% (354 req/s at the entry, 3 replicas)
+and recommendation to 56%. The committed 12-minute stress run reached 595 req/s at the entry on
+the same 3 replicas (frontend at 118% and recommendation at 90% of the capacities refitted on it),
+so it covers the plan. With it in the history (calibrated with holdout 0,
+the replay on the ordinary day), the "never tested" warning is gone, but the verdict stays
+inconclusive: the refit fits frontend poorly ("the model fits it poorly, and this change changes
+it"). A load test removes the extrapolation; it doesn't promise a confident verdict.
 
 ### `suggest_changes`: what should we change?
 
@@ -703,6 +759,7 @@ Authentication: `tokenEnv` (bearer), `basicAuthEnv` (`user:password`) and `heade
   calibration.json    per service: history peak vs capacity, trust
   cluster/            read_cluster snapshots
   reports/            verify_change reports: .html, .md, .strategies.yaml, .hindcast.json (opens in the app)
+  loadtests/          plan_load_test's k6 scripts
 ```
 
 The files are the CLI's formats, so everything an agent produced can be reopened by hand:
@@ -721,6 +778,7 @@ or dropped on the app's Backtest screen.
 | `suggest_changes` | `goal?` (reliability \| cost \| both), `traffic?` ({scale} \| {peakRps}), `last?`, `draws?`, `gateMinutes?`, `idleBelow?` | saturated services; fixes and savings that pass, each judged; the savings combined; rejected candidates |
 | `find_headroom` | `strategy?` | req/s within SLO, what binds, history peak |
 | `review_capacity` | `draws?` | headroom, 1.5× and 2× load, node loss and its fix, throttled and memory-bound services, node pool fill, fixes and savings; a Markdown report |
+| `plan_load_test` | `changes[]` (as `verify_change`) \| `services[]{service, utilization?}`, `traffic?`, `last?`, `window?`, `margin?` (1.1), `steps?` (5), `holdS?`, `mix?` (focused \| recorded), `replicas?`, `baseUrlEnv?`, `authEnv?` | services to drive and their target req/s, the entry endpoints and rate per step, a k6 script (`loadtests/`), where to run it and its cost, the follow-up calls and what they should change |
 | `check_node_loss` | `strategy?`, `traffic?{scale \| peakRps}`, `recoverS?`, `zones?` | per node: services lost or degraded, minutes out of SLO and failed requests added, and with gRPC callers the same if they stay broken 252 s more; single points of failure |
 | `verify_design` | `spec`, `rps?`, `slo?`, `budgetMonthly?`, `incidentCostPerMinute?` | verdict, problems, findings with fixes as spec changes, app link |
 | `read_cluster` | `context`, `namespace?`, `selector?` | workloads, snapshot path, the exact command run |
