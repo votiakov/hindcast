@@ -473,10 +473,13 @@ For every service the change touches, or that the change pushes harder (above 60
 25% past its history peak):
 
 - **low**: the service fits poorly or is unexplained, *or* the change runs it at ≥ 80% of a
-  capacity the history never came near (the outcome rests on an extrapolated limit).
+  capacity the history never came near (the outcome rests on an extrapolated limit), *or* the
+  model missed what the verdict is counted from by more than half on data it never saw: the
+  breaking point, or p99 when the miss (its share times the measured p99) is also at least a
+  tenth of the SLO's p99, large enough to move a minute across it.
 - **medium**: it runs past the history's peak at < 80%, *or* the touched service fits only
-  fairly, *or* the model missed an accuracy check, *or* accuracy was never measured, *or* the
-  history is shorter than a day.
+  fairly, *or* the model missed any other accuracy check (a smaller miss, or cost), *or* accuracy
+  was never measured, *or* the history is shorter than a day.
 - **high**: otherwise.
 
 A service with no latency metric (capacity from CPU alone, `cpuOnly: true` in

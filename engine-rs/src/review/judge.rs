@@ -18,6 +18,28 @@ fn range(x: &Value, f: &dyn Fn(f64) -> f64) -> Value {
 /// the share of capacity at which the history counts as having reached a service's limit
 pub const LIMIT_SEEN: f64 = 0.85;
 
+/// The accuracy checks a verdict rests on are p99 and the breaking point: minutes out of SLO are
+/// counted from the replay's latency, and where it crosses the SLO from the capacity behind the
+/// breaking point (cost is stated beside the verdict, not in it; failed requests are informational).
+/// A miss on one of them beyond this, on data the model never saw, leaves confidence low: off by more
+/// than half (two and a half times the p99 target of 20%, over three times the breaking point's 15%)
+/// the replay can't be trusted to say where the SLO is crossed. A smaller miss leaves it medium
+pub const LARGE_MISS: f64 = 0.5;
+/// …and for latency, only where the miss is large against the SLO too: a typical miss (the error times
+/// the measured p99) of at least this share of the SLO's p99 can move a bucket across it. A model off
+/// by 58% on 9 ms latencies under a 500 ms SLO misses by 5 ms, which no minute out of SLO turns on
+pub const MISS_OF_SLO: f64 = 0.1;
+
+/// an accuracy check that leaves confidence low (LARGE_MISS), read against an SLO of `slo_p99_ms`
+pub fn large_miss(c: &Value, slo_p99_ms: f64) -> bool {
+    let e = n(c, &["error"]);
+    match s(c, &["metric"]).as_str() {
+        "breaking-point" => e > LARGE_MISS,
+        "p99" => e > LARGE_MISS && !(e * n(c, &["measured"]) < MISS_OF_SLO * slo_p99_ms),
+        _ => false,
+    }
+}
+
 /// a change also fails when the requests it fails beyond the as-built replay exceed this share of the
 /// SLO's error budget over the replayed window (its requests × the SLO's error rate). At 1 the change
 /// alone spends the whole budget: a burn rate of 1, which by itself exhausts the budget over any
@@ -239,7 +261,12 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
     let services: Vec<Value> = services.into_iter().map(|x| x.0).collect();
     let mut warnings: Vec<String> = vec![];
     let mut level = "high";
-    let lower = |to: &'static str, why: String, warnings: &mut Vec<String>, level: &mut &'static str| {
+    // the first warning that took it to low, the one a low-confidence pass is explained by
+    let mut low_why: Option<String> = None;
+    let lower = |to: &'static str, why: String, warnings: &mut Vec<String>, level: &mut &'static str, low_why: &mut Option<String>| {
+        if to == "low" && low_why.is_none() {
+            *low_why = Some(why.clone());
+        }
         warnings.push(why);
         if to == "low" || *level == "high" {
             *level = to;
@@ -263,30 +290,35 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
             } else {
                 ("medium", format!("{} has no latency metric, so its capacity is read from CPU alone: its CPU limit is known, but not how its latency grows near it (the change keeps it at {} of capacity, within the history's {})", svc, pct(pu), pct(hpu)))
             };
-            lower(to, why.clone(), &mut warnings, &mut level);
+            lower(to, why.clone(), &mut warnings, &mut level, &mut low_why);
             cpu_said.push((to, why));
         } else if poor && (touched_x || harder) {
-            lower("low", format!("{}: the model fits it {}, and this change {}", svc, if fit == "poor" { "poorly" } else { "not at all" }, if touched_x { "changes it" } else { "pushes it harder than the history did" }), &mut warnings, &mut level);
+            lower("low", format!("{}: the model fits it {}, and this change {}", svc, if fit == "poor" { "poorly" } else { "not at all" }, if touched_x { "changes it" } else { "pushes it harder than the history did" }), &mut warnings, &mut level, &mut low_why);
         } else if poor && pu > 0.6 {
-            lower("medium", format!("{} fits {} and runs near its limit; the change leaves it as it was, so the comparison holds better than the absolute numbers", svc, if fit == "poor" { "poorly" } else { "not at all" }), &mut warnings, &mut level);
+            lower("medium", format!("{} fits {} and runs near its limit; the change leaves it as it was, so the comparison holds better than the absolute numbers", svc, if fit == "poor" { "poorly" } else { "not at all" }), &mut warnings, &mut level, &mut low_why);
         } else if basis == "beyond anything the history showed" && pu >= 0.8 {
-            lower("low", format!("{} would run at {} of a capacity the history never tested (peak {}): the outcome rests on an extrapolated limit", svc, pct(pu), pct(hpu)), &mut warnings, &mut level);
+            lower("low", format!("{} would run at {} of a capacity the history never tested (peak {}): the outcome rests on an extrapolated limit", svc, pct(pu), pct(hpu)), &mut warnings, &mut level, &mut low_why);
         } else if basis == "beyond anything the history showed" {
-            lower("medium", format!("{} would run at {} of capacity, past the history's {}: its capacity there is extrapolated", svc, pct(pu), pct(hpu)), &mut warnings, &mut level);
+            lower("medium", format!("{} would run at {} of capacity, past the history's {}: its capacity there is extrapolated", svc, pct(pu), pct(hpu)), &mut warnings, &mut level, &mut low_why);
         } else if fit == "fair" && touched_x {
-            lower("medium", format!("{}: fair fit (latency reproduced within 30%)", svc), &mut warnings, &mut level);
+            lower("medium", format!("{}: fair fit (latency reproduced within 30%)", svc), &mut warnings, &mut level, &mut low_why);
         }
     }
-    let misses: Vec<String> = arr(mv, &["accuracy"]).iter().flat_map(|a| arr(a, &["checks"]).into_iter().map(move |c| (c, s(a, &["method"])))).filter(|(c, _)| !g(c, &["pass"]).as_bool().unwrap_or(false) && s(c, &["metric"]) != "errors").map(|(c, me)| format!("{} ({}, off by {})", s(c, &["metric"]), me, pct(n(c, &["error"])))).collect();
-    if !misses.is_empty() {
-        lower("medium", format!("the model missed {} on data it never saw", misses.join(", ")), &mut warnings, &mut level);
+    let missed: Vec<(&Value, String)> = arr(mv, &["accuracy"]).iter().flat_map(|a| arr(a, &["checks"]).into_iter().map(move |c| (c, s(a, &["method"])))).filter(|(c, _)| !g(c, &["pass"]).as_bool().unwrap_or(false) && s(c, &["metric"]) != "errors").collect();
+    let said = |x: &[&(&Value, String)]| x.iter().map(|(c, me)| format!("{} ({}, off by {})", s(c, &["metric"]), me, pct(n(c, &["error"])))).collect::<Vec<_>>().join(", ");
+    let (large, small): (Vec<_>, Vec<_>) = missed.iter().partition(|(c, _)| large_miss(c, n(r, &["slo", "p99Ms"])));
+    if !large.is_empty() {
+        lower("low", format!("the model missed {} on data it never saw: off by more than half on what the verdict is counted from (latency, the breaking point), so a replay can't be trusted to place the SLO's edge", said(&large)), &mut warnings, &mut level, &mut low_why);
+    }
+    if !small.is_empty() {
+        lower("medium", format!("the model missed {} on data it never saw", said(&small)), &mut warnings, &mut level, &mut low_why);
     }
     if arr(mv, &["accuracy"]).is_empty() {
-        lower("medium", "the model's accuracy was never measured".into(), &mut warnings, &mut level);
+        lower("medium", "the model's accuracy was never measured".into(), &mut warnings, &mut level, &mut low_why);
     }
     let hours = (n(r, &["window", "end"]) - n(r, &["window", "start"])) / 3600.0;
     if hours < 24.0 {
-        lower("medium", format!("only {} h of history: daily and weekly peaks may be missing", js_num(r1(hours))), &mut warnings, &mut level);
+        lower("medium", format!("only {} h of history: daily and weekly peaks may be missing", js_num(r1(hours))), &mut warnings, &mut level, &mut low_why);
     }
     if cost_basis.contains("none") && n(st, &["delta", "monthly", "p50"]).abs() < 0.005 {
         warnings.push("the changed services have no price (no bill, no CPU limit): the cost delta reads $0".into());
@@ -328,7 +360,7 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
         reasons.push(format!("fails no more requests than the error budget allows at the median, but {} more in the worst 10% of capacity draws, past the window's budget ({})", js_locale(js_round(fd_hi)), budget_words(r, allowed)));
     }
     if verdict == "inconclusive" && level == "low" && !doubt {
-        reasons.push(format!("the backtest passes, but confidence is low ({}) — load-test before trusting it", warnings.first().cloned().unwrap_or_else(|| "undefined".into())));
+        reasons.push(format!("the backtest passes, but confidence is low ({}) — load-test before trusting it", low_why.clone().or_else(|| warnings.first().cloned()).unwrap_or_else(|| "undefined".into())));
     }
     for (to, why) in &cpu_said {
         if !reasons.iter().any(|r| r.contains(why.as_str())) {

@@ -439,7 +439,8 @@ async function score(label: string, ws: Workspace, base: string, evalDir: string
     // out-of-sample runs are scored on the verdict committed before they ran, not one computed after
     const committed = c.oos ? predictionsOf(label, c.oos)?.[c.run] : undefined;
     const now = forecast(c, ws, base);
-    if (committed && committed.verdict !== now.verdict) console.warn(`(${label} ${c.run}: predicted ${committed.verdict} before the run; today's code says ${now.verdict})`);
+    const said = (f: Forecast) => `${f.verdict}${f.confidence ? ` (${f.confidence} confidence)` : ''}`;
+    if (committed && said(committed) !== said(now)) console.warn(`(${label} ${c.run}: predicted ${said(committed)} before the run; today's code says ${said(now)})`);
     const exAnte = committed ?? now;
     const actual = kept ? { ...kept.measured, p99: kept.measured.p99Ms } : measured(log!, m.slo);
     const actualBase = kept ? undefined : measured(settled(requestsOf(c.asBuilt), meta(c.asBuilt).start), m.slo);

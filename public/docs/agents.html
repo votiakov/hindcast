@@ -63,8 +63,8 @@ npm run sim -- agent setup cursor --write  # or claude, vscode, desktop, windsur
 <tr><td><b>fail</b></td><td>the change adds more than half a minute out of SLO over the window, or fails more requests than the SLO's whole error budget over the window (1% of its requests at a 1% SLO), beyond what failed as built (median of 30 capacity draws)</td></tr>
 <tr><td><b>inconclusive</b></td><td>the median passes but the worst 10% of draws don't; or confidence is low; or the change cuts headroom below traffic the system has already seen</td></tr>
 <tr><td><b>pass</b></td><td>otherwise</td></tr>
-<tr><td>confidence <b>low</b></td><td>a service the change depends on fits poorly, or the change runs it at ≥ 80% of a capacity the history never came near</td></tr>
-<tr><td>confidence <b>medium</b></td><td>it runs past the history's peak, a touched service fits only fairly, the model missed an accuracy check, or the history is under a day</td></tr>
+<tr><td>confidence <b>low</b></td><td>a service the change depends on fits poorly, or the change runs it at ≥ 80% of a capacity the history never came near, or on data it never saw the model missed the breaking point, or p99, by more than half (for p99, by at least a tenth of the SLO too)</td></tr>
+<tr><td>confidence <b>medium</b></td><td>it runs past the history's peak, a touched service fits only fairly, the model missed any other accuracy check, or the history is under a day</td></tr>
 </table></div>
 <p class="verdict">A pass at low confidence is not "safe": the backtest found no problem on capacities the history never tested. Agents are told to say so and recommend a load test.</p>
 <p>Cost comes with its basis: <b>your bill</b>, or <b>list price</b> (AWS Fargate on-demand, from CPU and memory limits) when there is no bill.</p>

@@ -271,7 +271,8 @@ pub fn model_status(ws: &Workspace) -> Result<Value, String> {
             warnings.push("accuracy not measured: calibrate_model with holdout > 0 on a longer history".into());
         }
         if !misses.is_empty() {
-            warnings.push(format!("the model missed {} on data it never saw — treat those numbers as rough", misses.join(", ")));
+            let large = arr(&m, &["accuracy"]).iter().flat_map(|a| arr(a, &["checks"])).any(|c| !g(c, &["pass"]).as_bool().unwrap_or(false) && crate::review::judge::large_miss(c, n(&m, &["slo", "p99Ms"])));
+            warnings.push(format!("the model missed {} on data it never saw — treat those numbers as rough{}", misses.join(", "), if large { "; off by more than half on latency or the breaking point, so every verdict on it is low confidence" } else { "" }));
         }
     }
     let rd = ws.path("reports");
@@ -706,9 +707,45 @@ mod tests {
         // within it everywhere: the minutes decide, as before
         assert_eq!(s(&on_a_bad_day(0.0, 4000.0, 4500.0), &["verdict"]), "pass");
         assert_eq!(s(&on_a_bad_day(1.0, 0.0, 0.0), &["verdict"]), "fail");
-        // without a request count there is no budget to hold it to
+        // without a request count there is no budget to hold it to (and the 0.5 min gate still holds)
         let r = json!({ "slo": { "errorRate": 0.01 }, "baseline": { "summary": {} } });
         assert!(crate::review::judge::window_budget(&r).is_nan());
         assert_eq!(crate::review::judge::gate_words(0.5, &r), "fails if it adds more than 0.5 min out of SLO over the window");
+    }
+
+    /// judge a harmless change (no minutes, no failed requests added) on a model whose accuracy checks
+    /// are `checks`: (metric, error, measured), each a miss beyond its target, under a 1000 ms SLO
+    fn with_misses(checks: &[(&str, f64, f64)]) -> Value {
+        let checks: Vec<Value> = checks.iter().map(|(m, e, measured)| json!({ "metric": m, "error": e, "measured": measured, "pass": false })).collect();
+        let mv = json!({ "services": {}, "accuracy": [{ "method": "holdout", "checks": checks }], "traffic": { "peak": 50 } });
+        let m: crate::model::Model = serde_json::from_str(include_str!("../../../../reference/shop/model.json")).unwrap();
+        let r = json!({ "window": { "start": 0, "end": 86400 }, "slo": { "p99Ms": 1000, "errorRate": 0.01 }, "baseline": { "peakUtil": {}, "summary": { "requests": { "p50": 500000.0 }, "failedRequests": { "p50": 0.0 } } } });
+        let st = json!({ "peakUtil": {}, "delta": { "minutesOutOfSlo": { "p50": 0, "lo": 0, "hi": 0 }, "failedRequests": { "p50": 0, "lo": 0, "hi": 0 }, "monthly": { "p50": -10 } } });
+        judge(&mv, &m, &r, &st, &json!({ "name": "x", "changes": [] }), None, 0.5, (100.0, None), (100.0, None), None).unwrap()
+    }
+
+    #[test]
+    fn a_large_holdout_miss_on_what_the_verdict_rests_on_makes_confidence_low() {
+        // the trial's case: medium while the held-out p99 missed by 91%
+        let v = with_misses(&[("p99", 0.91, 199.0)]);
+        assert_eq!(s(&v, &["confidence", "level"]), "low");
+        assert_eq!(s(&v, &["verdict"]), "inconclusive");
+        assert!(reasons(&v).contains("the backtest passes, but confidence is low (the model missed p99 (holdout, off by 91%) on data it never saw: off by more than half on what the verdict is counted from"), "{}", reasons(&v));
+        // the breaking point is what the verdict rests on too
+        assert_eq!(s(&with_misses(&[("breaking-point", 0.6, 50.0)]), &["confidence", "level"]), "low");
+        // half or less: medium, as any other miss
+        let v = with_misses(&[("p99", 0.5, 400.0)]);
+        assert_eq!(s(&v, &["confidence", "level"]), "medium");
+        assert_eq!(s(&v, &["verdict"]), "pass");
+        // more than half, but small against the SLO (58% of 9 ms under 1000 ms): no bucket turns on it
+        assert_eq!(s(&with_misses(&[("p99", 0.58, 8.8)]), &["confidence", "level"]), "medium");
+        // cost is stated beside the verdict, not in it: a large cost miss leaves it medium
+        assert_eq!(s(&with_misses(&[("cost", 0.9, 1.0)]), &["confidence", "level"]), "medium");
+        // both kinds: low for the large one, and the small one still said
+        let v = with_misses(&[("p99", 0.25, 199.0), ("breaking-point", 0.7, 50.0)]);
+        assert_eq!(s(&v, &["confidence", "level"]), "low");
+        let w: Vec<String> = arr(&v, &["confidence", "warnings"]).iter().map(|x| s(x, &[])).collect();
+        assert!(w[0].starts_with("the model missed breaking-point (holdout, off by 70%)"), "{:?}", w);
+        assert_eq!(w[1], "the model missed p99 (holdout, off by 25%) on data it never saw");
     }
 }

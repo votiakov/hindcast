@@ -177,7 +177,7 @@ Why:
 Confidence low:
 - frontend would run at 150% of a capacity the history never tested (peak 7%): the outcome rests on an extrapolated limit
 - mysql fits not at all and runs near its limit; the change leaves it as it was, so the comparison holds better than the absolute numbers
-- the model missed p99 (holdout, off by 72%) on data it never saw
+- the model missed p99 (holdout, off by 72%) on data it never saw: off by more than half on what the verdict is counted from (latency, the breaking point), so a replay can't be trusted to place the SLO's edge
 - only 0.7 h of history: daily and weekly peaks may be missing
 
 <sub>Replayed the last 41 minutes of production traffic through the calibrated model · 30 draws · ranges are 10th–90th percentiles</sub>
