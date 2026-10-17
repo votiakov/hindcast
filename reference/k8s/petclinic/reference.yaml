@@ -38,13 +38,18 @@ runs:
   launch-cust125: { day: 13/Jul/1995, minutes: 40, scale: x55, manifests: variants/customers-125m.yaml }
   normal-cust125: { day: 12/Jul/1995, minutes: 40, scale: x55, manifests: variants/customers-125m.yaml }
   launch-hpa: { day: 13/Jul/1995, minutes: 40, scale: x55, manifests: variants/gateway-hpa-1-3.yaml }
+  # round 2: chosen after round 1 was scored and the model learned JIT warm-up from its miss;
+  # the verdicts were committed in validation/predictions-oos-2.json before any of them ran
+  launch-visits125: { day: 13/Jul/1995, minutes: 40, scale: x55, manifests: variants/visits-125m.yaml }
+  launch-cust175: { day: 13/Jul/1995, minutes: 40, scale: x55, manifests: variants/customers-175m.yaml }
+  launch-cust-hpa: { day: 13/Jul/1995, minutes: 40, scale: x55, manifests: variants/customers-hpa-1-3.yaml }
 # how evaluate.ts scores it (reference/k8s/evaluate.ts petclinic). Launch day is forecast as the
 # ordinary day at 2.22×, its busiest 10 minutes over the ordinary day's in the log itself (as the
 # shop's). The naive rule: every service's busiest CPU share in the history, scaled by the load and
 # by replicas × cores; the worst one decides.
 evaluation:
   manifests: petclinic.yaml
-  rounds: { 1: 'chosen after the ordinary day was recorded; every verdict was predicted from it alone and committed before any of these runs was recorded' }
+  rounds: { 1: 'chosen after the ordinary day was recorded; every verdict was predicted from it alone and committed before any of these runs was recorded', 2: 'chosen after round 1 was scored and the model learned JIT warm-up from its miss; predicted from the same ordinary day and committed before any of these runs was recorded' }
   # today's verdicts on the same runs, kept apart from the committed ones: the JVM warm-up the model
   # learned since was fitted on the two customers-service runs at 125m
   retrodiction: "what today's code says from the same ordinary day, after the model learned JIT warm-up. The warm-up's defaults (×5 CPU per request while cold, 30 core-seconds of compilation, 6% of the limit for the compiler under load) were fitted on `launch-cust125` and `normal-cust125` after they were recorded, so this is the model explaining runs it was shaped on, in sample"
@@ -55,3 +60,6 @@ evaluation:
     - { run: launch-cust125, asBuilt: launch, head: variants/customers-125m.yaml, scale: 2.22, oos: 1, service: customers-service, name: 'customers-service at 125m', question: 'customers-service at 125m instead of 250m, on launch day?' }
     - { run: normal-cust125, asBuilt: history, head: variants/customers-125m.yaml, scale: 1, oos: 1, service: customers-service, name: 'customers-service at 125m', question: 'customers-service at 125m instead of 250m, on an ordinary day?' }
     - { run: launch-hpa, asBuilt: launch, head: variants/gateway-hpa-1-3.yaml, scale: 2.22, oos: 1, service: api-gateway, name: 'Gateway on an HPA, 1–3 replicas', question: 'An HPA (1–3 gateways at 60% CPU) instead of 2 fixed, on launch day?' }
+    - { run: launch-visits125, asBuilt: launch, head: variants/visits-125m.yaml, scale: 2.22, oos: 2, service: visits-service, name: 'visits-service at 125m', question: 'visits-service at 125m instead of 250m, on launch day?' }
+    - { run: launch-cust175, asBuilt: launch, head: variants/customers-175m.yaml, scale: 2.22, oos: 2, service: customers-service, name: 'customers-service at 175m', question: 'customers-service at 175m instead of 250m, on launch day?' }
+    - { run: launch-cust-hpa, asBuilt: launch, head: variants/customers-hpa-1-3.yaml, scale: 2.22, oos: 2, service: customers-service, name: 'customers-service on an HPA, 1–3 replicas', question: 'An HPA (1–3 customers-service pods at 60% CPU) instead of 1 fixed, on launch day?' }

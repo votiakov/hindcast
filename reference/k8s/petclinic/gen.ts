@@ -199,6 +199,11 @@ const variants: Record<string, Options> = {
   'gateway-1.yaml': { over: { 'api-gateway': { replicas: 1 } } },
   'customers-125m.yaml': { over: { 'customers-service': { cpu: '125m' } } },
   'gateway-hpa-1-3.yaml': { over: { 'api-gateway': { replicas: 1 } }, hpa: { service: 'api-gateway', min: 1, max: 3, cpu: 60 } },
+  // round 2, chosen after round 1 was scored and the model learned JIT warm-up from its miss: a
+  // different JVM at the same cut, an in-between limit, and pods an autoscaler adds cold under load
+  'visits-125m.yaml': { over: { 'visits-service': { cpu: '125m' } } },
+  'customers-175m.yaml': { over: { 'customers-service': { cpu: '175m' } } },
+  'customers-hpa-1-3.yaml': { hpa: { service: 'customers-service', min: 1, max: 3, cpu: 60 } },
 };
 for (const [file, o] of Object.entries(variants)) writeFileSync(join(HERE, 'variants', file), manifests(o));
 console.log(`wrote petclinic.yaml and ${Object.keys(variants).length} variants`);

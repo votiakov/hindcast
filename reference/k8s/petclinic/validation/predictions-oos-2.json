@@ -1,0 +1,80 @@
+{
+ "madeAt": "2026-10-17T00:22:24.375Z",
+ "commit": "1e3b528",
+ "models": {
+  "calm": {
+   "launch-visits125": {
+    "verdict": "inconclusive",
+    "confidence": "medium",
+    "leans": "pass",
+    "minutesOutOfSlo": 0,
+    "peakP99Ms": 21,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same, with no change in time out of SLO",
+     "visits-service restarts on its new 125m CPU limit and a JVM needs ~30 core-seconds of JIT compilation to warm up (assumed): until then a request costs ×5 its warm CPU; in the replay it is warm 7.9 min after it starts",
+     "frees 0.13 cores and 0 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 39% of it (39% before)",
+     "while its restarted pods are still cold the system sustains 123.4 req/s, below the peak it has to serve (237.8): rolled out at a busy moment, it would not warm up. Roll it out when traffic is low, or warm the pods before they take traffic"
+    ],
+    "warnings": [
+     "visits-service would run at 66% of capacity, past the history's 9%: its capacity there is extrapolated",
+     "customers-service would run at 40% of capacity, past the history's 18%: its capacity there is extrapolated",
+     "only 0.6 h of history: daily and weekly peaks may be missing",
+     "visits-service's warm-up is assumed, not measured on it: the JVM defaults (×5 CPU while cold, 30 core-seconds of compilation, 6% of the limit for the compiler under load), fitted on one Spring Boot service; nothing in the history shows one of its pods starting"
+    ],
+    "ooms": {}
+   },
+   "launch-cust175": {
+    "verdict": "inconclusive",
+    "confidence": "low",
+    "leans": "pass",
+    "minutesOutOfSlo": 0.3,
+    "peakP99Ms": 951,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same, with no change in time out of SLO",
+     "no added time out of SLO at the median, but 7.2 min in the worst 10% of capacity draws",
+     "customers-service restarts on its new 175m CPU limit and a JVM needs ~30 core-seconds of JIT compilation to warm up (assumed): until then a request costs ×5 its warm CPU; in the replay it is warm 10.2 min after it starts",
+     "worst at 2026-10-16T14:48:00Z: customers-service at 96% of capacity (57.5 req/s on 1 × 60.0 req/s (normally 300.2)), 114 ms wait",
+     "frees 0.08 cores and 0 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 39% of it (39% before)",
+     "headroom drops from 629.5 to 417.9 req/s (the replayed traffic peaks at 237.8)",
+     "while its restarted pods are still cold the system sustains 83.3 req/s (417.9 once warm)"
+    ],
+    "warnings": [
+     "customers-service would run at 96% of a capacity the history never tested (peak 18%): the outcome rests on an extrapolated limit",
+     "only 0.6 h of history: daily and weekly peaks may be missing",
+     "customers-service's warm-up is assumed, not measured on it: the JVM defaults (×5 CPU while cold, 30 core-seconds of compilation, 6% of the limit for the compiler under load), fitted on one Spring Boot service; nothing in the history shows one of its pods starting"
+    ],
+    "ooms": {}
+   },
+   "launch-cust-hpa": {
+    "verdict": "pass",
+    "confidence": "medium",
+    "leans": null,
+    "minutesOutOfSlo": 0,
+    "peakP99Ms": 9,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same, with no change in time out of SLO"
+    ],
+    "warnings": [
+     "customers-service would run at 40% of capacity, past the history's 18%: its capacity there is extrapolated",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ],
+    "ooms": {}
+   }
+  }
+ }
+}
