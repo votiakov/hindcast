@@ -12,7 +12,8 @@ export function healthOf(util: number, dropRps: number, inRps: number, up: boole
 }
 
 export const fmtMs = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms.toFixed(0)}ms`);
-export const fmt = (n: number) => (!isFinite(n) ? '∞' : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n >= 10 ? n.toFixed(0) : n.toFixed(1));
+/** req/s and counts: 1.5k, 2.0M, 1.0B */
+export const fmt = (n: number) => (!isFinite(n) ? '∞' : n >= 1e9 ? `${(n / 1e9).toFixed(1)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n >= 10 ? n.toFixed(0) : n.toFixed(1));
 
 export interface NodeView {
   health: Health;
@@ -114,7 +115,7 @@ export function nodeView(d0: SystemNodeData, st: NodeStats | undefined, running:
       stats = [
         { label: 'in', value: `${fmt(inRps)}/s` },
         { label: 'dropped', value: `${fmt(dropRps)}/s`, bad: dropRps > 1 },
-        { label: 'cap', value: `${fmt(capacityOf(d, st?.reachable))}/s` },
+        { label: 'cap', value: capacityOf(d, st?.reachable) >= 1e9 ? 'no limit' : `${fmt(capacityOf(d, st?.reachable))}/s` },
       ];
   }
 
@@ -205,7 +206,7 @@ export function explain(d: SystemNodeData, st: NodeStats | undefined, v: NodeVie
   if (d.kind === 'stream' && st.lagS > 5) return { tone: 'warn', text: `The slowest subscriber is ${isFinite(st.lagS) ? `${st.lagS.toFixed(0)} s` : 'indefinitely'} behind: every subscriber reads every message at its own pace, and none can use more consumers than the stream's ${partitionsOf(d)} partitions. Past retention, the oldest expire unread.` };
   if (d.kind === 'queue' && (st.deadLetterRps ?? 0) > 0.05) return { tone: 'warn', text: `${fmt(st.deadLetterRps ?? 0)}/s go to the dead-letter queue: messages its consumers failed ${d.maxReceives} times. The rest of the failures came back and were retried — which is extra load on the consumers.` };
   if (d.kind === 'queue' && st.lagS > 5) return { tone: 'warn', text: `Backlog of ${fmt(st.queue)} messages: consumers are ${isFinite(st.lagS) ? `${st.lagS.toFixed(0)}s` : 'indefinitely'} behind. Producers are unaffected — work completes later.` };
-  if (d.kind === 'dns' && st.dropRps > 0.5) return { tone: 'bad', text: `${fmt(st.dropRps)}/s of clients still hold an answer pointing at a dead target and time out: they keep going there until the health checks notice (${d.healthCheckS ?? 30} s) and their cached answer expires (TTL ${d.ttlS ?? 60} s).` };
+  if (d.kind === 'dns' && st.dropRps > 0.5 && !v.noTargets) return { tone: 'bad', text: `${fmt(st.dropRps)}/s of clients still hold an answer pointing at a dead target and time out: they keep going there until the health checks notice (${d.healthCheckS ?? 30} s) and their cached answer expires (TTL ${d.ttlS ?? 60} s).` };
     if (d.kind === 'kv' && d.hotKeyShare && st.dropRps > 1 && st.inRps < capacityOf(d) * 0.98) return { tone: 'bad', text: `Hot partition: ${Math.round(d.hotKeyShare * 100)}% of requests are for one key, and one partition takes 3,000 reads or 1,000 writes a second however much the table allows (reads take it first; writes to that key starve) — ${fmt(st.dropRps)}/s are throttled. Cache that key, or spread it over several (write sharding).` };
   if ((d.kind === 'lb' || d.kind === 'gateway') && d.maxConnections) {
     const held = d.connectionS ?? 30;
@@ -244,11 +245,13 @@ export function explain(d: SystemNodeData, st: NodeStats | undefined, v: NodeVie
     if (tc < cap * 0.95)
       return { tone: 'bad', text: `Out of threads: ${d.threads * Math.max(1, st.reachable)} threads, one per request in flight, each held ${fmtMs(baseLatencyOf(d) + (st.holdMs ?? 0))} — mostly waiting on its calls — so only ${fmt(tc)} req/s get one. ${d.bulkhead && (d.bulkheadWaitMs ?? 0) > 0 ? `Its bulkhead makes a call past it wait up to ${fmtMs(d.bulkheadWaitMs ?? 0)} for a slot, and the wait holds the thread: refusing at once keeps the threads for the other calls.` : 'A slow dependency is holding them: a timeout gives them back sooner; a bulkhead stops one dependency from taking them all.'}` };
   }
-  if (v.health === 'hot' && st.dropRps > 1 && st.inRps >= cap * 0.9) return { tone: 'bad', text: `Overloaded: ${fmt(st.inRps)} req/s offered vs ${fmt(cap)} req/s capacity. The excess queues, then gets dropped.` };
+  // instances added without a load balancer: say why the capacity did not grow with them
+  const reach = v.unreachable ? ` Only ${Math.max(1, Math.round(st.reachable))} of its ${instancesUp(d)} instances get traffic: without a load balancer, clients only know one address.` : '';
+  if (v.health === 'hot' && st.dropRps > 1 && st.inRps >= cap * 0.9) return { tone: 'bad', text: `Overloaded: ${fmt(st.inRps)} req/s offered vs ${fmt(cap)} req/s capacity. The excess queues, then gets dropped.${reach}` };
   // drops while the offered load is below capacity: a surge just passed (the averages lag it)
-  if (v.health === 'hot' && st.dropRps > 1) return { tone: 'warn', text: `Recovering from a surge: load came in above its ${fmt(cap)} req/s capacity moments ago, and ${fmt(st.dropRps)} req/s are still being shed while its queue drains.` };
-  if (v.health === 'hot') return { tone: 'bad', text: `Saturated at ${Math.round(st.util * 100)}% — requests are queuing and latency is climbing steeply.` };
-  if (v.health === 'warm') return { tone: 'warn', text: `${Math.round(st.util * 100)}% utilised. Queueing delay grows non-linearly beyond ~70%; little headroom left for spikes.` };
+  if (v.health === 'hot' && st.dropRps > 1) return { tone: 'warn', text: `Recovering from a surge: load came in above its ${fmt(cap)} req/s capacity moments ago, and ${fmt(st.dropRps)} req/s are still being shed while its queue drains.${reach}` };
+  if (v.health === 'hot') return { tone: 'bad', text: `Saturated at ${Math.round(st.util * 100)}% — requests are queuing and latency is climbing steeply.${reach}` };
+  if (v.health === 'warm') return { tone: 'warn', text: `${Math.round(st.util * 100)}% utilised. Queueing delay grows non-linearly beyond ~70%; little headroom left for spikes.${reach}` };
   if (v.unreachable) return { tone: 'warn', text: 'Extra instances receive no traffic: without a load balancer, clients only know one address.' };
   if (v.noOrigin) return { tone: 'bad', text: d.kind === 'edge' ? 'No origin behind this edge function: what it passes on has nowhere to go and fails.' : 'No origin behind this cache: every miss has nowhere to go and fails.' };
   return null;

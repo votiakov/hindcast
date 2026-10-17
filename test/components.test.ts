@@ -246,3 +246,35 @@ describe('a stream: every subscriber reads everything, at its own pace', () => {
     expect(s.edgeStats['e-x-fast'].rps + s.edgeStats['e-x-slow'].rps).toBeCloseTo(200, 0);
   });
 });
+
+describe('what a card says, for the first mistakes a learner makes', () => {
+  const run = (components: C[], connections: [string, string][], rps: number) => {
+    const b = specToGraph({ components, connections } as never);
+    const e = new Engine();
+    for (let i = 0; i < 400; i++) e.step(b.nodes as never, b.edges as never, rps, 0.8, 0.05, DEFAULT_ENGINE_CONFIG);
+    const snap = e.snapshot(b.nodes as never, b.edges as never);
+    return (id: string) => {
+      const d = b.nodes.find((n) => n.id === id)!.data as never;
+      const v = nodeView(d, snap.nodeStats[id], true, b.edges.some((x) => x.source === id));
+      return { text: explain(d, snap.nodeStats[id], v)?.text ?? '', v };
+    };
+  };
+
+  it('instances added without a load balancer: the overload says only one of them gets traffic, and why', () => {
+    const card = run([U, { id: 'api', kind: 'server', instances: 4 }], [['users', 'api']], 700)('api');
+    expect(card.text).toMatch(/^Overloaded/);
+    expect(card.text).toContain('Only 1 of its 4 instances get traffic: without a load balancer');
+  });
+
+  it('behind a load balancer, the overload says nothing about reach', () => {
+    const card = run([U, { id: 'lb', kind: 'lb' }, { id: 'api', kind: 'server', instances: 2 }], [['users', 'lb'], ['lb', 'api']], 900)('api');
+    expect(card.text).toMatch(/^Overloaded/);
+    expect(card.text).not.toContain('instances get traffic');
+  });
+
+  it('a DNS name with nothing behind it says so, not that clients hold a stale answer; its capacity reads "no limit"', () => {
+    const card = run([U, { id: 'dns', kind: 'dns' }], [['users', 'dns']], 100)('dns');
+    expect(card.text).toMatch(/^Nothing behind this name/);
+    expect(card.v.stats.find((s) => s.label === 'cap')?.value).toBe('no limit');
+  });
+});
