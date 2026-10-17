@@ -52,7 +52,7 @@
 <h2>What it doesn't do</h2>
 <ul>
 <li>A limit the history never approached is an extrapolation; the band shows how wide it is. One overload in the history is worth more than a month of quiet days.</li>
-<li>Cold starts after a deploy (JIT warm-up, empty caches) are not part of the backtest.</li>
+<li>JIT warm-up (a JVM or .NET pod compiling its hot paths after it starts) is modelled for pods that start during a replay, with defaults fitted on one Spring service, so they are an assumption the verdict names. The history measures them only when it shows a pod starting. Empty caches after a deploy are not modelled.</li>
 <li>Errors unrelated to load (a bad deploy, a bug) are a baseline rate, not predicted.</li>
 <li>A garbage-collected runtime's p99 over 5 minutes can swing 5× at the same load. The model predicts the distribution, not which window a pause lands in.</li>
 </ul>
