@@ -559,8 +559,12 @@ they measure is run-to-run noise around an incident the system has anyway, not t
 while the CPU rule passed both and is scored wrong. Both hedges came from the same rule: the
 frontend, which neither change touches, runs on launch day at 91% of a capacity the history never
 tested. The system as built runs it there too, so the rule lowers confidence in a comparison it
-doesn't affect. That looks like a flaw, and it isn't changed here. A fix chosen after seeing these
-runs would need a later round to test it.
+doesn't affect. That looks like a flaw. A fix was tried afterwards, in sample: for a service the change
+doesn't touch and loads no harder than as built (within 5%), lower confidence only to medium. On the
+committed runs it turned three inconclusives into passes. `launch-email300` was right, but
+`launch-2c` and `launch-cart250` were wrong, both on days where the email kill decided the
+outcome. One right and two wrong, so it isn't kept. Picking which failures to count after seeing
+them is the bias this record is meant to rule out, and for a gate a hedge costs less than a wrong pass.
 
 Two lessons for the method, not the model:
 - a fixed half-minute threshold needs a noise floor for incidents the system has as built;
