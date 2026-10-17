@@ -26,9 +26,14 @@ pub fn fmt_ms(ms: f64) -> String {
     }
 }
 
+/// req/s and counts: 1.5k, 2.0M, 1.0B
 pub fn fmt(n: f64) -> String {
     if !n.is_finite() {
         "∞".into()
+    } else if n >= 1e9 {
+        format!("{}B", js_to_fixed(n / 1e9, 1))
+    } else if n >= 1e6 {
+        format!("{}M", js_to_fixed(n / 1e6, 1))
     } else if n >= 1000.0 {
         format!("{}k", js_to_fixed(n / 1000.0, 1))
     } else if n >= 10.0 {
@@ -62,6 +67,7 @@ pub struct View {
     pub electing: bool,
     pub unreachable: bool,
     pub no_origin: bool,
+    pub no_targets: bool,
 }
 
 pub fn node_view(d0: &NodeData, st: Option<&NodeStats>, running: bool, has_outgoing: bool) -> View {
@@ -109,6 +115,7 @@ pub fn node_view(d0: &NodeData, st: Option<&NodeStats>, running: bool, has_outgo
         electing: failover == "electing",
         unreachable: spec(&d.kind).scalable && d.kind != "llm" && !clustered(&d.kind) && iu > 1.0 && st.map(|s| s.reachable).unwrap_or(1.0) < iu && running,
         no_origin: (d.kind == "cache" || d.kind == "cdn" || (d.kind == "edge" && edge_share_of(&d) < 1.0)) && !has_outgoing,
+        no_targets: (d.kind == "lb" || d.kind == "gateway" || d.kind == "dns" || d.kind == "stream") && !has_outgoing,
     }
 }
 
@@ -117,6 +124,8 @@ pub fn explain(d: &NodeData, st: Option<&NodeStats>, v: &View) -> Option<String>
     let st = st?;
     let cap = capacity_of(d, Some(st.reachable));
     let pct = |x: f64| js_num(js_round(x * 100.0));
+    // instances added without a load balancer: say why the capacity did not grow with them
+    let reach = if v.unreachable { format!(" Only {} of its {} instances get traffic: without a load balancer, clients only know one address.", js_num(js_round(st.reachable).max(1.0)), js_num(instances_up(d))) } else { String::new() };
     Some(if v.failed_over {
         "Primary is down. A replica was promoted and now takes writes; this node only forwards.".into()
     } else if v.electing {
@@ -154,7 +163,7 @@ pub fn explain(d: &NodeData, st: Option<&NodeStats>, v: &View) -> Option<String>
         format!("{}/s go to the dead-letter queue: messages its consumers failed {} times. The rest of the failures came back and were retried — which is extra load on the consumers.", fmt(st.dead_letter_rps), js_num(d.max_receives.unwrap_or(0.0)))
     } else if d.kind == "queue" && st.lag_s > 5.0 {
         format!("Backlog of {} messages: consumers are {} behind. Producers are unaffected — work completes later.", fmt(st.queue), if st.lag_s.is_finite() { format!("{}s", js_to_fixed(st.lag_s, 0)) } else { "indefinitely".into() })
-    } else if d.kind == "dns" && st.drop_rps > 0.5 {
+    } else if d.kind == "dns" && st.drop_rps > 0.5 && !v.no_targets {
         format!("{}/s of clients still hold an answer pointing at a dead target and time out: they keep going there until the health checks notice ({} s) and their cached answer expires (TTL {} s).", fmt(st.drop_rps), js_num(d.health_check_s.unwrap_or(30.0)), js_num(d.ttl_s.unwrap_or(60.0)))
     } else if d.kind == "vector" && vector_fit(d) < 0.999 && (v.health == "hot" || v.health == "warm") {
         format!(
@@ -226,6 +235,17 @@ pub fn explain(d: &NodeData, st: Option<&NodeStats>, v: &View) -> Option<String>
         format!("Rate limit reached: {}/s rejected with HTTP 429 to protect what is behind it.", fmt(st.drop_rps))
     } else if d.kind == "function" && st.cold_frac > 0.05 {
         format!("{}% of invocations hit a cold start while new instances spin up.{}", pct(st.cold_frac), if d.provisioned.is_some() { "" } else { " Provisioned concurrency keeps some warm, for a price by the hour." })
+    } else if v.no_targets && st.in_rps > 0.01 {
+        format!(
+            "Nothing behind this {}: the {} req/s it receives have nowhere to go and fail. Connect it to what it fronts.",
+            match d.kind.as_str() {
+                "lb" => "load balancer",
+                "dns" => "name",
+                "stream" => "stream (no subscribers)",
+                _ => "gateway",
+            },
+            fmt(st.in_rps)
+        )
     } else if let Some(t) = d.threads.filter(|_| st.drop_rps > 1.0 && super::engine::threads_capacity(d, st.reachable, st.hold_ms) < cap * 0.95) {
         format!(
             "Out of threads: {} threads, one per request in flight, each held {} — mostly waiting on its calls — so only {} req/s get one. {}",
@@ -237,12 +257,15 @@ pub fn explain(d: &NodeData, st: Option<&NodeStats>, v: &View) -> Option<String>
                 _ => "A slow dependency is holding them: a timeout gives them back sooner; a bulkhead stops one dependency from taking them all.".into(),
             }
         )
+    } else if v.health == "hot" && st.drop_rps > 1.0 && st.in_rps >= cap * 0.9 {
+        format!("Overloaded: {} req/s offered vs {} req/s capacity. The excess queues, then gets dropped.{}", fmt(st.in_rps), fmt(cap), reach)
     } else if v.health == "hot" && st.drop_rps > 1.0 {
-        format!("Overloaded: {} req/s offered vs {} req/s capacity. The excess queues, then gets dropped.", fmt(st.in_rps), fmt(cap))
+        // drops while the offered load is below capacity: a surge just passed (the averages lag it)
+        format!("Recovering from a surge: load came in above its {} req/s capacity moments ago, and {} req/s are still being shed while its queue drains.{}", fmt(cap), fmt(st.drop_rps), reach)
     } else if v.health == "hot" {
-        format!("Saturated at {}% — requests are queuing and latency is climbing steeply.", pct(st.util))
+        format!("Saturated at {}% — requests are queuing and latency is climbing steeply.{}", pct(st.util), reach)
     } else if v.health == "warm" {
-        format!("{}% utilised. Queueing delay grows non-linearly beyond ~70%; little headroom left for spikes.", pct(st.util))
+        format!("{}% utilised. Queueing delay grows non-linearly beyond ~70%; little headroom left for spikes.{}", pct(st.util), reach)
     } else if v.unreachable {
         "Extra instances receive no traffic: without a load balancer, clients only know one address.".into()
     } else if v.no_origin {
@@ -1040,4 +1063,41 @@ pub fn load_curve_parsed(a: &Architecture, max_rps: f64, points: Option<f64>, re
         out.push(CurvePoint { rps, error_rate: round(err, 4), p99_ms: js_round(p99), cost_per_hour: round(cost, 3), per_million: if ok > 0.0 { round((cost / (ok * 3600.0)) * 1e6, 4) } else { 0.0 }, bottleneck: r.bottlenecks.first().map(|b| b.id.clone()) });
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// the note a component's report carries after a minute at a steady rate
+    fn note(components: Value, connections: Value, rps: f64, id: &str) -> String {
+        let r = simulate(&json!({ "components": components, "connections": connections }), &json!({ "duration": 60, "rps": rps }), &SimOptions::default()).unwrap();
+        r.components[id].note.clone().unwrap_or_default()
+    }
+
+    #[test]
+    fn instances_added_without_a_load_balancer_the_overload_says_only_one_of_them_gets_traffic_and_why() {
+        let n = note(json!([{ "id": "users", "kind": "client" }, { "id": "api", "kind": "server", "instances": 4 }]), json!([{ "from": "users", "to": "api" }]), 700.0, "api");
+        assert!(n.starts_with("Overloaded"), "{n}");
+        assert!(n.contains("Only 1 of its 4 instances get traffic: without a load balancer, clients only know one address."), "{n}");
+    }
+
+    #[test]
+    fn behind_a_load_balancer_the_overload_says_nothing_about_reach() {
+        let n = note(json!([{ "id": "users", "kind": "client" }, { "id": "lb", "kind": "lb" }, { "id": "api", "kind": "server", "instances": 2 }]), json!([{ "from": "users", "to": "lb" }, { "from": "lb", "to": "api" }]), 900.0, "api");
+        assert!(n.starts_with("Overloaded"), "{n}");
+        assert!(!n.contains("instances get traffic"), "{n}");
+    }
+
+    #[test]
+    fn a_dns_name_with_nothing_behind_it_says_so_not_that_clients_hold_a_stale_answer() {
+        let n = note(json!([{ "id": "users", "kind": "client" }, { "id": "dns", "kind": "dns" }]), json!([{ "from": "users", "to": "dns" }]), 100.0, "dns");
+        assert!(n.starts_with("Nothing behind this name: the 100 req/s it receives have nowhere to go and fail."), "{n}");
+    }
+
+    #[test]
+    fn big_numbers_format_as_m_and_b() {
+        assert_eq!((fmt(1500.0), fmt(2e6), fmt(1e9), fmt(f64::INFINITY)), ("1.5k".to_string(), "2.0M".to_string(), "1.0B".to_string(), "∞".to_string()));
+    }
 }
