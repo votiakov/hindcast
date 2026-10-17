@@ -15,7 +15,7 @@
    "name": "hindcast",
    "version": "1.2.1"
   },
-  "instructions": "Hindcast lets an agent check infrastructure decisions before they ship.\n\nREAL SYSTEMS (production telemetry): connect_telemetry (Prometheus URL or Datadog site, plus Jaeger or Tempo for traces where there are any — without them who calls whom is read from the metrics, and the trust report says what that loses — optionally the cloud bill) → collect_telemetry (history into the workspace) → calibrate_model (read its trust report) → review_capacity for \"how are we doing / how much headroom / what should I worry about\" (it opens with a five-line summary: risk, headroom, cost, the one change, trust — lead with it) → suggest_changes for \"what should we change / where can we save\", and verify_change for any change you propose or are asked about: a strategy, a Kubernetes manifest diff, a Terraform plan, or edited manifests against read_cluster's snapshot. Start a session with model_status: the workspace (./.hindcast) may already hold a fresh model.\nReport verify_change results with their verdict AND confidence. \"pass\" with confidence \"low\" means the change pushes a service past anything the history showed: say so and recommend a load test instead of calling it safe. Quote the money as a range when the band is wide, and say when prices are list prices rather than the bill. Never present a backtest as a guarantee.\nEverything is read-only towards the user's systems; nothing is applied. Credentials are passed as env var names, never as values.\n\nDESIGNS ON PAPER: verify_design checks a spec you wrote (failures, headroom, cost vs budget) and returns fixes as exact spec changes; apply them and verify again until it passes.\n\nENGINE DETAILS: Hindcast simulates distributed-system architectures under load and failure.\nTwo engines: \"fluid\" (queueing model, milliseconds, used for quick checks and search) and \"des\" (discrete-event, every request simulated: real p50/p99/p99.9, emergent retry storms/timeouts/breakers, seeded). Use analyze for Monte Carlo confidence intervals and optimize_cost for the cheapest sizing that meets an SLO. Use trace_request to see why requests through one component fail or wait: sampled requests, hop by hop, with the queue waits and where each failed.\nDescribe a system as an architecture spec: components (id, kind, optional knobs) + connections ([caller, callee]) + optional zones (failure domains).\nKinds: client (traffic source), cdn, lb, gateway, server, worker, function, cache, db, replica, storage, queue, llm (self-hosted GPU), llmapi (hosted model API), external (someone else's service: its rate limit and latency, not its capacity), kv (managed NoSQL on demand: billed per request, a hot key throttles at one partition), dns (health-checked answers; failover lags by the health check and the TTL), stream (pub/sub log: every subscriber gets every message; partitions cap ingest and each subscriber's consumers), search (OpenSearch-like index: data nodes share the queries; a write is searchable only after refreshS and any indexing backlog), vector (vector database: recall and whether vectorsM fits in the nodes' memory set its capacity), archive (S3 Glacier: retrieval instant answers in ms; expedited/standard are restores taking minutes/hours, priced per read), edge (edge function: answers edgeShare itself before the origin; CPU past cpuLimitMs is killed).\nRules: instances are only reachable behind lb/gateway/queue/stream (a search index's or vector database's nodes share its queries themselves); db shares reads with replica children and fails over to them, and splits its keys over `shards` (a hot key still lands on one); cache/cdn/edge need an origin behind them.\nDynamics: server/worker/llm can autoscale ({ min, max, targetUtil, warmupS, cooldownS }); caches go cold after a restart or flush-cache and re-warm over warmupS (thundering herd on the origin); a connection can carry network latency ({ from, to, latencyMs }).\nScenarios: duration, constant rps or traffic keyframes, readRatio, timed events (kill-id, kill, fail-zone, degrade, inject-errors, inject-latency, flush-cache, restore…), SLO.\nFor \"is this design production-ready / what breaks first / what should we fix\", call audit_resilience: it replays every failure mode, grades user impact, and returns verified fixes priced in $/month.\nCalibrate to a real system by overriding capacity (req/s per instance), latencyMs and costPerHour per component.\nResults are directional: good for comparing designs and finding bottlenecks, not a substitute for load tests.\nFor real systems with recorded telemetry, use backtest_strategy (replays production history through a calibrated model, with measured accuracy) and replay_outage (famous public outages against that model)."
+  "instructions": "Hindcast lets an agent check infrastructure decisions before they ship.\n\nREAL SYSTEMS (production telemetry): connect_telemetry (Prometheus URL or Datadog site, plus Jaeger or Tempo for traces where there are any — without them who calls whom is read from the metrics, and the trust report says what that loses — optionally the cloud bill) → collect_telemetry (history into the workspace) → calibrate_model (read its trust report) → review_capacity for \"how are we doing / how much headroom / what should I worry about\" (it opens with a five-line summary: risk, headroom, cost, the one change, trust — lead with it) → suggest_changes for \"what should we change / where can we save\", and verify_change for any change you propose or are asked about: a strategy, a Kubernetes manifest diff, a Terraform plan, or edited manifests against read_cluster's snapshot. Start a session with model_status: the workspace (./.hindcast) may already hold a fresh model.\nReport verify_change results with their verdict AND confidence. \"pass\" with confidence \"low\" means the change pushes a service past anything the history showed: say so and recommend a load test instead of calling it safe: plan_load_test with the same changes designs it (targets, a k6 script that stops at the SLO, and the calls that read it back in). Quote the money as a range when the band is wide, and say when prices are list prices rather than the bill. Never present a backtest as a guarantee.\nEverything is read-only towards the user's systems; nothing is applied. Credentials are passed as env var names, never as values.\n\nDESIGNS ON PAPER: verify_design checks a spec you wrote (failures, headroom, cost vs budget) and returns fixes as exact spec changes; apply them and verify again until it passes.\n\nENGINE DETAILS: Hindcast simulates distributed-system architectures under load and failure.\nTwo engines: \"fluid\" (queueing model, milliseconds, used for quick checks and search) and \"des\" (discrete-event, every request simulated: real p50/p99/p99.9, emergent retry storms/timeouts/breakers, seeded). Use analyze for Monte Carlo confidence intervals and optimize_cost for the cheapest sizing that meets an SLO. Use trace_request to see why requests through one component fail or wait: sampled requests, hop by hop, with the queue waits and where each failed.\nDescribe a system as an architecture spec: components (id, kind, optional knobs) + connections ([caller, callee]) + optional zones (failure domains).\nKinds: client (traffic source), cdn, lb, gateway, server, worker, function, cache, db, replica, storage, queue, llm (self-hosted GPU), llmapi (hosted model API), external (someone else's service: its rate limit and latency, not its capacity), kv (managed NoSQL on demand: billed per request, a hot key throttles at one partition), dns (health-checked answers; failover lags by the health check and the TTL), stream (pub/sub log: every subscriber gets every message; partitions cap ingest and each subscriber's consumers), search (OpenSearch-like index: data nodes share the queries; a write is searchable only after refreshS and any indexing backlog), vector (vector database: recall and whether vectorsM fits in the nodes' memory set its capacity), archive (S3 Glacier: retrieval instant answers in ms; expedited/standard are restores taking minutes/hours, priced per read), edge (edge function: answers edgeShare itself before the origin; CPU past cpuLimitMs is killed).\nRules: instances are only reachable behind lb/gateway/queue/stream (a search index's or vector database's nodes share its queries themselves); db shares reads with replica children and fails over to them, and splits its keys over `shards` (a hot key still lands on one); cache/cdn/edge need an origin behind them.\nDynamics: server/worker/llm can autoscale ({ min, max, targetUtil, warmupS, cooldownS }); caches go cold after a restart or flush-cache and re-warm over warmupS (thundering herd on the origin); a connection can carry network latency ({ from, to, latencyMs }).\nScenarios: duration, constant rps or traffic keyframes, readRatio, timed events (kill-id, kill, fail-zone, degrade, inject-errors, inject-latency, flush-cache, restore…), SLO.\nFor \"is this design production-ready / what breaks first / what should we fix\", call audit_resilience: it replays every failure mode, grades user impact, and returns verified fixes priced in $/month.\nCalibrate to a real system by overriding capacity (req/s per instance), latencyMs and costPerHour per component.\nResults are directional: good for comparing designs and finding bottlenecks, not a substitute for load tests.\nFor real systems with recorded telemetry, use backtest_strategy (replays production history through a calibrated model, with measured accuracy) and replay_outage (famous public outages against that model)."
  },
  "tools": [
   {
@@ -14963,7 +14963,7 @@
   {
    "name": "verify_change",
    "title": "Verify an infrastructure change against real history",
-   "description": "Backtest one or more changes over the collected history, before they ship: $ per month saved or spent (with its 10–90% band), minutes out of SLO added or removed, failed requests, the worst moment and why, endpoints that get worse, headroom before and after. A change is a strategy (object or YAML), a Kubernetes manifest diff (base/head), a Terraform plan (`terraform show -json`), or edited manifests against the live cluster snapshot from read_cluster. Each result has verdict pass | fail | inconclusive and a confidence (high | medium | low) that says which services the change pushes past anything the history showed. Writes an HTML and Markdown report for a human.",
+   "description": "Backtest one or more changes over the collected history, before they ship: $ per month saved or spent (with its 10–90% band), minutes out of SLO added or removed, failed requests, the worst moment and why, endpoints that get worse, headroom before and after. A change is a strategy (object or YAML), a Kubernetes manifest diff (base/head), a Terraform plan (`terraform show -json`), or edited manifests against the live cluster snapshot from read_cluster. Each result has verdict pass | fail | inconclusive and a confidence (high | medium | low) that says which services the change pushes past anything the history showed. Writes an HTML and Markdown report for a human. A low-confidence result that asks for a load test: plan_load_test with the same changes designs it.",
    "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
@@ -15257,6 +15257,254 @@
       "type": "integer",
       "minimum": 1,
       "maximum": 30
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "openWorldHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "plan_load_test",
+   "title": "Plan the load test an inconclusive verdict asks for (k6 script and follow-up)",
+   "description": "The load test an inconclusive verdict asks for. When verify_change says a change would run a service at a share of capacity the history never tested (\"load-test before trusting it\"), this says which services need evidence and up to what request rate (the rate the change needs, with margin), at which entry endpoints in the recorded mix (who calls whom decides what reaches each service), writes a step-load k6 script into the workspace (from the history's peak to the target, each step held a calibration bucket or more, aborting per step at the SLO's error rate and p99; base URL and auth from env var names, never credentials), says where to run it and what it costs, and gives the exact follow-up: collect_telemetry with the test's window beside the history, calibrate_model, verify_change again, and what the answer is expected to change. Takes the same changes as verify_change, or a list of services. Runs nothing against the system.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "workspace": {
+      "description": "workspace directory (default ./.hindcast, or $HINDCAST_WORKSPACE)",
+      "type": "string"
+     },
+     "changes": {
+      "type": "array",
+      "items": {
+       "anyOf": [
+        {
+         "type": "object",
+         "properties": {
+          "strategy": {
+           "anyOf": [
+            {
+             "type": "string"
+            },
+            {
+             "type": "object",
+             "propertyNames": {
+              "type": "string"
+             },
+             "additionalProperties": {}
+            }
+           ],
+           "description": "a strategy object or YAML: { name, changes: [{ service, replicas | autoscale | cpu | memoryGb | cpuRequest | memoryRequestGb | arch | perf | capacityRps | cache | readReplicas | zone | region | runtime } | { endpoint, retries, timeoutMs }] }"
+          }
+         },
+         "required": [
+          "strategy"
+         ],
+         "additionalProperties": false
+        },
+        {
+         "type": "object",
+         "properties": {
+          "kubernetes": {
+           "type": "object",
+           "properties": {
+            "base": {
+             "type": "string",
+             "description": "manifests before: a directory, a file, or YAML text"
+            },
+            "head": {
+             "type": "string",
+             "description": "manifests after"
+            }
+           },
+           "required": [
+            "base",
+            "head"
+           ],
+           "additionalProperties": false
+          }
+         },
+         "required": [
+          "kubernetes"
+         ],
+         "additionalProperties": false
+        },
+        {
+         "type": "object",
+         "properties": {
+          "terraformPlan": {
+           "anyOf": [
+            {
+             "type": "string"
+            },
+            {
+             "type": "object",
+             "propertyNames": {
+              "type": "string"
+             },
+             "additionalProperties": {}
+            }
+           ],
+           "description": "path to `terraform show -json plan.out` output, or the JSON itself"
+          }
+         },
+         "required": [
+          "terraformPlan"
+         ],
+         "additionalProperties": false
+        },
+        {
+         "type": "object",
+         "properties": {
+          "cluster": {
+           "type": "object",
+           "properties": {
+            "head": {
+             "type": "string",
+             "description": "the edited manifests (directory, file or YAML text)"
+            },
+            "snapshot": {
+             "description": "a read_cluster snapshot (default: the latest)",
+             "type": "string"
+            }
+           },
+           "required": [
+            "head"
+           ],
+           "additionalProperties": false
+          }
+         },
+         "required": [
+          "cluster"
+         ],
+         "additionalProperties": false
+        }
+       ]
+      },
+      "description": "the changes, as verify_change takes them: the plan drives every service a change runs past what the history showed"
+     },
+     "services": {
+      "description": "services to drive directly, without a change: each to `utilization` of its modelled capacity (default 0.9)",
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "service": {
+         "type": "string"
+        },
+        "utilization": {
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "maximum": 1.5
+        }
+       },
+       "required": [
+        "service"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "traffic": {
+      "description": "replay the history at another load — scale ×N, or peakRps for its busiest moment — to ask \"does it survive launch day / Black Friday?\"; the as-built system sees the same load",
+      "type": "object",
+      "properties": {
+       "scale": {
+        "type": "number",
+        "exclusiveMinimum": 0
+       },
+       "peakRps": {
+        "type": "number",
+        "exclusiveMinimum": 0
+       }
+      },
+      "additionalProperties": false
+     },
+     "last": {
+      "description": "only the last part of the history, e.g. \"7d\"",
+      "type": "string"
+     },
+     "window": {
+      "description": "replay only this part of the history, as verify_change does: the plan's follow-up keeps it",
+      "type": "object",
+      "properties": {
+       "start": {
+        "type": [
+         "string",
+         "number"
+        ]
+       },
+       "end": {
+        "type": [
+         "string",
+         "number"
+        ]
+       }
+      },
+      "required": [
+       "start",
+       "end"
+      ],
+      "additionalProperties": false
+     },
+     "gateMinutes": {
+      "description": "minutes out of SLO a change may add before it fails (default 0.5)",
+      "type": "number",
+      "minimum": 0
+     },
+     "draws": {
+      "description": "capacity draws for the replay the targets are read from (default 8)",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+     },
+     "margin": {
+      "description": "how far past what the change needs to drive each service (default 1.1); a service is never driven past 90% of its capacity unless asked",
+      "type": "number",
+      "minimum": 1,
+      "maximum": 2
+     },
+     "steps": {
+      "description": "load steps from the history's peak to the target (default 5)",
+      "type": "integer",
+      "minimum": 2,
+      "maximum": 12
+     },
+     "holdS": {
+      "description": "seconds each step is held (default two calibration buckets, at least 120), rounded up to whole buckets",
+      "type": "number",
+      "exclusiveMinimum": 0
+     },
+     "mix": {
+      "description": "focused (default): only the entry endpoints that reach the services to test, in their recorded proportions; recorded: every endpoint",
+      "type": "string",
+      "enum": [
+       "focused",
+       "recorded"
+      ]
+     },
+     "replicas": {
+      "description": "replicas per service where the test runs, when they differ from the model's (e.g. a smaller staging)",
+      "type": "object",
+      "propertyNames": {
+       "type": "string"
+      },
+      "additionalProperties": {
+       "type": "number"
+      }
+     },
+     "baseUrlEnv": {
+      "description": "env var the script reads the base URL from (default BASE_URL)",
+      "type": "string"
+     },
+     "authEnv": {
+      "description": "env var whose value the script sends as the Authorization header when set (default AUTH_HEADER); never the credential itself",
+      "type": "string"
      }
     }
    },

@@ -113,6 +113,10 @@ const CASES: Case[] = [
   call('calibrate_model', { workspace: ws('d') }),
   call('review_capacity', { workspace: ws('d'), draws: 3 }),
   call('connect_telemetry', { workspace: ws('dk'), datadog: { site: 'datadoghq.eu', apiKeyEnv: 'HINDCAST_NO_SUCH_KEY' } }),
+  // the load test a low-confidence verdict asks for: from a change, from a service, and from nothing
+  call('plan_load_test', { workspace: ws('v'), changes: [{ strategy: { name: 'route ÷4', changes: [{ service: 'route', cpu: 0.05 }] } }], draws: 3 }, true),
+  call('plan_load_test', { workspace: ws('n'), services: [{ service: 'recommendation' }] }),
+  call('plan_load_test', { workspace: ws('n'), services: [{ service: 'recommendation', utilization: 3 }] }),
 ];
 
 // the mocks on free ports (the cases and the goldens name the canonical ones above), and one for the

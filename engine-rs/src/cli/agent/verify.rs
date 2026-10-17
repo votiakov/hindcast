@@ -536,6 +536,7 @@ pub fn verify_change(ws: &Workspace, inputs: &[Value], o: &Value) -> Result<Valu
         reports = Some(json!({ "html": html, "markdown": md, "bundle": bundle }));
     }
     let mut out = out;
+    super::loadtest::point_to_plan(&mut out);
     if let Some(rp) = reports {
         out.as_object_mut().unwrap().insert("reports".into(), rp);
     }

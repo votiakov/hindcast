@@ -587,7 +587,7 @@ fn summary_lines(r: &Value, app: bool) -> Vec<String> {
         Some(f) if risky => {
             let (v, c) = (s(f, &["verdict"]), s(f, &["confidence"]));
             if (!v.is_empty() && v != "pass") || c == "low" {
-                format!(" Its own backtest is {}{}: load-test it before relying on it.", if v.is_empty() { "unproven".to_string() } else { v }, if c.is_empty() { String::new() } else { format!(" at {} confidence", c) })
+                format!(" Its own backtest is {}{}: load-test it before relying on it{}.", if v.is_empty() { "unproven".to_string() } else { v }, if c.is_empty() { String::new() } else { format!(" at {} confidence", c) }, if app { "" } else { " (`plan_load_test` with its change designs the test)" })
             } else {
                 String::new()
             }

@@ -172,6 +172,14 @@ export const CASES: string[][] = [
   // api has no latency metric: resized within the history's peak (medium at most), and past it (low)
   agent('verify_change', { workspace: ws('qk'), changes: [{ strategy: { name: 'api 1 core', changes: [{ service: 'api', cpu: 1 }] } }], draws: 3 }),
   agent('verify_change', { workspace: ws('qk'), changes: [{ strategy: { name: 'api 0.35 cores', changes: [{ service: 'api', cpu: 0.35 }] } }], draws: 3 }),
+  // the load test a low-confidence verdict asks for: from a change (api past its CPU-only peak), from a
+  // service list on a smaller staging, a change that needs none, the command line, and no input at all
+  agent('plan_load_test', { workspace: ws('qk'), changes: [{ strategy: { name: 'api 0.35 cores', changes: [{ service: 'api', cpu: 0.35 }] } }], draws: 3 }),
+  agent('plan_load_test', { workspace: ws('n'), services: [{ service: 'frontend' }, { service: 'recommendation', utilization: 0.8 }], replicas: { frontend: 2 }, steps: 4, baseUrlEnv: 'SHOP_URL' }),
+  agent('plan_load_test', { workspace: ws('v'), changes: [{ strategy: { name: 'customer ×3', changes: [{ service: 'customer', replicas: 3 }] } }], draws: 3 }),
+  agent('plan_load_test', { workspace: ws('v') }),
+  ['loadtest', 'plan', '--workspace', ws('qk'), '--service', 'api=0.85', '--out', `${out}/OUT/api.k6.js`],
+  ['loadtest'],
   ['outage', 'reference/shop/model.json', 'list'],
   ['outage', 'reference/shop/model.json', 'aws-use1-2025-10-20'],
   ['outage', 'reference/shop/model.json', 'slack-2021-01-04', 'reference/shop/strategies/1-autoscale-frontend.yaml', '--md', `${out}/OUT/o.md`],

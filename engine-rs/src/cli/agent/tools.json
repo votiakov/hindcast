@@ -463,7 +463,7 @@
  {
   "name": "verify_change",
   "title": "Verify an infrastructure change against real history",
-  "description": "Backtest one or more changes over the collected history, before they ship: $ per month saved or spent (with its 10–90% band), minutes out of SLO added or removed, failed requests, the worst moment and why, endpoints that get worse, headroom before and after. A change is a strategy (object or YAML), a Kubernetes manifest diff (base/head), a Terraform plan (`terraform show -json`), or edited manifests against the live cluster snapshot from read_cluster. Each result has verdict pass | fail | inconclusive and a confidence (high | medium | low) that says which services the change pushes past anything the history showed. Writes an HTML and Markdown report for a human.",
+  "description": "Backtest one or more changes over the collected history, before they ship: $ per month saved or spent (with its 10–90% band), minutes out of SLO added or removed, failed requests, the worst moment and why, endpoints that get worse, headroom before and after. A change is a strategy (object or YAML), a Kubernetes manifest diff (base/head), a Terraform plan (`terraform show -json`), or edited manifests against the live cluster snapshot from read_cluster. Each result has verdict pass | fail | inconclusive and a confidence (high | medium | low) that says which services the change pushes past anything the history showed. Writes an HTML and Markdown report for a human. A low-confidence result that asks for a load test: plan_load_test with the same changes designs it.",
   "inputSchema": {
    "$schema": "https://json-schema.org/draft/2020-12/schema",
    "type": "object",
@@ -747,6 +747,248 @@
      "type": "integer",
      "minimum": 1,
      "maximum": 30
+    }
+   },
+   "additionalProperties": false
+  }
+ },
+ {
+  "name": "plan_load_test",
+  "title": "Plan the load test an inconclusive verdict asks for (k6 script and follow-up)",
+  "description": "The load test an inconclusive verdict asks for. When verify_change says a change would run a service at a share of capacity the history never tested (\"load-test before trusting it\"), this says which services need evidence and up to what request rate (the rate the change needs, with margin), at which entry endpoints in the recorded mix (who calls whom decides what reaches each service), writes a step-load k6 script into the workspace (from the history's peak to the target, each step held a calibration bucket or more, aborting per step at the SLO's error rate and p99; base URL and auth from env var names, never credentials), says where to run it and what it costs, and gives the exact follow-up: collect_telemetry with the test's window beside the history, calibrate_model, verify_change again, and what the answer is expected to change. Takes the same changes as verify_change, or a list of services. Runs nothing against the system.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "workspace": {
+     "description": "workspace directory (default ./.hindcast, or $HINDCAST_WORKSPACE)",
+     "type": "string"
+    },
+    "changes": {
+     "type": "array",
+     "items": {
+      "anyOf": [
+       {
+        "type": "object",
+        "properties": {
+         "strategy": {
+          "anyOf": [
+           {
+            "type": "string"
+           },
+           {
+            "type": "object",
+            "propertyNames": {
+             "type": "string"
+            },
+            "additionalProperties": {}
+           }
+          ],
+          "description": "a strategy object or YAML: { name, changes: [{ service, replicas | autoscale | cpu | memoryGb | cpuRequest | memoryRequestGb | arch | perf | capacityRps | cache | readReplicas | zone | region | runtime } | { endpoint, retries, timeoutMs }] }"
+         }
+        },
+        "required": [
+         "strategy"
+        ],
+        "additionalProperties": false
+       },
+       {
+        "type": "object",
+        "properties": {
+         "kubernetes": {
+          "type": "object",
+          "properties": {
+           "base": {
+            "type": "string",
+            "description": "manifests before: a directory, a file, or YAML text"
+           },
+           "head": {
+            "type": "string",
+            "description": "manifests after"
+           }
+          },
+          "required": [
+           "base",
+           "head"
+          ],
+          "additionalProperties": false
+         }
+        },
+        "required": [
+         "kubernetes"
+        ],
+        "additionalProperties": false
+       },
+       {
+        "type": "object",
+        "properties": {
+         "terraformPlan": {
+          "anyOf": [
+           {
+            "type": "string"
+           },
+           {
+            "type": "object",
+            "propertyNames": {
+             "type": "string"
+            },
+            "additionalProperties": {}
+           }
+          ],
+          "description": "path to `terraform show -json plan.out` output, or the JSON itself"
+         }
+        },
+        "required": [
+         "terraformPlan"
+        ],
+        "additionalProperties": false
+       },
+       {
+        "type": "object",
+        "properties": {
+         "cluster": {
+          "type": "object",
+          "properties": {
+           "head": {
+            "type": "string",
+            "description": "the edited manifests (directory, file or YAML text)"
+           },
+           "snapshot": {
+            "description": "a read_cluster snapshot (default: the latest)",
+            "type": "string"
+           }
+          },
+          "required": [
+           "head"
+          ],
+          "additionalProperties": false
+         }
+        },
+        "required": [
+         "cluster"
+        ],
+        "additionalProperties": false
+       }
+      ]
+     },
+     "description": "the changes, as verify_change takes them: the plan drives every service a change runs past what the history showed"
+    },
+    "services": {
+     "description": "services to drive directly, without a change: each to `utilization` of its modelled capacity (default 0.9)",
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "service": {
+        "type": "string"
+       },
+       "utilization": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "maximum": 1.5
+       }
+      },
+      "required": [
+       "service"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "traffic": {
+     "description": "replay the history at another load — scale ×N, or peakRps for its busiest moment — to ask \"does it survive launch day / Black Friday?\"; the as-built system sees the same load",
+     "type": "object",
+     "properties": {
+      "scale": {
+       "type": "number",
+       "exclusiveMinimum": 0
+      },
+      "peakRps": {
+       "type": "number",
+       "exclusiveMinimum": 0
+      }
+     },
+     "additionalProperties": false
+    },
+    "last": {
+     "description": "only the last part of the history, e.g. \"7d\"",
+     "type": "string"
+    },
+    "window": {
+     "description": "replay only this part of the history, as verify_change does: the plan's follow-up keeps it",
+     "type": "object",
+     "properties": {
+      "start": {
+       "type": [
+        "string",
+        "number"
+       ]
+      },
+      "end": {
+       "type": [
+        "string",
+        "number"
+       ]
+      }
+     },
+     "required": [
+      "start",
+      "end"
+     ],
+     "additionalProperties": false
+    },
+    "gateMinutes": {
+     "description": "minutes out of SLO a change may add before it fails (default 0.5)",
+     "type": "number",
+     "minimum": 0
+    },
+    "draws": {
+     "description": "capacity draws for the replay the targets are read from (default 8)",
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 100
+    },
+    "margin": {
+     "description": "how far past what the change needs to drive each service (default 1.1); a service is never driven past 90% of its capacity unless asked",
+     "type": "number",
+     "minimum": 1,
+     "maximum": 2
+    },
+    "steps": {
+     "description": "load steps from the history's peak to the target (default 5)",
+     "type": "integer",
+     "minimum": 2,
+     "maximum": 12
+    },
+    "holdS": {
+     "description": "seconds each step is held (default two calibration buckets, at least 120), rounded up to whole buckets",
+     "type": "number",
+     "exclusiveMinimum": 0
+    },
+    "mix": {
+     "description": "focused (default): only the entry endpoints that reach the services to test, in their recorded proportions; recorded: every endpoint",
+     "type": "string",
+     "enum": [
+      "focused",
+      "recorded"
+     ]
+    },
+    "replicas": {
+     "description": "replicas per service where the test runs, when they differ from the model's (e.g. a smaller staging)",
+     "type": "object",
+     "propertyNames": {
+      "type": "string"
+     },
+     "additionalProperties": {
+      "type": "number"
+     }
+    },
+    "baseUrlEnv": {
+     "description": "env var the script reads the base URL from (default BASE_URL)",
+     "type": "string"
+    },
+    "authEnv": {
+     "description": "env var whose value the script sends as the Authorization header when set (default AUTH_HEADER); never the credential itself",
+     "type": "string"
     }
    },
    "additionalProperties": false

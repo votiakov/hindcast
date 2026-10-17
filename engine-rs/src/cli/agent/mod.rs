@@ -5,6 +5,7 @@ pub mod collect;
 pub mod connect;
 pub mod datadog;
 pub mod infer;
+pub mod loadtest;
 pub mod quickstart;
 pub mod review;
 pub mod setup;
@@ -253,6 +254,7 @@ pub fn dispatch(name: &str, parsed: &Value) -> Result<Value, String> {
         "verify_design" => verify::verify_design(&parsed),
         "suggest_changes" => suggest::suggest_changes(&ws, &parsed),
         "review_capacity" => review::review_capacity(&ws, &parsed),
+        "plan_load_test" => loadtest::plan_load_test(&ws, &parsed),
         _ => Err(format!("{} is not available in this build yet", name)),
     }
 }

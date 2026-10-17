@@ -49,13 +49,15 @@ Backtesting on real data (files only; see docs/backtest.md):
   hindcast diff-strategy --base <dir> --head <dir> [--model model.json] [--out strategy.yaml]   (k8s manifests before/after → strategy)
   hindcast verify-change --model model.json --dataset dataset.json (--base <dir> --head <dir> | --terraform-plan plan.json | <strategy.yaml …>)
                          [--last 14d] [--p99 500] [--errors 0.01] [--comment pr.md] [--json result.json] [--fail-on fail|inconclusive|never]   (the verify_change verdict, for CI)
+  hindcast loadtest plan  [strategy.yaml …] [--base <dir> --head <dir>] [--service frontend[=0.9],…] [--workspace .hindcast] [--scale 1.3] [--out loadtest.k6.js] [--json]
+                         (the load test a low-confidence verdict asks for: targets, a step-load k6 script, the follow-up)
 
 For agents (the MCP tools, from a shell; JSON in, JSON out; see docs/agents.md):
   hindcast agent setup [claude|cursor|vscode|desktop|windsurf] [--write]   register the MCP server with an agent host
   hindcast agent list
   hindcast agent <tool> '<json args>' | @args.json | -      e.g. agent connect_telemetry '{"prometheus":{"url":"http://prom:9090"}}'
   tools: connect_telemetry collect_telemetry calibrate_model model_status review_capacity suggest_changes verify_change
-         check_node_loss find_headroom verify_design read_cluster
+         plan_load_test check_node_loss find_headroom verify_design read_cluster
 
 Files may be YAML or JSON. A variants file is either a list of variants or { variants, scenario }."#;
 
@@ -85,6 +87,9 @@ fn run(args: &[String], out: &mut Out) -> Result<i32, String> {
     }
     if cmd == "demo" {
         return demo::command(&flags(rest), out);
+    }
+    if cmd == "loadtest" {
+        return agent::loadtest::command(rest, out);
     }
     if cmd == "quickstart" {
         return agent::quickstart::quickstart(&flags(rest), out);
