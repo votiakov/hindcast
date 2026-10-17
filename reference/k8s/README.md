@@ -1,9 +1,16 @@
 # Kubernetes reference — would the backtest have told you the truth?
 
-The other reference systems run on Docker Compose with synthetic traffic. This one is the
-production setup most teams have (on a laptop: kind, two workers), with traffic shaped by a real
-web log, and asks the question that matters: **before a
+The Docker reference systems run on Docker Compose with synthetic traffic. This one runs the
+observability stack most Kubernetes teams run, on a laptop cluster (kind, two workers), with
+traffic shaped by a real web log, and asks the question that matters: **before a
 change ships, does the backtest's verdict match what really happens when it ships?**
+
+Two systems answer it here: the Astronomy Shop below, which the model's throttle rules were shaped
+on, and [PetClinic](petclinic/README.md), which they weren't. Out of sample, with every verdict
+committed before its run: the Shop 3 right, 1 wrong, 5 inconclusive; PetClinic 5 right, 1 wrong, 3
+inconclusive; together 8, 2 and 8 of 18, against a plain CPU-ratio rule's 14 right and 4 wrong.
+What the 8 inconclusives rest on, and why they don't yet separate passes from failures, is
+[after the PetClinic summary](#a-second-system-petclinic).
 
 ## The setup
 

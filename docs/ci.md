@@ -106,6 +106,17 @@ your own; each is judged on its own and the step's verdict is the worst of them.
 | `working-directory` | `.` | the directory the other paths are relative to |
 | `github-token` | `github.token` | for the download and the comment |
 
+### Choosing `fail-on`
+
+With the default, only `fail` fails the check; an `inconclusive` passes it, and the comment says to
+load-test first. On the reference runs that matters: of 18 changes whose verdicts were committed
+before they ran, 8 came back inconclusive, and 3 of those failed for real (the Astronomy Shop's
+`launch-2c` and `launch-2-750`, PetClinic's `launch-cust125`). The other 5 passed, so blocking on
+inconclusive would also have held back 5 good changes. `fail-on: inconclusive` is the stricter
+choice for a system where a bad rollout costs more than a delayed one;
+[reference/k8s](../reference/k8s/README.md#a-second-system-petclinic) lists what each inconclusive
+rested on.
+
 ### Outputs
 
 | output | what |
