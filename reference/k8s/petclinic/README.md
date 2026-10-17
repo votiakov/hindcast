@@ -46,10 +46,10 @@ Backtest verdicts: **4 right**, 1 inconclusive (it said to load-test; 0 of them 
 | `launch-gw1` | **pass**, 0 min out of SLO | pass ✅ (medium confidence), 0 min | pass ✅ (medium confidence), 0 min |
 | `normal-gw1` | **pass**, 0 min out of SLO | pass ✅ (medium confidence), 0 min | pass ✅ (medium confidence), 0 min |
 | `launch-cust125` | **fail**, 29.5 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | fail ✅ (low confidence), 38.5 min |
-| `normal-cust125` | **fail**, 4 min out of SLO | pass ❌ (medium confidence), 0 min | inconclusive ⚠️ leans pass (medium confidence), 0 min |
+| `normal-cust125` | **fail**, 4 min out of SLO | pass ❌ (medium confidence), 0 min | pass ❌ (medium confidence), 0 min |
 | `launch-hpa` | **pass**, 0 min out of SLO | pass ✅ (medium confidence), 0 min | pass ✅ (medium confidence), 0 min |
 
-Retrodiction: 5 right, 1 inconclusive, 0 wrong, of 6 — in sample, not a score. (The out-of-sample table's “model on the day’s real traffic” column is always today’s code, so it carries the same caveat.)
+Retrodiction: 5 right, 0 inconclusive, 1 wrong, of 6 — in sample, not a score. (The out-of-sample table's “model on the day’s real traffic” column is always today’s code, so it carries the same caveat.)
 
 *Out of sample* — chosen after round 1 was scored and the model learned JIT warm-up from its miss; predicted from the same ordinary day and committed before any of these runs was recorded; the verdicts are the ones committed in `validation/predictions-oos-2.json` before each run was recorded:
 
@@ -65,11 +65,11 @@ Backtest verdicts: **1 right**, 2 inconclusive (it said to load-test; 2 of them 
 
 | run | measured | committed before the run (scored above) | today’s code on the ordinary day (retrodiction) |
 |---|---|---|---|
-| `launch-visits125` | **pass**, 0 min out of SLO | inconclusive ⚠️ leans pass (medium confidence), 0 min | inconclusive ⚠️ leans pass (medium confidence), 0 min |
+| `launch-visits125` | **pass**, 0 min out of SLO | inconclusive ⚠️ leans pass (medium confidence), 0 min | pass ✅ (medium confidence), 0 min |
 | `launch-cust175` | **pass**, 0 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0.3 min | inconclusive ⚠️ leans pass (low confidence), 0.3 min |
 | `launch-cust-hpa` | **pass**, 0 min out of SLO | pass ✅ (medium confidence), 0 min | pass ✅ (medium confidence), 0 min |
 
-Retrodiction: 1 right, 2 inconclusive, 0 wrong, of 3 — in sample, not a score. (The out-of-sample table's “model on the day’s real traffic” column is always today’s code, so it carries the same caveat.)
+Retrodiction: 2 right, 1 inconclusive, 0 wrong, of 3 — in sample, not a score. (The out-of-sample table's “model on the day’s real traffic” column is always today’s code, so it carries the same caveat.)
 
 **Every out-of-sample round together** (9 runs): Backtest verdicts: **5 right**, 3 inconclusive (it said to load-test; 2 of them leaned the right way), 1 wrong, of 9. Naive CPU ratio: 8 right, 1 wrong (a rule like that never abstains).
 
@@ -153,17 +153,19 @@ OpenTelemetry agent, as here. A JVM's verdict now reads like this (`normal-cust1
 *"customers-service restarts on its new 125m CPU limit and a JVM needs ~30 core-seconds of JIT
 compilation to warm up (assumed): until then a request costs ×5 its warm CPU; in the replay it is warm
 7.8 min after it starts"*, followed by *"while its restarted pods are still cold the system sustains
-53.4 req/s, below the peak it has to serve (107.1): rolled out at a busy moment, it would not warm
-up"*. The verdict is inconclusive, leaning pass, at medium confidence, and the warning says the
-warm-up is assumed. On launch day it says fail.
+54.5 req/s (277 once warm)"*. Its warnings say the warm-up is assumed and that the cold system is
+below the day's peak (107.1): *"rolled out at a busy moment, it would not warm up. Roll it out when
+traffic is low, or warm the pods before they take traffic"*. Until 2026-10-17 that check made the
+verdict inconclusive, leaning pass. It is a warning now (Round 2 below says why), and the verdict
+is pass at medium confidence. On launch day it says fail.
 
 The retrodiction table under the results shows today's verdicts beside the committed ones. It is
 not a score: the warm-up was designed on these two runs. The ordinary day is still not called a
 fail. The model rolls the change out at the first moment of the replayed day, about 25 req/s at
 customers-service, and at that load the pod warms. The run failed because its rollout met a
 5-minute ramp to 100 req/s at the gateway, which left a backlog the cold pod could not clear. The
-model can't know when a team will deploy. What it can do is say how much load a cold pod takes and
-leave the verdict open. The next out-of-sample round should test the warm-up on runs it was not
+model can't know when a team will deploy. What it can do is say how much load a cold pod takes.
+That used to leave the verdict open. Since 2026-10-17 it is a warning beside it. The next out-of-sample round should test the warm-up on runs it was not
 fitted on.
 
 ## Round 2: testing the warm-up on runs it was not fitted on
@@ -199,6 +201,25 @@ inconclusives cost more right answers than they saved wrong ones. Two changes fo
 round. They are made after seeing it, so a later round has to test them:
 the cold-capacity check becomes a warning instead of a reason to withhold the verdict, and the
 warm-up's compile work is set from a pod start in the history where there is one.
+
+**Today's code (2026-10-17, in sample).** Both changes are in, and the retrodiction tables above
+show what they move. The scored verdicts and the counts above stay as committed.
+
+- The cold-capacity check is now a warning. The verdict is what the replay gives, with its rollout
+  at the window's start and its warm-up modelled. `launch-visits125` moves from inconclusive to
+  **pass** (right). `normal-cust125` moves from inconclusive (leaning pass) to **pass** (wrong).
+  That run failed for the reason the check describes: its rollout met the recorder's warm-up ramp,
+  a busy moment the replayed day doesn't contain. Now the warning names this case, but the verdict
+  no longer turns on it. Over both rounds today's code gets 7 right, 1 inconclusive and 1 wrong.
+  Before this change it got 6 right, 3 inconclusive and 0 wrong. Both are retrodictions, not scores.
+- The compile work still can't be measured on this history. Calibration reads it where the
+  replica count rises by a whole pod, and no service's count changes on the ordinary day. The
+  recorder's 5-minute warm-up ramp could show it, but it runs before the collected window: the
+  window starts at the run's start, 30 s after the ramp ends, and by then every pod is warm (its
+  CPU sits on the fitted line from the first bucket). A rollout restart keeps the count the same, so
+  calibration would not see one even inside the window. `launch-cust-hpa` does show a pod start,
+  but it is a scored run, so it can't calibrate the model it is scored on. The verdicts keep calling
+  the warm-up assumed.
 
 ## What the repository keeps
 

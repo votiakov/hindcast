@@ -148,7 +148,9 @@ A summary; every rule, and the recording that taught it, is in [calibration.md](
   (an upper bound). .NET gets ×2 and 10 core-seconds, a guess. Node's V8 warms its hot paths within
   seconds and is not modelled cold, and neither are Go, Rust or C++. The verdict reports headroom
   once warm, and what the system sustains while the restarted pods are cold. When that is below the
-  peak, a rollout at a busy moment would not warm up, and the verdict is at best inconclusive.
+  peak, a warning says a rollout at a busy moment would not warm up. The verdict stays the replay's,
+  which rolls the change out at the window's start and models the warm-up from there. When a
+  rollout happens is a timing question the replayed day doesn't ask.
 - **Nodes** (Kubernetes, from kube-state-metrics): node size, node count, every pod's requests. On a
   cluster compute is what the nodes cost, priced from their allocatable size at EC2 m6i on-demand
   rates unless `hints.cluster.nodePriceHour` says otherwise. The services pay that less the share

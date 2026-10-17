@@ -469,13 +469,14 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
         verdict = "inconclusive";
         reasons.push(format!("after the change the system sustains {} req/s, below the peak it has to serve ({})", js_num(r1(after.0)), js_num(r1(peak))));
     }
-    // the replay rolls the change out at its first moment; at a busier one the restarted pods meet it cold
+    // the replay rolls the change out at its first moment and warms it up there, so its verdict stands
+    // for that rollout; at a busier one the restarted pods meet the load cold. When is a rollout-timing
+    // question the replayed day doesn't ask: a warning, not a reason to withhold the verdict (a replay
+    // that never warms up already shows it in its minutes and failed requests)
     if let Some(cold) = breaking_cold(m, spec).filter(|c| *c < after.0 * 0.9) {
-        if cold < peak && verdict == "pass" {
-            verdict = "inconclusive";
-            reasons.push(format!("while its restarted pods are still cold the system sustains {} req/s, below the peak it has to serve ({}): rolled out at a busy moment, it would not warm up. Roll it out when traffic is low, or warm the pods before they take traffic", js_num(r1(cold)), js_num(r1(peak))));
-        } else {
-            reasons.push(format!("while its restarted pods are still cold the system sustains {} req/s ({} once warm)", js_num(r1(cold)), js_num(r1(after.0))));
+        reasons.push(format!("while its restarted pods are still cold the system sustains {} req/s ({} once warm)", js_num(r1(cold)), js_num(r1(after.0))));
+        if cold < peak {
+            warnings.push(format!("while its restarted pods are still cold the system sustains {} req/s, below the peak it has to serve ({}): rolled out at a busy moment, it would not warm up. Roll it out when traffic is low, or warm the pods before they take traffic", js_num(r1(cold)), js_num(r1(peak))));
         }
     }
     let basis = cost_basis.iter().map(|b| match b.as_str() {
@@ -615,6 +616,22 @@ mod tests {
 
     fn st(dm: f64, ds: f64, df: f64) -> Value {
         json!({ "delta": { "monthly": { "p50": dm }, "minutesOutOfSlo": { "p50": ds }, "failedRequests": { "p50": df } }, "incidents": [] })
+    }
+
+    #[test]
+    fn a_warm_up_measured_in_the_history_replaces_the_assumed_one() {
+        let st = json!({ "events": [
+            { "t": 0.0, "what": "api: 1 pod restarts cold (a JVM) — requests cost ×5 CPU until ~36 core-seconds of JIT compilation are done, with 0.1 cores" },
+            { "t": 300.0, "what": "api: warm — 1 pod finished JIT compilation 5 min after starting; requests back at their warm CPU cost" },
+        ] });
+        let spec = json!({ "changes": [{ "service": "api", "cpu": 0.125 }] });
+        let mv = |source: &str| json!({ "services": { "api": { "warmup": { "runtime": "jvm", "cold": 5.0, "coreS": 36.0, "share": 0.06, "source": source } } } });
+        let measured = warmup_reasons(&mv("calibrated"), &st, &spec);
+        assert_eq!(measured.len(), 1);
+        assert!(measured[0].0.contains("~36 core-seconds of JIT compilation to warm up (calibrated on a pod start in the history)"), "{}", measured[0].0);
+        assert!(measured[0].1.is_none());
+        let assumed = warmup_reasons(&mv("assumed"), &st, &spec);
+        assert!(assumed[0].0.contains("(assumed)") && assumed[0].1.as_deref().unwrap().contains("assumed, not measured on it"));
     }
 
     #[test]
