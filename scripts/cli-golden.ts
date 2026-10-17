@@ -216,6 +216,9 @@ export const CASES: string[][] = [
   ['demo'],
   ['demo', '--json'],
   ['demo', '--help'],
+  // any command's --help prints its usage instead of running it with no arguments (mcp would start a server)
+  ['accuracy', '--help'],
+  ['mcp', '--help'],
   ['demo', '--workspace', `${out}/OUT/demo`],
   ['demo', '--workspace', `${out}/OUT/demo`, '--json'],
   ['demo', '--workspace', `${out}/OUT/ws-v`],

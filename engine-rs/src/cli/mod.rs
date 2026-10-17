@@ -48,7 +48,8 @@ Backtesting on real data (files only; see docs/backtest.md):
   hindcast outage        <model.json> <outage-id | list> [strategy.yaml …] [--role primary-db=orders-db] [--md r.md] [--html r.html]
   hindcast diff-strategy --base <dir> --head <dir> [--model model.json] [--out strategy.yaml]   (k8s manifests before/after → strategy)
   hindcast verify-change --model model.json --dataset dataset.json (--base <dir> --head <dir> | --terraform-plan plan.json | <strategy.yaml …>)
-                         [--last 14d] [--p99 500] [--errors 0.01] [--comment pr.md] [--json result.json] [--fail-on fail|inconclusive|never]   (the verify_change verdict, for CI)
+                         [--baseline-head <dir> | --baseline strategy.yaml] [--last 14d] [--p99 500] [--errors 0.01] [--comment pr.md] [--json result.json]
+                         [--fail-on fail|inconclusive|never]   (the verify_change verdict, for CI; a baseline stacks it on an approved change)
   hindcast loadtest plan  [strategy.yaml …] [--base <dir> --head <dir>] [--service frontend[=0.9],…] [--workspace .hindcast] [--scale 1.3] [--out loadtest.k6.js] [--json]
                          (the load test a low-confidence verdict asks for: targets, a step-load k6 script, the follow-up)
 
@@ -81,6 +82,14 @@ fn run(args: &[String], out: &mut Out) -> Result<i32, String> {
     if matches!(cmd, "--version" | "-V" | "version") {
         out.log(&format!("hindcast {}", mcp::version()));
         return Ok(0);
+    }
+    // `hindcast <command> --help`: that command's lines of the usage, instead of running it with no arguments
+    // (agent, demo, loadtest, quickstart and verify-change print their own)
+    if rest.iter().any(|a| a == "--help" || a == "-h") && !matches!(cmd, "agent" | "demo" | "loadtest" | "quickstart" | "verify-change") {
+        if let Some(usage) = command_usage(cmd) {
+            out.log(&usage);
+            return Ok(0);
+        }
     }
     if cmd == "agent" {
         return agent::command(rest, out);
@@ -125,4 +134,21 @@ fn run(args: &[String], out: &mut Out) -> Result<i32, String> {
         return Ok(1);
     }
     Ok(0)
+}
+
+/// one command's lines of USAGE (its line and the indented ones continuing it), or None for a command it doesn't list
+fn command_usage(cmd: &str) -> Option<String> {
+    let lines: Vec<&str> = USAGE.lines().collect();
+    let start = lines.iter().position(|l| {
+        l.starts_with("  ") && l.trim_start().strip_prefix("hindcast ").and_then(|r| r.split_whitespace().next()) == Some(cmd)
+    })?;
+    let mut text: Vec<&str> = vec![lines[start].trim_start()];
+    for l in &lines[start + 1..] {
+        let t = l.trim_start();
+        if !l.starts_with("   ") || t.is_empty() || t.starts_with("hindcast ") {
+            break;
+        }
+        text.push(l.strip_prefix("  ").unwrap_or(l));
+    }
+    Some(format!("{}\n\nEvery command: hindcast --help", text.join("\n")))
 }
