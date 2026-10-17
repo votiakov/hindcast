@@ -126,8 +126,6 @@ const mask = (s: string) =>
     .replace(/(in |· )\d+ ms/g, '$1# ms')
     .replace(/(\\*"wallMs\\*": ?)\d+(\.\d+)?/g, '$1#')
     .replace(/(\\*"measuredAt\\*": ?)\\*"[^"\\]*\\*"/g, '$1#')
-    // a file's age against the pinned clock: it moves with the wall clock
-    .replace(/(\\*"collectedHoursAgo\\*": ?)-?[\d.]+/g, '$1#')
     .replace(new RegExp(`127\\.0\\.0\\.1(%3A|:)${SERVE_PORT}(?!\\d)`, 'g'), '127.0.0.1$1PORT')
     .replaceAll(realpathSync(out), '$OUT')
     .replaceAll(out, '$OUT')
@@ -148,7 +146,7 @@ async function run(record: boolean): Promise<Golden> {
   copyFileSync('reference/hotrod/dataset.json', `${root}/ws-v/dataset.json`);
   mkdirSync(`${root}/ws-n`, { recursive: true });
   writeFileSync(`${root}/ws-n/dataset.json`, JSON.stringify(JSON.parse(readFileSync('public/reference/k8s-shop.json', 'utf8')).dataset));
-  // "collected N hours ago" reads the file's mtime
+  // "collected N hours ago" reads the mtime of a dataset collect_telemetry did not write
   for (const k of ['v', 'n']) utimesSync(`${root}/ws-${k}/dataset.json`, 1791400000, 1791400000);
   const seeded = snapshot(root, mask);
   const msgs = [...handshake, ...CASES.map(([, method, params], i) => ({ jsonrpc: '2.0', id: 100 + i, method, ...(params ? { params: JSON.parse(wire.to(JSON.stringify(params))) } : {}) }))];

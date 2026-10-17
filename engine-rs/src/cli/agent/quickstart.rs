@@ -33,7 +33,8 @@ fn phase(k: usize, name: &str, run: impl FnOnce() -> Result<Value, String>) -> R
     let secs = t0.elapsed().as_secs_f64();
     match &r {
         Ok(_) => say(&format!("      done in {:.1} s", secs)),
-        Err(e) => say(&format!("      failed after {:.1} s: {}", secs, e)),
+        // the error itself is said once, by whoever reports it
+        Err(_) => say(&format!("      failed after {:.1} s", secs)),
     }
     r
 }

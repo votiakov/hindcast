@@ -125,6 +125,11 @@ WORLDS.servicegraph = {
     { client: 'frontend', server: 'unknown', virtual: true, rate: (L) => 0.1 * L, ms: () => 80 },
   ],
 };
+// the same graph where the connector could only name cart's flagd calls by an id
+WORLDS['servicegraph-ids'] = {
+  ...WORLDS.servicegraph,
+  graph: WORLDS.servicegraph.graph.map((e) => (e.client === 'cart' && e.server === 'unknown' ? { ...e, server: '5b0f6c2e-8d1a-4c3b-9e7f-2a6d4c8b1e90' } : e)),
+};
 /** a client span's labels, keeping the peer dimensions the query groups by and the world exports */
 const clientLabels = (w, c, q) => ({ service_name: c.from, span_name: c.span, ...Object.fromEntries(Object.entries(w.peer ? c.peer : {}).filter(([k]) => by(q, true).includes(k))) });
 /** Linkerd's labels for a workload, by its kind, on either end of a call */

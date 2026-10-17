@@ -644,13 +644,14 @@ fn uncertain(r: &Value) -> Option<String> {
     }
     let (lo, hi) = (n(st, &["low"]), n(st, &["high"]));
     let top = if g(st, &["highOpen"]).as_bool().unwrap_or(false) { format!("more than {}", js_num(hi)) } else { js_num(hi) };
-    let range = if lo <= 0.0 { format!("from none (out of SLO at any load) to {} req/s", top) } else if top.starts_with("more") { format!("from {} to {} req/s", js_num(lo), top) } else { format!("{}–{} req/s", js_num(lo), top) };
     let k = n(st, &["configurations"]);
-    Some(format!(
-        "{} depending on the window (the whole history, and each third of its traffic calibrated alone){}.",
-        range,
-        if k > 1.0 { format!("; the window mixes {} configurations", js_num(k)) } else { String::new() }
-    ))
+    let mixes = if k > 1.0 { format!("; the window mixes {} configurations", js_num(k)) } else { String::new() };
+    // the headline already says none: the range is what the parts of the history say beside it
+    if lo <= 0.0 && g(r, &["headroom", "atAnyLoad"]).is_string() {
+        return Some(format!("none on the whole history, as above, but {} req/s on a third of its traffic calibrated alone: what is out of SLO at any load depends on the window{}.", if top.starts_with("more") { top } else { format!("up to {}", top) }, mixes));
+    }
+    let range = if lo <= 0.0 { format!("from none (a window out of SLO at any load) to {} req/s", top) } else if top.starts_with("more") { format!("from {} to {} req/s", js_num(lo), top) } else { format!("{}–{} req/s", js_num(lo), top) };
+    Some(format!("{} depending on the window (the whole history, and each third of its traffic calibrated alone){}.", range, mixes))
 }
 
 /// which configuration the fits rest on, where the history holds several
@@ -816,5 +817,23 @@ fn commitment_absent(mv: &Value) -> String {
         "costs come from the bill, which may already carry discounts — what a commitment saves is read off the bill, not a list price".into()
     } else {
         "no list-priced capacity runs all the time in this history".into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn uncertain_headroom_agrees_with_the_headline() {
+        let st = json!({ "uncertain": true, "low": 0, "high": 512, "highOpen": false, "configurations": 1 });
+        // the headline says none to read: the range doesn't say "none" again as if it were news
+        let none = json!({ "headroom": { "atAnyLoad": "GET /slow", "rps": 0 }, "stability": st });
+        assert_eq!(uncertain(&none).unwrap(), "none on the whole history, as above, but up to 512 req/s on a third of its traffic calibrated alone: what is out of SLO at any load depends on the window.");
+        // a headline with a number: the window with none is said as a window
+        let some = json!({ "headroom": { "rps": 300, "limitedBy": "api" }, "stability": st });
+        assert_eq!(uncertain(&some).unwrap(), "from none (a window out of SLO at any load) to 512 req/s depending on the window (the whole history, and each third of its traffic calibrated alone).");
+        let both = json!({ "headroom": { "rps": 300, "limitedBy": "api" }, "stability": { "uncertain": true, "low": 120, "high": 512, "configurations": 2 } });
+        assert_eq!(uncertain(&both).unwrap(), "120–512 req/s depending on the window (the whole history, and each third of its traffic calibrated alone); the window mixes 2 configurations.");
     }
 }

@@ -251,7 +251,8 @@ pub fn model_status(ws: &Workspace) -> Result<Value, String> {
         let d = ws.read_json("dataset.json")?;
         let (st, nn, step) = (n(&d, &["start"]), n(&d, &["n"]), n(&d, &["stepS"]));
         let end = st + nn * step;
-        let mtime = std::fs::metadata(ws.path("dataset.json")).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_millis() as f64).unwrap_or(0.0);
+        // when collect_telemetry collected it; a dataset put there some other way: the file's time
+        let mtime = d.get("collectedAt").and_then(|x| x.as_str()).and_then(crate::accuracy::parse_iso_ms).map(|ms| ms as f64).unwrap_or_else(|| std::fs::metadata(ws.path("dataset.json")).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_millis() as f64).unwrap_or(0.0));
         out.insert(
             "dataset".into(),
             json!({ "window": { "start": iso(st), "end": iso(end), "hours": num(r1((nn * step) / 3600.0)), "stepS": num(step) }, "services": d["services"].as_object().map(|x| x.len()).unwrap_or(0), "endpoints": d["endpoints"].as_object().map(|x| x.len()).unwrap_or(0), "bill": d.get("bill").map(|b| !b.is_null()).unwrap_or(false), "collectedHoursAgo": num(r1((now - mtime / 1000.0) / 3600.0)) }),

@@ -8,7 +8,7 @@ const NOW = 1_791_500_000;
 const server = createServer((req, res) => {
   const u = new URL(req.url, 'http://x');
   const send = (v) => res.end(JSON.stringify(v));
-  const only = /^\/(kps|kps-obs|istio|linkerd|spanmetrics|spanmetrics-bare|servicegraph)(\/.*)$/.exec(u.pathname);
+  const only = /^\/(kps|kps-obs|istio|linkerd|spanmetrics|spanmetrics-bare|servicegraph|servicegraph-ids)(\/.*)$/.exec(u.pathname);
   if (only && promOnly(only[1], only[2], u.searchParams, send) !== null) return;
   if (u.pathname.startsWith('/gappy/')) u.pathname = u.pathname.replace('/gappy/', '/prom/');
   const gappy = req.url.startsWith('/gappy/');

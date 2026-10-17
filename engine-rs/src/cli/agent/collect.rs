@@ -761,6 +761,8 @@ pub fn collect(ws: &Workspace, o: &Value) -> Result<Value, String> {
     if let Some(w) = separate_systems(&d, &probe["workloadNamespaces"], if dd.is_some() { "datadog" } else { "prometheus" }) {
         warnings.insert(0, w);
     }
+    // when it was collected, for model_status (a copied file's mtime says when it was copied)
+    d["collectedAt"] = json!(iso(now_s()));
     ws.write_json("dataset.json", &d, false)?;
     let _ = std::fs::remove_file(ws.path("model.json"));
     let _ = std::fs::remove_file(ws.path("calibration.json"));

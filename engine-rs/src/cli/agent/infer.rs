@@ -163,6 +163,14 @@ fn label(m: &JMap<String, Value>, k: &str) -> String {
     m.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string()
 }
 
+/// a name that is only an id: a UUID, or 16 or more hex digits (a hash), as a service graph's
+/// virtual node can be named when no peer attribute names it
+fn opaque_id(s: &str) -> bool {
+    let hex = |c: char| c.is_ascii_hexdigit();
+    let parts: Vec<&str> = s.split('-').collect();
+    (parts.iter().map(|p| p.len()).collect::<Vec<_>>() == [8, 4, 4, 4, 12] && parts.iter().all(|p| p.chars().all(hex))) || (s.len() >= 16 && s.chars().all(hex))
+}
+
 pub use crate::import::traces::rpc_key;
 
 /// a monitoring or tracing UI behind the same ingress as the system: not where its users come in
@@ -259,12 +267,15 @@ pub fn read_calls(p: &Prom, presets: &[String], sources: &[String], parts: &[(f6
             let mut callee: IndexSet<String> = known.iter().cloned().collect();
             callee.extend(workloads.iter().cloned());
             let mut unnamed: IndexSet<String> = IndexSet::new();
+            let mut by_id = false;
             let mut virtual_: IndexSet<String> = IndexSet::new();
             let mut acc: IndexMap<(String, String), f64> = IndexMap::new();
             for (m, v) in p.increase("traces_service_graph_request_total", &p.matchers(&[], None), "client, server, connection_type", None, parts) {
                 let (from, to) = (label(&m, "client"), label(&m, "server"));
-                let from = if from.is_empty() { "unknown".to_string() } else { p.name(&from) };
-                if to.is_empty() || to == "unknown" {
+                // a node the graph only has an id for (a UUID or a hash) names nothing: "unknown", as an empty one
+                let from = if from.is_empty() || opaque_id(&from) { "unknown".to_string() } else { p.name(&from) };
+                if to.is_empty() || to == "unknown" || opaque_id(&to) {
+                    by_id |= opaque_id(&to);
                     unnamed.insert(from);
                     continue;
                 }
@@ -297,7 +308,7 @@ pub fn read_calls(p: &Prom, presets: &[String], sources: &[String], parts: &[(f6
                 if !unnamed.is_empty() {
                     let mut l: Vec<String> = unnamed.into_iter().collect();
                     l.sort();
-                    c.notes.push(format!("{} {} calls the service graph can't name the callee of (its virtual node \"unknown\": a client span no server span answered, with no peer.service or db attribute): they are not in the topology", list(&l), if l.len() == 1 { "makes" } else { "make" }));
+                    c.notes.push(format!("{} {} calls the service graph can't name the callee of (its virtual node \"unknown\"{}: a client span no server span answered, with no peer.service or db attribute): they are not in the topology", list(&l), if l.len() == 1 { "makes" } else { "make" }, if by_id { ", or one it names by an id only" } else { "" }));
                 }
             }
         }
@@ -955,6 +966,15 @@ pub fn grpc_provenance(d: &Value, servers: &IndexSet<String>, how: &[String]) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ids_name_no_service() {
+        assert!(opaque_id("5b0f6c2e-8d1a-4c3b-9e7f-2a6d4c8b1e90"));
+        assert!(opaque_id("9F86D081884C7D659A2FEAA0C55AD015"));
+        for s in ["frontend", "redis", "unknown", "cart-58b9c7d6f4", "deadbeef", "postgres-5b0f6c2e"] {
+            assert!(!opaque_id(s), "{}", s);
+        }
+    }
 
     #[test]
     fn rpc_names_meet() {
