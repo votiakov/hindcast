@@ -1,0 +1,23 @@
+{
+ "system": {
+  "name": "Astronomy Shop on Kubernetes — launch-checkout125",
+  "slo": {
+   "p99Ms": 1000,
+   "errorRate": 0.01
+  },
+  "timeoutMs": 5000,
+  "entry": [
+   "frontend"
+  ]
+ },
+ "prometheus": {
+  "url": "http://localhost:8088/prometheus",
+  "namespaces": [
+   "petclinic",
+   "shop"
+  ]
+ },
+ "jaeger": {
+  "url": "http://localhost:8088/jaeger"
+ }
+}

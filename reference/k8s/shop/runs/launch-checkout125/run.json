@@ -1,0 +1,13 @@
+{
+  "system": "shop",
+  "run": "launch-checkout125",
+  "start": 1792237790,
+  "end": 1792240191,
+  "day": "13/Jul/1995",
+  "minutes": 40,
+  "scale": "x83",
+  "steps": null,
+  "manifests": "variants/checkout-125m.yaml",
+  "note": null,
+  "recordedAt": "2026-10-17T12:30:37.616Z"
+}
