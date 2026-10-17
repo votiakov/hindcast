@@ -443,7 +443,10 @@ async function score(label: string, ws: Workspace, base: string, evalDir: string
     if (committed && said(committed) !== said(now)) console.warn(`(${label} ${c.run}: predicted ${said(committed)} before the run; today's code says ${said(now)})`);
     const exAnte = committed ?? now;
     const actual = kept ? { ...kept.measured, p99: kept.measured.p99Ms, failed: Math.round(kept.measured.requests * kept.measured.errorRate) } : measured(log!, m.slo);
-    const actualBase = kept ? undefined : measured(settled(requestsOf(c.asBuilt), meta(c.asBuilt).start), m.slo);
+    // the as-built run's log gone too (a later run compared with one of them): its kept measurement
+    const keptBase = !kept && !hasRequests(c.asBuilt) ? EARLIER[label]?.[c.asBuilt] : undefined;
+    if (!kept && !hasRequests(c.asBuilt) && !keptBase) throw new Error(`${c.asBuilt}: no request log, and no earlier evaluation of it to compare ${c.run} with`);
+    const actualBase = kept ? undefined : keptBase ? { ...keptBase.measured, p99: keptBase.measured.p99Ms, failed: Math.round(keptBase.measured.requests * keptBase.measured.errorRate) } : measured(settled(requestsOf(c.asBuilt), meta(c.asBuilt).start), m.slo);
     const watch = c.service ?? EV.watch;
     const post = predicted(m, ws, run, meta(c.run).start, head, base, watch);
     // an autoscaler, to the spreadsheet, is its maximum
