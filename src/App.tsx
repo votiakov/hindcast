@@ -37,6 +37,10 @@ import './theme/reference.css';
 import './theme/terminal.css';
 import './ui/phone.css';
 import { manualClock } from './sim/clock';
+import { narrowScreen } from './ui/homeGraphs';
+
+/** phones: no palette on the left, and the lesson is a sheet over the bottom half — fit the board above it */
+const PHONE_PADDING = (mode: Mode) => ({ top: '20px', left: '16px', right: '16px', bottom: `${mode === 'lesson' ? Math.round(window.innerHeight * 0.5) : 96}px` }) as const;
 
 
 /** what ⌘C / ⌘X copied, and how many times it was pasted (each paste lands a step further) */
@@ -250,7 +254,7 @@ export default function App() {
           <CompareView />
         ) : (
           <ReactFlowProvider>
-            <BoardCanvas id="main" padding={present ? { top: '150px', left: '60px', right: '60px', bottom: '140px' } : { top: '60px', left: '270px', right: mode === 'lesson' ? '380px' : mode === 'sandbox' && (auditOpen || analysisOpen || specOpen || envelopeOpen) ? '450px' : '60px', bottom: '110px' }} />
+            <BoardCanvas id="main" padding={present ? { top: '150px', left: '60px', right: '60px', bottom: '140px' } : narrowScreen() ? PHONE_PADDING(mode) : { top: '60px', left: '270px', right: mode === 'lesson' ? '380px' : mode === 'sandbox' && (auditOpen || analysisOpen || specOpen || envelopeOpen) ? '450px' : '60px', bottom: '110px' }} />
           </ReactFlowProvider>
         )}
         {mode !== 'studio' && mode !== 'home' && <Palette key={mode} compact={mode === 'compare'} />}

@@ -21,6 +21,8 @@
 
   /* building happens on a bigger screen: the palette steps aside, the board stays */
   :root[data-theme] .palette { display: none; }
+  /* the whole board already fits the screen; the minimap only covered part of it */
+  :root[data-theme] .react-flow__minimap { display: none; }
 
   /* side panels → bottom sheets */
   :root[data-theme] .lesson,
