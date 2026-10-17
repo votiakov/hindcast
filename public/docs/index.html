@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hindcast · Hindcast docs</title>
-<meta name="description" content="Backtest infrastructure changes on your real production data before they ship, and simulate any architecture to find what breaks first and what it costs.">
+<meta name="description" content="Backtest infrastructure changes on your real telemetry before they ship, and simulate any architecture to find what breaks first and what it costs.">
 <link rel="stylesheet" href="fonts.css">
 <link rel="stylesheet" href="docs.css">
 </head>
@@ -22,7 +22,7 @@
 <header class="head">
   <div class="kicker">Documentation</div>
   <h1>Hindcast</h1>
-  <p class="lede">Backtest infrastructure changes on your real production data before they ship, and simulate any architecture to find what breaks first and what it costs.</p>
+  <p class="lede">Backtest infrastructure changes on your real telemetry before they ship, and simulate any architecture to find what breaks first and what it costs.</p>
 </header>
 <section class="prose">
 <figure class="still"><img src="shots/backtest.png" width="1280" height="800" alt="The backtest screen: HotROD's real history with four strategies replayed over it"></figure>
@@ -35,7 +35,7 @@
 <tr><td>Answer</td><td>$ saved or spent, minutes out of SLO, failed requests, the worst moment and why, with confidence bands</td><td>a risk register with verified, priced fixes; comparisons; breaking points</td></tr>
 <tr><td>Where</td><td><a href="backtest.html">Backtest</a>, the CLI, a pull-request check, <a href="agents.html">your AI agent</a></td><td><a href="live.html">Live</a>, <a href="lessons.html">Lessons</a>, <a href="sandbox.html">Sandbox</a>, <a href="compare.html">Compare</a>, <a href="studio.html">Studio</a></td></tr>
 </table></div>
-<p>Accuracy is measured, not claimed. Three open demo systems were run under load with their telemetry recorded. Calibrated on one run, the model predicted runs it never saw: p99 within 3–10%, breaking points within 0–14% (single runs; several rules were written after a miss on them). Asked to predict the end of its own history, which held an overload the earlier part never reached, it missed p99 by 72–99%. On a Kubernetes cluster it was asked nine questions out of sample, with its answers committed before each run: 3 right, 1 wrong, 5 inconclusive. Misses included, see <a href="accuracy.html">accuracy</a>.</p>
+<p>Accuracy is measured, not claimed. Three open demo systems were run under load with their telemetry recorded. Calibrated on one run, the model predicted runs it never saw: p99 within 3–10%, breaking points within 0–14% (single runs; several rules were written after a miss on them). Asked to predict the end of its own history, which held an overload the earlier part never reached, it missed p99 by 72–99%. On a laptop Kubernetes cluster, two systems were asked 18 questions out of sample, with each answer committed before the run: 8 right, 2 wrong, 8 inconclusive, where a plain CPU-ratio rule got 14 right and 4 wrong. It is wrong less often because it abstains, not right more often. Misses included, see <a href="accuracy.html">accuracy</a>.</p>
 
 <h2>Start</h2>
 <pre><code>npm install
@@ -44,7 +44,7 @@ npm run sim -- …       # the CLI
 npm run mcp            # the MCP server for AI agents</code></pre>
 <ul>
 <li>Using an AI agent? Give it the <a href="agents.html">agent tools</a>: it connects to your Prometheus and Jaeger, builds the model and verifies changes itself.</li>
-<li>Open the <a href="../#backtest">Backtest</a> tab: the three reference systems are built in. Then <a href="data.html">bring your own data</a>.</li>
+<li>Open the <a href="../#backtest">Backtest</a> tab: four reference systems are built in (HotROD, the Astronomy Shop, PetClinic, and the shop on Kubernetes). Then <a href="data.html">bring your own data</a>.</li>
 <li>Or start on <a href="../#live">Live</a>, a system already failing, and follow the next move.</li>
 <li>Looking for a specific question? <a href="use-cases.html">Use cases</a>. Want the full list? <a href="capabilities.html">Everything it does</a>.</li>
 </ul>
