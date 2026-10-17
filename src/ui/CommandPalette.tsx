@@ -81,6 +81,7 @@ function buildCommands(q: string): Cmd[] {
     { id: 'blank', group: 'Design', label: 'New blank design', run: () => (sandbox(), useSim.getState().loadGraph('main', { nodes: [], edges: [] }, 'Untitled'), useSim.getState().setDesign(null, 'Untitled')) },
   );
   for (const m of ['home', 'lesson', 'sandbox', 'compare', 'studio'] as Mode[]) cmds.push({ id: `mode-${m}`, group: 'Go to', label: m === 'home' ? 'Live' : m[0].toUpperCase() + m.slice(1), run: go(m) });
+  cmds.push({ id: 'terms', group: 'Go to', label: 'Glossary: all terms', hint: 'every term the app underlines, on one page of the docs', run: () => window.open('docs/terms.html', '_blank', 'noopener') });
   for (const c of CATEGORIES)
     for (const k of c.kinds) cmds.push({ id: `add-${k}`, group: 'Add component', label: `Add ${KINDS[k].label}`, hint: c.label, run: () => (sandbox(), useSim.getState().addNode('main', k, freeSpot())) });
   for (const d of listDesigns()) cmds.push({ id: `design-${d.id}`, group: 'Open design', label: d.name, run: () => (sandbox(), useSim.getState().loadGraph('main', d.graph, d.name), useSim.getState().setDesign(d.id, d.name)) });

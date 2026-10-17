@@ -58,6 +58,16 @@ export function Shortcuts() {
         <div className="sc" onMouseDown={(e) => e.stopPropagation()}>
           <div className="sc-h">Keyboard</div>
           <Keys />
+          <div className="sc-foot">
+            Words you don’t know: hover an underlined one, or read{' '}
+            <a href="docs/terms.html" target="_blank" rel="noopener">
+              all terms ↗
+            </a>
+            . Every view, explained:{' '}
+            <a href="docs/index.html" target="_blank" rel="noopener">
+              the docs ↗
+            </a>
+          </div>
         </div>
       </div>
     );

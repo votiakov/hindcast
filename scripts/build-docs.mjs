@@ -14,6 +14,9 @@
 //
 // For every screen the build inserts the screenshot (public/docs/shots/<shot>.png) with a numbered
 // pin per <li>, placed from public/docs/shots/pins.json (written by scripts/docs-shots.mjs).
+//
+// A page may also hold <!-- glossary -->: the build puts every term of src/content/glossary.ts there,
+// so the Terms page is the same list the app underlines.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -43,6 +46,7 @@ const CHAPTERS = [
   ['use-cases', 'Use cases', 'Reference'],
   ['accuracy', 'Accuracy', 'Reference'],
   ['capabilities', 'Everything it does', 'Reference'],
+  ['terms', 'Terms', 'Reference'],
 ];
 
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -51,6 +55,37 @@ function meta(src, file) {
   const m = src.match(/^<!--([\s\S]*?)-->/);
   if (!m) throw new Error(`${file}: missing front matter`);
   return Object.fromEntries(m[1].split('|').map((kv) => kv.split(':')).map(([k, ...v]) => [k.trim(), v.join(':').trim()]));
+}
+
+/** the glossary's entries, read from its source: one `term: 'definition',` per line */
+function glossary() {
+  const src = readFileSync(join(ROOT, 'src/content/glossary.ts'), 'utf8');
+  const body = src.match(/export const GLOSSARY[^{]*\{\n([\s\S]*?)\n\};/);
+  if (!body) throw new Error('src/content/glossary.ts: no GLOSSARY object');
+  return body[1].split('\n').map((line) => {
+    const m = line.match(/^\s+(?:'([^']+)'|([\w.+-]+)): '((?:[^'\\]|\\.)*)',$/);
+    if (!m) throw new Error(`src/content/glossary.ts: cannot read the entry "${line.trim()}" (one 'term': 'definition', per line)`);
+    return [m[1] ?? m[2], m[3].replace(/\\(.)/g, '$1')];
+  });
+}
+
+/** a term's anchor on the Terms page (the app links to terms.html#t-<slug>) */
+const termSlug = (term) => `t-${term.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
+
+function terms(body) {
+  if (!body.includes('<!-- glossary -->')) return body;
+  const rows = glossary()
+    .sort(([a], [b]) => a.localeCompare(b, 'en', { sensitivity: 'base' }))
+    .map(([t, d]) => `<tr id="${termSlug(t)}"><td>${esc(t)}</td><td>${esc(d)}</td></tr>`);
+  return body.replace(
+    '<!-- glossary -->',
+    `<label class="term-filter"><span>filter</span><input type="search" placeholder="a term, or a word in its meaning" autocomplete="off" spellcheck="false"></label>
+<div class="table-wrap"><table class="terms">
+<tr><th>term</th><th>what it means</th></tr>
+${rows.join('\n')}
+</table></div>
+<p class="dim term-none" hidden>No term matches.</p>`,
+  );
 }
 
 function screens(body, file) {
@@ -119,7 +154,7 @@ const layout = (file, m, body) => {
   <h1>${esc(m.title)}</h1>
   ${m.lede ? `<p class="lede">${m.lede}</p>` : ''}
 </header>
-${screens(body, file)}
+${screens(terms(body), file)}
 <nav class="pager">${prev ? `<a href="${prev[0]}.html">← ${esc(prev[1])}</a>` : '<span></span>'}${next ? `<a href="${next[0]}.html">${esc(next[1])} →</a>` : ''}</nav>
 </main>
 </div>

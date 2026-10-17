@@ -10,3 +10,6 @@
 .sc-empty { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); width: min(520px, calc(100% - 340px)); z-index: 2; pointer-events: none; color: var(--muted); }
 .sc-empty p { font-size: 13.5px; line-height: 1.6; color: var(--text); opacity: 0.85; margin: 0 0 14px; }
 .sc-empty code { font-family: var(--mono); font-size: 12px; }
+.sc-foot { margin-top: 12px; font-size: 12px; color: var(--muted); }
+.sc-foot a { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
+[data-theme='terminal'] .sc-foot a { color: var(--r-warn); }

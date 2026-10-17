@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terms · Hindcast docs</title>
+<meta name="description" content="Every term the board, the lessons and the reports underline, in a sentence or two. In the app, hover an underlined word for the same definition; here they are all at once.">
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="index.html">Hindcast<span>docs</span></a>
+  <nav class="bar-links" aria-label="The app">
+    <a href="../#backtest">Backtest</a><a href="../#live">Live</a><a href="../#lessons">Lessons</a><a href="../#sandbox">Sandbox</a><a href="../#compare">Compare</a><a href="../#studio">Studio</a>
+  </nav>
+  <a class="bar-open" href="../">Open the app ↗</a>
+</header>
+<div class="page">
+<nav class="rail" aria-label="Chapters"><a href="index.html">Overview</a><a href="why.html">Why Hindcast</a><a href="agents.html">For AI agents</a><div class="rail-h">Backtest on real data</div><a href="backtest.html">The backtest screen</a><a href="data.html">Bring your data</a><a href="calibration.html">How the model is fitted</a><a href="strategies.html">Strategies</a><a href="outages.html">Public-outage replays</a><a href="ci.html">CLI, pull requests, MCP</a><div class="rail-h">Design simulator</div><a href="live.html">Live</a><a href="lessons.html">Lessons</a><a href="sandbox.html">Sandbox</a><a href="audit.html">Failure audit and analysis</a><a href="compare.html">Compare</a><a href="studio.html">Studio</a><div class="rail-h">Reference</div><a href="use-cases.html">Use cases</a><a href="accuracy.html">Accuracy</a><a href="capabilities.html">Everything it does</a><a href="terms.html" aria-current="page">Terms</a></nav>
+<main>
+<header class="head">
+  <div class="kicker">Reference</div>
+  <h1>Terms</h1>
+  <p class="lede">Every term the board, the lessons and the reports underline, in a sentence or two. In the app, hover an underlined word for the same definition; here they are all at once.</p>
+</header>
+<section class="prose">
+<label class="term-filter"><span>filter</span><input type="search" placeholder="a term, or a word in its meaning" autocomplete="off" spellcheck="false"></label>
+<div class="table-wrap"><table class="terms">
+<tr><th>term</th><th>what it means</th></tr>
+<tr id="t-ann"><td>ANN</td><td>Approximate nearest neighbour search: finding similar vectors fast by giving up a little recall instead of comparing them all.</td></tr>
+<tr id="t-autoscaling"><td>autoscaling</td><td>Adding instances when load rises and removing them when it falls. New ones serve only after their warm-up.</td></tr>
+<tr id="t-availability-zone"><td>availability zone</td><td>An isolated data centre within a region. Spreading over zones survives losing one.</td></tr>
+<tr id="t-back-pressure"><td>back-pressure</td><td>A slow consumer signalling upstream to slow down, instead of letting queues grow without bound.</td></tr>
+<tr id="t-backlog"><td>backlog</td><td>Messages waiting in a queue or stream for a consumer.</td></tr>
+<tr id="t-backoff"><td>backoff</td><td>Waiting longer before each retry (with jitter), so retries spread out instead of arriving together.</td></tr>
+<tr id="t-bottleneck"><td>bottleneck</td><td>The component that runs out of capacity first. It caps the whole system: scaling anything else changes nothing.</td></tr>
+<tr id="t-bulkhead"><td>bulkhead</td><td>A separate share of threads per dependency, so one slow dependency cannot take all of them.</td></tr>
+<tr id="t-burn-rate"><td>burn rate</td><td>How fast the current error rate uses up the error budget: 1× lasts the month, 14.4× spends 2% of it in an hour.</td></tr>
+<tr id="t-cache-hit-rate"><td>cache hit rate</td><td>The share of reads a cache answers itself; the misses go on to the origin.</td></tr>
+<tr id="t-capacity"><td>capacity</td><td>The requests a second a component can serve before it has to queue or refuse.</td></tr>
+<tr id="t-cdn"><td>CDN</td><td>Content delivery network: caches near the users answer what they can; the rest goes to the origin.</td></tr>
+<tr id="t-cfs-throttling"><td>CFS throttling</td><td>Linux CPU limits (Kubernetes limits) cut a container off for the rest of each 100 ms period once it used its quota, adding stalls to its latency.</td></tr>
+<tr id="t-circuit-breaker"><td>circuit breaker</td><td>Stops calling a dependency that keeps failing, for a while, then lets a few probes through to see if it recovered.</td></tr>
+<tr id="t-cold-cache"><td>cold cache</td><td>A cache that restarted empty. Until it refills, its misses stampede the origin.</td></tr>
+<tr id="t-cold-start"><td>cold start</td><td>The time a new serverless instance (or container) takes before its first request: loading the runtime and code.</td></tr>
+<tr id="t-cold-storage"><td>cold storage</td><td>Archive tiers (S3 Glacier) that cost pennies a GB to keep and are slow, and priced, to read back.</td></tr>
+<tr id="t-cpu-limit"><td>CPU limit</td><td>The CPU time an edge function may use per request (about 1 ms on CloudFront Functions, 10 ms on Workers Free); past it, it is killed.</td></tr>
+<tr id="t-edge-function"><td>edge function</td><td>Small code that runs at the CDN’s edge before the origin (CloudFront Functions, Cloudflare Workers), near the user.</td></tr>
+<tr id="t-error-budget"><td>error budget</td><td>What the SLO allows to fail over a period: at 99.9% a month, about 43 minutes of full outage.</td></tr>
+<tr id="t-failover"><td>failover</td><td>Moving traffic from a failed component to a standby — for a database, promoting a replica.</td></tr>
+<tr id="t-fallback"><td>fallback</td><td>A degraded answer served instead of failing — a cached page, a default — while the real one is unavailable.</td></tr>
+<tr id="t-fan-out"><td>fan-out</td><td>One request calling many others — every partition, every follower’s timeline. It waits for the slowest.</td></tr>
+<tr id="t-goodput"><td>goodput</td><td>Requests answered successfully per second — throughput minus what failed.</td></tr>
+<tr id="t-headroom"><td>headroom</td><td>Capacity kept free above the load you have, for spikes and for losing an instance.</td></tr>
+<tr id="t-health-check"><td>health check</td><td>A periodic probe that marks a target down after a few failures, so traffic is routed away from it.</td></tr>
+<tr id="t-hnsw"><td>HNSW</td><td>Hierarchical navigable small world: the graph most vector databases search. Fast while it fits in memory, slow from disk.</td></tr>
+<tr id="t-hot-key"><td>hot key</td><td>One key with a large share of the traffic. It lands on one shard or partition, which saturates while the others idle.</td></tr>
+<tr id="t-idempotency"><td>idempotency</td><td>Doing an operation twice has the same effect as once — what makes retrying a payment safe.</td></tr>
+<tr id="t-instances"><td>instances</td><td>Identical copies of a component. Behind a load balancer each takes a share of the traffic.</td></tr>
+<tr id="t-jit-warm-up"><td>JIT warm-up</td><td>A new JVM or .NET instance runs slow, interpreted code until its compiler has compiled the hot paths. The compiler needs CPU the requests leave free, so an instance that is busy from its first second can stay slow.</td></tr>
+<tr id="t-latency"><td>latency</td><td>How long a request takes, from the caller’s side.</td></tr>
+<tr id="t-little-s-law"><td>Little’s law</td><td>Requests in flight = arrival rate × time each spends. It links concurrency, throughput and latency.</td></tr>
+<tr id="t-load-balancer"><td>load balancer</td><td>Spreads incoming requests across a fleet of identical instances, and stops sending to ones that fail their health checks.</td></tr>
+<tr id="t-load-shedding"><td>load shedding</td><td>Refusing work on purpose when overloaded, so the work accepted still finishes in time.</td></tr>
+<tr id="t-n-1"><td>N+1</td><td>Running one more instance than the load needs, so losing any one keeps the rest within capacity.</td></tr>
+<tr id="t-network-partition"><td>network partition</td><td>The network between two parts of a system fails while both keep running, each unable to reach the other.</td></tr>
+<tr id="t-origin"><td>origin</td><td>The system behind a cache or CDN that answers its misses.</td></tr>
+<tr id="t-p50"><td>p50</td><td>The median response time: half the requests are faster, half slower.</td></tr>
+<tr id="t-p99"><td>p99</td><td>The response time 99% of requests beat. The slowest 1% — at a million requests a day, ten thousand people.</td></tr>
+<tr id="t-p99-9"><td>p99.9</td><td>The response time 99.9% of requests beat: the tail that large fan-outs make everyone wait for.</td></tr>
+<tr id="t-partition"><td>partition</td><td>A slice of a stream or table. A stream subscriber can run at most one consumer per partition.</td></tr>
+<tr id="t-prefix-limit"><td>prefix limit</td><td>S3 takes 5,500 reads or 3,500 writes a second per key prefix; a hot prefix gets 503 SlowDown.</td></tr>
+<tr id="t-provisioned-concurrency"><td>provisioned concurrency</td><td>Serverless instances kept warm ahead of demand, so they start no cold; billed by the hour, used or not.</td></tr>
+<tr id="t-queue"><td>queue</td><td>Work waiting for a free worker. A bounded queue sheds what would wait too long.</td></tr>
+<tr id="t-rate-limit"><td>rate limit</td><td>A cap on requests a second; past it, requests get HTTP 429 instead of service.</td></tr>
+<tr id="t-recall"><td>recall</td><td>The share of the true nearest neighbours an approximate search returns. 0.99 walks far more of the index than 0.95.</td></tr>
+<tr id="t-refresh-interval"><td>refresh interval</td><td>How often a search index makes new writes searchable (1 s by default). Until the next refresh, searches miss them.</td></tr>
+<tr id="t-replica"><td>replica</td><td>A copy of a database that follows the primary. It serves reads, and can be promoted if the primary dies.</td></tr>
+<tr id="t-replication-lag"><td>replication lag</td><td>How far a replica is behind its primary. Reads there miss the latest writes; a failover loses them.</td></tr>
+<tr id="t-req-s"><td>req/s</td><td>Requests a second: how much traffic arrives, or how much a component can take.</td></tr>
+<tr id="t-restore"><td>restore</td><td>Bringing an archived object back from Glacier Flexible Retrieval: minutes to hours, paid for per request and per GB.</td></tr>
+<tr id="t-retries"><td>retries</td><td>Calling again after a failure. They rescue transient errors and multiply the load on a struggling dependency.</td></tr>
+<tr id="t-retry-amplification"><td>retry amplification</td><td>Each failed call retried N times turns one request into up to N + 1 calls, on the component least able to take them.</td></tr>
+<tr id="t-retry-budget"><td>retry budget</td><td>A cap on retries as a share of calls (here 10%), so retries cannot snowball.</td></tr>
+<tr id="t-scale-out"><td>scale out</td><td>Adding instances (horizontal scaling). Scaling up means a bigger box instead.</td></tr>
+<tr id="t-scatter-gather"><td>scatter-gather</td><td>Sending a request to many partitions in parallel and waiting for all of them; the slowest sets the latency.</td></tr>
+<tr id="t-shard"><td>shard</td><td>A horizontal partition of the data: each shard holds part of the keys and serves them on its own.</td></tr>
+<tr id="t-slo"><td>SLO</td><td>Service level objective: the target a system is held to, e.g. “errors under 1% and p99 under 300 ms”.</td></tr>
+<tr id="t-stale-dns-answer"><td>stale DNS answer</td><td>A client still using a cached DNS answer that points at a target which has since died.</td></tr>
+<tr id="t-threads"><td>threads</td><td>In thread-per-request servers, each request in flight holds a thread, waiting on its calls included.</td></tr>
+<tr id="t-throughput"><td>throughput</td><td>Requests handled per second.</td></tr>
+<tr id="t-timeout"><td>timeout</td><td>How long a caller waits for an answer before giving up and counting the call as failed.</td></tr>
+<tr id="t-token-bucket"><td>token bucket</td><td>A rate limiter that allows bursts: tokens refill at the rate, each request spends one.</td></tr>
+<tr id="t-ttl"><td>TTL</td><td>Time to live: how long a cached answer (a DNS record, a cache entry) is kept before it is asked for again.</td></tr>
+<tr id="t-utilisation"><td>utilisation</td><td>The share of a component’s capacity in use. Waiting grows steeply past about 70%.</td></tr>
+<tr id="t-utilised"><td>utilised</td><td>In use as a share of capacity. Waiting grows steeply past about 70%.</td></tr>
+<tr id="t-warm-up"><td>warm-up</td><td>How long a new instance takes before it serves: booting, starting the runtime, filling caches.</td></tr>
+<tr id="t-write-behind"><td>write-behind</td><td>A cache that acknowledges writes and flushes them later: fast, but writes are lost if it dies first.</td></tr>
+</table></div>
+<p class="dim term-none" hidden>No term matches.</p>
+</section>
+
+<nav class="pager"><a href="capabilities.html">← Everything it does</a></nav>
+</main>
+</div>
+<script src="docs.js"></script>
+</body>
+</html>

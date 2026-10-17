@@ -47,3 +47,25 @@
   if (location.hash) light(document.getElementById(location.hash.slice(1)));
   else pick();
 })();
+
+// The Terms page: typing filters the list by term or meaning; ?q= opens it filtered.
+(() => {
+  const input = document.querySelector('.term-filter input');
+  if (!input) return;
+  const rows = [...document.querySelectorAll('table.terms tr[id]')];
+  const none = document.querySelector('.term-none');
+  const apply = () => {
+    const q = input.value.trim().toLowerCase();
+    let shown = 0;
+    for (const tr of rows) {
+      const hit = !q || tr.textContent.toLowerCase().includes(q);
+      tr.hidden = !hit;
+      shown += hit;
+    }
+    none.hidden = shown > 0;
+  };
+  input.addEventListener('input', apply);
+  const q = new URLSearchParams(location.search).get('q');
+  if (q) input.value = q;
+  apply();
+})();

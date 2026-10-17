@@ -112,3 +112,13 @@ td:first-child { color: var(--hi); }
 .still { margin: 0 0 18px; border: 1px solid var(--line); background: var(--pane); line-height: 0; }
 .still img { width: 100%; height: auto; display: block; }
 td code { white-space: nowrap; }
+
+/* the Terms page: the app's glossary, filterable; #t-<term> marks the one linked to */
+.term-filter { display: flex; align-items: center; gap: 10px; margin: 0 0 4px; max-width: 74ch; }
+.term-filter span { font: 11px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); }
+.term-filter input { flex: 1; min-width: 0; padding: 6px 9px; background: var(--pane2); border: 1px solid var(--line); border-radius: 0; color: var(--hi); font: 14px var(--mono); }
+.term-filter input:focus { outline: 1px solid var(--amber); outline-offset: 0; }
+table.terms td:first-child { width: 1%; padding-right: 20px; white-space: nowrap; font: 13.5px var(--mono); color: var(--amber); }
+table.terms tr:target td { background: var(--pane2); }
+table.terms tr:target td:first-child { box-shadow: inset 2px 0 var(--amber); padding-left: 10px; }
+@media (max-width: 820px) { table.terms td:first-child { white-space: normal; width: 34%; } }
