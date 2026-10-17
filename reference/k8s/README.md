@@ -735,6 +735,23 @@ load test widens the range the model has seen, so it hedges less. When the outco
 incident that neither model's verdict changes, that means more wrong passes. The ordinary-day
 model scored better on these runs, but its two round-5 fails were right for the wrong reason.
 
+## Round 6: stacked on a leak-free baseline (in progress)
+
+Rounds 4 and 5 were decided by email's memory leak, which the system as built has. Round 6 stacks
+three capacity changes on email at 300 MiB, where the leak can't stall checkout, and judges each
+against two recordings of that baseline. The verdicts were committed in
+[shop/validation/predictions-oos-6.json](shop/validation/predictions-oos-6.json) before any run.
+Both baseline recordings (`launch-email300`, `launch-e300-b`) spent 0 minutes out of SLO.
+
+**The first recording of the three changes is void.** The laptop went onto battery at 18:10, and
+on battery macOS runs in Low Power Mode. The change runs (19:33–21:50) cost about twice the CPU
+per request of the baseline (frontend 4.0–4.8 ms against 2.18 ms, product-catalog 0.28–0.30 ms
+against 0.17 ms, on the same traffic), so all three failed at the peak, where the baseline didn't.
+That is a measurement of a slower laptop, not of the changes, so it isn't scored. The models'
+"fail" calls would have looked right for the wrong reason. A first attempt at `launch-e300-2` was
+also cut by the lid closing mid-run. The recorder now refuses to record on battery and voids a run
+the machine slept through. The three runs are to be recorded again on mains power.
+
 ## A second system: PetClinic
 
 [petclinic/](petclinic/README.md) runs Spring PetClinic Microservices on the same cluster and the
