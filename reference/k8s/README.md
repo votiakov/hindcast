@@ -680,8 +680,9 @@ the runs was recorded.
 | `launch-checkout125` | checkout (Go) at 125m instead of 250m | **pass**, 0 min | inconclusive | pass ✅ | pass ✅ |
 | `launch-3-400` | 3 frontend replicas at 400m instead of 500m | **fail**, 3.5 min | fail ✅, 3.5 min predicted (low confidence) | inconclusive | fail ✅ |
 
-By the count, the ordinary-day model called both real failures and their size: 3 and 3.5 minutes
-out of SLO predicted, 3.5 and 3.5 measured. It hedged on the change that passed. The CPU rule got
+By the count, the ordinary-day model called both real failures, and even their size: 3 and 3.5
+minutes out of SLO predicted, 3.5 and 3.5 measured. But it was right for the wrong reason, as the
+diagnosis below shows. It hedged on the change that passed. The CPU rule got
 all three right. The model calibrated with the load test did worse here. It passed product-catalog
 at 125m, which failed (0.5 min predicted against 3.5 measured).
 
