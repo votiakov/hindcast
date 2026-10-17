@@ -31,6 +31,16 @@ describe('glossary', () => {
     for (const t of ['refresh interval', 'recall', 'ANN', 'HNSW', 'cold storage', 'restore', 'edge function', 'CPU limit']) expect(GLOSSARY[t], t).toBeDefined();
   });
 
+  it('the first lesson explains the words it is built on', async () => {
+    const { lesson1 } = await import('../src/lessons/lesson1');
+    const terms = (s: string) => withTerms(s).filter((p) => typeof p !== 'string').map((p) => (p as { term: string }).term.toLowerCase());
+    const [, hn, viral, chaos] = lesson1.steps;
+    expect(terms(hn.story)).toContain('req/s');
+    expect(terms(hn.hint!)).toEqual(expect.arrayContaining(['instances', 'load balancer', 'headroom']));
+    expect(terms(viral.hint!)).toContain('bottleneck');
+    expect(terms(chaos.hint!)).toContain('n+1');
+  });
+
   it('every definition is a sentence or two', () => {
     for (const [t, d] of Object.entries(GLOSSARY)) {
       expect(d, t).toMatch(/[.%”]$/);
