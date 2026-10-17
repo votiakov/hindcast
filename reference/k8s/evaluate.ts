@@ -62,6 +62,13 @@ interface Case {
   asBuiltAlso?: string;
   /** manifests the change leaves (none: the as-built system itself) */
   head?: string;
+  /** a stacked change: manifests with an approved change not yet deployed applied (verify_change's
+   *  `baseline`, base → baseline), in place on both sides of the verdict before the day, so the case's
+   *  head is judged against as built + baseline (the change itself is baseline → head). head is then
+   *  the manifests with both, as the run had them, and asBuilt a run of the baseline's manifests: the
+   *  model on the day's traffic and the naive rule read head as they always do, the system the run
+   *  really had */
+  baseline?: string;
   /** the forecast an engineer would make before the day: the ordinary day ×scale */
   scale: number;
   question: string;
@@ -387,17 +394,21 @@ const replicasOfHead = (head: string) => Number(/frontend-(\d)/.exec(head)?.[1] 
 /** what verify_change says before the day, from the calibration history alone */
 function forecast(c: Case, ws: Workspace, base: string) {
   const head = c.head ? resolve(SYS, c.head) : undefined;
+  // a stacked change: the baseline on both sides, the change read from its manifests
+  const baseline = c.baseline ? resolve(SYS, c.baseline) : undefined;
+  const from = baseline ?? base;
   const traffic = c.scale !== 1 ? { scale: c.scale } : undefined;
   // the replay is the ordinary day, whatever else the model learned from (a load test)
   const window = { start: meta('history').start + SETTLE_S, end: meta('history').end };
-  const exAnte = agent('verify_change', ws, { changes: [head ? { kubernetes: { base, head } } : { strategy: { name: 'as built', changes: [] } }], traffic, window, report: false });
+  const exAnte = agent('verify_change', ws, { changes: [head ? { kubernetes: { base: from, head } } : { strategy: { name: 'as built', changes: [] } }], ...(baseline ? { baseline: { kubernetes: { base, head: baseline } } } : {}), traffic, window, report: false });
   const res = exAnte.results[0];
   const asBuilt = c.run === c.asBuilt;
   // OOM kills the replay predicts on the ordinary day at this load, by service: minutes into the day
   const m = reviveModel(ws.readJson<Model>('model.json'));
   const day = ws.readJson<Dataset>('dataset.json');
-  const strat = head ? strategyFromManifests(base, head, ws.path('model.json')) : undefined;
-  const bt = backtest(m, day, strat ? [strat] : [], { draws: 1, ...(traffic ? { load: traffic } : {}) });
+  const strat = head ? strategyFromManifests(from, head, ws.path('model.json')) : undefined;
+  const stackedOn = baseline ? strategyFromManifests(base, baseline, ws.path('model.json')) : undefined;
+  const bt = backtest(m, day, strat ? [strat] : [], { draws: 1, ...(traffic ? { load: traffic } : {}), ...(stackedOn ? { baseline: stackedOn } : {}) });
   const evs = strat ? bt.strategies[0]?.events ?? [] : bt.baseline.events;
   const ooms: Record<string, number[]> = {};
   for (const e of evs) {
