@@ -58,6 +58,8 @@ interface Case {
   run: string;
   /** the as-built run on the same day, for "did the change add minutes out of SLO?" */
   asBuilt: string;
+  /** a second recording of that as-built day: from round 5 on, a change fails only when it is worse than both */
+  asBuiltAlso?: string;
   /** manifests the change leaves (none: the as-built system itself) */
   head?: string;
   /** the forecast an engineer would make before the day: the ordinary day ×scale */
@@ -116,6 +118,9 @@ const SHOP_CASES: Case[] = [
   { run: 'launch-cart250', naive: 'all', asBuilt: 'launch', head: 'variants/cart-250m.yaml', scale: LAUNCH, oos: 4, service: 'cart', name: 'cart at 250m', question: 'cart at 250m instead of 500m, on launch day?' },
   { run: 'launch-rec2', naive: 'all', asBuilt: 'launch', head: 'variants/recommendation-2.yaml', scale: LAUNCH, oos: 4, service: 'recommendation', name: 'recommendation ×2', question: '2 recommendation replicas instead of 1, on launch day?' },
   { run: 'normal-catalog125', naive: 'all', asBuilt: 'history', head: 'variants/product-catalog-125m.yaml', scale: 1, oos: 4, service: 'product-catalog', name: 'product-catalog at 125m', question: 'product-catalog at 125m instead of 250m, on an ordinary day?' },
+  { run: 'launch-catalog125', naive: 'all', asBuilt: 'launch', asBuiltAlso: 'launch-b', head: 'variants/product-catalog-125m.yaml', scale: LAUNCH, oos: 5, service: 'product-catalog', name: 'product-catalog at 125m', question: 'product-catalog at 125m instead of 250m, on launch day?' },
+  { run: 'launch-checkout125', naive: 'all', asBuilt: 'launch', asBuiltAlso: 'launch-b', head: 'variants/checkout-125m.yaml', scale: LAUNCH, oos: 5, service: 'checkout', name: 'checkout at 125m', question: 'checkout at 125m instead of 250m, on launch day?' },
+  { run: 'launch-3-400', asBuilt: 'launch', asBuiltAlso: 'launch-b', head: 'variants/frontend-3-400m.yaml', scale: LAUNCH, cpu: 0.4, oos: 5, question: '3 frontend replicas at 400m instead of 500m, on launch day?' },
 ];
 const AS_BUILT_CPU = 0.5;
 const SHOP = (): Evaluation => ({
@@ -127,7 +132,7 @@ const SHOP = (): Evaluation => ({
   watch: 'frontend',
   publish: true,
   readme: join(ROOT, 'README.md'),
-  rounds: { 1: 'added after the throttle model was designed on the runs above', 4: 'chosen after the leak, JIT warm-up, the failed-request gate and holdout confidence were added: three changes away from the frontend, in .NET, Python and Go' },
+  rounds: { 1: 'added after the throttle model was designed on the runs above', 4: 'chosen after the leak, JIT warm-up, the failed-request gate and holdout confidence were added: three changes away from the frontend, in .NET, Python and Go', 5: 'chosen after the as-built launch day was recorded twice; a change fails only if it is worse than both recordings (launch and launch-b)' },
 });
 
 let SYS = '';
@@ -467,7 +472,10 @@ async function score(label: string, ws: Workspace, base: string, evalDir: string
     const baseKept = kept && !self ? EARLIER[label]?.[c.asBuilt] : undefined;
     const addedFailed = kept ? (self ? failedOf(kept.measured) : failedOf(kept.measured) - (baseKept ? failedOf(baseKept.measured) : 0)) : self ? actual.failed : actual.failed - actualBase!.failed;
     const baseRequests = kept ? (baseKept ?? kept).measured.requests : self ? actual.requests : actualBase!.requests;
-    const truth = gateFails(added, addedFailed, baseRequests, m.slo) ? 'fail' : 'pass';
+    // a day recorded twice as built (round 5 on, declared before it ran): worse than both, or it passes
+    const also = c.asBuiltAlso && !self && !kept && hasRequests(c.asBuiltAlso) ? measured(settled(requestsOf(c.asBuiltAlso), meta(c.asBuiltAlso).start), m.slo) : undefined;
+    const failsAlso = !also || gateFails(actual.minutesOutOfSlo - also.minutesOutOfSlo, actual.failed - also.failed, also.requests, m.slo);
+    const truth = gateFails(added, addedFailed, baseRequests, m.slo) && failsAlso ? 'fail' : 'pass';
     const verdict = exAnte.verdict;
     const row = {
       run: c.run,

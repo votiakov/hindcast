@@ -1,0 +1,197 @@
+{
+ "madeAt": "2026-10-17T10:15:02.087Z",
+ "commit": "748b99d",
+ "models": {
+  "calm": {
+   "launch-catalog125": {
+    "verdict": "fail",
+    "confidence": "low",
+    "leans": null,
+    "minutesOutOfSlo": 4.5,
+    "peakP99Ms": 5000,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same; it would have caused 2 minutes out of SLO, the longest new incident starting Oct 13 at 17:04 UTC (product-catalog at 108% of capacity (590.5 req/s on 1 × 547.9 req/s), 1.4 s queue)",
+     "adds 1.8 min out of SLO (10–90%: 0 … 5)",
+     "adds 50 failed requests (+17% of 283)",
+     "worst at 2026-10-13T17:04:00Z: product-catalog at 108% of capacity (590.5 req/s on 1 × 547.9 req/s), 1.4 s queue",
+     "worse for frontend GET /api/cart, frontend GET /api/products/{id}, frontend GET /api/recommendations, frontend POST /api/checkout against their own SLOs",
+     "frees 0.13 cores and 0 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 30% of it (30% before)",
+     "headroom drops from 398.6 to 355.2 req/s (the replayed traffic peaks at 365.1)"
+    ],
+    "warnings": [
+     "frontend would run at 91% of a capacity the history never tested (peak 41%): the outcome rests on an extrapolated limit",
+     "product-catalog would run at 108% of a capacity the history never tested (peak 23%): the outcome rests on an extrapolated limit",
+     "recommendation: the model fits it poorly, and this change pushes it harder than the history did",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ],
+    "ooms": {
+     "email": [
+      23.3
+     ]
+    }
+   },
+   "launch-checkout125": {
+    "verdict": "inconclusive",
+    "confidence": "low",
+    "leans": "pass",
+    "minutesOutOfSlo": 1,
+    "peakP99Ms": 230,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same, with no change in time out of SLO",
+     "the backtest passes, but confidence is low (frontend would run at 91% of a capacity the history never tested (peak 41%): the outcome rests on an extrapolated limit) — load-test before trusting it: plan_load_test with the same changes designs that test",
+     "frees 0.13 cores and 0 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 30% of it (30% before)"
+    ],
+    "warnings": [
+     "frontend would run at 91% of a capacity the history never tested (peak 41%): the outcome rests on an extrapolated limit",
+     "checkout: fair fit (latency reproduced within 30%)",
+     "product-catalog would run at 51% of capacity, past the history's 23%: its capacity there is extrapolated",
+     "recommendation: the model fits it poorly, and this change pushes it harder than the history did",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ],
+    "ooms": {
+     "email": [
+      23.3
+     ]
+    }
+   },
+   "launch-3-400": {
+    "verdict": "fail",
+    "confidence": "low",
+    "leans": null,
+    "minutesOutOfSlo": 7.5,
+    "peakP99Ms": 5000,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same; it would have caused 4 minutes out of SLO, the longest new incident starting Oct 13 at 17:02 UTC (frontend at 101% of capacity (317.3 req/s on 3 × 104.5 req/s), 0.3 s queue)",
+     "adds 4.3 min out of SLO (10–90%: 0 … 9.6)",
+     "fails 20,652 more requests than as built (+7290% of 283), more than the SLO's error budget over the whole window (1% of 462,605 requests: 4,626)",
+     "worst at 2026-10-13T17:09:30Z: frontend at 108% of capacity (339.7 req/s on 3 × 104.5 req/s), 8.8 s queue",
+     "worse for frontend GET /, frontend GET /api/cart, frontend GET /api/data, frontend GET /api/products/{id}, frontend GET /api/recommendations, frontend POST /api/cart, frontend POST /api/checkout against their own SLOs",
+     "frees 0.3 cores and 0 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 30% of it (30% before)",
+     "losing bnk8s-worker at the busiest moment: 7.3 min out of SLO as built, 10.5 with the change (78,026 failed requests)",
+     "headroom drops from 398.6 to 316.6 req/s (the replayed traffic peaks at 365.1)"
+    ],
+    "warnings": [
+     "frontend would run at 116% of a capacity the history never tested (peak 41%): the outcome rests on an extrapolated limit",
+     "product-catalog would run at 51% of capacity, past the history's 23%: its capacity there is extrapolated",
+     "recommendation: the model fits it poorly, and this change pushes it harder than the history did",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ],
+    "ooms": {
+     "email": [
+      23.3
+     ]
+    }
+   }
+  },
+  "load-tested": {
+   "launch-catalog125": {
+    "verdict": "pass",
+    "confidence": "medium",
+    "leans": null,
+    "minutesOutOfSlo": 0.5,
+    "peakP99Ms": 190,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same, with no change in time out of SLO",
+     "frees 0.12 cores and 0 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 28% of it (28% before)"
+    ],
+    "warnings": [
+     "frontend fits poorly and runs near its limit; the change leaves it as it was, so the comparison holds better than the absolute numbers",
+     "product-catalog would run at 68% of capacity, past the history's 47%: its capacity there is extrapolated",
+     "recommendation fits poorly and runs near its limit; the change leaves it as it was, so the comparison holds better than the absolute numbers",
+     "the model's accuracy was never measured",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ],
+    "ooms": {
+     "email": [
+      23.9,
+      272.9,
+      279.3
+     ]
+    }
+   },
+   "launch-checkout125": {
+    "verdict": "pass",
+    "confidence": "medium",
+    "leans": null,
+    "minutesOutOfSlo": 0.5,
+    "peakP99Ms": 190,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same, with no change in time out of SLO",
+     "frees 0.12 cores and 0 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 28% of it (28% before)"
+    ],
+    "warnings": [
+     "frontend fits poorly and runs near its limit; the change leaves it as it was, so the comparison holds better than the absolute numbers",
+     "checkout would run at 34% of capacity, past the history's 18%: its capacity there is extrapolated",
+     "recommendation fits poorly and runs near its limit; the change leaves it as it was, so the comparison holds better than the absolute numbers",
+     "the model's accuracy was never measured",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ],
+    "ooms": {
+     "email": [
+      23.9,
+      272.9,
+      279.3
+     ]
+    }
+   },
+   "launch-3-400": {
+    "verdict": "inconclusive",
+    "confidence": "low",
+    "leans": "pass",
+    "minutesOutOfSlo": 0.5,
+    "peakP99Ms": 436,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same, with no change in time out of SLO",
+     "the backtest passes, but confidence is low (frontend: the model fits it poorly, and this change changes it) — load-test before trusting it: plan_load_test with the same changes designs that test",
+     "worse for frontend GET /api/recommendations against their own SLOs",
+     "frees 0.3 cores and 0 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 28% of it (28% before)",
+     "losing bnk8s-worker at the busiest moment: 6.5 min out of SLO as built, 7.5 with the change (44,527 failed requests)",
+     "headroom drops from 513.1 to 395.8 req/s (the replayed traffic peaks at 365.1)"
+    ],
+    "warnings": [
+     "frontend: the model fits it poorly, and this change changes it",
+     "recommendation fits poorly and runs near its limit; the change leaves it as it was, so the comparison holds better than the absolute numbers",
+     "the model's accuracy was never measured",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ],
+    "ooms": {
+     "email": [
+      23.9,
+      272.9,
+      279.3
+     ]
+    }
+   }
+  }
+ }
+}

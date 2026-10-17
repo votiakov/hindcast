@@ -589,4 +589,7 @@ writeFileSync(join(HERE, 'variants', 'email-300mi.yaml'), manifests({ frontendRe
 writeFileSync(join(HERE, 'variants', 'cart-250m.yaml'), manifests({ frontendReplicas: 3, over: { cart: { cpu: '250m' } } }));
 writeFileSync(join(HERE, 'variants', 'recommendation-2.yaml'), manifests({ frontendReplicas: 3, over: { recommendation: { replicas: 2 } } }));
 writeFileSync(join(HERE, 'variants', 'product-catalog-125m.yaml'), manifests({ frontendReplicas: 3, over: { 'product-catalog': { cpu: '125m' } } }));
-console.log('wrote shop.yaml and 13 variants');
+// round 5, scored against both recordings of the as-built launch day (predicted in validation/predictions-oos-5.json)
+writeFileSync(join(HERE, 'variants', 'checkout-125m.yaml'), manifests({ frontendReplicas: 3, over: { checkout: { cpu: '125m' } } }));
+writeFileSync(join(HERE, 'variants', 'frontend-3-400m.yaml'), manifests({ frontendReplicas: 3, frontendCpu: '400m' }));
+console.log('wrote shop.yaml and 15 variants');
