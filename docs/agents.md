@@ -505,6 +505,9 @@ the reason that says "load-test before trusting it" names `plan_load_test`, whic
 
 #### Stacked changes: `baseline`
 
+On `main`, not yet in a release: v1.2.0 ignores `baseline` and judges the change against what
+runs ([install.md](install.md#release-or-main)).
+
 "Assuming PR #1 (approved, not deployed yet) goes in, is PR #2 safe?" Give PR #1 as `baseline`, in
 any shape a change takes, and PR #2 in `changes`:
 
@@ -547,6 +550,9 @@ The reports' `.strategies.yaml` and `.hindcast.json` hold the baseline and each 
 it, as strategies against the system as built: opened in the app, they show all three.
 
 ### `plan_load_test`: the load test a verdict asks for
+
+On `main`, not yet in a release (v1.2.0 has no `plan_load_test` and no `hindcast loadtest plan`;
+[install.md](install.md#release-or-main)).
 
 The most common reason a verdict is inconclusive is a service the change would run at a share of
 capacity the history never reached. `plan_load_test` takes the same `changes` as `verify_change`

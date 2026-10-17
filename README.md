@@ -70,6 +70,12 @@ losing a node), four strategies backtested over the recorded day, and how the mo
 never saw. `./hindcast demo --workspace ./hindcast-demo` writes that data to disk so every other
 command runs on it.
 
+The latest release is v1.2.0. This README describes `main`, and a few things in it came after that
+release, so for now they need a build from source (`bin/hindcast` in a clone builds it): stacked
+changes (`--baseline-head`, `baseline`, the Action's `baseline-ref`), `hindcast loadtest plan`
+(`plan_load_test`), the decision table that opens reports and pull-request comments, `hindcast
+mermaid` and `hindcast --version`. [The list, and how to build](docs/install.md#release-or-main).
+
 Other platforms, building from source and the app: [docs/install.md](docs/install.md).
 
 ### No cluster handy
@@ -163,7 +169,8 @@ laptop cluster, not a production fleet; the one check on production telemetry (A
 
 ## Agents
 
-The same binary is an MCP server with 27 tools, 12 of them for working on a live system. An agent connects to your Prometheus and Jaeger or
+The same binary is an MCP server with 27 tools, 12 of them for working on a live system (26 and 11
+in v1.2.0, which has no `plan_load_test`). An agent connects to your Prometheus and Jaeger or
 Tempo, collects a day to two weeks of history, calibrates, reads the trust report, and checks a
 change before proposing it. The answer is pass, fail or inconclusive, with the money, the SLO
 minutes and which services the change pushes past anything the history showed.
@@ -196,7 +203,9 @@ It needs `pull-requests: write` for the comment. Inputs, outputs and a real comm
 Stacked pull requests: give the approved-but-undeployed PR as `baseline-ref`, and this one is judged
 on what it adds on top of it, not credited with the other's fix (`hindcast verify-change
 --baseline-head`, or `baseline` in `verify_change`). When a verdict comes back inconclusive,
-`hindcast loadtest plan` writes the load test it asks for.
+`hindcast loadtest plan` writes the load test it asks for. Both are on `main` and not yet in a
+release: the Action runs the latest release (v1.2.0) unless its `binary` input names one built
+from `main`, and it refuses a baseline with a binary that predates it ([details](docs/ci.md#versions)).
 
 ## Also in the app
 

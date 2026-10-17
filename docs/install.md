@@ -16,7 +16,6 @@ run it. No Node or Rust is needed.
 ```sh
 curl -fsSLo hindcast https://github.com/votiakov/hindcast/releases/latest/download/hindcast-aarch64-apple-darwin
 chmod +x hindcast
-./hindcast --version                               # hindcast 1.2.1
 ./hindcast demo                                    # a recorded system built in: no network, no files
 ./hindcast quickstart --prometheus http://localhost:9090 --last 24h
 ```
@@ -35,6 +34,25 @@ The same binary is the MCP server (`hindcast mcp`) and runs every agent tool fro
 (`hindcast agent <tool> '<json>'`); `hindcast agent setup` writes the configuration for an MCP host.
 See [agents.md](agents.md).
 
+## Release or main?
+
+The latest release is **v1.2.0** (16 October 2026). These docs describe `main`, and the things
+below came after v1.2.0, so until the next release they need a build from source:
+
+| on `main`, not in v1.2.0 | what v1.2.0 does instead |
+|---|---|
+| stacked changes: `verify-change --baseline-head` / `--baseline`, `baseline` in `verify_change`, the Action's `baseline-ref`, `baseline-manifests` and `baseline-strategy` | ignores `--baseline-head` and judges the change and its baseline together (the Action refuses a baseline with such a binary) |
+| `hindcast loadtest plan` and the `plan_load_test` tool | has neither: 26 MCP tools, 11 of them for a live system |
+| the decision table (ask, money, risk to users, how sure, next) that opens the pull-request comment and the `--md` / `--html` reports | the comment opens on the evidence |
+| `hindcast mermaid` and `hindcast --version` | both print the usage |
+| `quickstart --include` and observability tools left out of the system on a shared cluster; the gate failing a change on failed requests as well as minutes | minutes alone; tagged as v1.2.1, which was never built |
+
+A build from `main` says `hindcast 1.2.1`, the last version tagged, though it holds more than that
+tag. To build the binary without the app: clone (below) and run `bin/hindcast --version`, which
+builds it on first use (it needs [Rust](https://rustup.rs), not Node), or `cd engine-rs && cargo
+build --release --bin hindcast`. It lands in `engine-rs/target/release/hindcast`; copy it onto your
+`PATH` like a release binary.
+
 ## The app, the lessons and everything else: a clone
 
 ```sh
@@ -50,7 +68,9 @@ npm test               # engine, spec and audit tests (a couple of minutes)
 - Needs Node 22.12 or newer.
 - The CLI, the MCP server and the agent tools are one native binary: `bin/hindcast` builds it on
   first use (about two minutes, once), which needs a Rust toolchain ([rustup](https://rustup.rs)).
-  `npm run cli:build` builds it explicitly, to `engine-rs/target/release/hindcast`.
+  `npm run cli:build` builds it explicitly, to `engine-rs/target/release/hindcast`. `bin/hindcast`
+  builds only when there is no binary yet: after a `git pull`, run `npm run cli:build` again, or it
+  keeps running the old one.
 - The app doesn't need Rust: the engine is committed as WebAssembly. Rebuilding it with
   `npm run engine:build` needs the `wasm32-unknown-unknown` target and `wasm-bindgen-cli`.
 - A clone is about 470 MB (less with `--depth 1`, which skips the history). Most of it is the

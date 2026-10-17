@@ -158,10 +158,21 @@ To keep the HTML report with the run:
 
 ### Versions
 
-`uses: votiakov/hindcast@v1` works once a `v1` tag in the repository points at a release; until
-then pin a full release tag (`@v1.2.0`) or a commit. The action needs a release that has
-`hindcast verify-change` (newer than v1.1.0); with an older one it stops and says so. With
-`version` set, that release's binary runs, whichever tag the action itself was taken from.
+`uses: votiakov/hindcast@v1` runs the action as of the newest `v1.x` release and that release's
+binary; today that is v1.2.0. A full release tag (`@v1.2.0`) or a commit pins it. The action needs
+a release that has `hindcast verify-change` (newer than v1.1.0); with an older one it stops and
+says so. With `version` set, that release's binary runs, whichever tag the action itself was taken
+from.
+
+Some of this page is on `main` and not yet in a release ([the list](install.md#release-or-main)):
+the stacked-pull-request inputs (`baseline-ref`, `baseline-manifests`, `baseline-strategy`) and the
+decision table that opens the comment. At `@v1` the comment opens on the evidence, and the
+baseline inputs don't exist (GitHub warns about an unexpected input and the change is judged
+against what runs). To use them before the next release, take the action at `@main` and give it a
+binary built from `main` with the `binary` input (a step that runs `cargo build --release --bin
+hindcast` in a checkout of this repository, as this repository's own CI does below). Without
+`binary`, `@main` downloads v1.2.0, which would ignore the baseline, so the action stops and says
+so instead.
 
 ### What the comment looks like
 
@@ -169,7 +180,8 @@ The backtest-ci example's HotROD model, on a pull request that cuts the frontend
 to 50 millicores (`test/cli-fixtures/hotrod-frontend-50m.yaml`), as the action writes it. The
 table on top is for whoever approves the change: what is asked, the money a month and a year, the
 risk to users, how sure the backtest is and the one reason why, and the next step. The evidence an
-engineer reviews follows it, and `--md` / `--html` reports open with the same table:
+engineer reviews follows it, and `--md` / `--html` reports open with the same table. (This is a
+build from `main`; v1.2.0's comment has no table and opens on the evidence.)
 
 ````markdown
 <!-- hindcast-verify-change -->
@@ -249,6 +261,8 @@ and the comment says so. A change the model cannot backtest (an image tag, a lab
 to verify" and passes.
 
 ### Stacked pull requests
+
+On `main`, not yet in a release: see [Versions](#versions) for running it today.
 
 PR #1 is approved but not deployed yet; PR #2 is branched from it. Compared with what runs, PR #2's
 verdict would mix in PR #1's effect. With a baseline, both sides of the comparison have PR #1
