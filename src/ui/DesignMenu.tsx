@@ -36,6 +36,10 @@ function download(name: string, text: string, type: string) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
+const SHOW_TEMPLATES = 'hindcast:templates';
+/** open the design menu at its templates (the components palette's "start from an example") */
+export const showTemplates = () => window.dispatchEvent(new Event(SHOW_TEMPLATES));
+
 /** Sandbox document menu: the design's name is the title; file operations, saved designs and templates live behind it. */
 export function DesignMenu() {
   const title = useSim((s) => s.boards.main.title);
@@ -44,6 +48,21 @@ export function DesignMenu() {
   const [designs, setDesigns] = useState<SavedDesign[]>([]);
   const ref = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const templatesRef = useRef<HTMLDivElement>(null);
+  const [atTemplates, setAtTemplates] = useState(false);
+
+  useEffect(() => {
+    const show = () => (setOpen(true), setAtTemplates(true));
+    window.addEventListener(SHOW_TEMPLATES, show);
+    return () => window.removeEventListener(SHOW_TEMPLATES, show);
+  }, []);
+  // opened from the palette: the same menu, scrolled to its templates
+  useEffect(() => {
+    if (!open || !atTemplates) return;
+    templatesRef.current?.scrollIntoView({ block: 'start' });
+    templatesRef.current?.querySelector('button')?.focus({ preventScroll: true });
+    setAtTemplates(false);
+  }, [open, atTemplates]);
 
   useEffect(() => {
     if (!open) return;
@@ -197,7 +216,7 @@ export function DesignMenu() {
             </div>
           )}
 
-          <div className="dm-section">
+          <div className="dm-section" ref={templatesRef}>
             <div className="dm-h">start from a template</div>
             {templateGroups().map((g) => (
               <div key={g} className="dm-group">

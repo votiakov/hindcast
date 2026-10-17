@@ -221,6 +221,7 @@
 [data-theme='terminal'] .palette-name { font-weight: 500; }
 [data-theme='terminal'] .palette-meta { color: var(--r-muted); }
 [data-theme='terminal'] .palette-tip { color: var(--r-muted); border-top-color: var(--r-line); }
+[data-theme='terminal'] .palette-examples { color: var(--r-accent); border-bottom-color: var(--r-line); }
 
 /* ---------- control bar ---------- */
 [data-theme='terminal'] .play { width: 36px; height: 36px; border-radius: 5px; background: var(--r-accent); color: var(--r-on-ink); box-shadow: none; }

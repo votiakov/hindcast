@@ -4,6 +4,8 @@ import { CATEGORIES, KINDS, TIERS, type Kind } from '../sim/catalog';
 import { KIND_ICONS } from '../canvas/icons';
 import { DND_TYPE, ZONE_KIND, adders } from '../canvas/BoardCanvas';
 import { useSim } from '../sim/store';
+import { TEMPLATES } from '../scenarios/templates';
+import { showTemplates } from './DesignMenu';
 
 type Item = { kind: Kind | typeof ZONE_KIND; label: string; meta: string; color: string; Icon: typeof SquareDashed; description: string };
 
@@ -41,6 +43,7 @@ export function Palette({ compact }: { compact?: boolean }) {
   const [rail, setRail] = useState(!!compact);
   const isRail = rail;
   const add = (k: Item['kind']) => adders[useSim.getState().focus]?.(k);
+  const sandbox = useSim((s) => s.mode === 'sandbox');
 
   return (
     <div className={`palette panel ${isRail ? 'rail' : ''} ${compact ? 'in-compare' : ''}`}>
@@ -50,6 +53,11 @@ export function Palette({ compact }: { compact?: boolean }) {
           {isRail ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
         </button>
       </div>
+      {sandbox && !isRail && (
+        <button className="palette-examples" onClick={showTemplates} title="Open the design menu at its templates: a whole system to start from">
+          ▸ start from an example ({TEMPLATES.length})
+        </button>
+      )}
       <div className="palette-scroll">
         {GROUPS.map((g) => (
           <div key={g.id} className="palette-group">

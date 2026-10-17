@@ -130,6 +130,8 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 }
 .palette-name { font-weight: 600; font-size: 12.5px; }
 .palette-meta { color: var(--muted); font-size: 10px; font-family: var(--mono); margin-top: 1px; white-space: nowrap; }
+.palette-examples { display: block; width: 100%; margin: 0 0 4px; padding: 5px 6px; border: 0; border-bottom: 1px solid var(--border); background: none; color: var(--cyan); font: 11.5px var(--mono); text-align: left; cursor: pointer; }
+.palette-examples:hover { text-decoration: underline; }
 .palette-tip { color: var(--dim); font-size: 11px; line-height: 1.45; padding: 10px 6px 2px; border-top: 1px solid var(--border); margin-top: 8px; }
 .icon-btn.small { width: 24px; height: 24px; border-radius: 6px; }
 
