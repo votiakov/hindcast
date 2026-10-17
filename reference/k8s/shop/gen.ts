@@ -233,7 +233,7 @@ const services: Svc[] = [
   },
 ];
 
-function manifests(o: { frontendReplicas: number; frontendCpu?: string; hpa?: { min: number; max: number; cpu: number }; emailMem?: string }): string {
+function manifests(o: { frontendReplicas: number; frontendCpu?: string; hpa?: { min: number; max: number; cpu: number }; emailMem?: string; over?: Record<string, { replicas?: number; cpu?: string }> }): string {
   const docs: object[] = [{ apiVersion: 'v1', kind: 'Namespace', metadata: { name: NS } }];
 
   for (const s of services) {
@@ -243,7 +243,7 @@ function manifests(o: { frontendReplicas: number; frontendCpu?: string; hpa?: { 
       kind: 'Deployment',
       metadata: { name: s.name, namespace: NS, labels },
       spec: {
-        replicas: s.name === 'frontend' ? o.frontendReplicas : (s.replicas ?? 1),
+        replicas: s.name === 'frontend' ? o.frontendReplicas : (o.over?.[s.name]?.replicas ?? s.replicas ?? 1),
         selector: { matchLabels: labels },
         template: {
           metadata: { labels },
@@ -266,8 +266,8 @@ function manifests(o: { frontendReplicas: number; frontendCpu?: string; hpa?: { 
                     }
                   : {}),
                 resources: {
-                  requests: { cpu: (s.name === 'frontend' && o.frontendCpu) || s.cpu, memory: (s.name === 'email' && o.emailMem) || s.mem },
-                  limits: { cpu: (s.name === 'frontend' && o.frontendCpu) || s.cpu, memory: (s.name === 'email' && o.emailMem) || s.mem },
+                  requests: { cpu: (s.name === 'frontend' && o.frontendCpu) || o.over?.[s.name]?.cpu || s.cpu, memory: (s.name === 'email' && o.emailMem) || s.mem },
+                  limits: { cpu: (s.name === 'frontend' && o.frontendCpu) || o.over?.[s.name]?.cpu || s.cpu, memory: (s.name === 'email' && o.emailMem) || s.mem },
                 },
                 ...(s.mounts
                   ? {
@@ -584,4 +584,9 @@ writeFileSync(join(HERE, 'variants', 'frontend-hpa-2-5.yaml'), manifests({ front
 writeFileSync(join(HERE, 'variants', 'frontend-2-750m.yaml'), manifests({ frontendReplicas: 2, frontendCpu: '750m' }));
 // out of sample, third round: the memory leak — email with twice the memory
 writeFileSync(join(HERE, 'variants', 'email-300mi.yaml'), manifests({ frontendReplicas: 3, emailMem: '300Mi' }));
-console.log('wrote shop.yaml and 10 variants');
+// round 4, chosen after the leak, warm-up, failed-request gate and holdout confidence were added: three
+// changes away from the frontend, in .NET, Python and Go (predicted in validation/predictions-oos-4.json)
+writeFileSync(join(HERE, 'variants', 'cart-250m.yaml'), manifests({ frontendReplicas: 3, over: { cart: { cpu: '250m' } } }));
+writeFileSync(join(HERE, 'variants', 'recommendation-2.yaml'), manifests({ frontendReplicas: 3, over: { recommendation: { replicas: 2 } } }));
+writeFileSync(join(HERE, 'variants', 'product-catalog-125m.yaml'), manifests({ frontendReplicas: 3, over: { 'product-catalog': { cpu: '125m' } } }));
+console.log('wrote shop.yaml and 13 variants');

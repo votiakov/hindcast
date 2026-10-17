@@ -1,0 +1,174 @@
+{
+ "madeAt": "2026-10-17T05:20:06.993Z",
+ "commit": "98ddf2e",
+ "models": {
+  "calm": {
+   "launch-cart250": {
+    "verdict": "inconclusive",
+    "confidence": "low",
+    "leans": "pass",
+    "minutesOutOfSlo": 1,
+    "peakP99Ms": 230,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same, with no change in time out of SLO",
+     "the backtest passes, but confidence is low (frontend would run at 91% of a capacity the history never tested (peak 41%): the outcome rests on an extrapolated limit) — load-test before trusting it: plan_load_test with the same changes designs that test",
+     "cart restarts on its new 250m CPU limit and a .NET runtime needs ~10 core-seconds of JIT compilation to warm up (assumed): until then a request costs ×2 its warm CPU; in the replay it is warm 1 min after it starts",
+     "frees 0.25 cores and 0 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 30% of it (30% before)"
+    ],
+    "warnings": [
+     "frontend would run at 91% of a capacity the history never tested (peak 41%): the outcome rests on an extrapolated limit",
+     "cart would run at 51% of capacity, past the history's 11%: its capacity there is extrapolated",
+     "product-catalog would run at 51% of capacity, past the history's 23%: its capacity there is extrapolated",
+     "recommendation: the model fits it poorly, and this change pushes it harder than the history did",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ],
+    "ooms": {
+     "email": [
+      23.3
+     ]
+    }
+   },
+   "launch-rec2": {
+    "verdict": "inconclusive",
+    "confidence": "low",
+    "leans": "pass",
+    "minutesOutOfSlo": 1,
+    "peakP99Ms": 204,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same, with no change in time out of SLO",
+     "the backtest passes, but confidence is low (frontend would run at 91% of a capacity the history never tested (peak 41%): the outcome rests on an extrapolated limit) — load-test before trusting it: plan_load_test with the same changes designs that test"
+    ],
+    "warnings": [
+     "frontend would run at 91% of a capacity the history never tested (peak 41%): the outcome rests on an extrapolated limit",
+     "product-catalog would run at 51% of capacity, past the history's 23%: its capacity there is extrapolated",
+     "recommendation: the model fits it poorly, and this change changes it",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ],
+    "ooms": {
+     "email": [
+      23.3
+     ]
+    }
+   },
+   "normal-catalog125": {
+    "verdict": "pass",
+    "confidence": "medium",
+    "leans": null,
+    "minutesOutOfSlo": 0,
+    "peakP99Ms": 85,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same, with no change in time out of SLO",
+     "frees 0.13 cores and 0 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 30% of it (30% before)",
+     "headroom drops from 398.6 to 355.2 req/s (the history peaked at 164.5)"
+    ],
+    "warnings": [
+     "product-catalog would run at 49% of capacity, past the history's 23%: its capacity there is extrapolated",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ],
+    "ooms": {}
+   }
+  },
+  "load-tested": {
+   "launch-cart250": {
+    "verdict": "pass",
+    "confidence": "medium",
+    "leans": null,
+    "minutesOutOfSlo": 0.5,
+    "peakP99Ms": 190,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same, with no change in time out of SLO",
+     "cart restarts on its new 250m CPU limit and a .NET runtime needs ~10 core-seconds of JIT compilation to warm up (assumed): until then a request costs ×2 its warm CPU; in the replay it is warm 0.9 min after it starts",
+     "frees 0.25 cores and 0 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 28% of it (28% before)"
+    ],
+    "warnings": [
+     "frontend fits poorly and runs near its limit; the change leaves it as it was, so the comparison holds better than the absolute numbers",
+     "cart would run at 39% of capacity, past the history's 31%: its capacity there is extrapolated",
+     "recommendation fits poorly and runs near its limit; the change leaves it as it was, so the comparison holds better than the absolute numbers",
+     "the model's accuracy was never measured",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ],
+    "ooms": {
+     "email": [
+      23.9,
+      272.9,
+      279.3
+     ]
+    }
+   },
+   "launch-rec2": {
+    "verdict": "inconclusive",
+    "confidence": "low",
+    "leans": "pass",
+    "minutesOutOfSlo": 0.5,
+    "peakP99Ms": 176,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same, with no change in time out of SLO",
+     "the backtest passes, but confidence is low (recommendation: the model fits it poorly, and this change changes it) — load-test before trusting it: plan_load_test with the same changes designs that test"
+    ],
+    "warnings": [
+     "frontend fits poorly and runs near its limit; the change leaves it as it was, so the comparison holds better than the absolute numbers",
+     "recommendation: the model fits it poorly, and this change changes it",
+     "the model's accuracy was never measured",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ],
+    "ooms": {
+     "email": [
+      23.9,
+      272.9,
+      279.3
+     ]
+    }
+   },
+   "normal-catalog125": {
+    "verdict": "pass",
+    "confidence": "medium",
+    "leans": null,
+    "minutesOutOfSlo": 0,
+    "peakP99Ms": 153,
+    "monthlyDelta": {
+     "p50": 0,
+     "lo": 0,
+     "hi": 0
+    },
+    "reasons": [
+     "costs the same, with no change in time out of SLO",
+     "frees 0.12 cores and 0 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 28% of it (28% before)"
+    ],
+    "warnings": [
+     "the model's accuracy was never measured",
+     "only 0.6 h of history: daily and weekly peaks may be missing"
+    ],
+    "ooms": {
+     "email": [
+      275.2
+     ]
+    }
+   }
+  }
+ }
+}

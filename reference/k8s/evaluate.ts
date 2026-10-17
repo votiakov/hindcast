@@ -69,6 +69,8 @@ interface Case {
   oos?: number;
   /** the service the change is about, whose replicas the series keep (default: the system's watch) */
   service?: string;
+  /** the naive rule for this question (default: the system's): a change away from the shop's frontend is judged on every service */
+  naive?: 'frontend' | 'all';
   /** the change's name as a strategy (default: from the shop's variant file names) */
   name?: string;
 }
@@ -111,6 +113,9 @@ const SHOP_CASES: Case[] = [
   { run: 'launch-2-750', asBuilt: 'launch', head: 'variants/frontend-2-750m.yaml', scale: LAUNCH, cpu: 0.75, oos: 2, question: '2 frontend replicas at 750m instead of 3 at half a core, on launch day?' },
   { run: 'normal-x1.5', asBuilt: 'normal-x1.5', scale: 1.5, oos: 3, question: 'As built, on an ordinary day with 50% more traffic?' },
   { run: 'launch-email300', asBuilt: 'launch', head: 'variants/email-300mi.yaml', scale: LAUNCH, oos: 3, question: 'email with 300 MiB instead of 150, on launch day?' },
+  { run: 'launch-cart250', naive: 'all', asBuilt: 'launch', head: 'variants/cart-250m.yaml', scale: LAUNCH, oos: 4, service: 'cart', name: 'cart at 250m', question: 'cart at 250m instead of 500m, on launch day?' },
+  { run: 'launch-rec2', naive: 'all', asBuilt: 'launch', head: 'variants/recommendation-2.yaml', scale: LAUNCH, oos: 4, service: 'recommendation', name: 'recommendation ×2', question: '2 recommendation replicas instead of 1, on launch day?' },
+  { run: 'normal-catalog125', naive: 'all', asBuilt: 'history', head: 'variants/product-catalog-125m.yaml', scale: 1, oos: 4, service: 'product-catalog', name: 'product-catalog at 125m', question: 'product-catalog at 125m instead of 250m, on an ordinary day?' },
 ];
 const AS_BUILT_CPU = 0.5;
 const SHOP = (): Evaluation => ({
@@ -122,7 +127,7 @@ const SHOP = (): Evaluation => ({
   watch: 'frontend',
   publish: true,
   readme: join(ROOT, 'README.md'),
-  rounds: { 1: 'added after the throttle model was designed on the runs above' },
+  rounds: { 1: 'added after the throttle model was designed on the runs above', 4: 'chosen after the leak, JIT warm-up, the failed-request gate and holdout confidence were added: three changes away from the frontend, in .NET, Python and Go' },
 });
 
 let SYS = '';
@@ -451,7 +456,7 @@ async function score(label: string, ws: Workspace, base: string, evalDir: string
     const post = predicted(m, ws, run, meta(c.run).start, head, base, watch);
     // an autoscaler, to the spreadsheet, is its maximum
     const hpaMax = c.head ? /hpa-\d-(\d)/.exec(c.head) : null;
-    const nv = EV.naive === 'all' ? naiveAll(history, base, head, c.scale) : naive(history, !c.head ? 3 : hpaMax ? Number(hpaMax[1]) : c.head.includes('hpa') ? 'hpa' : replicasOfHead(c.head), c.scale, c.cpu);
+    const nv = (c.naive ?? EV.naive) === 'all' ? naiveAll(history, base, head, c.scale) : naive(history, !c.head ? 3 : hpaMax ? Number(hpaMax[1]) : c.head.includes('hpa') ? 'hpa' : replicasOfHead(c.head), c.scale, c.cpu);
     // reality's verdict, judged by verify_change's gate: more than 0.5 min out of SLO added over the
     // as-built system on the same day, or more requests failed beyond it than the error budget over
     // that day (for the as-built system itself: counted from nothing)
