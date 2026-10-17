@@ -4,9 +4,9 @@
 <p>The test that matters is out of sample: a verdict committed to the repository before the change was made for real, then scored against every request. There have been 18 such questions, on two systems on a kind cluster (Kubernetes in Docker) on one laptop.</p>
 <div class="table-wrap"><table>
 <tr><th>out of sample</th><th>model</th><th>plain CPU-ratio rule</th></tr>
-<tr><td>Astronomy Shop, 12 runs in four rounds</td><td class="num">4 right, 1 wrong, 7 inconclusive</td><td class="num">7 right, 5 wrong</td></tr>
+<tr><td>Astronomy Shop, 15 runs in five rounds</td><td class="num">6 right, 1 wrong, 8 inconclusive</td><td class="num">10 right, 5 wrong</td></tr>
 <tr><td>PetClinic (the Spring microservices version), 9 runs in two rounds</td><td class="num">5 right, 1 wrong, 3 inconclusive</td><td class="num">8 right, 1 wrong</td></tr>
-<tr><td>both</td><td class="num">9 right, 2 wrong, 10 inconclusive</td><td class="num">15 right, 6 wrong</td></tr>
+<tr><td>both</td><td class="num">11 right, 2 wrong, 11 inconclusive</td><td class="num">18 right, 6 wrong</td></tr>
 </table></div>
 <p>The rule is right more often; the model is wrong less often, because it abstains. Both of its wrong calls were wrong for the rule too. Its abstentions are not yet a skill: of the 8 inconclusives, 5 changes passed for real and 3 failed, and the replay's margin doesn't tell them apart. None of this is a production fleet. The sections below give every run, starting with the Docker demos, which came first.</p>
 <h2>Three demo systems in Docker: how it was measured</h2>
