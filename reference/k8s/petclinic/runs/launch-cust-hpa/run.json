@@ -1,0 +1,13 @@
+{
+  "system": "petclinic",
+  "run": "launch-cust-hpa",
+  "start": 1792206406,
+  "end": 1792208807,
+  "day": "13/Jul/1995",
+  "minutes": 40,
+  "scale": "x55",
+  "steps": null,
+  "manifests": "variants/customers-hpa-1-3.yaml",
+  "note": null,
+  "recordedAt": "2026-10-17T03:47:33.248Z"
+}
