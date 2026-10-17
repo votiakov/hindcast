@@ -1,0 +1,13 @@
+{
+  "system": "shop",
+  "run": "launch-cart250",
+  "start": 1792214682,
+  "end": 1792217082,
+  "day": "13/Jul/1995",
+  "minutes": 40,
+  "scale": "x83",
+  "steps": null,
+  "manifests": "variants/cart-250m.yaml",
+  "note": null,
+  "recordedAt": "2026-10-17T06:05:28.978Z"
+}
