@@ -885,6 +885,20 @@ pub fn hot_shard_share(d: &NodeData) -> f64 {
 }
 
 /// capacity of one healthy instance (for autoscaling decisions)
+/// a JVM's warm-up on a new instance (the backtest's assumed one, crate::model::assumed_warmup): its
+/// requests cost ×cold the work until it has done `work_s` seconds of its whole CPU's compilation,
+/// which it does with what the requests leave idle (`share` of it when they take it all). The JVM's
+/// 30 core-seconds over an instance of 2 vCPU per size step (S 2, M 4, L 8). None: no JIT runtime, or
+/// not a kind whose instances start (servers and workers)
+pub fn jit_warmup(d: &NodeData) -> Option<(f64, f64, f64)> {
+    let rt = d.runtime.as_deref().filter(|r| !r.is_empty())?;
+    if !(d.kind == "server" || d.kind == "worker") {
+        return None;
+    }
+    let w = crate::model::assumed_warmup(rt)?;
+    Some((w.cold, w.core_s / (2.0 * tier(&d.tier).0), w.share))
+}
+
 pub fn per_instance_capacity(d: &NodeData) -> f64 {
     let one = NodeData { instances: Some(1.0), down: Some(0.0), degraded: Some(1.0), ..d.clone() };
     capacity_of(&one, Some(1.0))

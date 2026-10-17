@@ -800,10 +800,8 @@ impl<'a> Des<'a> {
             Some("failover") => "failover",
             _ => "split",
         };
-        n.data = match (&n.raw.autoscale, &n.scaler) {
-            (Some(_), Some(s)) => NodeData { instances: Some(s.live), down: Some(s.live.min(n.raw.down.unwrap_or(0.0) - s.replaced).max(0.0)), ..n.raw.clone() },
-            _ => n.raw.clone(),
-        };
+        // the scaler's live instances, and what its cold ones lose (as the fluid engine has it)
+        n.data = super::engine::effective_data(&n.raw, n.scaler.as_ref());
         // instance faults and outlier ejection: requests are dealt to the instances; the ejected ones
         // serve nothing meanwhile
         n.inst_on = (n.raw.inst_faults.is_some() || n.raw.eject_after.is_some()) && spec(&n.raw.kind).scalable;
@@ -2097,13 +2095,18 @@ impl<'a> Des<'a> {
                 let raw = self.nodes[i].raw.clone();
                 let per = per_instance_capacity(&raw);
                 let id = self.nodes[i].id.clone();
+                // cold instances compile with what this window's requests left idle
+                let warmed = super::engine::pay_warmup(self.nodes[i].scaler.as_mut().unwrap(), &raw, util, win_s);
+                if warmed {
+                    self.ev_log.push(super::headless::Event { t: r3(now), what: format!("warm: {} new instances finished JIT compilation", id) });
+                }
                 let evs = super::engine::step_scaler_pub(self.nodes[i].scaler.as_mut().unwrap(), &raw, now, arrivals / win_s, per);
                 for (kind, from, to) in &evs {
                     if *kind != "scaled" {
                         self.ev_log.push(super::headless::Event { t: r3(now), what: format!("{}: {} {} → {}", kind, id, js_num(*from), js_num(*to)) });
                     }
                 }
-                if !evs.is_empty() {
+                if !evs.is_empty() || warmed {
                     self.configure(i);
                 }
             }
@@ -2916,6 +2919,36 @@ mod slow_dependency_tests {
                 assert!(fp >= dp / 1.25 - 5.0 && fp <= dp * 1.25 + 5.0, "{} slow: p99 fluid {} des {}", target, fp, dp);
             }
         }
+    }
+}
+
+/// a JVM's new instances start cold, as in the fluid engine (super::engine::jit_warmup_tests)
+#[cfg(test)]
+mod jit_warmup_tests {
+    use super::super::engine::jit_warmup_tests::{board, load, warm_at, WARM_AT_120};
+    use super::*;
+
+    #[test]
+    fn a_new_jvm_instance_compiles_with_what_its_requests_leave() {
+        let r = simulate_des(&board("java"), &load(120.0), &DesConfig::default()).unwrap();
+        let at = warm_at(&r.events).unwrap();
+        assert!((at - WARM_AT_120).abs() < 6.0, "warm at {} s, want ~{}", at, WARM_AT_120);
+        assert!(warm_at(&simulate_des(&board("go"), &load(120.0), &DesConfig::default()).unwrap().events).is_none());
+    }
+
+    /// the two engines agree: when the new instance warms, and what a saturated cold deployment fails
+    #[test]
+    fn both_engines_agree_on_a_cold_scale_out() {
+        let f = super::super::headless::simulate(&board("java"), &load(120.0), &Default::default()).unwrap();
+        let d = simulate_des(&board("java"), &load(120.0), &DesConfig::default()).unwrap();
+        let (fw, dw) = (warm_at(&f.events).unwrap(), warm_at(&d.events).unwrap());
+        assert!((fw - dw).abs() < 6.0, "warm at: fluid {} des {}", fw, dw);
+        let late = |tl: Vec<(f64, f64)>| tl.iter().filter(|p| p.0 >= 30.0).map(|p| p.1).sum::<f64>() / tl.iter().filter(|p| p.0 >= 30.0).count() as f64;
+        let f = super::super::headless::simulate(&board("java"), &load(260.0), &Default::default()).unwrap();
+        let d = simulate_des(&board("java"), &load(260.0), &DesConfig::default()).unwrap();
+        let (fe, de) = (late(f.timeline.iter().map(|p| (p.t, p.error_rate)).collect()), late(d.timeline.iter().map(|p| (p.t, p.error_rate)).collect()));
+        assert!((fe - de).abs() <= 0.02 + 0.1 * fe.max(de), "errors: fluid {} des {}", fe, de);
+        assert!(warm_at(&d.events).is_none());
     }
 }
 

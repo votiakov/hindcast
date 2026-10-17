@@ -106,6 +106,9 @@ pub struct ScalerState {
     pub last_activity: f64,
     pub last_eval: f64,
     pub desired: f64,
+    /// instances still warming up (a JVM), newest last: (how many, seconds of the instance's whole
+    /// CPU their compilation still needs)
+    pub cold: Vec<(f64, f64)>,
 }
 
 pub fn new_scaler_pub(d: &NodeData) -> ScalerState {
@@ -115,15 +118,40 @@ pub fn new_scaler_pub(d: &NodeData) -> ScalerState {
 fn new_scaler(d: &NodeData) -> ScalerState {
     let a = d.autoscale.as_ref().unwrap();
     let start = a.max.min(a.min.max(d.instances.unwrap_or(a.min)));
-    ScalerState { live: start, pending: vec![], replaced: 0.0, last_activity: f64::NEG_INFINITY, last_eval: f64::NEG_INFINITY, desired: start }
+    ScalerState { live: start, pending: vec![], replaced: 0.0, last_activity: f64::NEG_INFINITY, last_eval: f64::NEG_INFINITY, desired: start, cold: vec![] }
 }
 
-/// node data as the engine sees it: live instance count, replaced instances no longer down
-fn effective_data(d: &NodeData, s: Option<&ScalerState>) -> NodeData {
+/// node data as the engine sees it: live instance count, replaced instances no longer down, and the
+/// capacity cold instances lose (a JVM's serve at 1/cold of a warm one's pace, the balancer giving
+/// them the same share)
+pub fn effective_data(d: &NodeData, s: Option<&ScalerState>) -> NodeData {
     match (&d.autoscale, s) {
-        (Some(_), Some(s)) => NodeData { instances: Some(s.live), down: Some(s.live.min(d.down.unwrap_or(0.0) - s.replaced).max(0.0)), ..d.clone() },
+        (Some(_), Some(s)) => {
+            let mut e = NodeData { instances: Some(s.live), down: Some(s.live.min(d.down.unwrap_or(0.0) - s.replaced).max(0.0)), ..d.clone() };
+            let cold = s.cold.iter().fold(0.0, |a, c| a + c.0);
+            if let (Some((m, _, _)), true) = (jit_warmup(d), cold > 0.0 && s.live > 0.0) {
+                e.degraded = Some(d.degraded.unwrap_or(1.0) * (s.live - cold + cold / m) / s.live);
+            }
+            e
+        }
         _ => d.clone(),
     }
+}
+
+/// cold instances compile with what the requests leave idle of them (at `util` of the component's
+/// capacity), and `share` of their CPU when the requests take it all; true when some finished
+pub fn pay_warmup(s: &mut ScalerState, d: &NodeData, util: f64, dt: f64) -> bool {
+    let share = match jit_warmup(d) {
+        Some((_, _, share)) if !s.cold.is_empty() => share,
+        _ => return false,
+    };
+    let rate = (1.0 - util.min(1.0)).max(share);
+    for c in s.cold.iter_mut() {
+        c.1 -= rate * dt;
+    }
+    let before = s.cold.len();
+    s.cold.retain(|c| c.1 > 0.0);
+    s.cold.len() != before
 }
 
 /// advance a scaler to `now`; (kind, from, to)
@@ -151,6 +179,10 @@ fn step_scaler(s: &mut ScalerState, d: &NodeData, now: f64, demand: f64, per_ins
         s.replaced += replace;
         s.live = (a.max + down).min(s.live + ready - replace);
         events.push(("scaled", before, s.live));
+        // every booted instance, a replacement too, starts with its runtime cold
+        if let Some((_, work, _)) = jit_warmup(d) {
+            s.cold.push((ready, work));
+        }
     }
     if now - s.last_eval < EVAL_S {
         return events;
@@ -182,6 +214,21 @@ fn step_scaler(s: &mut ScalerState, d: &NodeData, now: f64, demand: f64, per_ins
         if s.live != before {
             s.last_activity = now;
             events.push(("scale-in", before, s.live));
+            // the newest instances go first: cold ones before warm ones
+            let mut over = s.cold.iter().fold(0.0, |x, c| x + c.0) - (s.live - dead).max(0.0);
+            while over > 1e-9 {
+                match s.cold.last_mut() {
+                    Some(c) if c.0 > over => {
+                        c.0 -= over;
+                        over = 0.0;
+                    }
+                    Some(c) => {
+                        over -= c.0;
+                        s.cold.pop();
+                    }
+                    None => break,
+                }
+            }
         }
     }
     events
@@ -2646,7 +2693,11 @@ impl Engine {
             let orig = &nodes_in[i].data;
             let demand = self.nodes[sidx[i]].in_rps;
             let per = per_instance_capacity(orig);
+            let util = self.nodes[sidx[i]].util;
             let sc = self.scalers.get_index_mut(k).unwrap().1;
+            if pay_warmup(sc, orig, util, dt) {
+                events.push(SimEvent { kind: "warm".into(), node_id: id.clone(), name: orig.name.clone(), detail: Some("new instances finished JIT compilation".into()) });
+            }
             for (kind, from, to) in step_scaler(sc, orig, now, demand, per) {
                 if kind != "scaled" {
                     events.push(SimEvent { kind: kind.into(), node_id: id.clone(), name: orig.name.clone(), detail: Some(format!("{} → {}", js_num(from), js_num(to))) });
@@ -3006,5 +3057,54 @@ pub(crate) mod slow_dependency_tests {
     fn a_slow_database_is_still_slow_work() {
         let (err, _) = run(&with_db(), &slow("db"));
         assert!((mean(&err, 25.0, 60.0) - DB_LOSS).abs() <= 0.03, "errors {}, want {}", mean(&err, 25.0, 60.0), DB_LOSS);
+    }
+}
+
+/// a JVM's new instances start cold (catalog::jit_warmup): ×5 the work per request until 15 s of an S
+/// instance's CPU has compiled, from what the requests leave idle (6% when they take it all)
+#[cfg(test)]
+pub(crate) mod jit_warmup_tests {
+    use super::super::headless::{simulate, SimOptions};
+    use serde_json::{json, Value};
+
+    /// users → lb → api, autoscaled 1–3 at 60%, instances booting in 5 s: 150 req/s an instance either
+    /// way (a JVM's 100 × its runtime's 1.5, Go's 60 × 2.5)
+    pub fn board(runtime: &str) -> Value {
+        let capacity = if runtime == "java" { 100 } else { 60 };
+        json!({ "components": [{ "id": "users", "kind": "client" }, { "id": "lb", "kind": "lb" }, { "id": "api", "kind": "server", "runtime": runtime, "capacity": capacity, "autoscale": { "min": 1, "max": 3, "targetUtil": 0.6, "warmupS": 5 } }], "connections": ["users -> lb", "lb -> api"] })
+    }
+    pub fn load(rps: f64) -> Value {
+        json!({ "duration": 120, "rps": rps })
+    }
+    /// when the first instances finished compiling, s
+    pub fn warm_at(events: &[super::super::headless::Event]) -> Option<f64> {
+        events.iter().find(|e| e.what.starts_with("warm: ")).map(|e| e.t)
+    }
+
+    /// hand check: at 120 req/s the scaler wants 2 (120 ÷ 90); the new one boots at ~6 s cold, so the
+    /// pair serves 150 + 150 ÷ 5 = 180 req/s at 67% and the cold one compiles with the 33% idle:
+    /// 15 s ÷ 0.33 = 45 s, warm at ~51 s
+    pub const WARM_AT_120: f64 = 6.0 + 15.0 / (1.0 - 120.0 / 180.0);
+
+    #[test]
+    fn a_new_jvm_instance_compiles_with_what_its_requests_leave() {
+        let r = simulate(&board("java"), &load(120.0), &SimOptions::default()).unwrap();
+        let at = warm_at(&r.events).unwrap();
+        assert!((at - WARM_AT_120).abs() < 5.0, "warm at {} s, want ~{}", at, WARM_AT_120);
+        assert!(r.summary.mean_error_rate < 0.001);
+        // Go's instances serve at once
+        assert!(warm_at(&simulate(&board("go"), &load(120.0), &SimOptions::default()).unwrap().events).is_none());
+    }
+
+    #[test]
+    fn a_saturated_new_jvm_instance_stays_cold() {
+        // at 260 req/s the scaler goes to 3 (Go's serve 450); a JVM's 3 serve 150 + 2 × 30 = 210 cold,
+        // so the new ones run flat out and compile with 6% of their CPU: 15 s ÷ 0.06 = 250 s, past the run
+        let j = simulate(&board("java"), &load(260.0), &SimOptions::default()).unwrap();
+        let g = simulate(&board("go"), &load(260.0), &SimOptions::default()).unwrap();
+        assert!(warm_at(&j.events).is_none());
+        let late = |r: &super::super::headless::SimResult| r.timeline.iter().filter(|p| p.t >= 30.0).map(|p| p.error_rate).sum::<f64>() / r.timeline.iter().filter(|p| p.t >= 30.0).count() as f64;
+        assert!(late(&g) < 0.005, "go {}", late(&g));
+        assert!((late(&j) - (1.0 - 210.0 / 260.0)).abs() < 0.03, "java {}", late(&j));
     }
 }
