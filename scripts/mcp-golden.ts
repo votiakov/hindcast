@@ -1,20 +1,20 @@
 // The native MCP server (`hindcast mcp`) against its golden session (test/golden/mcp.json), recorded
 // first from the Node server it replaced (6b0e08c): every response and notification of one scripted
-// session, and every file the tools wrote, must match (timings, temp dirs and the port masked).
+// session, and every file the tools wrote, must match (timings, temp dirs and the ports masked).
 // After an intended change, --record writes the binary's session as the new reference.
 // npx tsx scripts/mcp-golden.ts [filter] [--record]
-import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { handshake, session } from './mcp-session';
-import { changed, firstDiff, read, snapshot, write, type Stored } from './golden';
+import { changed, firstDiff, freePort, mock, ports, read, snapshot, write, type Stored } from './golden';
 
 const BIN = 'engine-rs/target/release/hindcast';
 const out = mkdtempSync(join(tmpdir(), 'mcp-golden-'));
 const GOLDEN = 'test/golden/mcp.json';
+// the mocks' ports as the goldens name them: each runs on a free port, swapped in and out (golden.ts ports)
 const TEL = 'http://127.0.0.1:19091';
 const DD = 'http://127.0.0.1:19691';
 const root = `${out}/OUT`;
@@ -115,14 +115,20 @@ const CASES: Case[] = [
   call('connect_telemetry', { workspace: ws('dk'), datadog: { site: 'datadoghq.eu', apiKeyEnv: 'HINDCAST_NO_SUCH_KEY' } }),
 ];
 
+// the mocks on free ports (the cases and the goldens name the canonical ones above), and one for the
+// app server the binary starts, masked as PORT
+const mocks = await Promise.all([mock('test/cli-fixtures/mock-telemetry.mjs', 19091), mock('test/cli-fixtures/mock-datadog.mjs', 19691)]);
+const wire = ports(mocks);
+const SERVE_PORT = await freePort();
 const mask = (s: string) =>
-  s
+  wire
+    .from(s)
     .replace(/(in |· )\d+ ms/g, '$1# ms')
     .replace(/(\\*"wallMs\\*": ?)\d+(\.\d+)?/g, '$1#')
     .replace(/(\\*"measuredAt\\*": ?)\\*"[^"\\]*\\*"/g, '$1#')
     // a file's age against the pinned clock: it moves with the wall clock
     .replace(/(\\*"collectedHoursAgo\\*": ?)-?[\d.]+/g, '$1#')
-    .replace(/127\.0\.0\.1(%3A|:)19101/g, '127.0.0.1$1PORT')
+    .replace(new RegExp(`127\\.0\\.0\\.1(%3A|:)${SERVE_PORT}(?!\\d)`, 'g'), '127.0.0.1$1PORT')
     .replaceAll(realpathSync(out), '$OUT')
     .replaceAll(out, '$OUT')
     .replaceAll(process.cwd(), '$CWD')
@@ -145,8 +151,8 @@ async function run(record: boolean): Promise<Golden> {
   // "collected N hours ago" reads the file's mtime
   for (const k of ['v', 'n']) utimesSync(`${root}/ws-${k}/dataset.json`, 1791400000, 1791400000);
   const seeded = snapshot(root, mask);
-  const msgs = [...handshake, ...CASES.map(([, method, params], i) => ({ jsonrpc: '2.0', id: 100 + i, method, ...(params ? { params } : {}) }))];
-  const env = { NO_COLOR: '', HINDCAST_NOW: '1791500000', HINDCAST_KUBECTL: 'test/cli-fixtures/fake-kubectl.mjs', HINDCAST_SERVE_PORT: '19101', DD_API_KEY: 'mock-api-key', DD_APP_KEY: 'mock-app-key' };
+  const msgs = [...handshake, ...CASES.map(([, method, params], i) => ({ jsonrpc: '2.0', id: 100 + i, method, ...(params ? { params: JSON.parse(wire.to(JSON.stringify(params))) } : {}) }))];
+  const env = { NO_COLOR: '', HINDCAST_NOW: '1791500000', HINDCAST_KUBECTL: 'test/cli-fixtures/fake-kubectl.mjs', HINDCAST_SERVE_PORT: String(SERVE_PORT), DD_API_KEY: 'mock-api-key', DD_APP_KEY: 'mock-app-key' };
   const lines = await session(BIN, ['mcp'], msgs, env);
   // a call's name: its label, and a hash of everything it sent (labels are cut short)
   const key = ([l, method, params]: Case) => `${mask(l)} [${createHash('sha256').update(mask(JSON.stringify([method, params ?? null]))).digest('hex').slice(0, 8)}]`;
@@ -167,12 +173,8 @@ async function run(record: boolean): Promise<Golden> {
 
 const record = process.argv.includes('--record');
 const filter = process.argv.slice(2).find((a) => !a.startsWith('--'));
-const tel = spawn('node', ['test/cli-fixtures/mock-telemetry.mjs', '19091'], { stdio: 'ignore' });
-const dd = spawn('node', ['test/cli-fixtures/mock-datadog.mjs', '19691'], { stdio: 'ignore' });
-spawnSync('sleep', ['0.5']);
 const got = await run(record);
-tel.kill();
-dd.kill();
+for (const m of mocks) m.proc.kill();
 if (record) {
   write(GOLDEN, got);
   console.log(`recorded ${Object.keys(got.cases).length} calls in ${GOLDEN}`);

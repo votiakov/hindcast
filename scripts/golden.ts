@@ -1,8 +1,10 @@
 // Golden outputs for the native CLI and MCP server: recorded once from the TypeScript implementations
 // they replaced (byte for byte), and checked on every change since. Small outputs are kept as text so
 // a difference reads as a diff; large files (datasets, workspaces) as a hash and a size.
+import { spawn, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { createServer, type AddressInfo } from 'node:net';
 
 const TEXT_MAX = 16_384;
 
@@ -43,4 +45,36 @@ export function firstDiff(label: string, a: unknown, b: unknown): string | null 
   while (j < p.length && p[j] === q[j]) j++;
   const cut = (t: string) => (j > 120 ? '…' : '') + t.slice(Math.max(0, j - 120), j + 120);
   return `  ${label} line ${i + 1}, column ${j + 1}:\n    want: ${JSON.stringify(cut(p))}\n    got:  ${JSON.stringify(cut(q))}`;
+}
+
+/** a mock server (test/cli-fixtures/mock-*.mjs) on a free port, so checkouts side by side don't
+ *  collide: the goldens are recorded against `canonical`, and `ports` maps it to the port in use */
+export async function mock(script: string, canonical: number): Promise<{ proc: ChildProcess; canonical: number; port: number }> {
+  const proc = spawn('node', [script, '0'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  const port = await new Promise<number>((res, rej) => {
+    let b = '';
+    proc.stdout!.on('data', (d) => {
+      const m = /listening on (\d+)/.exec((b += d));
+      if (m) res(Number(m[1]));
+    });
+    proc.on('exit', (code) => rej(new Error(`${script} exited (${code}) before listening`)));
+  });
+  return { proc, canonical, port };
+}
+
+/** a port free right now, for a server the binary starts itself */
+export const freePort = () =>
+  new Promise<number>((res) => {
+    const s = createServer().listen(0, '127.0.0.1', () => {
+      const p = (s.address() as AddressInfo).port;
+      s.close(() => res(p));
+    });
+  });
+
+/** between the canonical ports the goldens hold and the ones in use: `to` for what is sent, `from`
+ *  for what comes back (127.0.0.1:port, plain or URL-encoded), so no real port reaches a golden */
+export function ports(used: { canonical: number; port: number }[]) {
+  const swap = (s: string, a: (x: { canonical: number; port: number }) => number, b: (x: { canonical: number; port: number }) => number) =>
+    used.reduce((t, u) => t.replace(new RegExp(`127\\.0\\.0\\.1(%3A|:)${a(u)}(?!\\d)`, 'g'), `127.0.0.1$1${b(u)}`), s);
+  return { to: (s: string) => swap(s, (u) => u.canonical, (u) => u.port), from: (s: string) => swap(s, (u) => u.port, (u) => u.canonical) };
 }

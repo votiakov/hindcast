@@ -13,7 +13,7 @@
 // trace.<span>.duration, the container check's metrics instead of kubelet's, no throttling, no ingress,
 // and no service dependencies (404).
 // Every value is a function of time alone, so two runs see the same history.
-// node test/cli-fixtures/mock-datadog.mjs [port]   (default 19690)
+// node test/cli-fixtures/mock-datadog.mjs [port]   (default 19690; 0 for a free one, printed)
 import { createServer } from 'node:http';
 
 const NOW = 1_791_500_000;
@@ -226,4 +226,5 @@ const server = createServer((req, res) => {
   }
   send(404, { errors: ['Not found'] });
 });
-server.listen(Number(process.argv[2] ?? 19690), '127.0.0.1');
+// port 0: a free one, announced on stdout (the golden scripts run several checkouts side by side)
+server.listen(Number(process.argv[2] ?? 19690), '127.0.0.1', () => console.log(`listening on ${server.address().port}`));

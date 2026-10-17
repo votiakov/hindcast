@@ -22,4 +22,5 @@ const server = createServer((req, res) => {
   res.statusCode = 404;
   res.end('not found');
 });
-server.listen(Number(process.argv[2] ?? 19090), '127.0.0.1');
+// port 0: a free one, announced on stdout (the golden scripts run several checkouts side by side)
+server.listen(Number(process.argv[2] ?? 19090), '127.0.0.1', () => console.log(`listening on ${server.address().port}`));
