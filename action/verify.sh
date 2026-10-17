@@ -18,6 +18,13 @@ bin="${HINDCAST_BIN:-}"
 [ -n "$bin" ] || fail "no hindcast binary (the binary input, or a release download)"
 [ -x "$bin" ] || [ -x "$bin.exe" ] || fail "$bin: not found or not executable"
 "$bin" verify-change --help > /dev/null 2>&1 || fail "$bin has no verify-change command: it predates it (v1.1.0 and older); use a newer release"
+# a baseline needs a binary that knows it: an older one ignores --baseline-head and would judge both changes together
+if [ -n "${INPUT_BASELINE_REF:-}${INPUT_BASELINE_MANIFESTS:-}${INPUT_BASELINE_STRATEGY:-}" ]; then
+  case "$("$bin" verify-change --help 2>&1 || true)" in
+    *--baseline-head*) ;;
+    *) fail "$bin predates stacked changes (v1.2.1 and older ignore a baseline and would judge this change and the baseline together): set binary to a build from main, or use a release newer than v1.2.1" ;;
+  esac
+fi
 [ -n "${INPUT_MODEL:-}" ] || fail "the model input is required (a calibrated model.json)"
 [ -n "${INPUT_DATASET:-}" ] || fail "the dataset input is required (a recorded dataset.json)"
 [ -f "$INPUT_MODEL" ] || fail "model: no file $INPUT_MODEL (in $(pwd))"
