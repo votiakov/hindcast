@@ -16,7 +16,7 @@ run it. No Node or Rust is needed.
 ```sh
 curl -fsSLo hindcast https://github.com/votiakov/hindcast/releases/latest/download/hindcast-aarch64-apple-darwin
 chmod +x hindcast
-./hindcast --version                               # hindcast 1.2.0
+./hindcast --version                               # hindcast 1.2.1
 ./hindcast demo                                    # a recorded system built in: no network, no files
 ./hindcast quickstart --prometheus http://localhost:9090 --last 24h
 ```
