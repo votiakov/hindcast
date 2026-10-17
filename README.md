@@ -129,7 +129,7 @@ saying the change goes past what the history showed, and to load-test it instead
 | check | result |
 |---|---|
 | Out of sample, Astronomy Shop: 9 runs, each verdict committed before the run was recorded | 3 right, 1 wrong, 5 inconclusive |
-| Out of sample, PetClinic: 9 runs in two rounds, committed the same way | 5 right, 1 wrong, 3 inconclusive. The miss, in round 1, was a JVM whose halved CPU limit never let it finish warming up, a cold start the model didn't know about. It learned JIT warm-up, and in round 2 it was never wrong, but it hedged on 2 of 3 changes that passed |
+| Out of sample, PetClinic: 9 runs in two rounds, committed the same way | 5 right, 1 wrong, 3 inconclusive. The miss, in round 1, was a JVM whose halved CPU limit never let it finish warming up, a cold start the model didn't know about. It learned JIT warm-up, and in round 2 it was never wrong, but it hedged on 2 of 3 changes that passed. Today's code (2026-10-17, in sample): with the cold-capacity check a warning instead of a reason to hedge, one of those hedges becomes a right pass and round 1's ordinary-day CPU cut a wrong one |
 | A plain CPU-ratio rule on the same 18 runs | 14 right, 4 wrong |
 | In sample: 5 decisions from an ordinary day (the throttle rules were designed on these) | 4 right, 1 wrong |
 | p99 on each day's own traffic within 20% of measured | Shop: 3 of 14 runs, it underestimates busy days. PetClinic: 0 of 6, 14 ms predicted against 7–9 ms measured on healthy days. Recomputed with today's model (in sample): PetClinic 4 of 6, 9 ms on healthy days and the launch-day CPU cut's 5 s timeouts once the model knows JIT warm-up, its baseline no longer read from the quietest (and slowest) minutes; the Shop unchanged |

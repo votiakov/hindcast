@@ -507,6 +507,37 @@ plain CPU rule got 5 right. The miss was a JVM whose CPU limit was halved. It ne
 warming up under load: about four times the CPU per request for half an hour, a cold start the
 model did not know about. It has since learned JIT warm-up; replayed on these runs afterwards, in sample, it gets 5 right and 1 inconclusive. A second round, with its verdicts committed before it ran, tested the warm-up on three new changes. All three passed. The model got 1 right and 2 inconclusive (both leaning pass), and the rule got 3 right.
 
+**Today's code (2026-10-17, in sample).** The check on what the system carries while restarted
+pods are cold is now a warning instead of a reason to withhold the verdict. On PetClinic's
+retrodiction, `launch-visits125` moves from inconclusive to pass (right) and `normal-cust125` from
+inconclusive to pass (wrong: its rollout met the recorder's warm-up ramp, the busy moment the
+warning describes). No Shop verdict moves. The out-of-sample counts stay as committed.
+
+**What the 8 out-of-sample inconclusives rest on** (both systems, the ordinary-day model):
+
+| run | measured | what made it inconclusive |
+|---|---|---|
+| shop `launch-2c` | fail | low confidence: capacity past what the history showed (frontend 65% against its 41%; recommendation fits poorly and is pushed harder) |
+| shop `launch-x1.3-4` | pass | low confidence: frontend at 89% of a capacity the history never tested (peak 41%) |
+| shop `launch-x1.3-hpa` | pass | the same, at 84% |
+| shop `launch-2-750` | fail | the same, at 88% |
+| shop `launch-email300` | pass | the same, at 91% |
+| petclinic `launch-cust125` | fail | the same: customers-service at 89% (peak 18%) |
+| petclinic `launch-visits125` | pass | the cold-capacity check, now a warning |
+| petclinic `launch-cust175` | pass | the same capacity rule (96%, while the pod is cold), and 7.2 min out of SLO in the worst 10% of capacity draws |
+
+Apart from `launch-visits125`, all of them come from the extrapolated-capacity rule: 4 passes and 3
+fails. With the rule taken out the model would have passed all 7: 4 right and 3 wrong. The CPU
+rule got 5 right and 2 wrong on the same runs. On these runs the abstention isn't systematic: it
+holds back about as many wrong answers as right ones. The replay's margin doesn't tell the two
+apart either. With today's code, the failing runs had more headroom over the replayed peak (×1.37,
+×1.16, ×1.16) than the passing shop runs (×1.04–×1.12). So a "large margin overrides it" exception
+would have made things worse here, and it would have been fitted to these answers. The rule stays.
+`launch-cust175` is the case to watch. Its 96% is the cold pod's share of a capacity cut ×5 by the
+assumed warm-up. In reality the pod showed no cold stretch, because the warm-up ramp before the run
+had compiled it. Measuring the warm-up from the history would settle it, but this history doesn't
+show a pod starting (see [petclinic/](petclinic/README.md#round-2-testing-the-warm-up-on-runs-it-was-not-fitted-on)).
+
 ## Running it
 
 ```sh
