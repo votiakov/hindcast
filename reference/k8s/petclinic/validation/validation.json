@@ -2708,6 +2708,7 @@
       "reasons": [
        "costs the same; on Oct 16 at 14:46 UTC it would have caused 39 minutes out of SLO (customers-service at 140% of capacity (55.9 req/s on 1 × 40.0 req/s (normally 199.8)), 7.2 s queue)",
        "adds 38.5 min out of SLO (10–90%: 36.5 … 38.5)",
+       "fails 230,106 more requests than as built, more than the SLO's error budget over the whole window (1% of 307,845 requests: 3,078)",
        "customers-service restarts on its new 125m CPU limit and a JVM needs ~30 core-seconds of JIT compilation to warm up (assumed): until then a request costs ×5 its warm CPU; in the replay it never warms up — its requests leave the compiler too little of its CPU, so it stays slow because it is slow (6% of the limit when they take it all)",
        "worst at 2026-10-16T14:55:00Z: customers-service at 101% of capacity (40.5 req/s on 1 × 40.0 req/s (normally 199.8)), 35.3 s queue",
        "worse for api-gateway GET /api/gateway/owners/{ownerId}, api-gateway GET customers-service, api-gateway PUT customers-service against their own SLOs",
@@ -5546,5 +5547,5 @@
   }
  ],
  "nodeLosses": [],
- "evaluatedAt": "2026-10-17T00:18:41.192Z"
+ "evaluatedAt": "2026-10-17T00:59:13.137Z"
 }

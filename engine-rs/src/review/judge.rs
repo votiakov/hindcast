@@ -370,7 +370,7 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
     for (why, assumed) in warmup_reasons(mv, st, spec) {
         reasons.push(why.clone());
         if let Some(a) = assumed {
-            lower("medium", a, &mut warnings, &mut level);
+            lower("medium", a, &mut warnings, &mut level, &mut low_why);
         }
     }
     if fb > 0.0 && fd.abs() > 0.1 * fb && !(fd > allowed) {

@@ -442,7 +442,7 @@ async function score(label: string, ws: Workspace, base: string, evalDir: string
     const said = (f: Forecast) => `${f.verdict}${f.confidence ? ` (${f.confidence} confidence)` : ''}`;
     if (committed && said(committed) !== said(now)) console.warn(`(${label} ${c.run}: predicted ${said(committed)} before the run; today's code says ${said(now)})`);
     const exAnte = committed ?? now;
-    const actual = kept ? { ...kept.measured, p99: kept.measured.p99Ms } : measured(log!, m.slo);
+    const actual = kept ? { ...kept.measured, p99: kept.measured.p99Ms, failed: Math.round(kept.measured.requests * kept.measured.errorRate) } : measured(log!, m.slo);
     const actualBase = kept ? undefined : measured(settled(requestsOf(c.asBuilt), meta(c.asBuilt).start), m.slo);
     const watch = c.service ?? EV.watch;
     const post = predicted(m, ws, run, meta(c.run).start, head, base, watch);

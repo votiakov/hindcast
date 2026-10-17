@@ -1,5 +1,1 @@
-<<<<<<< HEAD
-dd7107bde16d534680c5d82af892b3c4e80d6d2eda8e0b5ae01ec4f9752a9be8
-=======
-f56936fd2e1c78fc6322ce632823bddf59c29eee598712a059f5218194b57495
->>>>>>> 0efad40 (Confidence follows the holdout: a miss on data the model never saw by more than half, on what a verdict is counted from, makes confidence low instead of medium. That is the breaking point, or p99 when the miss (its share times the measured p99) is also at least a tenth of the SLO's p99, large enough to move a bucket across it; cost misses and smaller ones stay medium. The trial's shop history held out at 30% misses p99 by 91% per bucket (296 ms predicted, 199 ms measured, 1 s SLO): low now. PetClinic's ordinary-day model misses by 58% on 9 ms under a 500 ms SLO, a 5 ms miss: medium, as before)
+8e3e4d1872893cb005bc6461a833dcd095d8917372c42965871193068dc6e907
