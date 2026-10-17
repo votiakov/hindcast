@@ -6,6 +6,13 @@ Replay a resize, an autoscaler, a cache, a retry policy or a Kubernetes diff ove
 actually had. Hindcast says what it would have cost in dollars and in minutes out of SLO, and how
 far to trust that. It only reads from your systems and runs on your machine.
 
+It is for the platform engineer or SRE asked "can we cut this limit?" or "will the autoscaler hold
+launch day?", and for the lead who signs off the cost. Its record so far, on two demo systems on a
+laptop Kubernetes cluster, with every verdict committed to the repository before the run: 18
+questions, 8 called right, 2 wrong, 8 sent back as "load-test this first". A plain CPU-ratio rule
+called 14 right and 4 wrong, so it is not more often right than the rule; it is less often wrong,
+and it answers in minutes out of SLO and dollars. [The record, misses included](#how-far-to-trust-it).
+
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/votiakov/hindcast)](https://github.com/votiakov/hindcast/releases/latest)
 [![CI](https://github.com/votiakov/hindcast/actions/workflows/ci.yml/badge.svg)](https://github.com/votiakov/hindcast/actions/workflows/ci.yml)
@@ -90,7 +97,7 @@ numbers about your system.
 
 ## What it answers
 
-**Would this change have held?** Give it a strategy (replicas, CPU and memory, an HPA, a cache, a
+**Would this change have held?** Give it a strategy (replicas, CPU and memory, a HorizontalPodAutoscaler, a cache, a
 retry budget, an instance family), a Kubernetes diff or a Terraform plan. It replays the change
 over the recorded history and reports dollars saved or spent, minutes out of SLO, failed requests,
 and the worst moment and why, with confidence bands. Famous public outages replay against your
@@ -111,9 +118,9 @@ would have seen, and re-runs the same incident to verify and price each fix per 
 
 ![The failure audit on a two-tier system: score, incidents, and the database as a single point of failure](public/docs/shots/audit.png)
 
-**Where does a request go wrong?** The simulator has two engines written in Rust: a fluid model
-fast enough for a live board, and a discrete-event one that simulates every request, so retry
-storms and timeouts emerge instead of being assumed. Trace any request hop by hop.
+**Where does a request go wrong?** The simulator has two engines written in Rust: a fluid one that treats
+traffic as flow rates, fast enough for a live board, and a discrete-event one that simulates every
+request one by one, so retry storms and timeouts emerge instead of being assumed. Trace any request hop by hop.
 
 ![A request traced through an overloaded database: an 800 ms queue, a timeout, a retry](public/docs/shots/sandbox-trace.png)
 
@@ -129,10 +136,12 @@ saying the change goes past what the history showed, and to load-test it instead
 | check | result |
 |---|---|
 | Out of sample, Astronomy Shop: 9 runs, each verdict committed before the run was recorded | 3 right, 1 wrong, 5 inconclusive |
-| Out of sample, PetClinic: 9 runs in two rounds, committed the same way | 5 right, 1 wrong, 3 inconclusive. The miss, in round 1, was a JVM whose halved CPU limit never let it finish warming up, a cold start the model didn't know about. It learned JIT warm-up, and in round 2 it was never wrong, but it hedged on 2 of 3 changes that passed |
-| A plain CPU-ratio rule on the same 18 runs | 14 right, 4 wrong |
+| Out of sample, PetClinic: 9 runs in two rounds, committed the same way | 5 right, 1 wrong, 3 inconclusive. The miss (round 1) was a Java service whose halved CPU limit left it too little CPU to finish warming up (JIT compilation), which the model then had no term for. Round 2, after it learned that: 1 right, 0 wrong, 2 inconclusive on changes that all passed |
+| Both systems together | 8 right, 2 wrong, 8 inconclusive, of 18 |
+| A plain CPU-ratio rule on the same 18 runs | 14 right, 4 wrong. Both of the model's wrong calls were wrong for the rule too |
 | In sample: 5 decisions from an ordinary day (the throttle rules were designed on these) | 4 right, 1 wrong |
-| p99 on each day's own traffic within 20% of measured | Shop: 3 of 14 runs, it underestimates busy days. PetClinic: 0 of 6, 14 ms predicted against 7–9 ms measured on healthy days. Recomputed with today's model (in sample): PetClinic 4 of 6, 9 ms on healthy days and the launch-day CPU cut's 5 s timeouts once the model knows JIT warm-up, its baseline no longer read from the quietest (and slowest) minutes; the Shop unchanged |
+| p99 on each day's own traffic within 20% of measured | Shop: 3 of 14 runs; it underestimates busy days. PetClinic round 1: 0 of 6, 14 ms predicted against 7–9 ms measured. Round 2, with the baseline fix (next row) made before it ran: 1 of 3, the other two 2 ms high (10 against 8, 11 against 9) |
+| In sample: PetClinic round 1 recomputed with today's model | p99 within 20% in 4 of 6 runs, after a baseline fix and the JIT warm-up term, both found on these runs |
 | A node stopped at the peak (replayed afterwards, not committed before) | Kubernetes' recovery timed right (348 s measured, 380 s allowed); +10.5 min out of SLO measured against +7 replayed, because a client's gRPC channel stayed broken: the replay times the platform's recovery, not the clients' |
 | Three Docker demo systems, a change really applied | p99 within 10%, breaking points within 14% |
 | Same demos, asked for an overload their history never reached | p99 off by 72–99% |
@@ -141,14 +150,17 @@ saying the change goes past what the history showed, and to load-test it instead
 
 So the model is wrong less often than the rule because it abstains more, not because it's right
 more often. When a change pushes a service past anything the history showed, the answer comes
-back low confidence with "load-test before trusting it". The evidence so far is demo systems and a
+back low confidence with "load-test before trusting it". Those abstentions are not yet a skill:
+of the 8, 5 changes passed for real and 3 failed, and the replay's own margin doesn't tell them
+apart ([the list](reference/k8s/README.md#a-second-system-petclinic)). Read an inconclusive as
+"this change goes past what the history can vouch for", not as a hidden fail. The evidence so far is demo systems and a
 laptop cluster, not a production fleet; the one check on production telemetry (Alibaba's public
 2021 microservices trace) covers CPU per request only. Details: [reference/k8s](reference/k8s/README.md), [PetClinic](reference/k8s/petclinic/README.md),
 [reference/](reference/README.md) and the [accuracy page](docs-site/pages/accuracy.html).
 
 ## Agents
 
-The same binary is an MCP server with 26 tools. An agent connects to your Prometheus and Jaeger or
+The same binary is an MCP server with 26 tools, 11 of them for working on a live system. An agent connects to your Prometheus and Jaeger or
 Tempo, collects a day to two weeks of history, calibrates, reads the trust report, and checks a
 change before proposing it. The answer is pass, fail or inconclusive, with the money, the SLO
 minutes and which services the change pushes past anything the history showed.
