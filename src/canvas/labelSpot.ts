@@ -12,6 +12,8 @@ export interface LabelSpot extends Pt {
 const GAP = 4;
 /** how far apart the spots tried along the link are */
 const STEP = 4;
+/** how far above or below a link its label may go when there is no room along it */
+const LIFT = 120;
 
 /** the corners of an SVG path (M, L and Q's points), as a polyline: enough for a stepped link */
 export function pathPoints(d: string): Pt[] {
@@ -45,8 +47,8 @@ function at(pts: Pt[], d: number): Pt {
 
 /**
  * Where a link's label sits so no card covers it: the middle of the link when that is clear of every
- * card, else the nearest clear spot along the link, either way from the middle; else the spot along it
- * that covers the least of them, lifted over the cards. `size` is the label's box, `cards` the cards'
+ * card, else the nearest clear spot along the link, either way from the middle; else just above or below
+ * the middle, clear of the cards; else the spot along it that covers the least of them, lifted over the cards. `size` is the label's box, `cards` the cards'
  * boxes, all in flow coordinates
  */
 export function placeLabel(pts: Pt[], size: { w: number; h: number }, cards: Box[], mid?: Pt): LabelSpot {
@@ -76,6 +78,14 @@ export function placeLabel(pts: Pt[], size: { w: number; h: number }, cards: Box
       const area = covers(p);
       if (!area) return { ...p, over: false };
       if (area < least.area) least = { p, area };
+    }
+  }
+  // no room along the link (two cards side by side, a gap narrower than the label): just above or
+  // below its middle, clear of the cards' titles, before covering any of them
+  for (let k = 1; k * STEP <= LIFT; k++) {
+    for (const dy of [-k * STEP, k * STEP]) {
+      const p = { x: centre.x, y: centre.y + dy };
+      if (!covers(p)) return { ...p, over: false };
     }
   }
   return { ...least.p, over: true };

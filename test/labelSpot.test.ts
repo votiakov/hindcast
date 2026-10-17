@@ -60,10 +60,19 @@ describe('link labels keep clear of the cards', () => {
     expect(spot.x).toBeGreaterThanOrEqual(340 + label.w / 2 + 4);
   });
 
-  it('with no room anywhere along the link, goes where it covers the least and is lifted over the cards', () => {
-    // two cards 60 apart: a 150-wide label covers both wherever it sits; least in the middle of the gap
+  it('with no room along the link, goes just above the cards rather than over their titles', () => {
+    // two cards 60 apart: a 150-wide label covers both anywhere along the link, but above them is free
     const cards = [card(-230, -75), card(60, -75)];
     const spot = placeLabel([{ x: 0, y: 0 }, { x: 60, y: 0 }], label, cards);
+    expect(spot.over).toBe(false);
+    expect(spot.x).toBe(30);
+    expect(spot.y + label.h / 2 + 4).toBeLessThanOrEqual(-75);
+  });
+
+  it('with no room along the link or near it, goes where it covers the least and is lifted over the cards', () => {
+    // cards far taller than the label may move: nowhere near the link is clear
+    const tall = (x: number): Box => ({ x, y: -400, w: 230, h: 800 });
+    const spot = placeLabel([{ x: 0, y: 0 }, { x: 60, y: 0 }], label, [tall(-230), tall(60)]);
     expect(spot).toEqual({ x: 30, y: 0, over: true });
   });
 
