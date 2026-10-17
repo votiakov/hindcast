@@ -178,7 +178,7 @@ engineer reviews follows it, and `--md` / `--html` reports open with the same ta
 |---|---|
 | **Ask** | approve frontend CPU 1 → 0.05 |
 | **Money** | saves $23/month, about $276 a year, priced from your bill |
-| **Risk to users** | 18 min more out of SLO and 7,212 more failed requests, replaying the last 41 minutes of production traffic |
+| **Risk to users** | 18 min more out of SLO and 7,212 more failed requests, replaying the last 41 minutes of recorded traffic |
 | **How sure** | low: frontend would run at 150% of a capacity the history never tested (peak 7%): the outcome rests on an extrapolated limit (3 more caveats below) |
 | **Next** | don't ship it as it is |
 
@@ -207,7 +207,7 @@ Confidence low:
 - the model missed p99 (holdout, off by 72%) on data it never saw: off by more than half on what the verdict is counted from (latency, the breaking point), so a replay can't be trusted to place the SLO's edge
 - only 0.7 h of history: daily and weekly peaks may be missing
 
-<sub>Replayed the last 41 minutes of production traffic through the calibrated model · 30 draws (capacities varied within their fitted ranges) · ranges are 10th–90th percentiles: 8 in 10 draws fall inside</sub>
+<sub>Replayed the last 41 minutes of recorded traffic through the calibrated model · 30 draws (capacities varied within their fitted ranges) · ranges are 10th–90th percentiles: 8 in 10 draws fall inside</sub>
 
 | | $/month | minutes out of SLO | failed requests | worst moment |
 |---|---|---|---|---|

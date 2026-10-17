@@ -231,7 +231,7 @@ fn replayed_span(r: &Value) -> String {
 /// the line under a comment's verdicts: what was replayed, how many draws
 fn replayed_line(r: &Value) -> String {
     let load = if g(r, &["load"]).is_null() { String::new() } else { format!(" at ×{} its load (busiest moment {} req/s)", js_to_fixed(n(r, &["load", "factor"]), 2), js_num(js_round(n(r, &["load", "peakRps"])))) };
-    format!("<sub>Replayed {} of production traffic{} through the calibrated model · {} draws (capacities varied within their fitted ranges) · ranges are 10th–90th percentiles: 8 in 10 draws fall inside</sub>", replayed_span(r), load, js_num(n(r, &["draws"])))
+    format!("<sub>Replayed {} of recorded traffic{} through the calibrated model · {} draws (capacities varied within their fitted ranges) · ranges are 10th–90th percentiles: 8 in 10 draws fall inside</sub>", replayed_span(r), load, js_num(n(r, &["draws"])))
 }
 
 /// as built and each strategy: $/month, minutes out of SLO, failed requests, worst moment
@@ -363,11 +363,11 @@ pub fn decision(out: &Value, r: &Value) -> Vec<(String, Vec<(&'static str, Strin
             let (dm, dm_hi) = (n(x, &["reliability", "minutesOutOfSloDelta", "p50"]), n(x, &["reliability", "minutesOutOfSloDelta", "hi"]));
             let fd = js_round(n(x, &["reliability", "failedRequestsDelta", "p50"]));
             let mut risk = if dm.abs() < 0.05 && fd == 0.0 {
-                format!("none seen: no added time out of SLO and no added failed requests, replaying {} of production traffic", span)
+                format!("none seen: no added time out of SLO and no added failed requests, replaying {} of recorded traffic", span)
             } else {
                 let minutes = if dm.abs() < 0.05 { "no added time out of SLO".to_string() } else { format!("{} min {} out of SLO", js_num(r1(dm.abs())), if dm > 0.0 { "more" } else { "less" }) };
                 let failed = if fd == 0.0 { String::new() } else { format!(" and {} {} failed requests", loc(fd.abs()), if fd > 0.0 { "more" } else { "fewer" }) };
-                format!("{}{}, replaying {} of production traffic", minutes, failed, span)
+                format!("{}{}, replaying {} of recorded traffic", minutes, failed, span)
             };
             if dm < 0.05 && dm_hi > 0.5 {
                 risk.push_str(&format!("; in the worst 1 in 10 replays it adds {} min", js_num(r1(dm_hi))));
