@@ -8,9 +8,9 @@ far to trust that. It only reads from your systems and runs on your machine.
 
 It is for the platform engineer or SRE asked "can we cut this limit?" or "will the autoscaler hold
 launch day?", and for the lead who signs off the cost. Its record so far, on two demo systems on a
-laptop Kubernetes cluster, with every verdict committed to the repository before the run: 18
-questions, 8 called right, 2 wrong, 8 sent back as "load-test this first". A plain CPU-ratio rule
-called 14 right and 4 wrong, so it is not more often right than the rule; it is less often wrong,
+laptop Kubernetes cluster, with every verdict committed to the repository before the run: 21
+questions, 9 called right, 2 wrong, 10 sent back as "load-test this first". A plain CPU-ratio rule
+called 15 right and 6 wrong, so it is not more often right than the rule; it is less often wrong,
 and it answers in minutes out of SLO and dollars. [The record, misses included](#how-far-to-trust-it).
 
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
@@ -135,10 +135,10 @@ saying the change goes past what the history showed, and to load-test it instead
 
 | check | result |
 |---|---|
-| Out of sample, Astronomy Shop: 9 runs, each verdict committed before the run was recorded | 3 right, 1 wrong, 5 inconclusive |
+| Out of sample, Astronomy Shop: 12 runs in four rounds, each verdict committed before the run was recorded | 4 right, 1 wrong, 7 inconclusive. Round 4 (three changes away from the frontend): 1 right, 2 inconclusive on two changes that failed, both by the same memory-leak kill of email that the system as built also has, which the rule called pass |
 | Out of sample, PetClinic: 9 runs in two rounds, committed the same way | 5 right, 1 wrong, 3 inconclusive. The miss (round 1) was a Java service whose halved CPU limit left it too little CPU to finish warming up (JIT compilation), which the model then had no term for. Round 2, after it learned that: 1 right, 0 wrong, 2 inconclusive on changes that all passed |
-| Both systems together | 8 right, 2 wrong, 8 inconclusive, of 18 |
-| A plain CPU-ratio rule on the same 18 runs | 14 right, 4 wrong. Both of the model's wrong calls were wrong for the rule too |
+| Both systems together | 9 right, 2 wrong, 10 inconclusive, of 21 |
+| A plain CPU-ratio rule on the same 21 runs | 15 right, 6 wrong. Both of the model's wrong calls were wrong for the rule too |
 | In sample: 5 decisions from an ordinary day (the throttle rules were designed on these) | 4 right, 1 wrong |
 | p99 on each day's own traffic within 20% of measured | Shop: 3 of 14 runs; it underestimates busy days. PetClinic round 1: 0 of 6, 14 ms predicted against 7–9 ms measured. Round 2, with the baseline fix (next row) made before it ran: 1 of 3, the other two 2 ms high (10 against 8, 11 against 9) |
 | In sample: PetClinic round 1 recomputed with today's model | p99 within 20% in 4 of 6 runs, after a baseline fix and the JIT warm-up term, both found on these runs |
@@ -153,7 +153,7 @@ more often. When a change pushes a service past anything the history showed, the
 back low confidence with "load-test before trusting it", and `hindcast loadtest plan` (the
 `plan_load_test` tool) writes that load test: which services to drive and to what rate, a k6
 script that stops itself at the SLO, and the calls that read it back in. Those abstentions are not yet a skill:
-of the 8, 5 changes passed for real and 3 failed, and the replay's own margin doesn't tell them
+of the 10, 5 changes passed for real and 5 failed, and the replay's own margin doesn't tell them
 apart ([the list](reference/k8s/README.md#a-second-system-petclinic)). Read an inconclusive as
 "this change goes past what the history can vouch for", not as a hidden fail. The evidence so far is demo systems and a
 laptop cluster, not a production fleet; the one check on production telemetry (Alibaba's public
