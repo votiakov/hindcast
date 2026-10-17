@@ -1,6 +1,7 @@
-import { memo } from 'react';
+import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { LinkLatency } from '../../canvas/LinkLatency';
-import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, type EdgeProps } from '@xyflow/react';
+import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, useStore, type EdgeProps, type ReactFlowState } from '@xyflow/react';
+import { pathPoints, placeLabel, type Box } from '../../canvas/labelSpot';
 import { X } from 'lucide-react';
 import type { EdgeMark } from '../../ui/journey';
 
@@ -39,6 +40,38 @@ const Dots = memo(function Dots({ path, count, dur, fail }: { path: string; coun
   );
 });
 
+/** the cards on the board (components and notes) as one string, so a link redraws only when one moves or resizes */
+const cardKey = (s: ReactFlowState) => {
+  let k = '';
+  for (const n of s.nodeLookup.values()) {
+    if (n.type !== 'system' && n.type !== 'note') continue;
+    const { width: w, height: h } = n.measured;
+    if (w && h) k += `${Math.round(n.internals.positionAbsolute.x)},${Math.round(n.internals.positionAbsolute.y)},${Math.round(w)},${Math.round(h)};`;
+  }
+  return k;
+};
+const cardBoxes = (k: string): Box[] =>
+  k
+    .split(';')
+    .filter(Boolean)
+    .map((c) => {
+      const [x, y, w, h] = c.split(',').map(Number);
+      return { x, y, w, h };
+    });
+
+/** the label's size as laid out (flow units), re-read after every render: its text changes as the run goes */
+function useLabelSize() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const [w, h] = [el.offsetWidth, el.offsetHeight];
+    if (Math.abs(w - size.w) > 1 || Math.abs(h - size.h) > 1) setSize({ w, h });
+  });
+  return [ref, size] as const;
+}
+
 function RefEdgeImpl({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, selected, data }: EdgeProps & { data: RefEdgeData }) {
   const [path, lx, ly] = getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, borderRadius: 6, offset: 20 });
   const { rps, err, util, running, onRemove } = data;
@@ -53,6 +86,10 @@ function RefEdgeImpl({ id, sourceX, sourceY, targetX, targetY, sourcePosition, t
   // more traffic, faster dots; a congested link slows them down (bucketed: React keeps the animations)
   const pace = Math.min(2.4, Math.max(0.9, 2.4 - 0.32 * Math.log10(rps + 1)));
   const dur = Math.round(pace * (1 + Math.min(0.8, util * 0.6)) * 4) / 4;
+  // the label keeps clear of the cards: along the link to the nearest free spot, else lifted over them
+  const cards = useStore(cardKey);
+  const [label, size] = useLabelSize();
+  const spot = useMemo(() => placeLabel(pathPoints(path), size, cardBoxes(cards), { x: lx, y: ly }), [path, lx, ly, size, cards]);
 
   return (
     <g className={trOff ? 'tr-off-edge' : undefined}>
@@ -67,7 +104,7 @@ function RefEdgeImpl({ id, sourceX, sourceY, targetX, targetY, sourcePosition, t
       {running && !tr && okN > 0 && <Dots path={path} count={okN} dur={dur} />}
       {running && !tr && failN > 0 && <Dots path={path} count={failN} dur={dur} fail />}
       <EdgeLabelRenderer>
-        <div className={`edge-label nodrag nopan ${trOff ? 'tr-off-edge' : ''}`} style={{ transform: `translate(-50%, -50%) translate(${lx}px, ${ly}px)`, zIndex: tr ? 2 : undefined }}>
+        <div ref={label} className={`edge-label nodrag nopan ${trOff ? 'tr-off-edge' : ''} ${spot.over ? 'over' : ''}`} style={{ transform: `translate(-50%, -50%) translate(${spot.x}px, ${spot.y}px)`, zIndex: tr || spot.over || selected ? 2 : undefined }}>
           {tr && (
             <span className="tr-label">
               {tr.lines.map((l, i) => (
@@ -79,8 +116,13 @@ function RefEdgeImpl({ id, sourceX, sourceY, targetX, targetY, sourcePosition, t
           )}
           {live && !tr && (
             <span className={`ref-rate ${failing ? 'bad' : ''}`} title={`${Math.round(rps)} requests a second over this link${failing ? `; ${Math.round(err * 100)}% of them fail, where it leads or further on. The error rate at the top counts what the users see, over all their requests` : ''}`}>
-              {rps >= 1000 ? `${(rps / 1000).toFixed(1)}k` : rps.toFixed(0)} req/s
-              {failing && <b> · {Math.round(err * 100)}% err</b>}
+              <span className="ref-rps">{rps >= 1000 ? `${(rps / 1000).toFixed(1)}k` : rps.toFixed(0)} req/s</span>
+              {failing && (
+                <b>
+                  <span className="ref-rps"> · </span>
+                  {Math.round(err * 100)}% err
+                </b>
+              )}
             </span>
           )}
           <LinkLatency id={id} selected={selected} />

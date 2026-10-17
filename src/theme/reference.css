@@ -80,7 +80,9 @@
 .ref-dot { fill: var(--r-accent); }
 .ref-dot.fail { fill: var(--r-bad); }
 .ref-rate { font-family: var(--mono); font-size: 10.5px; color: var(--r-ink-2); background: var(--r-surface); border: 1px solid var(--r-line); border-radius: 3px; padding: 1px 5px; white-space: nowrap; }
-.ref-rate.bad { color: var(--r-bad); border-color: var(--r-bad-line); background: var(--r-bad-tint); }
+.ref-rate.bad { color: var(--r-bad); border-color: var(--r-bad-line); background: linear-gradient(var(--r-bad-tint), var(--r-bad-tint)), var(--r-surface); }
+/* a label with nowhere free along its link sits over the cards: a ring of the board's colour parts it from them */
+.edge-label.over > * { box-shadow: 0 0 0 2px var(--r-bg); }
 [data-theme='terminal'] .edge-x { border-radius: 4px; background: var(--r-surface); border: 1px solid var(--r-line-strong); color: var(--r-ink-2); }
 
 /* component cards */
@@ -418,3 +420,6 @@
 [data-theme] .board-canvas.legible .ref-node .ref-scale-head, [data-theme] .board-canvas.legible .ref-node .ref-instances em { font-size: calc(11px / var(--z)); }
 [data-theme] .board-canvas.legible .ref-node .ref-scale-track { height: calc(4px / var(--z)); }
 [data-theme] .board-canvas.legible .ref-node .ref-instances span { width: calc(6px / var(--z)); height: calc(6px / var(--z)); }
+/* its links show only what fails ("53% err"), at the same size on screen; the rest is for a closer look */
+[data-theme] .board-canvas.legible .ref-rate:not(.bad), [data-theme] .board-canvas.legible .ref-rate .ref-rps, [data-theme] .board-canvas.legible .edge-link:not(.cut) { display: none; }
+[data-theme] .board-canvas.legible .ref-rate, [data-theme] .board-canvas.legible .edge-link { font-size: calc(11px / var(--z)); padding: 0 calc(4px / var(--z)); }
