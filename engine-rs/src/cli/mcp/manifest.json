@@ -15560,6 +15560,112 @@
       },
       "description": "the changes, as verify_change takes them: the plan drives every service a change runs past what the history showed"
      },
+     "baseline": {
+      "description": "a stacked change: an approved change not yet deployed, in place on both sides (as in verify_change), so the plan is for what the change adds on top of it",
+      "anyOf": [
+       {
+        "type": "object",
+        "properties": {
+         "strategy": {
+          "anyOf": [
+           {
+            "type": "string"
+           },
+           {
+            "type": "object",
+            "propertyNames": {
+             "type": "string"
+            },
+            "additionalProperties": {}
+           }
+          ],
+          "description": "a strategy object or YAML: { name, changes: [{ service, replicas | autoscale | cpu | memoryGb | cpuRequest | memoryRequestGb | arch | perf | capacityRps | cache | readReplicas | zone | region | runtime } | { endpoint, retries, timeoutMs }] }"
+         }
+        },
+        "required": [
+         "strategy"
+        ],
+        "additionalProperties": false
+       },
+       {
+        "type": "object",
+        "properties": {
+         "kubernetes": {
+          "type": "object",
+          "properties": {
+           "base": {
+            "type": "string",
+            "description": "manifests before: a directory, a file, or YAML text"
+           },
+           "head": {
+            "type": "string",
+            "description": "manifests after"
+           }
+          },
+          "required": [
+           "base",
+           "head"
+          ],
+          "additionalProperties": false
+         }
+        },
+        "required": [
+         "kubernetes"
+        ],
+        "additionalProperties": false
+       },
+       {
+        "type": "object",
+        "properties": {
+         "terraformPlan": {
+          "anyOf": [
+           {
+            "type": "string"
+           },
+           {
+            "type": "object",
+            "propertyNames": {
+             "type": "string"
+            },
+            "additionalProperties": {}
+           }
+          ],
+          "description": "path to `terraform show -json plan.out` output, or the JSON itself"
+         }
+        },
+        "required": [
+         "terraformPlan"
+        ],
+        "additionalProperties": false
+       },
+       {
+        "type": "object",
+        "properties": {
+         "cluster": {
+          "type": "object",
+          "properties": {
+           "head": {
+            "type": "string",
+            "description": "the edited manifests (directory, file or YAML text)"
+           },
+           "snapshot": {
+            "description": "a read_cluster snapshot (default: the latest)",
+            "type": "string"
+           }
+          },
+          "required": [
+           "head"
+          ],
+          "additionalProperties": false
+         }
+        },
+        "required": [
+         "cluster"
+        ],
+        "additionalProperties": false
+       }
+      ]
+     },
      "services": {
       "description": "services to drive directly, without a change: each to `utilization` of its modelled capacity (default 0.9)",
       "type": "array",

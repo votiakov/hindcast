@@ -137,7 +137,8 @@ pub fn plan_load_test(ws: &Workspace, o: &Value) -> Result<Value, String> {
     let mut others: Vec<String> = vec![];
     if !changes.is_empty() {
         let mut vo = JMap::new();
-        for k in ["last", "window", "traffic", "gateMinutes"] {
+        // a stacked change is planned on top of its baseline, as verify_change judges it
+        for k in ["last", "window", "traffic", "gateMinutes", "baseline"] {
             if let Some(x) = o.get(k).filter(|x| !x.is_null()) {
                 vo.insert(k.into(), x.clone());
             }
