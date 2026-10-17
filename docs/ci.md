@@ -367,7 +367,8 @@ It is `verify_change` on files named on the command line: the same strategies, v
 confidence. `--comment` writes the pull-request comment above, `--json` the tool's full result,
 `--outputs` appends `verdict=…`, `confidence=…`, `gate=…`, the first change's deltas and the
 comment's `marker=…` as `key=value` lines. The exit code is 0, or 2 when the verdict is one
-`--fail-on` names (default `fail`), and 1 on an error. Without `--draws`, the number of draws is
+`--fail-on` names (default `fail`), and 1 on an error, a flag it doesn't take among them (a
+misspelt `--baseline-hed` is refused, never ignored). Without `--draws`, the number of draws is
 fitted to a time budget, so pass it in CI for repeatable bands.
 
 `--baseline-head <dir>` stacks the change on an approved one not yet deployed: the baseline is

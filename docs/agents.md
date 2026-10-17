@@ -817,13 +817,16 @@ or dropped on the app's Backtest screen.
 
 ## Tool reference
 
+An argument a tool doesn't take is an error naming it and the ones the tool does take (a misspelt
+option is never silently skipped); free-form parts, like a strategy object, take any key.
+
 | tool | inputs | returns |
 |---|---|---|
-| `connect_telemetry` | `prometheus{url, selector?, namespaces?, presets?, tokenEnv?…}` \| `datadog{site \| url, apiKeyEnv?, appKeyEnv?, env?, scope?, namespaces?, presets?}`, `jaeger{url}` \| `tempo{url}` \| `traceFiles[]` \| `topologyFile` (all optional), `bill{cur\|gcp, tag?}`, `system{name, slo, timeoutMs, rename, hostedBy, entry, ignore, exclude}` | probes, renames applied, `calls` (without traces), `problems`, `ready` |
+| `connect_telemetry` | `prometheus{url, selector?, namespaces?, presets?, tokenEnv?…}` \| `datadog{site \| url, apiKeyEnv?, appKeyEnv?, env?, scope?, namespaces?, presets?}`, `jaeger{url}` \| `tempo{url}` \| `traceFiles[]` \| `topologyFile` (all optional), `bill{cur\|gcp, tag?}`, `system{name, slo, timeoutMs, rename, hostedBy, entry, ignore, exclude, include, placement}` | probes, renames applied, `calls` (without traces), `problems`, `ready` |
 | `collect_telemetry` | `last` \| `start`/`end` \| `windows[]`, `stepS?`, `maxTraces?` | window, coverage per service, endpoints, warnings |
 | `calibrate_model` | `holdout?` (0.3), `slo?`, `timeoutMs?`, `listPrices?` | services with capacity, band, limit, basis, cost; accuracy; trust lists |
 | `model_status` | — | what the workspace holds, warnings, next step |
-| `verify_change` | `changes[]`, `baseline?` (one change, applied to both sides), `last?`, `traffic?{scale \| peakRps}`, `gateMinutes?`, `draws?` (30, fewer on long histories to fit ~40 s) | per change: verdict, confidence, cost, reliability, headroom, reasons; `comparedWith` with a baseline; reports and `app.open` |
+| `verify_change` | `changes[]`, `baseline?` (one change, applied to both sides), `last?`, `traffic?{scale \| peakRps}`, `gateMinutes?`, `draws?` (30, fewer on long histories to fit ~40 s), `report?` (false: no report files) | per change: verdict, confidence, cost, reliability, headroom, reasons; `comparedWith` with a baseline; reports and `app.open` |
 | `suggest_changes` | `goal?` (reliability \| cost \| both), `traffic?` ({scale} \| {peakRps}), `last?`, `draws?`, `gateMinutes?`, `idleBelow?` | saturated services; fixes and savings that pass, each judged; the savings combined; rejected candidates |
 | `find_headroom` | `strategy?` | req/s within SLO, what binds, history peak |
 | `review_capacity` | `draws?` | headroom, 1.5× and 2× load, node loss and its fix, throttled and memory-bound services, node pool fill, fixes and savings; a Markdown report |

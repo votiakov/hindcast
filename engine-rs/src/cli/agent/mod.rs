@@ -35,8 +35,10 @@ fn received(v: &Value) -> &'static str {
     }
 }
 
-/// an argument checked against a tool's input schema with the schema library's rules: unknown keys
-/// dropped, a union's first branch that fits taken; issues as (path, message)
+/// an argument checked against a tool's input schema with the schema library's rules, a union's first
+/// branch that fits taken; issues as (path, message). A key the schema doesn't declare is an issue
+/// where the schema closes the object (additionalProperties: false): dropped, it would be an option
+/// silently not applied. Records and free-form objects take any key.
 pub fn validate(schema: &Value, v: Option<&Value>, path: &[String], issues: &mut Vec<(String, String)>) -> Option<Value> {
     let p = || if path.is_empty() { "(root)".to_string() } else { path.join(".") };
     if let Some(any) = schema.get("anyOf").and_then(|a| a.as_array()) {
@@ -47,6 +49,7 @@ pub fn validate(schema: &Value, v: Option<&Value>, path: &[String], issues: &mut
                 return None;
             }
         };
+        let mut unknown: Option<Vec<(String, String)>> = None;
         for b in any {
             let mut sub = vec![];
             if let Some(out) = validate(b, Some(v), path, &mut sub) {
@@ -54,8 +57,15 @@ pub fn validate(schema: &Value, v: Option<&Value>, path: &[String], issues: &mut
                     return Some(out);
                 }
             }
+            // a branch that fits but for keys it doesn't take: those keys are the answer, not "Invalid input"
+            if unknown.is_none() && sub.iter().all(|(_, m)| m.starts_with(UNKNOWN_KEY)) {
+                unknown = Some(sub);
+            }
         }
-        issues.push((p(), "Invalid input".into()));
+        match unknown {
+            Some(sub) => issues.extend(sub),
+            None => issues.push((p(), "Invalid input".into())),
+        }
         return None;
     }
     // a discriminated union: the branch its tag names, or the tags it could have been
@@ -102,6 +112,7 @@ pub fn validate(schema: &Value, v: Option<&Value>, path: &[String], issues: &mut
             };
             let mut out = JMap::new();
             if let Some(props) = schema.get("properties").and_then(|x| x.as_object()) {
+                unknown_keys(schema, o, path, issues);
                 let required: Vec<&str> = schema.get("required").and_then(|r| r.as_array()).map(|a| a.iter().filter_map(|x| x.as_str()).collect()).unwrap_or_default();
                 for (k, s) in props {
                     let mut pp = path.to_vec();
@@ -202,6 +213,22 @@ pub fn validate(schema: &Value, v: Option<&Value>, path: &[String], issues: &mut
     }
 }
 
+/// how an issue about a key the schema doesn't declare begins
+pub const UNKNOWN_KEY: &str = "Unrecognized key";
+
+/// an issue for each key of `o` its object schema doesn't declare, when the schema closes the object
+/// (additionalProperties: false), naming the keys it takes
+pub fn unknown_keys(schema: &Value, o: &JMap<String, Value>, path: &[String], issues: &mut Vec<(String, String)>) {
+    if schema.get("additionalProperties") != Some(&Value::Bool(false)) {
+        return;
+    }
+    let takes: Vec<&str> = schema.get("properties").and_then(|x| x.as_object()).map(|ps| ps.keys().map(|k| k.as_str()).collect()).unwrap_or_default();
+    for k in o.keys().filter(|k| !takes.contains(&k.as_str())) {
+        let p = if path.is_empty() { "(root)".to_string() } else { path.join(".") };
+        issues.push((p, format!("{}: \"{}\" ({})", UNKNOWN_KEY, k, if takes.is_empty() { "it takes none".to_string() } else { format!("the keys are {}", takes.join(", ")) })));
+    }
+}
+
 /// `${x}` of a JSON value in a template string
 pub use crate::review::json::template_str as sources_str;
 
@@ -293,6 +320,9 @@ pub fn command(rest: &[String], out: &mut Out) -> Result<i32, String> {
         Some(a) if a.starts_with('@') => read(&a[1..])?,
         Some(a) => a.to_string(),
     };
+    if let Some(x) = rest.get(2) {
+        return Err(format!("hindcast agent {}: one argument, the JSON (not also \"{}\"): hindcast agent {} '<json args>' | @args.json | -", tool, x, tool));
+    }
     let args: Value = if text.trim().starts_with('{') { serde_json::from_str(&text).map_err(|e| e.to_string())? } else { parse_yaml(&text)? };
     let args = if args.is_null() { json!({}) } else { args };
     match run_tool(&tool.replace('-', "_"), &args) {
@@ -314,5 +344,47 @@ pub fn pad_end(x: &str, n: usize) -> String {
         x.to_string()
     } else {
         format!("{}{}", x, " ".repeat(n - len))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_key_a_tool_does_not_take_is_an_error_naming_the_ones_it_does() {
+        let e = run_tool("model_status", &json!({ "workspace": "/nonexistent", "worksapce": "x" })).unwrap_err();
+        assert_eq!(e, "invalid input:\n- (root): Unrecognized key: \"worksapce\" (the keys are workspace)");
+        let e = run_tool("verify_change", &json!({ "changes": [{ "strategy": "name: x" }], "baselineHead": "dir" })).unwrap_err();
+        assert!(e.starts_with("invalid input:\n- (root): Unrecognized key: \"baselineHead\" (the keys are workspace, changes, baseline, "), "{}", e);
+        // nested where the schema closes the object: a union's entry, its parts, a record's values
+        let e = run_tool("verify_change", &json!({ "changes": [{ "kubernetes": { "base": "a", "head": "b", "baselineHead": "c" } }] })).unwrap_err();
+        assert_eq!(e, "invalid input:\n- changes.0.kubernetes: Unrecognized key: \"baselineHead\" (the keys are base, head)");
+        let e = run_tool("verify_change", &json!({ "changes": [{ "kubernetes": { "base": "a", "head": "b" }, "draws": 3 }] })).unwrap_err();
+        assert_eq!(e, "invalid input:\n- changes.0: Unrecognized key: \"draws\" (the keys are kubernetes)");
+        let e = run_tool("verify_change", &json!({ "changes": [{ "strategy": "name: x" }], "baseline": { "cluster": { "head": "h", "snap": "s" } } })).unwrap_err();
+        assert_eq!(e, "invalid input:\n- baseline.cluster: Unrecognized key: \"snap\" (the keys are head, snapshot)");
+        let e = run_tool("connect_telemetry", &json!({ "prometheus": { "url": "http://p:9090", "token": "x" }, "system": { "placement": { "api": { "zone": "a", "rack": 1 } } } })).unwrap_err();
+        assert_eq!(e, "invalid input:\n- prometheus: Unrecognized key: \"token\" (the keys are url, selector, namespaces, calls, presets, tokenEnv, basicAuthEnv, headersEnv)\n- system.placement.api: Unrecognized key: \"rack\" (the keys are zone, region)");
+        // what neither fits nor only has extra keys stays the schema library's "Invalid input"
+        let e = run_tool("verify_change", &json!({ "changes": [{ "nonsense": true, "kubernetes": 1 }] })).unwrap_err();
+        assert_eq!(e, "invalid input:\n- changes.0: Invalid input");
+    }
+
+    #[test]
+    fn free_form_objects_and_records_take_any_key() {
+        let mut issues = vec![];
+        let schema = &tools().into_iter().find(|t| t["name"] == "verify_change").unwrap()["inputSchema"];
+        let v = validate(schema, Some(&json!({ "changes": [{ "strategy": { "name": "x", "anything": 1 } }], "report": false })), &[], &mut issues).unwrap();
+        assert!(issues.is_empty(), "{:?}", issues);
+        assert_eq!(v["changes"][0]["strategy"]["anything"], 1);
+        assert_eq!(v["report"], false);
+    }
+
+    #[test]
+    fn every_tool_closes_its_arguments() {
+        for t in tools() {
+            assert_eq!(t["inputSchema"]["additionalProperties"], false, "{}", t["name"]);
+        }
     }
 }

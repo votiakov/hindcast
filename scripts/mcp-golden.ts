@@ -118,6 +118,9 @@ const CASES: Case[] = [
   call('plan_load_test', { workspace: ws('v'), changes: [{ strategy: { name: 'route ÷4', changes: [{ service: 'route', cpu: 0.05 }] } }], draws: 3 }, true),
   call('plan_load_test', { workspace: ws('n'), services: [{ service: 'recommendation' }] }),
   call('plan_load_test', { workspace: ws('n'), services: [{ service: 'recommendation', utilization: 3 }] }),
+  // a key the tool doesn't take is refused, not dropped (the agent tools' slo is p99Ms; this one's is maxP99Ms)
+  call('find_breaking_point', { architecture: shop, slo: { p99Ms: 300 }, rps: 500 }),
+  call('verify_change', { workspace: ws('v'), baselineHead: 'deploy-b', changes: [{ kubernetes: { base: 'deploy', head: 'deploy-c', baseline: 'deploy-b' } }] }),
 ];
 
 // the mocks on free ports (the cases and the goldens name the canonical ones above), and one for the

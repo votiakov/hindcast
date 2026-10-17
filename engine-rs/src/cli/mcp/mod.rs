@@ -348,6 +348,8 @@ fn check_args(tool: &Value, args: Option<&Value>) -> Result<Value, String> {
         Some(Value::Object(o)) => o.clone(),
         x => return Err(format!("MCP error -32602: Input validation error: Invalid arguments for tool {}: Invalid input: expected object, received {}", name, received(x))),
     };
+    // a key the tool doesn't take is refused, not dropped (the schemas close every tool's arguments)
+    agent::unknown_keys(schema, &args, &[], &mut issues);
     let mut out = JMap::new();
     let required: Vec<String> = schema.get("required").and_then(|r| r.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
     for (k, ps) in schema.get("properties").and_then(|p| p.as_object()).cloned().unwrap_or_default() {
@@ -600,5 +602,39 @@ fn run(name: &str, a: &Value, token: Option<&Value>, sink: &mut Vec<Value>) -> R
             as_json(&out)
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn call(name: &str, args: Value) -> Value {
+        handle(&manifest(), &json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": name, "arguments": args } }), &|_| true, &mut vec![]).unwrap()["result"].clone()
+    }
+
+    #[test]
+    fn a_key_a_tool_does_not_take_is_an_error_result() {
+        let r = call("find_breaking_point", json!({ "architecture": { "components": [{ "id": "users", "kind": "client" }, { "id": "api", "kind": "server" }], "connections": ["users -> api"] }, "slo": { "p99Ms": 300 }, "rpss": 5 }));
+        assert_eq!(r["isError"], true);
+        assert_eq!(r["content"][0]["text"], "MCP error -32602: Input validation error: Invalid arguments for tool find_breaking_point: Unrecognized key: \"rpss\" (the keys are architecture, readRatio, slo)\nUnrecognized key: \"p99Ms\" (the keys are maxErrorRate, maxP99Ms) at slo");
+        let r = call("verify_change", json!({ "changes": [{ "kubernetes": { "base": "a", "head": "b", "baselineHead": "c" } }] }));
+        assert_eq!(r["content"][0]["text"], "MCP error -32602: Input validation error: Invalid arguments for tool verify_change: Unrecognized key: \"baselineHead\" (the keys are base, head) at changes[0].kubernetes");
+        let r = call("list_components", json!({ "kind": "cache" }));
+        assert_eq!(r["content"][0]["text"], "MCP error -32602: Input validation error: Invalid arguments for tool list_components: Unrecognized key: \"kind\" (it takes none)");
+        assert!(call("list_components", json!({})).get("isError").is_none());
+    }
+
+    #[test]
+    fn the_agent_tools_offer_the_schemas_they_are_checked_against() {
+        let m = manifest();
+        let agent: Vec<Value> = agent::tools();
+        for t in arr(&m, &["tools"]) {
+            assert_eq!(t["inputSchema"]["additionalProperties"], false, "{}", t["name"]);
+            if let Some(a) = agent.iter().find(|a| a["name"] == t["name"]) {
+                let strip = |v: &Value| without(v.clone(), "$schema");
+                assert_eq!(strip(&t["inputSchema"]), strip(&a["inputSchema"]), "{}", t["name"]);
+            }
+        }
+    }
 }
 

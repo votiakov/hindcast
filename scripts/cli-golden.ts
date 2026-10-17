@@ -99,6 +99,9 @@ export const CASES: string[][] = [
   ['verify-change', '--model', 'reference/hotrod/model.json', '--dataset', 'reference/hotrod/dataset.json', '--baseline-head', `${fx}/hotrod-customer-2.yaml`, 'reference/hotrod/strategies/2-graviton.yaml'],
   ['verify-change', '--model', 'reference/hotrod/model.json', '--dataset', 'reference/hotrod/dataset.json', '--baseline', 'reference/hotrod/strategies/1-customer-replicas.yaml', '--baseline-terraform-plan', `${fx}/hotrod-tfplan.json`, 'reference/hotrod/strategies/2-graviton.yaml'],
   ['verify-change', '--model', 'reference/hotrod/model.json', '--dataset', 'reference/hotrod/dataset.json', 'reference/hotrod/strategies/2-graviton.yaml', '--fail-on', 'sometimes'],
+  // a flag the command doesn't take is refused (an older binary ignored --baseline-head and judged both changes together)
+  ['verify-change', '--model', 'reference/hotrod/model.json', '--dataset', 'reference/hotrod/dataset.json', '--base', 'examples/backtest-ci/deploy', '--baseline-hed', `${fx}/hotrod-customer-2.yaml`, '--head', `${fx}/hotrod-customer-2-frontend-50m.yaml`],
+  ['simulate', `${ex}/shop.yaml`, '--rps', '2500', '--duratoin', '30', '--jsonn'],
   ['export-prometheus', '--url', PROM, '--start', '2026-09-01T00:00:00Z', '--end', '2026-09-01T01:00:00Z', '--out', `${out}/OUT/exp1`],
   ['export-prometheus', '--url', `${PROM}/prefix/`, '--start', '1791390000', '--end', '1791410000', '--step', '1', '--preset', 'kubernetes,ingress-nginx,spring,http-server', '--selector', 'namespace="shop"', '--window', '5m', '--name', 'Shop', '--out', `${out}/OUT/exp2`],
   ['export-prometheus', '--url', PROM, '--start', 'yesterday', '--end', '2026-09-01'],
@@ -112,6 +115,7 @@ export const CASES: string[][] = [
   agent('connect_telemetry', { workspace: ws('d') }),
   agent('connect_telemetry', { workspace: ws('e'), prometheus: { url: 'not a url' } }),
   agent('connect_telemetry', { workspace: ws('f'), prometheus: { url: `${TEL}/prom`, selector: 'cluster="eu"', namespaces: ['shop'], presets: ['cadvisor'], extra: 1 }, system: { entry: ['api'], ignore: [], exclude: ['db'], hostedBy: { redis: 'api' }, placement: { api: { zone: 'a', foo: 1 } } } }),
+  agent('connect_telemetry', { workspace: ws('f2'), prometheus: { url: `${TEL}/prom`, selector: 'cluster="eu"', namespaces: ['shop'], presets: ['cadvisor'] }, system: { entry: ['api'], hostedBy: { redis: 'api' }, placement: { api: { zone: 'a', region: 'eu-west-1' } } } }),
   agent('read_cluster', { workspace: ws('g'), context: 'kind-test', namespace: 'shop' }),
   agent('read_cluster', { workspace: ws('h'), context: 'kind-test', selector: 'app=web' }),
   agent('read_cluster', { workspace: ws('i'), context: 'nope' }),

@@ -91,6 +91,12 @@ fn run(args: &[String], out: &mut Out) -> Result<i32, String> {
             return Ok(0);
         }
     }
+    // a flag the command doesn't take is refused before it runs: ignored, it would be an answer to a
+    // question that wasn't asked (an older binary judged a stacked change without --baseline-head)
+    let key = if cmd == "agent" && rest.first().map(|s| s.as_str()) == Some("setup") { "agent setup" } else { cmd };
+    if let Some(known) = command_flags(key) {
+        unknown_flags(key, &flags(rest), known)?;
+    }
     if cmd == "agent" {
         return agent::command(rest, out);
     }
@@ -136,6 +142,82 @@ fn run(args: &[String], out: &mut Out) -> Result<i32, String> {
     Ok(0)
 }
 
+/// the flags each command reads (besides --help, which every one takes), or None for a name that isn't a command
+fn command_flags(cmd: &str) -> Option<&'static [&'static str]> {
+    Some(match cmd {
+        "demo" => &["workspace", "json", "h"],
+        "quickstart" => &["prometheus", "datadog", "dd-env", "dd-api-key-env", "dd-app-key-env", "token-env", "jaeger", "tempo", "topology", "calls", "namespace", "name", "exclude", "include", "p99", "errors", "last", "start", "end", "workspace", "json", "h"],
+        "validate" => &["json"],
+        "simulate" => &["rps", "duration", "traffic", "engine", "seed", "trace", "failed", "count", "json"],
+        "analyze" => &["rps", "duration", "traffic", "runs", "seed", "json"],
+        "optimize" => &["rps", "duration", "traffic", "runtimes", "p99", "errors", "out", "json"],
+        "compare" => &["rps", "duration", "traffic", "json"],
+        "breaking-point" => &["p99", "errors", "json"],
+        "audit" => &["rps", "cost-per-min", "p99", "errors", "md", "html", "json"],
+        "link" | "catalog" => &[],
+        "mermaid" => &["out"],
+        "import-terraform" | "import-k8s" => &["name", "out", "json"],
+        "mcp" => &["http", "port", "host", "all-tools", "no-auth"],
+        "export-prometheus" => &["url", "start", "end", "step", "preset", "selector", "window", "name", "out"],
+        "import" => &["out", "json"],
+        "calibrate" => &["out", "p99", "errors", "timeout", "holdout", "json"],
+        "backtest" => &["last", "scale", "peak", "draws", "md", "html", "comment", "title", "run-url", "out", "card", "card-strategy", "gate", "json"],
+        "headroom" | "accuracy" => &["json"],
+        "outage" => &["role", "rps", "md", "html", "json"],
+        "diff-strategy" => &["base", "head", "model", "name", "out"],
+        "verify-change" => &[
+            "model", "dataset", "calibration", "base", "head", "terraform-plan", "baseline-head", "baseline", "baseline-terraform-plan", "last", "draws", "gate-minutes", "p99", "errors", "scale", "peak",
+            "comment", "json", "md", "html", "outputs", "print-json", "title", "comment-key", "run-url", "fail-on",
+        ],
+        "loadtest" => &["base", "head", "service", "workspace", "scale", "peak", "last", "margin", "steps", "hold", "mix", "out", "json", "h"],
+        // a tool's arguments are its JSON; `agent setup` has flags of its own
+        "agent" => &[],
+        "agent setup" => &["write", "project", "workspace"],
+        _ => return None,
+    })
+}
+
+/// an error naming the flags `cmd` doesn't take (a near miss suggested) and the ones it does
+fn unknown_flags(cmd: &str, f: &Flags, known: &[&str]) -> Result<(), String> {
+    let unknown: Vec<String> = f
+        .opt
+        .keys()
+        .filter(|k| k.as_str() != "help" && !known.contains(&k.as_str()))
+        .map(|k| match known.iter().filter(|x| **x != "h").map(|x| (edits(k, x), *x)).min() {
+            Some((d, near)) if d <= 2 && d < k.len() => format!("--{} (did you mean --{}?)", k, near),
+            _ => format!("--{}", k),
+        })
+        .collect();
+    if unknown.is_empty() {
+        return Ok(());
+    }
+    let takes: Vec<String> = known.iter().filter(|x| **x != "h").map(|x| format!("--{}", x)).collect();
+    Err(format!(
+        "hindcast {}: unknown flag{} {}\n{} (hindcast {} --help)",
+        cmd,
+        if unknown.len() == 1 { "" } else { "s" },
+        unknown.join(", "),
+        if takes.is_empty() { "it takes no flags".to_string() } else { format!("it takes {}", takes.join(" ")) },
+        cmd.split(' ').next().unwrap_or(cmd)
+    ))
+}
+
+/// the edit distance between two flag names
+fn edits(a: &str, b: &str) -> usize {
+    let b: Vec<char> = b.chars().collect();
+    let mut row: Vec<usize> = (0..=b.len()).collect();
+    for (i, ca) in a.chars().enumerate() {
+        let mut prev = row[0];
+        row[0] = i + 1;
+        for j in 0..b.len() {
+            let cur = row[j + 1];
+            row[j + 1] = (prev + usize::from(ca != b[j])).min(row[j] + 1).min(cur + 1);
+            prev = cur;
+        }
+    }
+    row[b.len()]
+}
+
 /// one command's lines of USAGE (its line and the indented ones continuing it), or None for a command it doesn't list
 fn command_usage(cmd: &str) -> Option<String> {
     let lines: Vec<&str> = USAGE.lines().collect();
@@ -151,4 +233,64 @@ fn command_usage(cmd: &str) -> Option<String> {
         text.push(l.strip_prefix("  ").unwrap_or(l));
     }
     Some(format!("{}\n\nEvery command: hindcast --help", text.join("\n")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(a: &[&str]) -> Vec<String> {
+        a.iter().map(|s| s.to_string()).collect()
+    }
+
+    fn flag_names(text: &str) -> Vec<String> {
+        text.split("--").skip(1).map(|r| r.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '-').collect::<String>()).filter(|f| !f.is_empty() && f != "help").collect()
+    }
+
+    #[test]
+    fn a_flag_the_command_does_not_take_is_refused_with_the_ones_it_does() {
+        let mut out = Out::default();
+        let e = run(&args(&["verify-change", "--model", "m.json", "--baseline-hed", "x"]), &mut out).unwrap_err();
+        assert!(e.starts_with("hindcast verify-change: unknown flag --baseline-hed (did you mean --baseline-head?)\nit takes --model --dataset"), "{}", e);
+        assert!(e.ends_with("(hindcast verify-change --help)"), "{}", e);
+        let e = run(&args(&["validate", "a.yaml", "--jsn", "--foo-bar-baz"]), &mut out).unwrap_err();
+        assert_eq!(e, "hindcast validate: unknown flags --jsn (did you mean --json?), --foo-bar-baz\nit takes --json (hindcast validate --help)");
+        let e = run(&args(&["catalog", "--json"]), &mut out).unwrap_err();
+        assert_eq!(e, "hindcast catalog: unknown flag --json\nit takes no flags (hindcast catalog --help)");
+        let e = run(&args(&["agent", "setup", "cursor", "--wirte"]), &mut out).unwrap_err();
+        assert!(e.starts_with("hindcast agent setup: unknown flag --wirte (did you mean --write?)"), "{}", e);
+        assert!(e.ends_with("(hindcast agent --help)"), "{}", e);
+        let e = run(&args(&["agent", "model_status", "{}", "--workspace", "x"]), &mut out).unwrap_err();
+        assert!(e.starts_with("hindcast agent: unknown flag --workspace\nit takes no flags"), "{}", e);
+        let e = run(&args(&["agent", "model_status", "{}", "x"]), &mut out).unwrap_err();
+        assert!(e.starts_with("hindcast agent model_status: one argument, the JSON (not also \"x\")"), "{}", e);
+        // positional arguments and --help are not flags; a name that isn't a command is left to the usage
+        assert!(unknown_flags("import-k8s", &flags(&args(&["a.yaml", "b.yaml", "--name", "x", "--help"])), command_flags("import-k8s").unwrap()).is_ok());
+        assert!(command_flags("nonsense").is_none());
+    }
+
+    #[test]
+    fn every_flag_a_usage_shows_is_one_its_command_takes() {
+        let mut seen = 0;
+        for line in USAGE.lines() {
+            let Some(cmd) = line.trim_start().strip_prefix("hindcast ").and_then(|r| r.split_whitespace().next()) else { continue };
+            // the agent lines are one each (setup, list, a tool); every other command's continues on the lines below
+            let (key, text) = match cmd {
+                "agent" if line.contains("agent setup") => ("agent setup", line.to_string()),
+                "agent" => ("agent", line.to_string()),
+                _ => (cmd, command_usage(cmd).unwrap_or_default()),
+            };
+            let known = command_flags(key).unwrap_or_else(|| panic!("hindcast {}: no flags declared", key));
+            for f in flag_names(&text) {
+                assert!(known.contains(&f.as_str()), "hindcast {}: --{} is in the usage and not in command_flags", key, f);
+                seen += 1;
+            }
+        }
+        assert!(seen > 80, "{}", seen);
+        for (cmd, usage) in [("verify-change", ci::USAGE), ("quickstart", agent::quickstart::USAGE), ("demo", demo::USAGE)] {
+            for f in flag_names(usage) {
+                assert!(command_flags(cmd).unwrap().contains(&f.as_str()), "hindcast {}: --{}", cmd, f);
+            }
+        }
+    }
 }

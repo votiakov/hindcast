@@ -315,6 +315,25 @@
        "items": {
         "type": "string"
        }
+      },
+      "placement": {
+       "description": "service → where it runs, for data-transfer pricing: { checkout: { zone: \"us-east-1a\", region: \"us-east-1\" } }",
+       "type": "object",
+       "propertyNames": {
+        "type": "string"
+       },
+       "additionalProperties": {
+        "type": "object",
+        "properties": {
+         "zone": {
+          "type": "string"
+         },
+         "region": {
+          "type": "string"
+         }
+        },
+        "additionalProperties": false
+       }
       }
      },
      "additionalProperties": false
@@ -739,6 +758,10 @@
       }
      },
      "additionalProperties": false
+    },
+    "report": {
+     "description": "false: write no report files (the HTML, Markdown and app bundle under reports/ in the workspace); default true",
+     "type": "boolean"
     }
    },
    "required": [

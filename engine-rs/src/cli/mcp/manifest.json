@@ -25,7 +25,8 @@
    "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
-    "properties": {}
+    "properties": {},
+    "additionalProperties": false
    },
    "annotations": {
     "readOnlyHint": true
@@ -660,7 +661,8 @@
     },
     "required": [
      "architecture"
-    ]
+    ],
+    "additionalProperties": false
    },
    "annotations": {
     "readOnlyHint": true
@@ -1765,7 +1767,8 @@
     },
     "required": [
      "architecture"
-    ]
+    ],
+    "additionalProperties": false
    },
    "annotations": {
     "readOnlyHint": true
@@ -2875,7 +2878,8 @@
     "required": [
      "architecture",
      "component"
-    ]
+    ],
+    "additionalProperties": false
    },
    "annotations": {
     "readOnlyHint": true
@@ -5518,7 +5522,8 @@
     "required": [
      "architecture",
      "variants"
-    ]
+    ],
+    "additionalProperties": false
    },
    "annotations": {
     "readOnlyHint": true
@@ -6164,12 +6169,14 @@
        "maxP99Ms": {
         "type": "number"
        }
-      }
+      },
+      "additionalProperties": false
      }
     },
     "required": [
      "architecture"
-    ]
+    ],
+    "additionalProperties": false
    },
    "annotations": {
     "readOnlyHint": true
@@ -7263,7 +7270,8 @@
     },
     "required": [
      "architecture"
-    ]
+    ],
+    "additionalProperties": false
    },
    "annotations": {
     "readOnlyHint": true
@@ -8361,12 +8369,14 @@
        "maxP99Ms": {
         "type": "number"
        }
-      }
+      },
+      "additionalProperties": false
      }
     },
     "required": [
      "architecture"
-    ]
+    ],
+    "additionalProperties": false
    },
    "annotations": {
     "readOnlyHint": true
@@ -9017,7 +9027,8 @@
        "maxP99Ms": {
         "type": "number"
        }
-      }
+      },
+      "additionalProperties": false
      },
      "incident_cost_per_minute": {
       "description": "$ a minute of full outage costs the business",
@@ -9027,7 +9038,8 @@
     },
     "required": [
      "architecture"
-    ]
+    ],
+    "additionalProperties": false
    },
    "annotations": {
     "readOnlyHint": true
@@ -9058,7 +9070,8 @@
     },
     "required": [
      "terraform_json"
-    ]
+    ],
+    "additionalProperties": false
    },
    "annotations": {
     "readOnlyHint": true
@@ -9085,7 +9098,8 @@
     },
     "required": [
      "manifests_yaml"
-    ]
+    ],
+    "additionalProperties": false
    },
    "annotations": {
     "readOnlyHint": true
@@ -11723,7 +11737,8 @@
     },
     "required": [
      "architecture"
-    ]
+    ],
+    "additionalProperties": false
    },
    "annotations": {
     "readOnlyHint": true
@@ -14361,7 +14376,8 @@
     },
     "required": [
      "architecture"
-    ]
+    ],
+    "additionalProperties": false
    },
    "execution": {
     "taskSupport": "forbidden"
@@ -14419,7 +14435,8 @@
     },
     "required": [
      "strategies"
-    ]
+    ],
+    "additionalProperties": false
    },
    "annotations": {
     "readOnlyHint": true
@@ -14474,7 +14491,8 @@
     },
     "required": [
      "outage"
-    ]
+    ],
+    "additionalProperties": false
    },
    "annotations": {
     "readOnlyHint": true
@@ -14565,7 +14583,8 @@
       },
       "required": [
        "url"
-      ]
+      ],
+      "additionalProperties": false
      },
      "datadog": {
       "description": "Datadog instead of Prometheus, read-only through its Metrics API: APM trace metrics, the Agent's Kubernetes metrics and ingress-nginx; who calls whom from APM service dependencies. Keys only as env var names",
@@ -14647,7 +14666,8 @@
       },
       "required": [
        "url"
-      ]
+      ],
+      "additionalProperties": false
      },
      "tempo": {
       "type": "object",
@@ -14678,7 +14698,8 @@
       },
       "required": [
        "url"
-      ]
+      ],
+      "additionalProperties": false
      },
      "traceFiles": {
       "description": "OTLP JSON lines or Jaeger JSON files (globs ok), instead of a trace backend",
@@ -14715,7 +14736,8 @@
          "type": "string"
         }
        }
-      }
+      },
+      "additionalProperties": false
      },
      "system": {
       "type": "object",
@@ -14740,7 +14762,8 @@
         "required": [
          "p99Ms",
          "errorRate"
-        ]
+        ],
+        "additionalProperties": false
        },
        "timeoutMs": {
         "description": "client deadline: slower answers count as failures",
@@ -14794,10 +14817,31 @@
         "items": {
          "type": "string"
         }
+       },
+       "placement": {
+        "description": "service → where it runs, for data-transfer pricing: { checkout: { zone: \"us-east-1a\", region: \"us-east-1\" } }",
+        "type": "object",
+        "propertyNames": {
+         "type": "string"
+        },
+        "additionalProperties": {
+         "type": "object",
+         "properties": {
+          "zone": {
+           "type": "string"
+          },
+          "region": {
+           "type": "string"
+          }
+         },
+         "additionalProperties": false
+        }
        }
-      }
+      },
+      "additionalProperties": false
      }
-    }
+    },
+    "additionalProperties": false
    },
    "annotations": {
     "readOnlyHint": false,
@@ -14871,10 +14915,12 @@
        "required": [
         "start",
         "end"
-       ]
+       ],
+       "additionalProperties": false
       }
      }
-    }
+    },
+    "additionalProperties": false
    },
    "annotations": {
     "readOnlyHint": false,
@@ -14918,7 +14964,8 @@
       "required": [
        "p99Ms",
        "errorRate"
-      ]
+      ],
+      "additionalProperties": false
      },
      "timeoutMs": {
       "type": "number",
@@ -14928,7 +14975,8 @@
       "description": "price services without a bill line at AWS Fargate list prices (default true)",
       "type": "boolean"
      }
-    }
+    },
+    "additionalProperties": false
    },
    "annotations": {
     "readOnlyHint": false,
@@ -14950,7 +14998,8 @@
       "description": "workspace directory (default ./.hindcast, or $HINDCAST_WORKSPACE)",
       "type": "string"
      }
-    }
+    },
+    "additionalProperties": false
    },
    "annotations": {
     "readOnlyHint": true,
@@ -14998,7 +15047,8 @@
          },
          "required": [
           "strategy"
-         ]
+         ],
+         "additionalProperties": false
         },
         {
          "type": "object",
@@ -15018,12 +15068,14 @@
            "required": [
             "base",
             "head"
-           ]
+           ],
+           "additionalProperties": false
           }
          },
          "required": [
           "kubernetes"
-         ]
+         ],
+         "additionalProperties": false
         },
         {
          "type": "object",
@@ -15046,7 +15098,8 @@
          },
          "required": [
           "terraformPlan"
-         ]
+         ],
+         "additionalProperties": false
         },
         {
          "type": "object",
@@ -15065,12 +15118,14 @@
            },
            "required": [
             "head"
-           ]
+           ],
+           "additionalProperties": false
           }
          },
          "required": [
           "cluster"
-         ]
+         ],
+         "additionalProperties": false
         }
        ]
       }
@@ -15099,7 +15154,8 @@
         },
         "required": [
          "strategy"
-        ]
+        ],
+        "additionalProperties": false
        },
        {
         "type": "object",
@@ -15119,12 +15175,14 @@
           "required": [
            "base",
            "head"
-          ]
+          ],
+          "additionalProperties": false
          }
         },
         "required": [
          "kubernetes"
-        ]
+        ],
+        "additionalProperties": false
        },
        {
         "type": "object",
@@ -15147,7 +15205,8 @@
         },
         "required": [
          "terraformPlan"
-        ]
+        ],
+        "additionalProperties": false
        },
        {
         "type": "object",
@@ -15166,12 +15225,14 @@
           },
           "required": [
            "head"
-          ]
+          ],
+          "additionalProperties": false
          }
         },
         "required": [
          "cluster"
-        ]
+        ],
+        "additionalProperties": false
        }
       ]
      },
@@ -15210,7 +15271,8 @@
       "required": [
        "start",
        "end"
-      ]
+      ],
+      "additionalProperties": false
      },
      "traffic": {
       "description": "replay the history at another load — scale ×N, or peakRps for its busiest moment — to ask \"does it survive launch day / Black Friday?\"; the as-built system sees the same load",
@@ -15224,12 +15286,18 @@
         "type": "number",
         "exclusiveMinimum": 0
        }
-      }
+      },
+      "additionalProperties": false
+     },
+     "report": {
+      "description": "false: write no report files (the HTML, Markdown and app bundle under reports/ in the workspace); default true",
+      "type": "boolean"
      }
     },
     "required": [
      "changes"
-    ]
+    ],
+    "additionalProperties": false
    },
    "annotations": {
     "readOnlyHint": false,
@@ -15294,7 +15362,8 @@
       },
       "additionalProperties": false
      }
-    }
+    },
+    "additionalProperties": false
    },
    "annotations": {
     "readOnlyHint": false,
@@ -15330,7 +15399,8 @@
        }
       ]
      }
-    }
+    },
+    "additionalProperties": false
    },
    "annotations": {
     "readOnlyHint": true,
@@ -15358,7 +15428,8 @@
       "minimum": 1,
       "maximum": 30
      }
-    }
+    },
+    "additionalProperties": false
    },
    "annotations": {
     "readOnlyHint": false,
@@ -15606,7 +15677,8 @@
       "description": "env var whose value the script sends as the Authorization header when set (default AUTH_HEADER); never the credential itself",
       "type": "string"
      }
-    }
+    },
+    "additionalProperties": false
    },
    "annotations": {
     "readOnlyHint": false,
@@ -15655,7 +15727,8 @@
         "type": "number",
         "exclusiveMinimum": 0
        }
-      }
+      },
+      "additionalProperties": false
      },
      "recoverS": {
       "description": "seconds until replacement pods serve (default 380)",
@@ -15666,7 +15739,8 @@
       "description": "lose a whole availability zone (every node in it) instead of one node — zones come from the nodes' provider ids (AWS, GCP)",
       "type": "boolean"
      }
-    }
+    },
+    "additionalProperties": false
    },
    "annotations": {
     "readOnlyHint": false,
@@ -15716,7 +15790,8 @@
         "minimum": 0,
         "maximum": 1
        }
-      }
+      },
+      "additionalProperties": false
      },
      "budgetMonthly": {
       "description": "$ per month the design must fit in",
@@ -15731,7 +15806,8 @@
     },
     "required": [
      "spec"
-    ]
+    ],
+    "additionalProperties": false
    },
    "annotations": {
     "readOnlyHint": true,
@@ -15767,7 +15843,8 @@
     },
     "required": [
      "context"
-    ]
+    ],
+    "additionalProperties": false
    },
    "annotations": {
     "readOnlyHint": false,
