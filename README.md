@@ -29,7 +29,7 @@ No Prometheus to point it at? [Open the recorded reference systems](#no-cluster-
 
 <sub>A recorded day of the OpenTelemetry Astronomy Shop, replayed at 2× its traffic. As built it
 breaks as the traffic climbs and spends 24 minutes out of SLO; autoscaling the frontend removes 23
-of them for $28 a month more. [Full video, 24 s](docs/media/app-backtest.mp4), with the Review
+of them for $28 a month more. Those are the replay's numbers, not a measured 2× day. [Full video, 24 s](docs/media/app-backtest.mp4), with the Review
 screen.</sub>
 
 ## Try it
