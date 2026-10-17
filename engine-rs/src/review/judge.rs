@@ -469,14 +469,15 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
         verdict = "inconclusive";
         reasons.push(format!("after the change the system sustains {} req/s, below the peak it has to serve ({})", js_num(r1(after.0)), js_num(r1(peak))));
     }
-    // the replay rolls the change out at its first moment and warms it up there, so its verdict stands
-    // for that rollout; at a busier one the restarted pods meet the load cold. When is a rollout-timing
-    // question the replayed day doesn't ask: a warning, not a reason to withhold the verdict (a replay
-    // that never warms up already shows it in its minutes and failed requests)
+    // the replay rolls the change out at its first moment; at a busier one the restarted pods meet it cold.
+    // Kept as a reason to withhold a pass, not only a warning: tried as a warning (2026-10-17), it turned
+    // one hedge right and one into a wrong pass, on a rollout that met load (PetClinic normal-cust125)
     if let Some(cold) = breaking_cold(m, spec).filter(|c| *c < after.0 * 0.9) {
-        reasons.push(format!("while its restarted pods are still cold the system sustains {} req/s ({} once warm)", js_num(r1(cold)), js_num(r1(after.0))));
-        if cold < peak {
-            warnings.push(format!("while its restarted pods are still cold the system sustains {} req/s, below the peak it has to serve ({}): rolled out at a busy moment, it would not warm up. Roll it out when traffic is low, or warm the pods before they take traffic", js_num(r1(cold)), js_num(r1(peak))));
+        if cold < peak && verdict == "pass" {
+            verdict = "inconclusive";
+            reasons.push(format!("while its restarted pods are still cold the system sustains {} req/s, below the peak it has to serve ({}): rolled out at a busy moment, it would not warm up. Roll it out when traffic is low, or warm the pods before they take traffic", js_num(r1(cold)), js_num(r1(peak))));
+        } else {
+            reasons.push(format!("while its restarted pods are still cold the system sustains {} req/s ({} once warm)", js_num(r1(cold)), js_num(r1(after.0))));
         }
     }
     let basis = cost_basis.iter().map(|b| match b.as_str() {
