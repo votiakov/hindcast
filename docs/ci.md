@@ -112,10 +112,10 @@ your own; each is judged on its own and the step's verdict is the worst of them.
 ### Choosing `fail-on`
 
 With the default, only `fail` fails the check; an `inconclusive` passes it, and the comment says to
-load-test first. On the reference runs that matters: of 24 questions whose verdicts were committed
+load-test first. On the reference runs that matters: of 26 questions whose verdicts were committed
 before they ran, 11 came back inconclusive, and 5 of those failed for real (the Astronomy Shop's
 `launch-2c`, `launch-2-750`, `launch-cart250` and `launch-rec2`, PetClinic's `launch-cust125`). The other 6 passed, so blocking on
-inconclusive would also have held back 5 good changes. `fail-on: inconclusive` is the stricter
+inconclusive would also have held back 6 good changes. `fail-on: inconclusive` is the stricter
 choice for a system where a bad rollout costs more than a delayed one;
 [reference/k8s](../reference/k8s/README.md#a-second-system-petclinic) lists what each inconclusive
 rested on.

@@ -8,9 +8,9 @@ far to trust that. It only reads from your systems and runs on your machine.
 
 It is for the platform engineer or SRE asked "can we cut this limit?" or "will the autoscaler hold
 launch day?", and for the lead who signs off the cost. Its record so far, on two demo systems on a
-laptop Kubernetes cluster, with every verdict committed to the repository before the run: 24
-questions, 11 called right, 2 wrong, 11 sent back as "load-test this first". A plain CPU-ratio rule
-called 18 right and 6 wrong, so it is not more often right than the rule; it is less often wrong,
+laptop Kubernetes cluster, with every verdict committed to the repository before the run: 26
+questions, 11 called right, 4 wrong, 11 sent back as "load-test this first". A plain CPU-ratio rule
+called 18 right and 8 wrong, so it is not more often right than the rule; it is less often wrong,
 and it answers in minutes out of SLO and dollars. [The record, misses included](#how-far-to-trust-it).
 
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
@@ -141,10 +141,10 @@ saying the change goes past what the history showed, and to load-test it instead
 
 | check | result |
 |---|---|
-| Out of sample, Astronomy Shop: 15 runs in five rounds, each verdict committed before the run was recorded | 6 right, 1 wrong, 8 inconclusive. Round 5: both failures called fail, but for the wrong reason (it predicted overload at the traffic peak; what failed was email's leak stalling checkouts later, which the system as built also has), and one inconclusive on a change that passed. Round 4 (three changes away from the frontend): 1 right, 2 inconclusive on two changes that failed, both by the same memory-leak kill of email that the system as built also has, which the rule called pass |
+| Out of sample, Astronomy Shop: 17 runs in six rounds, each verdict committed before the run was recorded | 6 right, 3 wrong, 8 inconclusive. Round 6 (so far 2 of 3 runs): both changes passed where the model said fail, because the frontend had become about 30% cheaper per request since the history it was calibrated on was recorded: a stale calibration. Round 5: both failures called fail, but for the wrong reason (it predicted overload at the traffic peak; what failed was email's leak stalling checkouts later, which the system as built also has), and one inconclusive on a change that passed. Round 4 (three changes away from the frontend): 1 right, 2 inconclusive on two changes that failed, both by the same memory-leak kill of email that the system as built also has, which the rule called pass |
 | Out of sample, PetClinic: 9 runs in two rounds, committed the same way | 5 right, 1 wrong, 3 inconclusive. The miss (round 1) was a Java service whose halved CPU limit left it too little CPU to finish warming up (JIT compilation), which the model then had no term for. Round 2, after it learned that: 1 right, 0 wrong, 2 inconclusive on changes that all passed |
-| Both systems together | 11 right, 2 wrong, 11 inconclusive, of 24 |
-| A plain CPU-ratio rule on the same 24 runs | 18 right, 6 wrong. Both of the model's wrong calls were wrong for the rule too |
+| Both systems together | 11 right, 4 wrong, 11 inconclusive, of 26 |
+| A plain CPU-ratio rule on the same 26 runs | 18 right, 8 wrong. All four of the model's wrong calls were wrong for the rule too |
 | The same launch day recorded twice, nothing changed | 0.5 and 1.5 min out of SLO: one incident (email's OOM kill) landing on traffic or not. That is twice the half-minute gate. Against the second recording, round 4's two scored failures, where the model leaned pass, would be passes. Scores stay as recorded, and from round 5 a change has to be worse than both recordings |
 | In sample: 5 decisions from an ordinary day (the throttle rules were designed on these) | 4 right, 1 wrong |
 | p99 on each day's own traffic within 20% of measured | Shop: 3 of 14 runs; it underestimates busy days. PetClinic round 1: 0 of 6, 14 ms predicted against 7–9 ms measured. Round 2, with the baseline fix (next row) made before it ran: 1 of 3, the other two 2 ms high (10 against 8, 11 against 9) |

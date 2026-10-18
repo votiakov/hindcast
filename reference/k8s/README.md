@@ -7,8 +7,8 @@ change ships, does the backtest's verdict match what really happens when it ship
 
 Two systems answer it here: the Astronomy Shop below, which the model's throttle rules were shaped
 on, and [PetClinic](petclinic/README.md), which they weren't. Out of sample, with every verdict
-committed before its run: the Shop 6 right, 1 wrong, 8 inconclusive; PetClinic 5 right, 1 wrong, 3
-inconclusive; together 11, 2 and 11 of 24, against a plain CPU-ratio rule's 18 right and 6 wrong.
+committed before its run: the Shop 6 right, 3 wrong, 8 inconclusive; PetClinic 5 right, 1 wrong, 3
+inconclusive; together 11, 4 and 11 of 26, against a plain CPU-ratio rule's 18 right and 8 wrong.
 What the first 8 inconclusives rest on, and why they don't yet separate passes from failures, is
 [after the PetClinic summary](#a-second-system-petclinic).
 
@@ -203,9 +203,18 @@ Backtest verdicts: **1 right**, 2 inconclusive (it said to load-test; 0 of them 
 
 Backtest verdicts: **2 right**, 1 inconclusive (it said to load-test; 1 of them leaned the right way), 0 wrong, of 3. Naive CPU ratio: 3 right.
 
-**Every out-of-sample round together** (15 runs): Backtest verdicts: **6 right**, 8 inconclusive (it said to load-test; 4 of them leaned the right way), 1 wrong, of 15. Naive CPU ratio: 10 right, 5 wrong (a rule like that never abstains).
+*Out of sample* — stacked on email at 300 MiB, so the leak that decided rounds 4 and 5 cannot stall checkout; each change is judged against two recordings of that baseline (launch-email300 and launch-e300-b); the verdicts are the ones committed in `validation/predictions-oos-6.json` before each run was recorded:
 
-p99 of the model on each day's real traffic, against the measured p99: within 20% in **6 of 20** runs; the others off by 29–2477%.
+| run | question | measured (k6, every request) | backtest before the day | model on the day’s real traffic | naive CPU ratio |
+|---|---|---|---|---|---|
+| `launch-e300-2` | 2 frontend replicas instead of 3, on launch day, with email at 300 MiB? | **pass**: p99 99 ms, errors 0.00%, 0 min out of SLO | fail ❌ (low confidence), 19.3 min | p99 5000 ms, errors 27.8%, 6.5 min | fail ❌ at 126% CPU |
+| `launch-e300-3-400` | 3 frontend replicas at 400m instead of 500m, on launch day, with email at 300 MiB? | **pass**: p99 127 ms, errors 0.00%, 0 min out of SLO | fail ❌ (low confidence), 7.5 min | p99 5000 ms, errors 3.5%, 3 min | fail ❌ at 105% CPU |
+
+Backtest verdicts: **0 right**, 0 inconclusive (it said to load-test), 2 wrong, of 2. Naive CPU ratio: 0 right.
+
+**Every out-of-sample round together** (17 runs): Backtest verdicts: **6 right**, 8 inconclusive (it said to load-test; 4 of them leaned the right way), 3 wrong, of 17. Naive CPU ratio: 10 right, 7 wrong (a rule like that never abstains).
+
+p99 of the model on each day's real traffic, against the measured p99: within 20% in **6 of 22** runs; the others off by 29–4951%.
 
 **Calibrated on the ordinary day and a 12-minute load test:**
 
@@ -269,9 +278,18 @@ Backtest verdicts: **1 right**, 1 inconclusive (it said to load-test; 0 of them 
 
 Backtest verdicts: **1 right**, 1 inconclusive (it said to load-test; 0 of them leaned the right way), 1 wrong, of 3. Naive CPU ratio: 3 right.
 
-**Every out-of-sample round together** (15 runs): Backtest verdicts: **3 right**, 8 inconclusive (it said to load-test; 4 of them leaned the right way), 4 wrong, of 15. Naive CPU ratio: 10 right, 5 wrong (a rule like that never abstains).
+*Out of sample* — stacked on email at 300 MiB, so the leak that decided rounds 4 and 5 cannot stall checkout; each change is judged against two recordings of that baseline (launch-email300 and launch-e300-b); the verdicts are the ones committed in `validation/predictions-oos-6.json` before each run was recorded:
 
-p99 of the model on each day's real traffic, against the measured p99: within 20% in **6 of 20** runs; the others off by 30–799%.
+| run | question | measured (k6, every request) | backtest before the day | model on the day’s real traffic | naive CPU ratio |
+|---|---|---|---|---|---|
+| `launch-e300-2` | 2 frontend replicas instead of 3, on launch day, with email at 300 MiB? | **pass**: p99 99 ms, errors 0.00%, 0 min out of SLO | fail ❌ (low confidence), 4 min | p99 1090 ms, errors 0.40%, 1 min | fail ❌ at 126% CPU |
+| `launch-e300-3-400` | 3 frontend replicas at 400m instead of 500m, on launch day, with email at 300 MiB? | **pass**: p99 127 ms, errors 0.00%, 0 min out of SLO | inconclusive ⚠️ leans pass (low confidence), 0 min | p99 188 ms, errors 0.00%, 0 min | fail ❌ at 105% CPU |
+
+Backtest verdicts: **0 right**, 1 inconclusive (it said to load-test; 1 of them leaned the right way), 1 wrong, of 2. Naive CPU ratio: 0 right.
+
+**Every out-of-sample round together** (17 runs): Backtest verdicts: **3 right**, 9 inconclusive (it said to load-test; 5 of them leaned the right way), 5 wrong, of 17. Naive CPU ratio: 10 right, 7 wrong (a rule like that never abstains).
+
+p99 of the model on each day's real traffic, against the measured p99: within 20% in **6 of 22** runs; the others off by 30–1001%.
 
 **A node failure, for real:** check_node_loss from the ordinary day and the pod placement at the instant of the kill, the model on the day’s own traffic, and the client’s measurement — each against the as-built ordinary day.
 
@@ -304,8 +322,10 @@ p99 of the model on each day's real traffic, against the measured p99: within 20
 | `launch-catalog125` | email | 23.3 | 22.4 | 27.0 |
 | `launch-checkout125` | email | 23.3 | 22.3 | 24.0 |
 | `launch-3-400` | email | 23.3 | 22.3 | 28.5 |
+| `launch-e300-2` | email | none | none | none |
+| `launch-e300-3-400` | email | none | none | none |
 
-The first 2 minutes of every run are left out of the scoring, measured and predicted alike (pods restarted minutes earlier). Generated by `npx tsx reference/k8s/evaluate.ts`, 2026-10-17.
+The first 2 minutes of every run are left out of the scoring, measured and predicted alike (pods restarted minutes earlier). Generated by `npx tsx reference/k8s/evaluate.ts`, 2026-10-18.
 <!-- /RESULTS -->
 
 ## What it says
@@ -735,7 +755,7 @@ load test widens the range the model has seen, so it hedges less. When the outco
 incident that neither model's verdict changes, that means more wrong passes. The ordinary-day
 model scored better on these runs, but its two round-5 fails were right for the wrong reason.
 
-## Round 6: stacked on a leak-free baseline (in progress)
+## Round 6: stacked on a leak-free baseline
 
 Rounds 4 and 5 were decided by email's memory leak, which the system as built has. Round 6 stacks
 three capacity changes on email at 300 MiB, where the leak can't stall checkout, and judges each
@@ -743,14 +763,29 @@ against two recordings of that baseline. The verdicts were committed in
 [shop/validation/predictions-oos-6.json](shop/validation/predictions-oos-6.json) before any run.
 Both baseline recordings (`launch-email300`, `launch-e300-b`) spent 0 minutes out of SLO.
 
-**The first recording of the three changes is void.** The laptop went onto battery at 18:10, and
-on battery macOS runs in Low Power Mode. The change runs (19:33–21:50) cost about twice the CPU
-per request of the baseline (frontend 4.0–4.8 ms against 2.18 ms, product-catalog 0.28–0.30 ms
-against 0.17 ms, on the same traffic), so all three failed at the peak, where the baseline didn't.
-That is a measurement of a slower laptop, not of the changes, so it isn't scored. The models'
-"fail" calls would have looked right for the wrong reason. A first attempt at `launch-e300-2` was
-also cut by the lid closing mid-run. The recorder now refuses to record on battery and voids a run
-the machine slept through. The three runs are to be recorded again on mains power.
+| run | change | measured | ordinary-day model | with the load test | CPU rule |
+|---|---|---|---|---|---|
+| `launch-e300-2` | 2 frontend replicas instead of 3 | **pass**, 0 min | fail ❌ (low confidence) | fail ❌ | fail ❌ |
+| `launch-e300-3-400` | 3 frontend replicas at 400m instead of 500m | **pass**, 0 min | fail ❌ (low confidence) | inconclusive | fail ❌ |
+| `launch-e300-catalog125` | product-catalog at 125m instead of 250m | not yet recorded validly | fail (low confidence) | pass | fail |
+
+**Both scored runs were wrong, for the model and for the rule, and the cause is drift.** The
+model was calibrated on the ordinary day recorded on 13 October. Between then and these runs (18
+October), the frontend's CPU per request at the launch-day peak fell from about 3.0 ms (`launch`,
+13 October; 3.65 ms in `launch-2`) to about 2.0–2.2 ms (`launch-e300-b`, `launch-e300-2`,
+`launch-e300-3-400`, and `launch-3-400` on 17 October). The same traffic took about 30% less CPU,
+so 2 replicas, or 3 at 400m, carried what the model read as an overload. Both models and the rule
+are anchored to the older cost. Nothing in the tool noticed that the system had changed under its
+calibration. The lesson for the product: before a verdict, compare recent telemetry with the
+calibration window, and say "recalibrate" when they disagree. The cause of the drift itself (the
+laptop cluster, a warmed frontend, something else) is not established.
+
+**Two recordings were void and are not scored.** The first recording of all three changes ran on
+battery: the laptop went onto battery at 18:10, and macOS's Low Power Mode doubled CPU per request
+against the baseline recorded on mains power. A first attempt at `launch-e300-2` was also cut by
+the lid closing mid-run. The recorder now refuses to start on battery and voids a run the machine
+slept through. That guard voided the re-recording of `launch-e300-catalog125`: the lid closed at
+11:18 on 18 October, and the run took 56 minutes for a 40-minute day. It is to be recorded again.
 
 ## A second system: PetClinic
 
