@@ -274,9 +274,9 @@ hindcast agent verify_change @change.json          # or - to read stdin
 
 Hosts that surface MCP prompts get two commands:
 
-- **verify-infra-change** `change`: model_status, connect and collect if needed, calibrate, verify,
-  and answer in a fixed order (verdict and confidence, money with its basis, SLO minutes, worst
-  moment, what would make it safer).
+- **verify-infra-change** `change`: model_status, connect and collect if needed, calibrate,
+  check_drift on a model more than a day old, verify, and answer in a fixed order (verdict and
+  confidence, money with its basis, SLO minutes, worst moment, what would make it safer).
 - **check-my-design** `design` `rps?` `budget?`: write a spec, verify_design, apply fixes until it
   passes.
 
