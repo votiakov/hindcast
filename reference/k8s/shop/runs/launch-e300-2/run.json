@@ -1,0 +1,13 @@
+{
+  "system": "shop",
+  "run": "launch-e300-2",
+  "start": 1792307458,
+  "end": 1792309858,
+  "day": "13/Jul/1995",
+  "minutes": 40,
+  "scale": "x83",
+  "steps": null,
+  "manifests": "variants/e300-frontend-2.yaml",
+  "note": null,
+  "recordedAt": "2026-10-18T07:51:45.403Z"
+}
