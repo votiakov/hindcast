@@ -54,6 +54,9 @@ pub fn check_drift(ws: &Workspace, o: &Value) -> Result<Value, String> {
     let fitted = g(&mv, &["fittedOn"]).clone();
     let (fs, fe) = (n(&fitted, &["start"]), n(&fitted, &["end"]));
     let mut notes: Vec<String> = vec![];
+    if o.get("dataset").is_some() && o.get("last").is_some() {
+        return Err("check_drift: dataset or last, not both (last is how much to collect when there is no dataset file)".into());
+    }
     // the recent window: a file, or collected from the connection into its own directory
     let (rv, from) = match o.get("dataset").and_then(|x| x.as_str()) {
         Some(p) => (serde_json::from_str::<Value>(&std::fs::read_to_string(p).map_err(|e| format!("{}: {}", p, e))?).map_err(|e| format!("{}: {}", p, e))?, format!("the dataset {}", p)),
@@ -194,6 +197,7 @@ mod tests {
         std::fs::write(&recent, crate::convert::js_stringify(&dataset(t0 + 86400.0 * 4.0, 60, 0.0013))).unwrap();
         // no recent window: nothing connected, no file
         assert!(check_drift(&ws, &json!({})).unwrap_err().starts_with("no recent window: connect_telemetry"));
+        assert!(check_drift(&ws, &json!({ "dataset": "x.json", "last": "1h" })).unwrap_err().starts_with("check_drift: dataset or last, not both"));
         let out = check_drift(&ws, &json!({ "dataset": recent.to_string_lossy() })).unwrap();
         assert_eq!(out["verdict"], "drifted", "{}", crate::cli::util::pretty(&out));
         assert_eq!(out["drifted"][0]["service"], "api");
