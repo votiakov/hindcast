@@ -22,6 +22,8 @@ These pages are the reference behind it.
 | [tools.md](tools.md) | CLI, MCP server, app links, the Analysis panel |
 | [vscode.md](vscode.md) | The VS Code extension: the live board beside a spec, the engine's checks as squiggles, p99, errors and $/month in the status bar, the audit as a report |
 | [content.md](content.md) | Authoring lessons, comparison scenarios and studio episodes; rendering video; brands and themes |
+| [findings.md](findings.md) | What the October 2026 validation found: the pass/fail verdict alone matches a plain CPU check; what Hindcast sees that the check can't |
+| [roadmap.md](roadmap.md) | Planned improvements that follow from the findings |
 
 Start with **agents.md** if an AI agent will do the work, **guide.md** for the app, **use-cases.md** to find your question, **backtest.md** to test a change against your own production data, **architecture.md** if you want to change code, **spec.md** if you want to model a system,
 and **content.md** if you want to make lessons or videos.

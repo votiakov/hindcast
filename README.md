@@ -156,7 +156,9 @@ saying the change goes past what the history showed, and to load-test it instead
 [Video: the node loss, replayed and then done for real](docs/media/node-loss.mp4) (43 s).
 
 So the model is wrong less often than the rule because it abstains more, not because it's right
-more often. When a change pushes a service past anything the history showed, the answer comes
+more often. Where it gave a pass or a fail, the rule gave the same answer every time: on capacity
+changes like these, the verdict alone adds nothing over a CPU ratio. What it adds is in
+[docs/findings.md](docs/findings.md), and what comes next in [docs/roadmap.md](docs/roadmap.md). When a change pushes a service past anything the history showed, the answer comes
 back low confidence with "load-test before trusting it", and `hindcast loadtest plan` (the
 `plan_load_test` tool) writes that load test: which services to drive and to what rate, a k6
 script that stops itself at the SLO, and the calls that read it back in. Those abstentions are not yet a skill:
