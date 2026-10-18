@@ -1,0 +1,273 @@
+{
+ "window": {
+  "start": "2026-10-18T11:54:00Z",
+  "end": "2026-10-18T12:34:30Z",
+  "stepS": 30,
+  "buckets": 81,
+  "hours": 0.7
+ },
+ "presets": [
+  "otel-spanmetrics",
+  "ingress-nginx",
+  "kubernetes"
+ ],
+ "entry": [
+  "frontend"
+ ],
+ "ignored": [],
+ "observability": [
+  "jaeger",
+  "otel-collector"
+ ],
+ "traces": "3,019 traces from jaeger through frontend (40 queries)",
+ "services": 13,
+ "endpoints": [
+  "frontend GET /",
+  "frontend GET /api/cart",
+  "frontend GET /api/data",
+  "frontend GET /api/products/{id}",
+  "frontend GET /api/recommendations",
+  "frontend POST /api/cart",
+  "frontend POST /api/checkout"
+ ],
+ "coverage": [
+  {
+   "service": "ad",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 1
+  },
+  {
+   "service": "cart",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 1
+  },
+  {
+   "service": "checkout",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 1
+  },
+  {
+   "service": "currency",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 1
+  },
+  {
+   "service": "email",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 1
+  },
+  {
+   "service": "frontend",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 1
+  },
+  {
+   "service": "payment",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 1
+  },
+  {
+   "service": "product-catalog",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 1
+  },
+  {
+   "service": "quote",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 1
+  },
+  {
+   "service": "recommendation",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 1
+  },
+  {
+   "service": "shipping",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 1
+  },
+  {
+   "service": "flagd",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 0.44
+  },
+  {
+   "service": "valkey-cart",
+   "has": [
+    "rps",
+    "errorRate",
+    "p99Ms",
+    "cpuCores",
+    "cpuLimitCores",
+    "replicas",
+    "memoryBytes",
+    "traces"
+   ],
+   "missing": [],
+   "filled": 0.58
+  }
+ ],
+ "emptyQueries": [],
+ "imported": [
+  "prometheus rps (891 points)",
+  "prometheus errorRate (891 points)",
+  "prometheus p50Ms (891 points)",
+  "prometheus p99Ms (891 points)",
+  "prometheus meanMs (891 points)",
+  "prometheus rps (729 points)",
+  "prometheus errorRate (729 points)",
+  "prometheus rps (162 points)",
+  "prometheus errorRate (81 points)",
+  "prometheus p99Ms (81 points)",
+  "prometheus meanMs (81 points)",
+  "prometheus cpuCores (1,215 points)",
+  "prometheus cpuLimitCores (1,215 points)",
+  "prometheus replicas (1,215 points)",
+  "prometheus netTxBps (1,215 points)",
+  "prometheus memoryBytes (1,215 points)",
+  "prometheus memoryMaxBytes (1,215 points)",
+  "prometheus memoryLimitBytes (1,215 points)",
+  "prometheus cpuRequestCores (1,215 points)",
+  "prometheus memoryRequestBytes (1,215 points)",
+  "prometheus clusterNodes (81 points)",
+  "prometheus clusterNodeCpu (81 points)",
+  "prometheus clusterNodeMemoryBytes (81 points)",
+  "prometheus clusterRequestedCpu (81 points)",
+  "prometheus clusterRequestedMemoryBytes (81 points)",
+  "prometheus cpuThrottled (1,053 points)",
+  "traces: 3,019 requests, 13 services, 7 endpoints (28,659 points)",
+  "frontend: dropped \"frontend GET\", \"frontend POST\" — the outer server span of requests already counted under their routes",
+  "frontend: endpoint rates scaled to the edge's count — the endpoint series had counted 625% of the requests the edge saw"
+ ],
+ "bill": null,
+ "warnings": [
+  "span names on frontend carry raw URLs (71 span-name series for 9 endpoints): per-endpoint latency from span metrics is unusable, so it comes from the traces' call paths instead. Naming server spans by route (http.route) fixes it at the source",
+  "left out as observability tooling, not part of the system: jaeger, otel-collector. To count one in, connect_telemetry with system.include [\"jaeger\"] (quickstart: --include jaeger)",
+  "no bill: calibrate_model prices each service as its requests' share of a node, at the node size's on-demand list price"
+ ],
+ "files": {
+  "manifest": "/Users/andrii/Workspace/votiakov/system-design-sandbox/.claude/worktrees/shop-r7/reference/k8s/shop/runs/history-b/workspace/telemetry/hindcast.import.yaml",
+  "dataset": "/Users/andrii/Workspace/votiakov/system-design-sandbox/.claude/worktrees/shop-r7/reference/k8s/shop/runs/history-b/workspace/dataset.json"
+ },
+ "next": "calibrate_model"
+}

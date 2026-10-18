@@ -131,6 +131,10 @@ const SHOP_CASES: Case[] = [
   { run: 'launch-e300-2', asBuilt: 'launch-email300', asBuiltAlso: 'launch-e300-b', baseline: 'variants/email-300mi.yaml', head: 'variants/e300-frontend-2.yaml', scale: LAUNCH, oos: 6, question: '2 frontend replicas instead of 3, on launch day, with email at 300 MiB?' },
   { run: 'launch-e300-3-400', asBuilt: 'launch-email300', asBuiltAlso: 'launch-e300-b', baseline: 'variants/email-300mi.yaml', head: 'variants/e300-frontend-3-400m.yaml', scale: LAUNCH, cpu: 0.4, oos: 6, question: '3 frontend replicas at 400m instead of 500m, on launch day, with email at 300 MiB?' },
   { run: 'launch-e300-catalog125', naive: 'all', asBuilt: 'launch-email300', asBuiltAlso: 'launch-e300-b', baseline: 'variants/email-300mi.yaml', head: 'variants/e300-catalog-125m.yaml', scale: LAUNCH, oos: 6, service: 'product-catalog', name: 'product-catalog at 125m', question: 'product-catalog at 125m instead of 250m, on launch day, with email at 300 MiB?' },
+  // round 7: the same three changes, judged by the model recalibrated on history-b (the headline for this round)
+  { run: 'launch-r7-2', asBuilt: 'launch-email300', asBuiltAlso: 'launch-e300-b', baseline: 'variants/email-300mi.yaml', head: 'variants/e300-frontend-2.yaml', scale: LAUNCH, oos: 7, question: '2 frontend replicas instead of 3, on launch day, with email at 300 MiB (recalibrated)?' },
+  { run: 'launch-r7-3-400', asBuilt: 'launch-email300', asBuiltAlso: 'launch-e300-b', baseline: 'variants/email-300mi.yaml', head: 'variants/e300-frontend-3-400m.yaml', scale: LAUNCH, cpu: 0.4, oos: 7, question: '3 frontend replicas at 400m instead of 500m, on launch day, with email at 300 MiB (recalibrated)?' },
+  { run: 'launch-r7-catalog125', naive: 'all', asBuilt: 'launch-email300', asBuiltAlso: 'launch-e300-b', baseline: 'variants/email-300mi.yaml', head: 'variants/e300-catalog-125m.yaml', scale: LAUNCH, oos: 7, service: 'product-catalog', name: 'product-catalog at 125m', question: 'product-catalog at 125m instead of 250m, on launch day, with email at 300 MiB (recalibrated)?' },
 ];
 const AS_BUILT_CPU = 0.5;
 const SHOP = (): Evaluation => ({
@@ -142,13 +146,15 @@ const SHOP = (): Evaluation => ({
   watch: 'frontend',
   publish: true,
   readme: join(ROOT, 'README.md'),
-  rounds: { 1: 'added after the throttle model was designed on the runs above', 4: 'chosen after the leak, JIT warm-up, the failed-request gate and holdout confidence were added: three changes away from the frontend, in .NET, Python and Go', 5: 'chosen after the as-built launch day was recorded twice; a change fails only if it is worse than both recordings (launch and launch-b)', 6: 'stacked on email at 300 MiB, so the leak that decided rounds 4 and 5 cannot stall checkout; each change is judged against two recordings of that baseline (launch-email300 and launch-e300-b)' },
+  rounds: { 1: 'added after the throttle model was designed on the runs above', 4: 'chosen after the leak, JIT warm-up, the failed-request gate and holdout confidence were added: three changes away from the frontend, in .NET, Python and Go', 5: 'chosen after the as-built launch day was recorded twice; a change fails only if it is worse than both recordings (launch and launch-b)', 6: 'stacked on email at 300 MiB, so the leak that decided rounds 4 and 5 cannot stall checkout; each change is judged against two recordings of that baseline (launch-email300 and launch-e300-b)', 7: 'round 6\'s three changes asked again of a model recalibrated on the ordinary day recorded on 18 October (history-b), after round 6 found the system had drifted; the headline is the fresh model' },
 });
 
 let SYS = '';
 let EV: Evaluation = SHOP();
 let CASES: Case[] = SHOP_CASES;
 let NS = 'shop';
+/** the ordinary day the model being scored was calibrated on, and whose window its verdicts replay */
+let HISTORY = 'history';
 /** the keys the replica series are kept under: the shop's name its frontend */
 const repKey = () => (EV.watch === 'frontend' ? 'frontendReplicas' : 'replicas');
 const runDir = (r: string) => join(SYS, 'runs', r);
@@ -402,7 +408,7 @@ function forecast(c: Case, ws: Workspace, base: string) {
   const from = baseline ?? base;
   const traffic = c.scale !== 1 ? { scale: c.scale } : undefined;
   // the replay is the ordinary day, whatever else the model learned from (a load test)
-  const window = { start: meta('history').start + SETTLE_S, end: meta('history').end };
+  const window = { start: meta(HISTORY).start + SETTLE_S, end: meta(HISTORY).end };
   const exAnte = agent('verify_change', ws, { changes: [head ? { kubernetes: { base: from, head } } : { strategy: { name: 'as built', changes: [] } }], ...(baseline ? { baseline: { kubernetes: { base, head: baseline } } } : {}), traffic, window, report: false });
   const res = exAnte.results[0];
   const asBuilt = c.run === c.asBuilt;
@@ -445,7 +451,8 @@ type EarlierRow = { run: string; measured: { p99Ms: number; errorRate: number; m
 const EARLIER: Record<string, Record<string, EarlierRow>> = {};
 
 /** score one calibrated model on every recorded case */
-async function score(label: string, ws: Workspace, base: string, evalDir: string, ordinaryDay: Dataset) {
+async function score(label: string, ws: Workspace, base: string, evalDir: string, ordinaryDay: Dataset, historyRun = 'history') {
+  HISTORY = historyRun;
   const m = reviveModel(ws.readJson<Model>('model.json'));
   // the naive estimate reads the ordinary day's CPU, whatever the model was calibrated on
   const history = ordinaryDay;
@@ -590,6 +597,13 @@ async function main() {
     const tested = await calibrated('load-tested', ['history', EV.loadTest], evalDir, cfg.slo);
     models.push({ id: 'load-tested', label: `calibrated on the ordinary day and ${EV.loadTestLabel}`, rows: await score('load-tested', tested.ws, base, evalDir, calm.ws.readJson<Dataset>('dataset.json')), trust: tested.trust });
   }
+  // the ordinary day recorded again later (round 7): a model recalibrated after the system drifted
+  const FRESH = 'history-b';
+  if (recorded(FRESH)) {
+    const fresh = await calibrated('fresh', [FRESH], evalDir, cfg.slo);
+    models.push({ id: 'fresh', label: `calibrated on the ordinary day recorded again (${FRESH}), after the drift`, rows: await score('fresh', fresh.ws, base, evalDir, fresh.ws.readJson<Dataset>('dataset.json'), FRESH), trust: fresh.trust });
+  }
+  HISTORY = 'history';
 
   // --predict: write down what each model says about the out-of-sample runs before they are recorded
   if (process.argv.includes('--predict')) {
@@ -597,6 +611,7 @@ async function main() {
     const out = { madeAt: new Date().toISOString(), commit: spawnSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).stdout.trim(), models: {} as Record<string, Record<string, Forecast>> };
     for (const mod of models) {
       const ws = new Workspace(join(evalDir, mod.id));
+      HISTORY = mod.id === 'fresh' ? 'history-b' : 'history';
       out.models[mod.id] = {};
       for (const c of CASES.filter((x) => x.oos === round)) {
         out.models[mod.id][c.run] = forecast(c, ws, base);
