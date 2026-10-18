@@ -444,6 +444,8 @@ Each result:
     "incidents": [ … ], "endpointsWorse": [ … ]
   },
   "headroom": {"beforeRps": 5.3, "afterRps": 5.3, "limitedBy": "errors that grow with load (frontend GET /dispatch: +0.56% per req/s)", "historyPeakRps": 10.7},
+  // the plain CPU ratio beside the verdict, with no model in it (said in `reasons` when they differ)
+  "cpuCheck": {"verdict": "pass", "service": "route", "historyPeakUtil": 0.14, "predictedPeakUtil": 0.14, "load": 1, "before": {"replicas": 1, "cpu": 0.5}, "after": {"replicas": 1, "cpu": 0.5}},
   "confidence": {
     "level": "low",                        // high | medium | low
     "services": [{"service": "route", "touched": false, "fit": "good", "historyPeakUtil": 0.14, "predictedPeakUtil": 0.41, "basis": "beyond anything the history showed"}, {"service": "mysql", "touched": false, "fit": "unexplained", "historyPeakUtil": 1.19, "predictedPeakUtil": 1.5, "basis": "near a limit the history reached"}],
@@ -472,8 +474,21 @@ And for a human:
   them (the reason names the count and the budget). `gate` in the answer states both.
 - **inconclusive**: the median passes but the worst 10% of capacity draws don't, *or* confidence is
   low, *or* the change cuts headroom below traffic the system has already seen. `leans` says which
-  way the median replay went (`pass` or `fail`): what the backtest would say if it trusted itself.
+  way the median replay went: what the backtest would say if it trusted itself. A median that fails
+  is a fail, so an inconclusive verdict always leans `pass`; the cross-check below is the other
+  reading to weigh it against.
 - **pass**: otherwise.
+
+Beside every verdict, `cpuCheck` is the plain CPU-ratio check a spreadsheet makes, with no model in
+it: each service's busiest CPU in the replayed window as a share of its limit, scaled by the replayed
+load and by its replicas × CPU limit before over after the change (an autoscaler at its maximum).
+Only services that serve requests count (a tracing backend's CPU doesn't scale with them); the worst
+decides, under 100% it passes. Where the verdict is inconclusive, or the check disagrees with it, the
+reasons say so: "cross-check: a plain CPU ratio (no model in it) says fail: frontend's busiest CPU in
+the window was 38% of its limit; at 2.22× the load, on 2 × 500m instead of 3 × 500m, that is 126%".
+On the 27 Kubernetes reference runs with their verdicts committed before they ran, a rule like this
+was right 18 times and wrong 9 ([reference/k8s](../reference/k8s/README.md)): it never abstains, so
+read it as which way the plainest evidence points, not as a second verdict.
 
 #### How confidence is decided
 

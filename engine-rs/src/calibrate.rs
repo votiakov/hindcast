@@ -51,6 +51,12 @@ pub struct CalibrateOptions {
 const SERVER_GRID: [f64; 14] = [1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 16.0, 24.0, 32.0, 48.0, 64.0, 128.0, 256.0];
 const VARIABILITY: [f64; 8] = [0.3, 0.4, 0.5, 0.65, 0.8, 1.0, 1.3, 1.7];
 const THROTTLE_COLLAPSE: f64 = 0.25;
+/// the share of its memory limit at which a container counts as at the limit (the ordinary day's leaking
+/// email peaked at 95% without trouble)
+const MEMORY_AT_LIMIT: f64 = 0.98;
+/// buckets without data that end a container's life for the leak fit: a missed scrape or two doesn't,
+/// the gap between two windows of a history does
+const LIFE_GAP: usize = 3;
 const COMPACT_ABOVE: usize = 1000;
 const GIB: f64 = 1073741824.0;
 /// EC2 on-demand, us-east-1, general purpose (m6i/m7i), by allocatable size
@@ -172,7 +178,10 @@ fn mape(pred: &[f64], obs: &[Num], floor: f64) -> Option<f64> {
         if !p.is_finite() {
             continue;
         }
-        s += (p - o).abs() / floor.max(o.abs());
+        // a bucket missed by more than its own size counts as missed, not as many times missed: one
+        // queue the replay builds near capacity (2 s against 8 ms measured) would otherwise outweigh a
+        // history of buckets it reproduces
+        s += ((p - o).abs() / floor.max(o.abs())).min(1.0);
         k += 1;
     }
     if k > 0 {
@@ -783,6 +792,15 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
             })
             .collect();
         let mem_vals: Vec<f64> = mem_used.iter().flatten().copied().collect();
+        // a container at its memory limit is censored: it can't show more, and while it sits there it is
+        // collecting garbage or about to be killed. Its memory there is left out of the memory fits; where
+        // the CPU quota pins it as well (thrashing), so are its CPU and throttling from the capacity
+        // readings: they are the memory's, not the requests'
+        let limit_reached = |i: usize| matches!((mem_used[i], mem_limit), (Some(u), Some(ml)) if ml > 0.0 && u >= ml * MEMORY_AT_LIMIT);
+        // …unless it never left it: then the limit is all the history knows of its memory
+        let censored = (0..n).filter(|&i| mem_used[i].is_some() && !limit_reached(i)).count() >= 5;
+        let at_mem_limit = |i: usize| censored && limit_reached(i);
+        let thrashing = |i: usize| at_mem_limit(i) && vals(s.cpu_throttled.as_ref(), i).unwrap_or(0.0) >= THROTTLE_COLLAPSE;
 
         let lam: Vec<Num> = (0..n).map(|i| vals(s.rps.as_ref(), i)).collect();
         let per_rep: Vec<f64> = (0..n).map(|i| match lam[i] {
@@ -792,15 +810,23 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
         let self_obs: Vec<Num> = (0..n).map(|i| vals(s.self_mean_ms.as_ref(), i).or(if shape.is_some() { None } else { vals(s.mean_ms.as_ref(), i) })).collect();
         let self_p99_obs: Vec<Num> = (0..n).map(|i| vals(s.self_p99_ms.as_ref(), i).or(if shape.is_some() { None } else { vals(s.p99_ms.as_ref(), i) })).collect();
 
-        // CPU per request (per replica)
+        // CPU per request (per replica): a cost of the code, not of how it is deployed, so it is read
+        // off every configuration the history holds (per replica, one with 2 replicas compares with one
+        // with 3), not only the one the latency is fitted on. Buckets throttled past the collapse are
+        // left out: there the quota, not the requests, set the CPU
         let mut cpu: Option<CpuModel> = None;
         let mut cpu_se = f64::INFINITY;
         if s.cpu_cores.is_some() && !hosted {
+            let every = d.services.get(id).unwrap_or(&empty);
+            let reps_every = replicas_run(id);
             let (mut xs, mut ys) = (vec![], vec![]);
             for i in 0..n {
-                let c = vals(s.cpu_cores.as_ref(), i);
-                let r = rep_at(i).unwrap_or(replicas);
-                let (c, l) = match (c, lam[i]) {
+                let c = vals(every.cpu_cores.as_ref(), i);
+                let r = vals(Some(&reps_every), i).unwrap_or(replicas);
+                if vals(every.cpu_throttled.as_ref(), i).unwrap_or(0.0) >= THROTTLE_COLLAPSE {
+                    continue;
+                }
+                let (c, l) = match (c, vals(every.rps.as_ref(), i)) {
                     (Some(c), Some(l)) if r > 0.0 => (c, l),
                     _ => continue,
                 };
@@ -820,48 +846,80 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
         let mut memory: Option<MemoryModel> = None;
         if mem_vals.len() >= 5 && !hosted && (0..n).any(|i| mem_used[i].is_some() && lam[i].is_some()) {
             let (mut xs, mut ys) = (vec![], vec![]);
+            let mut peak = f64::NEG_INFINITY;
+            // the buckets at the limit, kept for the spike: what they show is at least what was there
+            let mut at_limit: Vec<(f64, f64)> = vec![];
             for i in 0..n {
                 let (y, _) = match (mem_used[i], lam[i]) {
                     (Some(y), Some(l)) => (y, l),
                     _ => continue,
                 };
+                peak = peak.max(y);
+                if at_mem_limit(i) {
+                    at_limit.push((per_rep[i], y));
+                    continue;
+                }
                 xs.push(per_rep[i]);
                 ys.push(y);
             }
             let fit = if xs.len() >= 5 { regress(&xs, &ys) } else { None };
             // a leak: memory that follows the requests a container has served since it started, not
-            // the load — the count restarts where the working set drops (the container did)
-            let (mut served, mut cs, mut ms) = (0.0, vec![], vec![]);
-            let mut last: Option<f64> = None;
+            // the load. A container's life ends where its working set drops (it restarted) or where the
+            // data stops for a while (between the windows of a history, what it served is unknown); each
+            // life starts from its own working set, so the leak is the slope they share, read within each
+            let mut lives: Vec<(Vec<f64>, Vec<f64>)> = vec![];
+            let (mut served, mut last, mut missing) = (0.0, None::<f64>, LIFE_GAP);
             for i in 0..n {
                 let (y, l) = match (mem_used[i], lam[i]) {
                     (Some(y), Some(l)) => (y, l),
-                    _ => continue,
+                    _ => {
+                        missing += 1;
+                        continue;
+                    }
                 };
-                if matches!(last, Some(p) if y < p * 0.7) {
+                if missing >= LIFE_GAP || matches!(last, Some(p) if y < p * 0.7) {
                     served = 0.0;
+                    lives.push((vec![], vec![]));
                 }
+                missing = 0;
                 last = Some(y);
                 let r = rep_at(i).unwrap_or(replicas).max(1.0);
                 served += l / r * d.step_s;
-                cs.push(served);
-                ms.push(y);
+                if !at_mem_limit(i) {
+                    let life = lives.last_mut().unwrap();
+                    life.0.push(served);
+                    life.1.push(y);
+                }
             }
+            let mean = |v: &[f64]| v.iter().sum::<f64>() / v.len().max(1) as f64;
+            let lives: Vec<(Vec<f64>, Vec<f64>)> = lives.into_iter().filter(|l| !l.0.is_empty()).collect();
+            let (cs, ms): (Vec<f64>, Vec<f64>) = lives.iter().flat_map(|(c, m)| {
+                let (mc, mm) = (mean(c), mean(m));
+                c.iter().zip(m).map(move |(c, m)| (c - mc, m - mm))
+            }).unzip();
+            let served_max = lives.iter().flat_map(|l| l.0.iter().copied()).fold(0.0, f64::max);
             let leak_fit = if cs.len() >= 12 { regress(&cs, &ms) } else { None };
+            // each life's working set when it started, on the shared slope
+            let starts: Vec<f64> = match &leak_fit {
+                Some(lf) => lives.iter().map(|(c, m)| mean(m) - lf.slope * mean(c)).collect(),
+                None => vec![],
+            };
+            let leak_base = median(&starts);
             let leaks = match (&leak_fit, &fit) {
-                (Some(lf), f) => lf.slope > 0.0 && lf.r2 >= 0.8 && lf.r2 > f.as_ref().map(|f| f.r2).unwrap_or(0.0) + 0.2 && lf.slope * cs.iter().copied().fold(0.0, f64::max) > 0.15 * lf.intercept.max(1e-9),
+                (Some(lf), f) => lf.slope > 0.0 && lf.r2 >= 0.8 && lf.r2 > f.as_ref().map(|f| f.r2).unwrap_or(0.0) + 0.2 && lf.slope * served_max > 0.15 * leak_base.max(1e-9),
                 _ => false,
             };
             let follows = !leaks && matches!(&fit, Some(f) if f.slope > 0.0 && f.r2 >= 0.3);
             let (base, per_req, leak) = if leaks {
-                (leak_fit.as_ref().unwrap().intercept.max(0.0), 0.0, leak_fit.as_ref().unwrap().slope)
+                (leak_base.max(0.0), 0.0, leak_fit.as_ref().unwrap().slope)
             } else if follows {
                 (fit.as_ref().unwrap().intercept.max(0.0), fit.as_ref().unwrap().slope, 0.0)
             } else {
                 (median(&ys), 0.0, 0.0)
             };
-            let spike = if leaks { js_max(0.0, ms.iter().zip(&cs).map(|(y, c)| y - (base + leak * c))) } else { js_max(0.0, ys.iter().zip(&xs).map(|(y, x)| y - (base + per_req * x))) };
-            let m = MemoryModel { base, per_req, spike, peak: Some(js_max(f64::NEG_INFINITY, ys.iter().copied())), limit: mem_limit, r2: if leaks { leak_fit.as_ref().unwrap().r2 } else { fit.as_ref().map(|f| f.r2).unwrap_or(0.0) }, seen_to: Some(js_max(f64::NEG_INFINITY, xs.iter().copied())), leak };
+            // above the line: within its own life, for a leak
+            let spike = if leaks { js_max(0.0, lives.iter().zip(&starts).flat_map(|((c, m), s0)| c.iter().zip(m).map(move |(c, y)| y - (s0 + leak * c)))) } else { js_max(0.0, ys.iter().zip(&xs).map(|(y, x)| (*x, *y)).chain(at_limit.iter().copied()).map(|(x, y)| y - (base + per_req * x))) };
+            let m = MemoryModel { base, per_req, spike, peak: Some(peak), limit: mem_limit, r2: if leaks { leak_fit.as_ref().unwrap().r2 } else { fit.as_ref().map(|f| f.r2).unwrap_or(0.0) }, seen_to: Some(js_max(f64::NEG_INFINITY, xs.iter().copied().chain(at_limit.iter().map(|p| p.0)))), leak };
             if leaks {
                 let to_limit = truthy(mem_limit).map(|ml| ((ml - base - spike) / leak).max(0.0));
                 notes.push(format!(
@@ -895,7 +953,7 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
                     let th = vals(s.cpu_throttled.as_ref(), i);
                     let r = rep_at(i).unwrap_or(replicas);
                     let (c, th) = match (c, th) {
-                        (Some(c), Some(th)) if r > 0.0 && th >= 0.002 && th < 0.98 => (c, th),
+                        (Some(c), Some(th)) if r > 0.0 && th >= 0.002 && th < 0.98 && !thrashing(i) => (c, th),
                         _ => continue,
                     };
                     us.push(c / (r * cl));
@@ -1026,7 +1084,7 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
                     let c = vals(Some(cc), i);
                     let r = rep_at(i).unwrap_or(replicas);
                     if let Some(c) = c {
-                        if r > 0.0 {
+                        if r > 0.0 && !thrashing(i) {
                             cpu_peak = js_max(cpu_peak, [c / (r * cl)]);
                         }
                     }
@@ -1036,7 +1094,7 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
                 let c = vals(s.cpu_cores.as_ref(), i);
                 let r = rep_at(i).unwrap_or(replicas);
                 match (c, truthy(cpu_limit)) {
-                    (Some(c), Some(cl)) if r > 0.0 => c / (r * cl) >= 0.95,
+                    (Some(c), Some(cl)) if r > 0.0 && !thrashing(i) => c / (r * cl) >= 0.95,
                     _ => false,
                 }
             };
@@ -1116,7 +1174,7 @@ pub fn calibrate(d: &Dataset, options: &CalibrateOptions) -> Model {
                 let mut broke = f64::INFINITY;
                 let mut collapse: Vec<f64> = vec![];
                 let mut collapse_pinned = 0usize;
-                let mine = |i: usize| overloaded[i] && self_obs[i].unwrap_or(0.0) > (4.0 * s_low).max(s_low + 200.0);
+                let mine = |i: usize| overloaded[i] && !thrashing(i) && self_obs[i].unwrap_or(0.0) > (4.0 * s_low).max(s_low + 200.0);
                 for i in 1..n {
                     let r = rep_at(i).unwrap_or(replicas);
                     let k = vals(done, i);
@@ -1867,5 +1925,80 @@ mod endpoint_match_tests {
         let tied = vec![(&framework, &a), (&stray, &c)];
         assert_eq!(traced_endpoint(&tied, "frontend GET /api/products/{id}"), Some(1));
         assert_eq!(traced_endpoint(&shapes, "frontend GET /api/cart"), None);
+    }
+}
+
+#[cfg(test)]
+mod history_of_windows_tests {
+    use super::*;
+
+    const MIB: f64 = 1048576.0;
+
+    fn dataset(s: ServiceSeries, n: usize) -> Dataset {
+        Dataset { name: "t".into(), start: 1_790_000_000.0, step_s: 30.0, n: n as f64, services: [("api".to_string(), s)].into_iter().collect(), ..Default::default() }
+    }
+
+    fn calibrated(d: &Dataset) -> ServiceModel {
+        calibrate(d, &CalibrateOptions { bootstrap: Some(0.0), ..Default::default() }).services["api"].clone()
+    }
+
+    #[test]
+    fn cpu_per_request_is_read_off_every_configuration() {
+        // 5 h at 3 replicas with the load swinging 20–80 req/s per replica, then 3 h at 1 replica on a
+        // steady 50: 4 ms of CPU per request on 20 millicores of base throughout. The latency is fitted on
+        // the latest configuration, whose steady load alone can't place a line
+        let n = 960;
+        let reps: Vec<Num> = (0..n).map(|i| Some(if i < 600 { 3.0 } else { 1.0 })).collect();
+        let rps: Vec<Num> = (0..n).map(|i| Some(if i < 600 { 3.0 * (50.0 + 30.0 * (i as f64 / 40.0).sin()) } else { 50.0 })).collect();
+        let mut cpu: Vec<Num> = (0..n).map(|i| Some(reps[i].unwrap() * 0.02 + 0.004 * rps[i].unwrap())).collect();
+        let mut throttled: Vec<Num> = vec![Some(0.01); n];
+        // a few buckets pinned by the quota: CPU at the limit, whatever the requests cost
+        for i in [100, 101, 102, 103] {
+            cpu[i] = Some(3.0 * 0.5);
+            throttled[i] = Some(0.6);
+        }
+        let s = ServiceSeries { rps: Some(rps), cpu_cores: Some(cpu), cpu_limit_cores: Some(vec![Some(0.5); n]), replicas: Some(reps), cpu_throttled: Some(throttled), self_mean_ms: Some(vec![Some(10.0); n]), ..Default::default() };
+        let m = calibrated(&dataset(s, n));
+        let c = m.cpu.unwrap();
+        assert!((c.per_req - 0.004).abs() < 1e-6 && (c.base - 0.02).abs() < 1e-4, "{:?}", (c.base, c.per_req));
+        assert_eq!(m.replicas, 1.0);
+    }
+
+    #[test]
+    fn a_leak_is_read_within_each_container_life() {
+        // memory +0.5 MiB per 1,000 requests a container serves, over three lives that start at 60, 75
+        // and 50 MiB: the second after a gap in the data (another window of the history, the container
+        // still running), the third after a restart. The second reaches its 128 MiB limit and sits there
+        let n = 600;
+        let rps: Vec<Num> = (0..n).map(|i| if (200..210).contains(&i) { None } else { Some(20.0 + 10.0 * (i as f64 / 15.0).sin()) }).collect();
+        let (mut served, mut mem): (f64, Vec<Num>) = (0.0, vec![]);
+        for i in 0..n {
+            let start = if i < 200 { 60.0 } else if i < 400 { 75.0 } else { 50.0 };
+            if i == 210 || i == 400 {
+                served = 0.0;
+            }
+            served += rps[i].unwrap_or(0.0) * 30.0;
+            let wobble = 0.3 * ((i * 7) % 5) as f64 - 0.6;
+            mem.push(rps[i].map(|_| (start + 0.5 * served / 1000.0 + wobble).min(128.0) * MIB));
+        }
+        assert!(mem[399].unwrap() >= 128.0 * MIB, "the second life reaches the limit");
+        let s = ServiceSeries { rps: Some(rps), replicas: Some(vec![Some(1.0); n]), memory_max_bytes: Some(mem), memory_limit_bytes: Some(vec![Some(128.0 * MIB); n]), self_mean_ms: Some(vec![Some(10.0); n]), ..Default::default() };
+        let m = calibrated(&dataset(s, n)).memory.unwrap();
+        let per_request = 0.5 / 1024.0 / 1000.0;
+        assert!((m.leak - per_request).abs() / per_request < 0.05, "{} against {}", m.leak, per_request);
+        // a fresh container's working set: the middle of the three starts
+        assert!((m.base * 1024.0 - 60.0).abs() < 2.0, "{} MiB", m.base * 1024.0);
+        assert!(m.r2 > 0.95 && m.peak == Some(128.0 / 1024.0), "{:?}", (m.r2, m.peak));
+    }
+
+    #[test]
+    fn a_bucket_missed_by_far_counts_once() {
+        // 99 buckets reproduced within 10%, one queue the replay builds that the history didn't have
+        let obs: Vec<Num> = vec![Some(10.0); 100];
+        let mut pred = vec![11.0; 100];
+        pred[50] = 3000.0;
+        let m = mape(&pred, &obs, 5.0).unwrap();
+        assert!((m - (99.0 * 0.1 + 1.0) / 100.0).abs() < 1e-9, "{}", m);
+        assert_eq!(status(Some(m)), "good");
     }
 }

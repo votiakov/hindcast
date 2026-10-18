@@ -188,6 +188,390 @@ export function runPlan(plan, traffic, opts) {
 }
 
 /**
+ * journeyRows(journey, names, focus?) → [[{ t, c }]]: a traced request's path as rows of text runs
+ * (src/ui/journey.ts), as `simulate --trace` and the trace_request tool print it
+ * @param {any} journey
+ * @param {any} names
+ * @param {string | null} [focus]
+ * @returns {any}
+ */
+export function journeyRows(journey, names, focus) {
+    var ptr0 = isLikeNone(focus) ? 0 : passStringToWasm0(focus, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len0 = WASM_VECTOR_LEN;
+    const ret = wasm.journeyRows(journey, names, ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * journeyVerdict(journey, names) → the one-line summary of a traced request
+ * @param {any} journey
+ * @param {any} names
+ * @returns {string}
+ */
+export function journeyVerdict(journey, names) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ret = wasm.journeyVerdict(journey, names);
+        var ptr1 = ret[0];
+        var len1 = ret[1];
+        if (ret[3]) {
+            ptr1 = 0; len1 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred2_0 = ptr1;
+        deferred2_1 = len1;
+        return getStringFromWasm0(ptr1, len1);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * analyze(spec, scenario, { runs, seed, des }) → Analysis: discrete-event Monte Carlo
+ * @param {any} spec
+ * @param {any} scenario
+ * @param {any} opts
+ * @returns {any}
+ */
+export function analyze(spec, scenario, opts) {
+    const ret = wasm.analyze(spec, scenario, opts);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * importTerraform(doc, name?) → { spec, assumptions, skipped, mapped } (src/spec/terraform.ts)
+ * @param {any} doc
+ * @param {string | null} [name]
+ * @returns {any}
+ */
+export function importTerraform(doc, name) {
+    var ptr0 = isLikeNone(name) ? 0 : passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len0 = WASM_VECTOR_LEN;
+    const ret = wasm.importTerraform(doc, ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * cacheHitRate(nodeData) → the share of reads a cache answers (its hitRate, or what its size and the
+ * data it fronts give)
+ * @param {any} d
+ * @returns {number}
+ */
+export function cacheHitRate(d) {
+    const ret = wasm.cacheHitRate(d);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0];
+}
+
+function passArrayJsValueToWasm0(array, malloc) {
+    const ptr = malloc(array.length * 4, 4) >>> 0;
+    for (let i = 0; i < array.length; i++) {
+        const add = addToExternrefTable0(array[i]);
+        getDataViewMemory0().setUint32(ptr + 4 * i, add, true);
+    }
+    WASM_VECTOR_LEN = array.length;
+    return ptr;
+}
+/**
+ * exportPlan(presets, { window?, selector?, entry?, namespaces? }) → [{ preset, query: { file, query, mapping } }]:
+ * the Prometheus queries `export-prometheus` and collect_telemetry run, for scripts that fetch them
+ * @param {string[]} presets
+ * @param {any} opts
+ * @returns {any}
+ */
+export function exportPlan(presets, opts) {
+    const ptr0 = passArrayJsValueToWasm0(presets, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.exportPlan(ptr0, len0, opts);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * podsByNodeQuery(namespaces) → the PromQL for pods per node per workload
+ * @param {string[]} namespaces
+ * @returns {string}
+ */
+export function podsByNodeQuery(namespaces) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passArrayJsValueToWasm0(namespaces, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.podsByNodeQuery(ptr0, len0);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * zoneOfProviderId("aws:///us-east-1a/i-…") → "us-east-1a" (AWS, GCP), else null
+ * @param {string | null} [id]
+ * @returns {string | undefined}
+ */
+export function zoneOfProviderId(id) {
+    var ptr0 = isLikeNone(id) ? 0 : passStringToWasm0(id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len0 = WASM_VECTOR_LEN;
+    const ret = wasm.zoneOfProviderId(ptr0, len0);
+    let v2;
+    if (ret[0] !== 0) {
+        v2 = getStringFromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    }
+    return v2;
+}
+
+/**
+ * workloadRe() → the pattern that takes a pod name back to its workload
+ * @returns {string}
+ */
+export function workloadRe() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.workloadRe();
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+}
+
+/**
+ * specToYaml(spec) → YAML as src/spec/yaml.ts writes it
+ * @param {any} spec
+ * @returns {string}
+ */
+export function specToYaml(spec) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ret = wasm.specToYaml(spec);
+        var ptr1 = ret[0];
+        var len1 = ret[1];
+        if (ret[3]) {
+            ptr1 = 0; len1 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred2_0 = ptr1;
+        deferred2_1 = len1;
+        return getStringFromWasm0(ptr1, len1);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * toYaml(value) → yaml.stringify(value) with the package's defaults
+ * @param {any} v
+ * @returns {string}
+ */
+export function toYaml(v) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ret = wasm.toYaml(v);
+        var ptr1 = ret[0];
+        var len1 = ret[1];
+        if (ret[3]) {
+            ptr1 = 0; len1 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred2_0 = ptr1;
+        deferred2_1 = len1;
+        return getStringFromWasm0(ptr1, len1);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * optimize(spec, scenario, opts) → the cheapest configuration that meets the SLO
+ * @param {any} spec
+ * @param {any} scenario
+ * @param {any} opts
+ * @returns {any}
+ */
+export function optimize(spec, scenario, opts) {
+    const ret = wasm.optimize(spec, scenario, opts);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * audit(spec, opts, onProgress?) → the failure audit: what breaks first, and what it costs
+ * @param {any} spec
+ * @param {any} opts
+ * @param {any} progress
+ * @returns {any}
+ */
+export function audit(spec, opts, progress) {
+    const ret = wasm.audit(spec, opts, progress);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+let cachedFloat64ArrayMemory0 = null;
+
+function getFloat64ArrayMemory0() {
+    if (cachedFloat64ArrayMemory0 === null || cachedFloat64ArrayMemory0.byteLength === 0) {
+        cachedFloat64ArrayMemory0 = new Float64Array(wasm.memory.buffer);
+    }
+    return cachedFloat64ArrayMemory0;
+}
+
+function passArrayF64ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 8, 8) >>> 0;
+    getFloat64ArrayMemory0().set(arg, ptr / 8);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
+}
+/**
+ * the same replay with the long series packed: the plan without its observed replicas, the
+ * traffic without its series; `series` holds each endpoint's n values (null as 0), then each
+ * service's observed replicas (null as NaN) at the offsets in `observed`. Returns
+ * [every result series in one Float64Array (see `pack`), events]
+ * @param {any} plan
+ * @param {any} traffic
+ * @param {string[]} endpoints
+ * @param {any} observed
+ * @param {Float64Array} series
+ * @param {any} opts
+ * @returns {Array<any>}
+ */
+export function runPlanPacked(plan, traffic, endpoints, observed, series, opts) {
+    const ptr0 = passArrayJsValueToWasm0(endpoints, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passArrayF64ToWasm0(series, wasm.__wbindgen_malloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.runPlanPacked(plan, traffic, ptr0, len0, observed, ptr1, len1, opts);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * importBundle(manifest, files) → { dataset, log } (src/backtest/import/manifest.ts); the manifest
+ * already validated on the JS side
+ * @param {any} manifest
+ * @param {any} files
+ * @returns {any}
+ */
+export function importBundle(manifest, files) {
+    const ret = wasm.importBundle(manifest, files);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * readWorkloads(documents) → [service, WorkloadConfig][] (src/backtest/configDiff.ts), in document order
+ * @param {any} documents
+ * @returns {any}
+ */
+export function readWorkloads(documents) {
+    const ret = wasm.readWorkloads(documents);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * strategyFromDiff(before, after, name?, known?) → { strategy, ignored }; workloads as [service, config][]
+ * @param {any} before
+ * @param {any} after
+ * @param {string | null} [name]
+ * @param {string[] | null} [known]
+ * @returns {any}
+ */
+export function strategyFromDiff(before, after, name, known) {
+    var ptr0 = isLikeNone(name) ? 0 : passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len0 = WASM_VECTOR_LEN;
+    var ptr1 = isLikeNone(known) ? 0 : passArrayJsValueToWasm0(known, wasm.__wbindgen_malloc);
+    var len1 = WASM_VECTOR_LEN;
+    const ret = wasm.strategyFromDiff(before, after, ptr0, len0, ptr1, len1);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * strategyFromTerraformPlan(plan, name?, known?) → { strategy, ignored, mapped } (src/backtest/terraformDiff.ts)
+ * @param {any} plan
+ * @param {string | null} [name]
+ * @param {string[] | null} [known]
+ * @returns {any}
+ */
+export function strategyFromTerraformPlan(plan, name, known) {
+    var ptr0 = isLikeNone(name) ? 0 : passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len0 = WASM_VECTOR_LEN;
+    var ptr1 = isLikeNone(known) ? 0 : passArrayJsValueToWasm0(known, wasm.__wbindgen_malloc);
+    var len1 = WASM_VECTOR_LEN;
+    const ret = wasm.strategyFromTerraformPlan(plan, ptr0, len0, ptr1, len1);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * instanceType("m7g.large") → { cpu, memoryGb, arch }
+ * @param {string} t
+ * @returns {any}
+ */
+export function instanceType(t) {
+    const ptr0 = passStringToWasm0(t, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.instanceType(ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * importKubernetes(documents, name?) → { spec, assumptions, skipped, mapped } (src/spec/kubernetes.ts)
+ * @param {any} documents
+ * @param {string | null} [name]
+ * @returns {any}
+ */
+export function importKubernetes(documents, name) {
+    var ptr0 = isLikeNone(name) ? 0 : passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len0 = WASM_VECTOR_LEN;
+    const ret = wasm.importKubernetes(documents, ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
  * backtest(model, dataset, strategies, opts) → BacktestResult (src/backtest/backtest.ts)
  * @param {any} model
  * @param {any} dataset
@@ -225,136 +609,6 @@ export function calibrate(dataset, options) {
  */
 export function basePlan(model, observed) {
     const ret = wasm.basePlan(model, observed);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * applyStrategy(model, plan, spec) → { plan, notes }
- * @param {any} model
- * @param {any} plan
- * @param {any} spec
- * @returns {any}
- */
-export function applyStrategy(model, plan, spec) {
-    const ret = wasm.applyStrategy(model, plan, spec);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * modelBreakingPoint(model, plan?, opts?) → { rps, limitedBy }
- * @param {any} model
- * @param {any} plan
- * @param {any} opts
- * @returns {any}
- */
-export function modelBreakingPoint(model, plan, opts) {
-    const ret = wasm.modelBreakingPoint(model, plan, opts);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * holdoutAccuracy(dataset, opts) → AccuracyRecord
- * @param {any} dataset
- * @param {any} opts
- * @param {number | null | undefined} holdout
- * @param {any} requests
- * @returns {any}
- */
-export function holdoutAccuracy(dataset, opts, holdout, requests) {
-    const ret = wasm.holdoutAccuracy(dataset, opts, !isLikeNone(holdout), isLikeNone(holdout) ? 0 : holdout, requests);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * referenceAccuracy(model, runs, label) → AccuracyRecord
- * @param {any} model
- * @param {any} runs
- * @param {string} label
- * @returns {any}
- */
-export function referenceAccuracy(model, runs, label) {
-    const ptr0 = passStringToWasm0(label, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.referenceAccuracy(model, runs, ptr0, len0);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * nodeLoss(model, dataset, opts) → the node-loss report
- * @param {any} model
- * @param {any} dataset
- * @param {any} opts
- * @returns {any}
- */
-export function nodeLoss(model, dataset, opts) {
-    const ret = wasm.nodeLoss(model, dataset, opts);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * reviewCapacity(model, dataset, opts?, onProgress?) → the capacity review (review_capacity's data,
- * the summary worded for the app, the traffic, each fix's change, the Markdown); onProgress(label,
- * done, total) at each phase
- * @param {any} model
- * @param {any} dataset
- * @param {any} opts
- * @param {any} progress
- * @returns {any}
- */
-export function reviewCapacity(model, dataset, opts, progress) {
-    const ret = wasm.reviewCapacity(model, dataset, opts, progress);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * nodeLossFaults(model, dataset, node, atS?, recoverS (undefined: default, null: never), pods?)
- * @param {any} model
- * @param {any} dataset
- * @param {string} node
- * @param {number | null | undefined} at_s
- * @param {any} recover_s
- * @param {any} pods
- * @returns {any}
- */
-export function nodeLossFaults(model, dataset, node, at_s, recover_s, pods) {
-    const ptr0 = passStringToWasm0(node, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.nodeLossFaults(model, dataset, ptr0, len0, !isLikeNone(at_s), isLikeNone(at_s) ? 0 : at_s, recover_s, pods);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * podsPerNode(model, strategy?)
- * @param {any} model
- * @param {any} strategy
- * @returns {any}
- */
-export function podsPerNode(model, strategy) {
-    const ret = wasm.podsPerNode(model, strategy);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -501,17 +755,14 @@ export function simulateDes(spec, scenario, cfg) {
 }
 
 /**
- * journeyRows(journey, names, focus?) → [[{ t, c }]]: a traced request's path as rows of text runs
- * (src/ui/journey.ts), as `simulate --trace` and the trace_request tool print it
- * @param {any} journey
- * @param {any} names
- * @param {string | null} [focus]
+ * applyStrategy(model, plan, spec) → { plan, notes }
+ * @param {any} model
+ * @param {any} plan
+ * @param {any} spec
  * @returns {any}
  */
-export function journeyRows(journey, names, focus) {
-    var ptr0 = isLikeNone(focus) ? 0 : passStringToWasm0(focus, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len0 = WASM_VECTOR_LEN;
-    const ret = wasm.journeyRows(journey, names, ptr0, len0);
+export function applyStrategy(model, plan, spec) {
+    const ret = wasm.applyStrategy(model, plan, spec);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -519,39 +770,14 @@ export function journeyRows(journey, names, focus) {
 }
 
 /**
- * journeyVerdict(journey, names) → the one-line summary of a traced request
- * @param {any} journey
- * @param {any} names
- * @returns {string}
- */
-export function journeyVerdict(journey, names) {
-    let deferred2_0;
-    let deferred2_1;
-    try {
-        const ret = wasm.journeyVerdict(journey, names);
-        var ptr1 = ret[0];
-        var len1 = ret[1];
-        if (ret[3]) {
-            ptr1 = 0; len1 = 0;
-            throw takeFromExternrefTable0(ret[2]);
-        }
-        deferred2_0 = ptr1;
-        deferred2_1 = len1;
-        return getStringFromWasm0(ptr1, len1);
-    } finally {
-        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
-    }
-}
-
-/**
- * analyze(spec, scenario, { runs, seed, des }) → Analysis: discrete-event Monte Carlo
- * @param {any} spec
- * @param {any} scenario
+ * modelBreakingPoint(model, plan?, opts?) → { rps, limitedBy }
+ * @param {any} model
+ * @param {any} plan
  * @param {any} opts
  * @returns {any}
  */
-export function analyze(spec, scenario, opts) {
-    const ret = wasm.analyze(spec, scenario, opts);
+export function modelBreakingPoint(model, plan, opts) {
+    const ret = wasm.modelBreakingPoint(model, plan, opts);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -559,14 +785,47 @@ export function analyze(spec, scenario, opts) {
 }
 
 /**
- * optimize(spec, scenario, opts) → the cheapest configuration that meets the SLO
- * @param {any} spec
- * @param {any} scenario
+ * holdoutAccuracy(dataset, opts) → AccuracyRecord
+ * @param {any} dataset
+ * @param {any} opts
+ * @param {number | null | undefined} holdout
+ * @param {any} requests
+ * @returns {any}
+ */
+export function holdoutAccuracy(dataset, opts, holdout, requests) {
+    const ret = wasm.holdoutAccuracy(dataset, opts, !isLikeNone(holdout), isLikeNone(holdout) ? 0 : holdout, requests);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * referenceAccuracy(model, runs, label) → AccuracyRecord
+ * @param {any} model
+ * @param {any} runs
+ * @param {string} label
+ * @returns {any}
+ */
+export function referenceAccuracy(model, runs, label) {
+    const ptr0 = passStringToWasm0(label, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.referenceAccuracy(model, runs, ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * nodeLoss(model, dataset, opts) → the node-loss report
+ * @param {any} model
+ * @param {any} dataset
  * @param {any} opts
  * @returns {any}
  */
-export function optimize(spec, scenario, opts) {
-    const ret = wasm.optimize(spec, scenario, opts);
+export function nodeLoss(model, dataset, opts) {
+    const ret = wasm.nodeLoss(model, dataset, opts);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -574,64 +833,37 @@ export function optimize(spec, scenario, opts) {
 }
 
 /**
- * audit(spec, opts, onProgress?) → the failure audit: what breaks first, and what it costs
- * @param {any} spec
+ * reviewCapacity(model, dataset, opts?, onProgress?) → the capacity review (review_capacity's data,
+ * the summary worded for the app, the traffic, each fix's change, the Markdown); onProgress(label,
+ * done, total) at each phase
+ * @param {any} model
+ * @param {any} dataset
  * @param {any} opts
  * @param {any} progress
  * @returns {any}
  */
-export function audit(spec, opts, progress) {
-    const ret = wasm.audit(spec, opts, progress);
+export function reviewCapacity(model, dataset, opts, progress) {
+    const ret = wasm.reviewCapacity(model, dataset, opts, progress);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
     return takeFromExternrefTable0(ret[0]);
 }
 
-function passArrayJsValueToWasm0(array, malloc) {
-    const ptr = malloc(array.length * 4, 4) >>> 0;
-    for (let i = 0; i < array.length; i++) {
-        const add = addToExternrefTable0(array[i]);
-        getDataViewMemory0().setUint32(ptr + 4 * i, add, true);
-    }
-    WASM_VECTOR_LEN = array.length;
-    return ptr;
-}
-
-let cachedFloat64ArrayMemory0 = null;
-
-function getFloat64ArrayMemory0() {
-    if (cachedFloat64ArrayMemory0 === null || cachedFloat64ArrayMemory0.byteLength === 0) {
-        cachedFloat64ArrayMemory0 = new Float64Array(wasm.memory.buffer);
-    }
-    return cachedFloat64ArrayMemory0;
-}
-
-function passArrayF64ToWasm0(arg, malloc) {
-    const ptr = malloc(arg.length * 8, 8) >>> 0;
-    getFloat64ArrayMemory0().set(arg, ptr / 8);
-    WASM_VECTOR_LEN = arg.length;
-    return ptr;
-}
 /**
- * the same replay with the long series packed: the plan without its observed replicas, the
- * traffic without its series; `series` holds each endpoint's n values (null as 0), then each
- * service's observed replicas (null as NaN) at the offsets in `observed`. Returns
- * [every result series in one Float64Array (see `pack`), events]
- * @param {any} plan
- * @param {any} traffic
- * @param {string[]} endpoints
- * @param {any} observed
- * @param {Float64Array} series
- * @param {any} opts
- * @returns {Array<any>}
+ * nodeLossFaults(model, dataset, node, atS?, recoverS (undefined: default, null: never), pods?)
+ * @param {any} model
+ * @param {any} dataset
+ * @param {string} node
+ * @param {number | null | undefined} at_s
+ * @param {any} recover_s
+ * @param {any} pods
+ * @returns {any}
  */
-export function runPlanPacked(plan, traffic, endpoints, observed, series, opts) {
-    const ptr0 = passArrayJsValueToWasm0(endpoints, wasm.__wbindgen_malloc);
+export function nodeLossFaults(model, dataset, node, at_s, recover_s, pods) {
+    const ptr0 = passStringToWasm0(node, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passArrayF64ToWasm0(series, wasm.__wbindgen_malloc);
-    const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.runPlanPacked(plan, traffic, ptr0, len0, observed, ptr1, len1, opts);
+    const ret = wasm.nodeLossFaults(model, dataset, ptr0, len0, !isLikeNone(at_s), isLikeNone(at_s) ? 0 : at_s, recover_s, pods);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -639,250 +871,17 @@ export function runPlanPacked(plan, traffic, endpoints, observed, series, opts) 
 }
 
 /**
- * importBundle(manifest, files) → { dataset, log } (src/backtest/import/manifest.ts); the manifest
- * already validated on the JS side
- * @param {any} manifest
- * @param {any} files
+ * podsPerNode(model, strategy?)
+ * @param {any} model
+ * @param {any} strategy
  * @returns {any}
  */
-export function importBundle(manifest, files) {
-    const ret = wasm.importBundle(manifest, files);
+export function podsPerNode(model, strategy) {
+    const ret = wasm.podsPerNode(model, strategy);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
     return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * readWorkloads(documents) → [service, WorkloadConfig][] (src/backtest/configDiff.ts), in document order
- * @param {any} documents
- * @returns {any}
- */
-export function readWorkloads(documents) {
-    const ret = wasm.readWorkloads(documents);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * strategyFromDiff(before, after, name?, known?) → { strategy, ignored }; workloads as [service, config][]
- * @param {any} before
- * @param {any} after
- * @param {string | null} [name]
- * @param {string[] | null} [known]
- * @returns {any}
- */
-export function strategyFromDiff(before, after, name, known) {
-    var ptr0 = isLikeNone(name) ? 0 : passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len0 = WASM_VECTOR_LEN;
-    var ptr1 = isLikeNone(known) ? 0 : passArrayJsValueToWasm0(known, wasm.__wbindgen_malloc);
-    var len1 = WASM_VECTOR_LEN;
-    const ret = wasm.strategyFromDiff(before, after, ptr0, len0, ptr1, len1);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * strategyFromTerraformPlan(plan, name?, known?) → { strategy, ignored, mapped } (src/backtest/terraformDiff.ts)
- * @param {any} plan
- * @param {string | null} [name]
- * @param {string[] | null} [known]
- * @returns {any}
- */
-export function strategyFromTerraformPlan(plan, name, known) {
-    var ptr0 = isLikeNone(name) ? 0 : passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len0 = WASM_VECTOR_LEN;
-    var ptr1 = isLikeNone(known) ? 0 : passArrayJsValueToWasm0(known, wasm.__wbindgen_malloc);
-    var len1 = WASM_VECTOR_LEN;
-    const ret = wasm.strategyFromTerraformPlan(plan, ptr0, len0, ptr1, len1);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * instanceType("m7g.large") → { cpu, memoryGb, arch }
- * @param {string} t
- * @returns {any}
- */
-export function instanceType(t) {
-    const ptr0 = passStringToWasm0(t, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.instanceType(ptr0, len0);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * importKubernetes(documents, name?) → { spec, assumptions, skipped, mapped } (src/spec/kubernetes.ts)
- * @param {any} documents
- * @param {string | null} [name]
- * @returns {any}
- */
-export function importKubernetes(documents, name) {
-    var ptr0 = isLikeNone(name) ? 0 : passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len0 = WASM_VECTOR_LEN;
-    const ret = wasm.importKubernetes(documents, ptr0, len0);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * importTerraform(doc, name?) → { spec, assumptions, skipped, mapped } (src/spec/terraform.ts)
- * @param {any} doc
- * @param {string | null} [name]
- * @returns {any}
- */
-export function importTerraform(doc, name) {
-    var ptr0 = isLikeNone(name) ? 0 : passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len0 = WASM_VECTOR_LEN;
-    const ret = wasm.importTerraform(doc, ptr0, len0);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * cacheHitRate(nodeData) → the share of reads a cache answers (its hitRate, or what its size and the
- * data it fronts give)
- * @param {any} d
- * @returns {number}
- */
-export function cacheHitRate(d) {
-    const ret = wasm.cacheHitRate(d);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return ret[0];
-}
-
-/**
- * exportPlan(presets, { window?, selector?, entry?, namespaces? }) → [{ preset, query: { file, query, mapping } }]:
- * the Prometheus queries `export-prometheus` and collect_telemetry run, for scripts that fetch them
- * @param {string[]} presets
- * @param {any} opts
- * @returns {any}
- */
-export function exportPlan(presets, opts) {
-    const ptr0 = passArrayJsValueToWasm0(presets, wasm.__wbindgen_malloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.exportPlan(ptr0, len0, opts);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * podsByNodeQuery(namespaces) → the PromQL for pods per node per workload
- * @param {string[]} namespaces
- * @returns {string}
- */
-export function podsByNodeQuery(namespaces) {
-    let deferred2_0;
-    let deferred2_1;
-    try {
-        const ptr0 = passArrayJsValueToWasm0(namespaces, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.podsByNodeQuery(ptr0, len0);
-        deferred2_0 = ret[0];
-        deferred2_1 = ret[1];
-        return getStringFromWasm0(ret[0], ret[1]);
-    } finally {
-        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
-    }
-}
-
-/**
- * zoneOfProviderId("aws:///us-east-1a/i-…") → "us-east-1a" (AWS, GCP), else null
- * @param {string | null} [id]
- * @returns {string | undefined}
- */
-export function zoneOfProviderId(id) {
-    var ptr0 = isLikeNone(id) ? 0 : passStringToWasm0(id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len0 = WASM_VECTOR_LEN;
-    const ret = wasm.zoneOfProviderId(ptr0, len0);
-    let v2;
-    if (ret[0] !== 0) {
-        v2 = getStringFromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
-    }
-    return v2;
-}
-
-/**
- * workloadRe() → the pattern that takes a pod name back to its workload
- * @returns {string}
- */
-export function workloadRe() {
-    let deferred1_0;
-    let deferred1_1;
-    try {
-        const ret = wasm.workloadRe();
-        deferred1_0 = ret[0];
-        deferred1_1 = ret[1];
-        return getStringFromWasm0(ret[0], ret[1]);
-    } finally {
-        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
-    }
-}
-
-/**
- * specToYaml(spec) → YAML as src/spec/yaml.ts writes it
- * @param {any} spec
- * @returns {string}
- */
-export function specToYaml(spec) {
-    let deferred2_0;
-    let deferred2_1;
-    try {
-        const ret = wasm.specToYaml(spec);
-        var ptr1 = ret[0];
-        var len1 = ret[1];
-        if (ret[3]) {
-            ptr1 = 0; len1 = 0;
-            throw takeFromExternrefTable0(ret[2]);
-        }
-        deferred2_0 = ptr1;
-        deferred2_1 = len1;
-        return getStringFromWasm0(ptr1, len1);
-    } finally {
-        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
-    }
-}
-
-/**
- * toYaml(value) → yaml.stringify(value) with the package's defaults
- * @param {any} v
- * @returns {string}
- */
-export function toYaml(v) {
-    let deferred2_0;
-    let deferred2_1;
-    try {
-        const ret = wasm.toYaml(v);
-        var ptr1 = ret[0];
-        var len1 = ret[1];
-        if (ret[3]) {
-            ptr1 = 0; len1 = 0;
-            throw takeFromExternrefTable0(ret[2]);
-        }
-        deferred2_0 = ptr1;
-        deferred2_1 = len1;
-        return getStringFromWasm0(ptr1, len1);
-    } finally {
-        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
-    }
 }
 
 const SimEngineFinalization = (typeof FinalizationRegistry === 'undefined')
@@ -904,12 +903,6 @@ export class SimEngine {
         const ptr = this.__destroy_into_raw();
         wasm.__wbg_simengine_free(ptr, 0);
     }
-    constructor() {
-        const ret = wasm.simengine_new();
-        this.__wbg_ptr = ret >>> 0;
-        SimEngineFinalization.register(this, this.__wbg_ptr, this);
-        return this;
-    }
     /**
      * @returns {number}
      */
@@ -917,8 +910,11 @@ export class SimEngine {
         const ret = wasm.simengine_t(this.__wbg_ptr);
         return ret;
     }
-    reset() {
-        wasm.simengine_reset(this.__wbg_ptr);
+    constructor() {
+        const ret = wasm.simengine_new();
+        this.__wbg_ptr = ret >>> 0;
+        SimEngineFinalization.register(this, this.__wbg_ptr, this);
+        return this;
     }
     /**
      * step(nodes, edges, trafficRps, readRatio, dt, cfg, pricing) → events
@@ -939,6 +935,9 @@ export class SimEngine {
             throw takeFromExternrefTable0(ret[1]);
         }
         return takeFromExternrefTable0(ret[0]);
+    }
+    reset() {
+        wasm.simengine_reset(this.__wbg_ptr);
     }
     /**
      * snapshot(nodes, edges) → { nodeStats, edgeStats, global }

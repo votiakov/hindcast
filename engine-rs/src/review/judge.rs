@@ -203,6 +203,68 @@ pub fn slice_last(d: &Value, buckets: usize) -> Value {
     out
 }
 
+/// The plain CPU-ratio check a spreadsheet makes, with no model in it: each service's busiest CPU in the
+/// replayed window as a share of its limit, scaled by the replayed load and by its replicas × CPU limit
+/// before over after the change (an autoscaler at its maximum). The worst service decides, under 100% it
+/// passes. Said beside a verdict the model can't make, or one it disagrees with: which way the plainest
+/// reading points
+pub fn cpu_check(d: &crate::dataset::Dataset, load: f64, before: &crate::types::Plan, after: &crate::types::Plan) -> Option<Value> {
+    let size = |p: &crate::types::ServicePlan| -> Option<(f64, f64)> { Some((p.autoscale.as_ref().map(|a| a.max).or(p.replicas)?, p.cpu_limit.filter(|c| *c > 0.0)?)) };
+    let at = |v: &Option<Vec<crate::types::Num>>, i: usize| v.as_ref().and_then(|v| v.get(i).copied().flatten());
+    let mut worst: Option<(String, f64, f64, (f64, f64), (f64, f64))> = None;
+    for (id, sv) in &d.services {
+        let (b, a) = match (before.services.get(id), after.services.get(id)) {
+            (Some(b), Some(a)) if b.hosted_by.is_none() => (b, a),
+            _ => continue,
+        };
+        let (sb, sa) = match (size(b), size(a)) {
+            (Some(x), Some(y)) if x.0 > 0.0 && y.0 > 0.0 => (x, y),
+            _ => continue,
+        };
+        // only what serves the requests scales with them: a tracing backend's CPU doesn't
+        let (mut peak, mut seen, mut serving): (f64, usize, usize) = (0.0, 0, 0);
+        for i in 0..d.n.max(0.0) as usize {
+            if let (Some(c), Some(l), Some(r)) = (at(&sv.cpu_cores, i), at(&sv.cpu_limit_cores, i), at(&sv.replicas, i)) {
+                if l > 0.0 && r > 0.0 {
+                    peak = peak.max(c / (l * r));
+                    seen += 1;
+                    serving += at(&sv.rps, i).map(|x| (x > 0.0) as usize).unwrap_or(0);
+                }
+            }
+        }
+        if serving * 2 < seen {
+            continue;
+        }
+        let u = peak * load * (sb.0 * sb.1) / (sa.0 * sa.1);
+        if peak > 0.0 && worst.as_ref().map(|w| u > w.2).unwrap_or(true) {
+            worst = Some((id.clone(), peak, u, sb, sa));
+        }
+    }
+    let (id, peak, u, sb, sa) = worst?;
+    Some(json!({ "verdict": if u < 1.0 { "pass" } else { "fail" }, "service": id, "historyPeakUtil": num(r2(peak)), "predictedPeakUtil": num(r2(u)), "load": num(r2(load)), "before": { "replicas": num(sb.0), "cpu": num(sb.1) }, "after": { "replicas": num(sa.0), "cpu": num(sa.1) } }))
+}
+
+/// the cross-check in words: "a plain CPU ratio (no model in it) says fail: frontend's busiest CPU in the
+/// window was 38% of its limit; at 2.22× the load, on 2 × 500m instead of 3 × 500m, that is 126%"
+fn cpu_check_words(c: &Value) -> String {
+    let side = |k: &str| format!("{} × {}", js_num(n(c, &[k, "replicas"])), cores(n(c, &[k, "cpu"])));
+    let load = n(c, &["load"]);
+    let mut how: Vec<String> = vec![];
+    if (load - 1.0).abs() > 0.005 {
+        how.push(format!("at {}× the load", js_num(load)));
+    }
+    if side("before") != side("after") {
+        how.push(format!("on {} instead of {}", side("after"), side("before")));
+    }
+    format!(
+        "a plain CPU ratio (no model in it) says {}: {}'s busiest CPU in the window was {} of its limit{}",
+        s(c, &["verdict"]),
+        s(c, &["service"]),
+        pct(n(c, &["historyPeakUtil"])),
+        if how.is_empty() { String::new() } else { format!("; {}, that is {}", how.join(", "), pct(n(c, &["predictedPeakUtil"]))) }
+    )
+}
+
 /// the load a plan sustains once its pods are warm: a change's restart (pods starting cold) is said apart
 pub fn breaking(m: &crate::model::Model, plan: &crate::types::Plan) -> (f64, Option<String>) {
     let mut warm = plan.clone();
@@ -527,6 +589,18 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
             reasons.push(format!("while its restarted pods are still cold the system sustains {} req/s ({} once warm)", js_num(r1(cold)), js_num(r1(after.0))));
         }
     }
+    // the plain CPU ratio beside the verdict: where the model can't decide, or decides the other way
+    let cpu_rule = d.and_then(|d| {
+        let base = crate::backtest::base_plan(m, None);
+        let (before, after) = match baseline {
+            Some(b) => (crate::strategy::apply_baseline(m, &base, b).ok()?.plan, crate::strategy::apply_stacked(m, &base, b, spec).ok()?.plan),
+            None => (base.clone(), crate::strategy::apply_strategy(m, &base, &crate::strategy::parse_strategy(spec).ok()?).ok()?.plan),
+        };
+        cpu_check(d, g(r, &["load", "factor"]).as_f64().unwrap_or(1.0), &before, &after)
+    });
+    if let Some(c) = cpu_rule.as_ref().filter(|c| verdict == "inconclusive" || s(c, &["verdict"]) != verdict) {
+        reasons.push(format!("cross-check: {}", cpu_check_words(c)));
+    }
     let basis = cost_basis.iter().map(|b| match b.as_str() {
         "bill" => "your bill",
         "pricing" => "list price",
@@ -559,6 +633,9 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
     );
     if let Some(nl) = node_loss_check {
         o.insert("nodeLoss".into(), nl);
+    }
+    if let Some(c) = cpu_rule {
+        o.insert("cpuCheck".into(), c);
     }
     o.insert("headroom".into(), json!({ "beforeRps": num(r1(before.0)), "afterRps": num(r1(after.0)), "limitedBy": after.1, "historyPeakRps": g(mv, &["traffic", "peak"]).as_f64().map(|p| num(r1(p))).unwrap_or(Value::Null), "replayedPeakRps": num(r1(peak)) }));
     let mut confidence = json!({ "level": level, "services": services, "warnings": warnings });
@@ -671,6 +748,27 @@ mod tests {
 
     fn st(dm: f64, ds: f64, df: f64) -> Value {
         json!({ "delta": { "monthly": { "p50": dm }, "minutesOutOfSlo": { "p50": ds }, "failedRequests": { "p50": df } }, "incidents": [] })
+    }
+
+    #[test]
+    fn the_cpu_ratio_scales_the_busiest_cpu_by_the_load_and_the_change() {
+        let m: crate::model::Model = serde_json::from_value(json!({ "version": 1, "name": "t", "timeoutMs": 5000, "slo": { "p99Ms": 500, "errorRate": 0.01 }, "endpoints": {}, "transfer": {}, "unattributedPerHour": 0, "accuracy": [], "services": {
+            "api": { "id": "api", "kind": "service", "replicas": 3, "cpuLimit": 0.5, "capacity": { "limit": "cpu", "servers": 1, "perReplicaRps": 100 }, "self": { "mean": 2, "p99": 5 }, "tail": 1, "cost": { "perReplicaHour": 0, "perRequest": 0, "cpuShare": 0.8, "arch": "x86", "source": "none" }, "fit": { "status": "good", "notes": [] } },
+            "tracing": { "id": "tracing", "kind": "service", "replicas": 1, "cpuLimit": 0.2, "capacity": { "limit": "none", "servers": 1, "perReplicaRps": null }, "self": { "mean": 1, "p99": 2 }, "tail": 1, "cost": { "perReplicaHour": 0, "perRequest": 0, "cpuShare": 0.8, "arch": "x86", "source": "none" }, "fit": { "status": "good", "notes": [] } }
+        } })).unwrap();
+        // api's busiest bucket: 0.6 cores on 3 × 500m, 40%; the tracing backend at 90% of its limit
+        // serves no requests, so it doesn't scale with them
+        let k = 4;
+        let series = |rps: Option<f64>, cpu: [f64; 4], lim: f64, reps: f64| crate::dataset::ServiceSeries { rps: Some(vec![rps; k]), cpu_cores: Some(cpu.iter().map(|c| Some(*c)).collect()), cpu_limit_cores: Some(vec![Some(lim); k]), replicas: Some(vec![Some(reps); k]), ..Default::default() };
+        let d = crate::dataset::Dataset { n: k as f64, step_s: 30.0, services: [("api".to_string(), series(Some(90.0), [0.3, 0.6, 0.45, 0.2], 0.5, 3.0)), ("tracing".to_string(), series(None, [0.18, 0.1, 0.1, 0.1], 0.2, 1.0))].into_iter().collect(), ..Default::default() };
+        let before = crate::backtest::base_plan(&m, None);
+        let mut after = before.clone();
+        after.services.get_mut("api").unwrap().replicas = Some(2.0);
+        let c = cpu_check(&d, 2.0, &before, &after).unwrap();
+        // 40% × 2 × (3 × 500m) / (2 × 500m) = 120%
+        assert_eq!((s(&c, &["verdict"]).as_str(), s(&c, &["service"]).as_str(), n(&c, &["historyPeakUtil"]), n(&c, &["predictedPeakUtil"])), ("fail", "api", 0.4, 1.2));
+        assert_eq!(cpu_check_words(&c), "a plain CPU ratio (no model in it) says fail: api's busiest CPU in the window was 40% of its limit; at 2× the load, on 2 × 500m instead of 3 × 500m, that is 120%");
+        assert_eq!(cpu_check_words(&cpu_check(&d, 1.0, &before, &before).unwrap()), "a plain CPU ratio (no model in it) says pass: api's busiest CPU in the window was 40% of its limit");
     }
 
     #[test]

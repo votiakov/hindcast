@@ -3610,7 +3610,8 @@
        "customers-service restarts on its new 125m CPU limit and a JVM needs ~30 core-seconds of JIT compilation to warm up (assumed): until then a request costs ×5 its warm CPU; in the replay it is warm 7.8 min after it starts",
        "frees 0.13 cores and 0 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 39% of it (39% before)",
        "headroom drops from 629.5 to 277 req/s (the history peaked at 107.1)",
-       "while its restarted pods are still cold the system sustains 54.5 req/s, below the peak it has to serve (107.1): rolled out at a busy moment, it would not warm up. Roll it out when traffic is low, or warm the pods before they take traffic"
+       "while its restarted pods are still cold the system sustains 54.5 req/s, below the peak it has to serve (107.1): rolled out at a busy moment, it would not warm up. Roll it out when traffic is low, or warm the pods before they take traffic",
+       "cross-check: a plain CPU ratio (no model in it) says pass: customers-service's busiest CPU in the window was 28% of its limit; on 1 × 125m instead of 1 × 250m, that is 56%"
       ],
       "warnings": [
        "customers-service would run at 65% of capacity, past the history's 18%: its capacity there is extrapolated",
@@ -5400,7 +5401,8 @@
        "costs the same, with no change in time out of SLO",
        "visits-service restarts on its new 125m CPU limit and a JVM needs ~30 core-seconds of JIT compilation to warm up (assumed): until then a request costs ×5 its warm CPU; in the replay it is warm 7.9 min after it starts",
        "frees 0.13 cores and 0 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 39% of it (39% before)",
-       "while its restarted pods are still cold the system sustains 123.4 req/s, below the peak it has to serve (237.8): rolled out at a busy moment, it would not warm up. Roll it out when traffic is low, or warm the pods before they take traffic"
+       "while its restarted pods are still cold the system sustains 123.4 req/s, below the peak it has to serve (237.8): rolled out at a busy moment, it would not warm up. Roll it out when traffic is low, or warm the pods before they take traffic",
+       "cross-check: a plain CPU ratio (no model in it) says pass: customers-service's busiest CPU in the window was 28% of its limit; at 2.22× the load, that is 62%"
       ],
       "warnings": [
        "visits-service would run at 66% of capacity, past the history's 9%: its capacity there is extrapolated",
@@ -6304,7 +6306,8 @@
        "worst at 2026-10-16T14:48:00Z: customers-service at 96% of capacity (57.5 req/s on 1 × 60.0 req/s (normally 300.2)), 114 ms wait",
        "frees 0.08 cores and 0 MiB of requests, but the node pool is fixed at 2: node spend doesn't change until the pool shrinks. At the peak every pod's requests would fill 39% of it (39% before)",
        "headroom drops from 629.5 to 417.9 req/s (the replayed traffic peaks at 237.8)",
-       "while its restarted pods are still cold the system sustains 83.3 req/s (417.9 once warm)"
+       "while its restarted pods are still cold the system sustains 83.3 req/s (417.9 once warm)",
+       "cross-check: a plain CPU ratio (no model in it) says pass: customers-service's busiest CPU in the window was 28% of its limit; at 2.22× the load, on 1 × 175m instead of 1 × 250m, that is 89%"
       ],
       "warnings": [
        "customers-service would run at 96% of a capacity the history never tested (peak 18%): the outcome rests on an extrapolated limit",
@@ -8236,5 +8239,5 @@
   }
  ],
  "nodeLosses": [],
- "evaluatedAt": "2026-10-17T04:19:27.142Z"
+ "evaluatedAt": "2026-10-18T15:25:42.502Z"
 }
