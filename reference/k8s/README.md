@@ -656,7 +656,11 @@ Two lessons for the method, not the model:
 
 The half-minute gate assumes two recordings of the same day would agree to within half a minute.
 To check, the as-built launch day was recorded a second time with nothing changed (`launch-b`,
-declared in [shop/reference.yaml](shop/reference.yaml) before it ran). The two runs scored the same
+declared in [shop/reference.yaml](shop/reference.yaml) before it ran). Correction, found later by
+the drift check: `launch` was recorded on 13 October and `launch-b` on 17 October, so these are the
+same traffic four days apart, not back to back. Part of the difference below is drift: the
+services cost 7–34% more CPU per request on 13–14 October than on 17 October. Recordings under two
+hours apart differ by a median 6% in CPU per request, and at most 23%. The two runs scored the same
 way (every k6 request after the first two minutes, 30-second buckets, SLO p99 1 s and errors 3%):
 
 | run | minutes out of SLO | failed requests | why |
@@ -777,7 +781,9 @@ October), the frontend's CPU per request at the launch-day peak fell from about 
 so 2 replicas, or 3 at 400m, carried what the model read as an overload. Both models and the rule
 are anchored to the older cost. Nothing in the tool noticed that the system had changed under its
 calibration. The lesson for the product: before a verdict, compare recent telemetry with the
-calibration window, and say "recalibrate" when they disagree. The cause of the drift itself (the
+calibration window, and say "recalibrate" when they disagree. (Read with the drift check built
+afterwards, see below: at the loads the history covered, the frontend moved only 7%, and the drop
+is at the launch-day peak, beyond the history. What the check flags is product-catalog, −30%.) The cause of the drift itself (the
 laptop cluster, a warmed frontend, something else) is not established.
 
 **What the drift check would have said (added 18 October, after the runs; in sample: its threshold
