@@ -64,6 +64,11 @@ runs:
   launch-e300-2: { day: 13/Jul/1995, minutes: 40, scale: x83, manifests: variants/e300-frontend-2.yaml }
   launch-e300-3-400: { day: 13/Jul/1995, minutes: 40, scale: x83, manifests: variants/e300-frontend-3-400m.yaml }
   launch-e300-catalog125: { day: 13/Jul/1995, minutes: 40, scale: x83, manifests: variants/e300-catalog-125m.yaml }
+  # round 7: the ordinary day recorded again on 18 October, as built, to recalibrate after the drift
+  # round 6 found (frontend and product-catalog cheaper per request than on 13 October). A third
+  # model, "fresh", is calibrated on it alone; round 7's verdicts are that model's, committed in
+  # validation/predictions-oos-7.json before any of round 7's change runs is recorded
+  history-b: { day: 12/Jul/1995, minutes: 40, scale: x83, manifests: shop.yaml }
   # a node failure for real: bnk8s-worker's container stops a minute before the ordinary day's
   # busiest moment (as built). check_node_loss predicts it from the placement at that instant
   normal-nodeloss: { day: 12/Jul/1995, minutes: 40, scale: x83, manifests: shop.yaml, kill: { node: bnk8s-worker, atS: 1160 } }
