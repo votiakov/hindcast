@@ -437,6 +437,7 @@ pub fn verify_comment(out: &Value, r: &Value, marker: &str, title: Option<&str>,
         return l.join("\n") + "\n";
     }
     l.extend(compared_with(out));
+    l.extend(drift_lines(out));
     l.extend(decision_markdown(out, r));
     l.push(String::new());
     l.push("#### The evidence".into());
@@ -511,6 +512,28 @@ pub fn verify_comment(out: &Value, r: &Value, marker: &str, title: Option<&str>,
 }
 
 /// what the changes were compared with, when not the system as built: verify_change's `baseline`
+/// what the model's last drift check says, where it found the system changed or is stale: a line above
+/// the decision, since it is about how far to trust all of it
+fn drift_lines(out: &Value) -> Vec<String> {
+    let d = g(out, &["drift"]);
+    if d.is_null() {
+        return vec![];
+    }
+    let drifted = arr(d, &["drifted"]);
+    let line = if !drifted.is_empty() {
+        format!(
+            "**The system has changed since calibration** (drift check, {}): {}. Recalibrate (collect + calibrate) before trusting this verdict.",
+            s(d, &["checkedAt"]),
+            drifted.iter().map(|x| format!("{} now costs {} CPU per request", s(x, &["service"]), crate::drift::change_words(n(x, &["change"])))).collect::<Vec<_>>().join(", ")
+        )
+    } else if g(d, &["stale"]).as_bool() == Some(true) {
+        format!("**Drift check:** the last one ran {} days ago ({}). Run it again (`hindcast agent check_drift` where the telemetry is reachable) before trusting this verdict.", js_num(r1(n(d, &["hoursAgo"]) / 24.0)), s(d, &["checkedAt"]))
+    } else {
+        return vec![];
+    };
+    vec![line, String::new()]
+}
+
 fn compared_with(out: &Value) -> Vec<String> {
     match g(out, &["comparedWith"]) {
         Value::Null => vec![],
@@ -538,6 +561,7 @@ pub fn verify_markdown(out: &Value, r: &Value, model: &Value, title: Option<&str
     let verdict = s(out, &["verdict"]);
     let mut l: Vec<String> = vec![format!("# {} {}: {} — {}", verdict_mark(&verdict), title.unwrap_or("Hindcast backtest"), verdict, verdict_words(&verdict)), String::new()];
     l.extend(compared_with(out));
+    l.extend(drift_lines(out));
     l.extend(decision_markdown(out, r));
     l.push(String::new());
     for x in arr(out, &["results"]) {

@@ -347,6 +347,42 @@ pub fn command(cmd: &str, f: &Flags, out: &mut Out) -> Result<Option<i32>, Strin
             out.log("");
             0
         }
+        "drift" => {
+            let mv = read_json(&pos(0))?;
+            let m = model_of(&mv)?;
+            let recent: crate::dataset::Dataset = serde_json::from_value(read_json(&pos(1))?).map_err(|e| format!("dataset: {}", e))?;
+            let cal: Option<crate::dataset::Dataset> = match f.get("calibration") {
+                Some(p) => Some(serde_json::from_value(read_json(&p)?).map_err(|e| format!("dataset: {}", e))?),
+                None => None,
+            };
+            let threshold = match f.get("threshold") {
+                Some(t) => Some(crate::import::js_number(&t)).filter(|x| *x > 0.0 && *x <= 1.0).map(Some).ok_or_else(|| format!("--threshold: a fraction above 0 and at most 1 (0.2 for ±20%), not {}", t))?,
+                None => None,
+            };
+            let r = crate::drift::drift(&m, cal.as_ref(), &recent, &crate::drift::DriftOptions { threshold, seed: None });
+            if json {
+                out.log(&pretty(&to_json(&r)));
+            } else {
+                out.log(&format!("\n{} {}", bold(&format!("Drift — {}", s(&mv, &["name"]))), dim(&format!("· against {} · drift past ±{}%", r.against, js_num(js_round(r.threshold * 100.0))))));
+                for x in &r.services {
+                    let mark = match x.verdict.as_str() {
+                        "drifted" => red("DRIFTED"),
+                        "matches" => green("matches"),
+                        _ => dim("unclear"),
+                    };
+                    out.log(&format!("  {} {}", mark, x.said));
+                }
+                for x in &r.skipped {
+                    out.log(&dim(&format!("  skipped {}", x)));
+                }
+                out.log("");
+            }
+            if r.drifted.is_empty() {
+                0
+            } else {
+                2
+            }
+        }
         "accuracy" => {
             let mv = read_json(&pos(0))?;
             if json {

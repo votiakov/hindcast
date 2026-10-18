@@ -480,6 +480,36 @@
   }
  },
  {
+  "name": "check_drift",
+  "title": "Has the system changed since calibration?",
+  "description": "Has the system changed since the model was calibrated? Reads the calibrated relations on a recent window: per service, CPU per request above its fixed CPU (the number capacity verdicts rest on), with self time and memory per replica beside it, compared with the calibration's own data at the load both windows saw. The recent window is collected from the workspace's connection (the last 6h by default, into drift/, never over the calibration's dataset), or read from a dataset file. Per service: calibrated vs recent (median and quartiles, a 10–90% range on the change) and a verdict: matches, drifted by X%, or not enough recent load to tell. Drift is a change past ±25% worth 5 millicores or more per replica: back-to-back recordings of the same system differed by up to 23% (reference/k8s, the shop). The answer is kept in the workspace (drift.json): model_status reports it, and verify_change lowers confidence and says to recalibrate when a service a verdict rests on has drifted. Run it before trusting a verdict on a model more than a day old.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "workspace": {
+     "description": "workspace directory (default ./.hindcast, or $HINDCAST_WORKSPACE)",
+     "type": "string"
+    },
+    "last": {
+     "description": "how much recent telemetry to collect from the connection (default 6h; 1h–6h is enough when it holds busy hours)",
+     "type": "string"
+    },
+    "dataset": {
+     "description": "a dataset file of recent telemetry to compare instead of collecting one (hindcast import, or another workspace's dataset.json)",
+     "type": "string"
+    },
+    "threshold": {
+     "description": "the change in CPU per request that counts as drift (default 0.2, ±20%)",
+     "type": "number",
+     "exclusiveMinimum": 0,
+     "maximum": 1
+    }
+   },
+   "additionalProperties": false
+  }
+ },
+ {
   "name": "verify_change",
   "title": "Verify an infrastructure change against real history",
   "description": "Backtest one or more changes over the collected history, before they ship: $ per month saved or spent (with its 10–90% band), minutes out of SLO added or removed, failed requests, the worst moment and why, endpoints that get worse, headroom before and after. A change is a strategy (object or YAML), a Kubernetes manifest diff (base/head), a Terraform plan (`terraform show -json`), or edited manifests against the live cluster snapshot from read_cluster. Each result has verdict pass | fail | inconclusive and a confidence (high | medium | low) that says which services the change pushes past anything the history showed. With a baseline (an approved change not yet deployed, e.g. the pull request this one is stacked on), the baseline is applied to both sides, already running, and every verdict, delta and gate is about the change on top of it. Writes an HTML and Markdown report for a human. A low-confidence result that asks for a load test: plan_load_test with the same changes designs it.",

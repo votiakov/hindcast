@@ -228,6 +228,19 @@ export const CASES: string[][] = [
   ['demo', '--workspace', `${out}/OUT/ws-v`],
   ['backtest', `${out}/OUT/demo/model.json`, `${out}/OUT/demo/dataset.json`, `${out}/OUT/demo/strategies/1-autoscale-frontend.yaml`, '--scale', '2', '--draws', '6'],
   agent('check_node_loss', { workspace: `${out}/OUT/demo/k8s` }),
+  // drift: the shop's history (13 October) against a recording of 17 October, then what the verdicts
+  // and the status say of it; the collection path on the mock; the file-based command (last, so no
+  // case above sees a drift check)
+  agent('check_drift', { workspace: ws('n') }),
+  agent('check_drift', { workspace: ws('n'), dataset: 'reference/k8s/shop/runs/launch-e300-b/workspace/dataset.json' }),
+  agent('model_status', { workspace: ws('n') }),
+  agent('verify_change', { workspace: ws('n'), changes: [{ strategy: { name: 'catalog 125m', changes: [{ service: 'product-catalog', cpu: 0.125 }] } }], draws: 3, report: false }),
+  agent('verify_change', { workspace: ws('n'), changes: [{ strategy: { name: 'cart ×2', changes: [{ service: 'cart', replicas: 2 }] } }], draws: 3, report: false }),
+  ['drift', `${out}/OUT/ws-n/model.json`, 'reference/k8s/shop/runs/launch-b/workspace/dataset.json', '--calibration', `${out}/OUT/ws-n/dataset.json`],
+  ['drift', `${out}/OUT/ws-n/model.json`, 'reference/k8s/shop/runs/launch-b/workspace/dataset.json', '--json'],
+  ['drift', `${out}/OUT/ws-n/model.json`, 'reference/k8s/shop/runs/launch-b/workspace/dataset.json', '--threshold', '2'],
+  agent('calibrate_model', { workspace: ws('a') }),
+  agent('check_drift', { workspace: ws('a'), last: '1h' }),
 ];
 
 /** wall-clock numbers differ run to run */

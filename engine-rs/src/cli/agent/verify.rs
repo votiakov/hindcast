@@ -275,6 +275,17 @@ pub fn model_status(ws: &Workspace) -> Result<Value, String> {
             let large = arr(&m, &["accuracy"]).iter().flat_map(|a| arr(a, &["checks"])).any(|c| !g(c, &["pass"]).as_bool().unwrap_or(false) && crate::review::judge::large_miss(c, n(&m, &["slo", "p99Ms"])));
             warnings.push(format!("the model missed {} on data it never saw — treat those numbers as rough{}", misses.join(", "), if large { "; off by more than half on latency or the breaking point, so every verdict on it is low confidence" } else { "" }));
         }
+        // has anything compared the model with recent telemetry, and what did it find
+        let check = super::drift::last_check(ws, &m);
+        if let Some(w) = super::drift::status_warning(check.as_ref(), &m) {
+            warnings.push(w);
+        }
+        if let Some(c) = check {
+            if !arr(&c, &["drifted"]).is_empty() {
+                next = "collect_telemetry";
+            }
+            out.insert("drift".into(), c);
+        }
     }
     let rd = ws.path("reports");
     if Path::new(&rd).exists() {
@@ -551,6 +562,8 @@ pub fn verify_with(ws: &Workspace, mv: Value, dv: Value, cal: Option<Value>, inp
         Some(b) => breaking(&m, &crate::strategy::apply_baseline(&m, &base, b)?.plan),
         None => breaking(&m, &base),
     };
+    // the workspace's last drift check of this model: a service it found changed lowers confidence
+    let drift = super::drift::last_check(ws, &mv);
     let mut results = vec![];
     for (i, st) in arr(&rv, &["strategies"]).iter().enumerate() {
         let spec = &strategies[i];
@@ -559,7 +572,7 @@ pub fn verify_with(ws: &Workspace, mv: Value, dv: Value, cal: Option<Value>, inp
             None => crate::strategy::apply_strategy(&m, &base, &crate::strategy::parse_strategy(spec)?)?,
         };
         let after = breaking(&m, &applied.plan);
-        results.push(judge(&mv, &m, &rv, st, spec, cal.as_ref(), gate, before.clone(), after, Some(&d))?);
+        results.push(judge(&mv, &m, &rv, st, spec, cal.as_ref(), gate, before.clone(), after, Some(&d), drift.as_ref())?);
     }
     let worst = if results.iter().any(|x| s(x, &["verdict"]) == "fail") { "fail" } else if results.iter().any(|x| s(x, &["verdict"]) == "inconclusive") { "inconclusive" } else { "pass" };
     let fitted = g(&mv, &["fittedOn"]);
@@ -578,6 +591,9 @@ pub fn verify_with(ws: &Workspace, mv: Value, dv: Value, cal: Option<Value>, inp
         out.insert("baseline".into(), json!({ "name": g(b, &["name"]), "changes": g(b, &["changes"]), "notes": g(&rv, &["stackedOn", "notes"]) }));
     }
     out.insert("results".into(), json!(results));
+    if let Some(dr) = &drift {
+        out.insert("drift".into(), dr.clone());
+    }
     out.insert("ranking".into(), g(&rv, &["ranking"]).clone());
     out.insert("notes".into(), json!(notes));
 
@@ -757,7 +773,32 @@ mod tests {
         let r = json!({ "window": { "start": 0, "end": 7 * 86400 }, "baseline": { "peakUtil": { "api": 0.5 }, "summary": {} } });
         let st = json!({ "peakUtil": { "api": after }, "delta": { "minutesOutOfSlo": { "p50": 0, "lo": 0, "hi": 0 }, "monthly": { "p50": -12 } } });
         let spec = json!({ "name": "api cpu", "changes": [{ "service": "api", "cpu": 0.5 }] });
-        judge(&mv, &m, &r, &st, &spec, None, 1.0, (100.0, None), (100.0, None), None).unwrap()
+        judge(&mv, &m, &r, &st, &spec, None, 1.0, (100.0, None), (100.0, None), None, None).unwrap()
+    }
+
+    #[test]
+    fn drift_where_the_verdict_rests_lowers_confidence_to_low_and_elsewhere_to_medium() {
+        let mv = json!({
+            "services": { "api": { "capacity": { "limit": "cpu", "servers": 32, "perReplicaRps": 100 }, "fit": { "status": "good", "notes": [] }, "cost": { "source": "nodes" } } },
+            "accuracy": [{ "method": "holdout", "checks": [] }],
+            "traffic": { "peak": 50 },
+        });
+        let m: crate::model::Model = serde_json::from_str(include_str!("../../../../reference/shop/model.json")).unwrap();
+        let r = json!({ "window": { "start": 0, "end": 7 * 86400 }, "baseline": { "peakUtil": { "api": 0.5 }, "summary": {} } });
+        let st = json!({ "peakUtil": { "api": 0.52 }, "delta": { "minutesOutOfSlo": { "p50": 0, "lo": 0, "hi": 0 }, "monthly": { "p50": -12 } } });
+        let spec = json!({ "name": "api cpu", "changes": [{ "service": "api", "cpu": 0.5 }] });
+        let with = |drift: Option<&Value>| judge(&mv, &m, &r, &st, &spec, None, 1.0, (100.0, None), (100.0, None), None, drift).unwrap();
+        assert_eq!(s(&with(None), &["confidence", "level"]), "high");
+        let v = with(Some(&json!({ "drifted": [{ "service": "api", "change": -0.3 }] })));
+        assert_eq!(s(&v, &["confidence", "level"]), "low");
+        assert_eq!(s(&v, &["verdict"]), "inconclusive");
+        assert_eq!(s(&v, &["confidence", "because"]), "the system has changed since calibration: api now costs 30% less CPU per request — recalibrate (collect + calibrate) before trusting this");
+        // the numbers stay the replay's: drift is a warning, not a correction
+        assert_eq!(g(&v, &["reliability"]), g(&with(None), &["reliability"]));
+        let v = with(Some(&json!({ "drifted": [{ "service": "cart", "change": 0.4 }] })));
+        assert_eq!(s(&v, &["confidence", "level"]), "medium");
+        assert_eq!(s(&v, &["verdict"]), "pass");
+        assert!(s(&v, &["confidence", "because"]).starts_with("the system has changed since calibration: cart now costs 40% more CPU per request, though not where this verdict rests"), "{}", s(&v, &["confidence", "because"]));
     }
 
     fn reasons(v: &Value) -> String {
@@ -789,7 +830,7 @@ mod tests {
         let r = json!({ "window": { "start": 0, "end": 86400 }, "slo": { "p99Ms": 1000, "errorRate": 0.01 }, "baseline": { "peakUtil": {}, "summary": { "requests": { "p50": 500000.0 }, "failedRequests": { "p50": 44000.0 } } } });
         let st = json!({ "peakUtil": {}, "delta": { "minutesOutOfSlo": { "p50": minutes, "lo": minutes, "hi": minutes }, "failedRequests": { "p50": failed, "lo": failed, "hi": failed_hi }, "monthly": { "p50": 0 } } });
         let spec = json!({ "name": "frontend ×2", "changes": [{ "service": "frontend", "replicas": 2 }] });
-        judge(&mv, &m, &r, &st, &spec, None, 0.5, (100.0, None), (100.0, None), None).unwrap()
+        judge(&mv, &m, &r, &st, &spec, None, 0.5, (100.0, None), (100.0, None), None, None).unwrap()
     }
 
     #[test]
@@ -820,7 +861,7 @@ mod tests {
         let m: crate::model::Model = serde_json::from_str(include_str!("../../../../reference/shop/model.json")).unwrap();
         let r = json!({ "window": { "start": 0, "end": 86400 }, "slo": { "p99Ms": 1000, "errorRate": 0.01 }, "baseline": { "peakUtil": {}, "summary": { "requests": { "p50": 500000.0 }, "failedRequests": { "p50": 0.0 } } } });
         let st = json!({ "peakUtil": {}, "delta": { "minutesOutOfSlo": { "p50": 0, "lo": 0, "hi": 0 }, "failedRequests": { "p50": 0, "lo": 0, "hi": 0 }, "monthly": { "p50": -10 } } });
-        judge(&mv, &m, &r, &st, &json!({ "name": "x", "changes": [] }), None, 0.5, (100.0, None), (100.0, None), None).unwrap()
+        judge(&mv, &m, &r, &st, &json!({ "name": "x", "changes": [] }), None, 0.5, (100.0, None), (100.0, None), None, None).unwrap()
     }
 
     /// the reference cluster (email leaks until it is OOM-killed at launch load) verified at the launch

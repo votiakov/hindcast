@@ -45,6 +45,8 @@ Backtesting on real data (files only; see docs/backtest.md):
   hindcast backtest      <model.json> <dataset.json> <strategy.yaml …> [--last 14d] [--scale 2 | --peak 400] [--draws 30] [--md r.md] [--html r.html] [--comment pr.md] [--card card.json] [--gate]
   hindcast headroom      <model.json> [strategy.yaml]
   hindcast accuracy      <model.json>
+  hindcast drift         <model.json> <recent-dataset.json> [--calibration dataset.json] [--threshold 0.25] [--json]
+                         (has the system changed since calibration? CPU per request now against then; exits 2 on drift)
   hindcast outage        <model.json> <outage-id | list> [strategy.yaml …] [--role primary-db=orders-db] [--md r.md] [--html r.html]
   hindcast diff-strategy --base <dir> --head <dir> [--model model.json] [--out strategy.yaml]   (k8s manifests before/after → strategy)
   hindcast verify-change --model model.json --dataset dataset.json (--base <dir> --head <dir> | --terraform-plan plan.json | <strategy.yaml …>)
@@ -57,8 +59,8 @@ For agents (the MCP tools, from a shell; JSON in, JSON out; see docs/agents.md):
   hindcast agent setup [claude|cursor|vscode|desktop|windsurf] [--write]   register the MCP server with an agent host
   hindcast agent list
   hindcast agent <tool> '<json args>' | @args.json | -      e.g. agent connect_telemetry '{"prometheus":{"url":"http://prom:9090"}}'
-  tools: connect_telemetry collect_telemetry calibrate_model model_status review_capacity suggest_changes verify_change
-         plan_load_test check_node_loss find_headroom verify_design read_cluster
+  tools: connect_telemetry collect_telemetry calibrate_model model_status check_drift review_capacity suggest_changes
+         verify_change plan_load_test check_node_loss find_headroom verify_design read_cluster
 
 Files may be YAML or JSON. A variants file is either a list of variants or { variants, scenario }."#;
 
@@ -163,6 +165,7 @@ fn command_flags(cmd: &str) -> Option<&'static [&'static str]> {
         "calibrate" => &["out", "p99", "errors", "timeout", "holdout", "json"],
         "backtest" => &["last", "scale", "peak", "draws", "md", "html", "comment", "title", "run-url", "out", "card", "card-strategy", "gate", "json"],
         "headroom" | "accuracy" => &["json"],
+        "drift" => &["calibration", "threshold", "json"],
         "outage" => &["role", "rps", "md", "html", "json"],
         "diff-strategy" => &["base", "head", "model", "name", "out"],
         "verify-change" => &[

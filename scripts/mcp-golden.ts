@@ -121,6 +121,9 @@ const CASES: Case[] = [
   // a key the tool doesn't take is refused, not dropped (the agent tools' slo is p99Ms; this one's is maxP99Ms)
   call('find_breaking_point', { architecture: shop, slo: { p99Ms: 300 }, rps: 500 }),
   call('verify_change', { workspace: ws('v'), baselineHead: 'deploy-b', changes: [{ kubernetes: { base: 'deploy', head: 'deploy-c', baseline: 'deploy-b' } }] }),
+  // drift: the shop's history against a recording four days on (appended, so no case above sees it)
+  call('check_drift', { workspace: ws('n'), dataset: 'reference/k8s/shop/runs/launch-e300-b/workspace/dataset.json' }, true),
+  call('model_status', { workspace: ws('n') }),
 ];
 
 // the mocks on free ports (the cases and the goldens name the canonical ones above), and one for the

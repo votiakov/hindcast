@@ -10,6 +10,7 @@ pub mod cli;
 pub mod config_diff;
 pub mod convert;
 pub mod dataset;
+pub mod drift;
 pub mod engine;
 pub mod fmath;
 pub mod import;

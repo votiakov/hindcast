@@ -234,7 +234,8 @@ fn breaking_cold(m: &crate::model::Model, spec: &Value, baseline: Option<&Value>
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &Value, cal: Option<&Value>, gate: f64, before: (f64, Option<String>), after: (f64, Option<String>), d: Option<&crate::dataset::Dataset>) -> Result<Value, String> {
+/// `drift` is the workspace's last drift check of this model (check_drift; cli::agent::drift::last_check)
+pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &Value, cal: Option<&Value>, gate: f64, before: (f64, Option<String>), after: (f64, Option<String>), d: Option<&crate::dataset::Dataset>, drift: Option<&Value>) -> Result<Value, String> {
     let dm = g(st, &["delta", "minutesOutOfSlo"]);
     let services_of = |spec: &Value| -> indexmap::IndexSet<String> { arr(spec, &["changes"]).iter().filter_map(|c| c.get("service").and_then(|x| x.as_str()).map(String::from)).collect() };
     let touched = services_of(spec);
@@ -331,6 +332,19 @@ pub fn judge(mv: &Value, m: &crate::model::Model, r: &Value, st: &Value, spec: &
             lower("medium", format!("{} would run at {} of capacity, past the history's {}: its capacity there is extrapolated", svc, pct(pu), pct(hpu)), &mut warnings, &mut level, &mut low_why);
         } else if fit == "fair" && touched_x {
             lower("medium", format!("{}: fair fit (latency reproduced within 30%){}", svc, if g(x, &["byBaseline"]).as_bool().unwrap_or(false) { ", and the baseline it is stacked on changes it" } else { "" }), &mut warnings, &mut level, &mut low_why);
+        }
+    }
+    // the system changed under the calibration (check_drift found it): low where the verdict rests on the
+    // service, medium where it doesn't: the model's numbers are of a system that is no longer there
+    if let Some(dr) = drift {
+        let rests: Vec<String> = services.iter().map(|x| s(x, &["service"])).collect();
+        let costs = |x: &Value| format!("{} now costs {} CPU per request", s(x, &["service"]), crate::drift::change_words(n(x, &["change"])));
+        let (on, off): (Vec<&Value>, Vec<&Value>) = arr(dr, &["drifted"]).into_iter().partition(|x| rests.contains(&s(x, &["service"])));
+        for x in &on {
+            lower("low", format!("the system has changed since calibration: {} — recalibrate (collect + calibrate) before trusting this", costs(x)), &mut warnings, &mut level, &mut low_why);
+        }
+        if !off.is_empty() {
+            lower("medium", format!("the system has changed since calibration: {}, though not where this verdict rests — recalibrate (collect + calibrate) before trusting the numbers", off.iter().map(|x| costs(x)).collect::<Vec<_>>().join(", ")), &mut warnings, &mut level, &mut low_why);
         }
     }
     let missed: Vec<(&Value, String)> = arr(mv, &["accuracy"]).iter().flat_map(|a| arr(a, &["checks"]).into_iter().map(move |c| (c, s(a, &["method"])))).filter(|(c, _)| !g(c, &["pass"]).as_bool().unwrap_or(false) && s(c, &["metric"]) != "errors").collect();

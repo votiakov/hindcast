@@ -46,7 +46,7 @@ fn evaluate(c: &mut Ctx, list: &[Value]) -> Result<Vec<Value>, String> {
     let mut out = vec![];
     for (i, st) in arr(&rv, &["strategies"]).iter().enumerate() {
         let applied = crate::strategy::apply_strategy(c.m, &base, &crate::strategy::parse_strategy(&list[i])?)?;
-        let j = judge(c.mv, c.m, &rv, st, &list[i], c.cal, c.gate, c.before.clone(), breaking(c.m, &applied.plan), None)?;
+        let j = judge(c.mv, c.m, &rv, st, &list[i], c.cal, c.gate, c.before.clone(), breaking(c.m, &applied.plan), None, None)?;
         out.push(json!({
             "name": g(&j, &["name"]),
             "change": list[i],

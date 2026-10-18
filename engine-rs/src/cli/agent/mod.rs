@@ -4,6 +4,7 @@
 pub mod collect;
 pub mod connect;
 pub mod datadog;
+pub mod drift;
 pub mod infer;
 pub mod loadtest;
 pub mod quickstart;
@@ -275,6 +276,7 @@ pub fn dispatch(name: &str, parsed: &Value) -> Result<Value, String> {
         "collect_telemetry" => collect::collect(&ws, &parsed),
         "calibrate_model" => verify::calibrate_model(&ws, &parsed),
         "model_status" => verify::model_status(&ws),
+        "check_drift" => drift::check_drift(&ws, &parsed),
         "verify_change" => verify::verify_change(&ws, parsed.get("changes").and_then(|c| c.as_array()).map(|a| a.as_slice()).unwrap_or(&[]), &parsed),
         "find_headroom" => verify::find_headroom(&ws, &parsed),
         "check_node_loss" => verify::check_node_loss(&ws, &parsed),
