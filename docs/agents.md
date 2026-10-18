@@ -490,6 +490,13 @@ For every service the change touches, or that the change pushes harder (above 60
   was never measured, *or* the history is shorter than a day.
 - **high**: otherwise.
 
+A drift check of this model in the workspace (`check_drift`, below) that found a service changed
+lowers it too: to **low** when the verdict rests on that service (it is touched or pushed harder),
+to **medium** when it doesn't. The warning says it plainly: *the system has changed since
+calibration: product-catalog now costs 30% less CPU per request — recalibrate (collect +
+calibrate) before trusting this*. The replay's numbers stay as they are; drift is a reason to
+doubt them, not a correction.
+
 A service with no latency metric (capacity from CPU alone, `cpuOnly: true` in
 `confidence.services`) is judged on its own rule instead of as unexplained: **medium** at most,
 since its CPU limit is known but not how its latency grows near it, and **low** when the change
@@ -733,11 +740,56 @@ in `.hindcast/cluster/` and returns replicas, limits, autoscalers and architectu
 `verify_change` with `{ "cluster": { "head": "<edited manifests>" } }` then backtests the edit
 against what is actually running.
 
+### `check_drift`: has the system changed since calibration?
+
+A model is a reading of the system as it was when the history was recorded. Code, runtime and
+infrastructure change under it: on the reference cluster the same traffic cost 20–30% less CPU four
+days after the calibration, and two verdicts that rested on the older cost were wrong
+([reference/k8s](../reference/k8s/README.md#round-6-stacked-on-a-leak-free-baseline)).
+`check_drift` compares recent telemetry with the calibration:
+
+```json
+{ "last": "6h" }
+{ "dataset": "recent/dataset.json" }
+```
+
+With a connection it collects the last `last` (default 6 h) into `drift/` (its own dataset; the
+calibration's `dataset.json` is left alone). Offline, `dataset` names a dataset file (`hindcast
+import`, or another workspace's). Per service it reads, at the load per replica both windows saw:
+
+- **CPU per request** above the calibrated fixed CPU, per bucket, `(cpu − replicas × fixed) /
+  requests`: the median and quartiles of each window, and a 10–90% range on the change from
+  resampling both. This is the number capacity verdicts rest on, and the one judged.
+- **self time** and **memory per replica**, beside it, not judged: between back-to-back recordings
+  they moved more than CPU did.
+- **past the history**: where the recent window ran busier than the calibration ever did, measured
+  CPU against the calibrated line, which is extrapolated there.
+
+Buckets where users saw errors (5% or more at an endpoint or an entry service), and CPU within 10%
+of its limit, are left out: their CPU is the failure's, or the limit's, not the requests'.
+
+Each service gets a verdict: `matches`, `drifted` (with the change, "now costs 30% less CPU per
+request"), or `not enough recent load to tell` (fewer than 10 buckets at a shared load, or a range
+that takes in no change). A change is drift past **±25%**, where it is worth **5 millicores** or
+more per replica at the busiest shared load. That threshold is the noise floor measured on the
+shop: back-to-back recordings of the same system (17 pairs under 2 hours apart, 97 readings)
+differed by 6% at the median, 22% at the 95th percentile, and at most 23% where the change was
+worth 5 millicores; below that, a service using a few millicores moved by up to 29%. Without the
+calibration's data in the workspace, the recent window is read against the model's CPU per request
+alone (`comparedWith: "the fitted line"`).
+
+The answer is kept as `drift.json`. `model_status` reports it, `verify_change` lowers confidence on
+it (above), and the CI comment says so. A check belongs to the model it read: recalibrating makes
+it moot. When it finds drift, the next step is `collect_telemetry` and `calibrate_model`.
+
+Run it before trusting a verdict on a model more than a day old.
+
 ### `model_status`
 
 Cheap; call it first. It returns the connections, the history window and its age, the model with
-its trust report and accuracy, recent reports, warnings (history older than a week, accuracy
-missed or never measured) and the next step.
+its trust report and accuracy, the last drift check (`drift`), recent reports, warnings (history
+older than a week, accuracy missed or never measured, drift found, or a model more than a day old
+that nothing has compared with recent telemetry) and the next step.
 
 ## Designs on paper: `verify_design`
 
@@ -806,6 +858,8 @@ Authentication: `tokenEnv` (bearer), `basicAuthEnv` (`user:password`) and `heade
   dataset.json        the imported history
   model.json          the calibrated model (same format as `hindcast calibrate`)
   calibration.json    per service: history peak vs capacity, trust
+  drift.json          the last check_drift: per service, calibrated vs recent
+  drift/              the recent window check_drift collected (its own dataset.json and telemetry/)
   cluster/            read_cluster snapshots
   reports/            verify_change reports: .html, .md, .strategies.yaml, .hindcast.json (opens in the app)
   loadtests/          plan_load_test's k6 scripts
@@ -825,7 +879,8 @@ option is never silently skipped); free-form parts, like a strategy object, take
 | `connect_telemetry` | `prometheus{url, selector?, namespaces?, presets?, tokenEnv?…}` \| `datadog{site \| url, apiKeyEnv?, appKeyEnv?, env?, scope?, namespaces?, presets?}`, `jaeger{url}` \| `tempo{url}` \| `traceFiles[]` \| `topologyFile` (all optional), `bill{cur\|gcp, tag?}`, `system{name, slo, timeoutMs, rename, hostedBy, entry, ignore, exclude, include, placement}` | probes, renames applied, `calls` (without traces), `problems`, `ready` |
 | `collect_telemetry` | `last` \| `start`/`end` \| `windows[]`, `stepS?`, `maxTraces?` | window, coverage per service, endpoints, warnings |
 | `calibrate_model` | `holdout?` (0.3), `slo?`, `timeoutMs?`, `listPrices?` | services with capacity, band, limit, basis, cost; accuracy; trust lists |
-| `model_status` | — | what the workspace holds, warnings, next step |
+| `model_status` | — | what the workspace holds, the last drift check, warnings, next step |
+| `check_drift` | `last?` (6h) \| `dataset?`, `threshold?` (0.25) | per service: CPU per request calibrated vs recent at a shared load (median, quartiles, 10–90% on the change), self time, memory, CPU past the history's load; matches / drifted / not enough recent load to tell |
 | `verify_change` | `changes[]`, `baseline?` (one change, applied to both sides), `last?`, `traffic?{scale \| peakRps}`, `gateMinutes?`, `draws?` (30, fewer on long histories to fit ~40 s), `report?` (false: no report files) | per change: verdict, confidence, cost, reliability, headroom, reasons; `comparedWith` with a baseline; reports and `app.open` |
 | `suggest_changes` | `goal?` (reliability \| cost \| both), `traffic?` ({scale} \| {peakRps}), `last?`, `draws?`, `gateMinutes?`, `idleBelow?` | saturated services; fixes and savings that pass, each judged; the savings combined; rejected candidates |
 | `find_headroom` | `strategy?` | req/s within SLO, what binds, history peak |

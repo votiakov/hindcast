@@ -78,6 +78,15 @@ load against its capacity, its queue — with *open on board*.
 **Model accuracy**: how well this model predicted runs it never saw, check by check, against the
 targets (p99 within 20%, breaking point within 15%, cost within 10%).
 
+**Has the system changed since?** Accuracy is measured on the history the model was fitted on; the
+system can drift away from it afterwards (a release, a runtime upgrade, a new node type). On the
+reference cluster the same traffic cost 20–30% less CPU four days after the calibration, and two
+verdicts went wrong on it. The app doesn't check this; the CLI and the agent tools do:
+`hindcast drift model.json recent.json --calibration dataset.json` (or `check_drift`, which
+collects the recent window itself) compares CPU per request now with the calibration's at the same
+load, per service, and says matches, drifted by X%, or not enough recent load to tell. Drift past
+±25% means recalibrate before trusting a verdict ([agents.md](agents.md#check_drift-has-the-system-changed-since-calibration)).
+
 **The tester panel** (bottom):
 - **Overview**: the verdict sentence ("saves $410/month; on Sep 14 at 12:03 it would have caused
   9 minutes of errors"), $/month, minutes out of SLO, failed requests, error budget used, peak p99,

@@ -31,7 +31,8 @@ hindcast agent setup cursor --write  # or claude, vscode, desktop, windsurf: mer
 <tr><td><code>find_headroom</code></td><td>req/s within SLO, as built and with a change, and what binds first.</td></tr>
 <tr><td><code>verify_design</code></td><td>a design on paper: failures, headroom, cost against a budget; fixes as exact spec changes, so the agent can loop until it passes.</td></tr>
 <tr><td><code>read_cluster</code></td><td><code>kubectl get deployments,statefulsets,hpa</code> on a named context, saved as the base for edited manifests.</td></tr>
-<tr><td><code>model_status</code></td><td>what the workspace already holds, and the next step.</td></tr>
+<tr><td><code>check_drift</code></td><td>has the system changed since the model was calibrated? Recent telemetry (collected into its own dataset, or a file) against the calibration, per service: CPU per request at the load both saw, with self time and memory beside it. Matches, drifted by X%, or not enough recent load to tell; past ±25% it says to recalibrate, and <code>verify_change</code> lowers confidence on it.</td></tr>
+<tr><td><code>model_status</code></td><td>what the workspace already holds, the last drift check, and the next step.</td></tr>
 </table></div>
 
 <h2>Verdict and confidence</h2>
@@ -43,6 +44,7 @@ hindcast agent setup cursor --write  # or claude, vscode, desktop, windsurf: mer
 <tr><td><b>pass</b></td><td>otherwise</td></tr>
 <tr><td>confidence <b>low</b></td><td>a service the change depends on fits poorly, or the change runs it at ≥ 80% of a capacity the history never came near, or on data it never saw the model missed the breaking point, or p99, by more than half (for p99, by at least a tenth of the SLO too)</td></tr>
 <tr><td>confidence <b>medium</b></td><td>it runs past the history's peak, a touched service fits only fairly, the model missed any other accuracy check, or the history is under a day</td></tr>
+<tr><td>drift</td><td>a drift check that found a service changed since calibration: low where the verdict rests on it, medium elsewhere, with "recalibrate before trusting this"</td></tr>
 </table></div>
 <p class="verdict">A pass at low confidence is not "safe": the backtest found no problem on capacities the history never tested. Agents are told to say so and recommend a load test.</p>
 <p>Cost comes with its basis: <b>your bill</b>, or <b>list price</b> (AWS Fargate on-demand, from CPU and memory limits) when there is no bill.</p>

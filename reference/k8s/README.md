@@ -780,6 +780,42 @@ calibration. The lesson for the product: before a verdict, compare recent teleme
 calibration window, and say "recalibrate" when they disagree. The cause of the drift itself (the
 laptop cluster, a warmed frontend, something else) is not established.
 
+**What the drift check would have said (added 18 October, after the runs; in sample: its threshold
+was set on these same recordings).** `check_drift` (`hindcast drift`) compares CPU per request above
+the calibrated fixed CPU at the load both windows saw. Run with the ordinary-day calibration
+(13 October) and the baseline recording `launch-e300-b` (17 October) as the recent window:
+
+| service | calibrated → recent, ms per request | at req/s per replica | change | verdict |
+|---|---|---|---|---|
+| product-catalog | 0.207 → 0.146 | 57–239 | −30% (10–90%: −32 … −26%) | **drifted** |
+| cart | 0.878 → 0.695 | 25–71 | −21% | matches (within noise) |
+| currency | 0.592 → 0.467 | 6–21 | −20% | matches (2.5 millicores: below what a reading resolves) |
+| checkout | 2.14 → 1.84 | 3–6 | −14% | matches |
+| recommendation | 1.75 → 1.55 | 13–20 | −12% | matches |
+| frontend | 2.02 → 1.87 | 23–55 | −7% | matches |
+
+The frontend's change does not show at the load the calibration saw. It shows past it: above 55 req/s
+per replica, CPU ran 15% under the calibrated line on 17 October, where `launch` (13 October) had run
+19% over it. The check reports that reading but doesn't judge it, since the line is extrapolated
+there. Product-catalog runs at 51% of capacity in both frontend verdicts (past the history's 23%), so
+they rest on it: the drift would have added "the system has changed since calibration:
+product-catalog now costs 30% less CPU per request — recalibrate (collect + calibrate) before
+trusting this". Both verdicts were already low-confidence fails, so the check would have said to
+recalibrate, but it would not have turned either into a pass.
+
+The threshold is ±25%, and only for a change worth 5 millicores or more per replica. That is the
+noise floor measured on back-to-back recordings, under 2 hours apart (17 pairs, 97 readings of
+services neither run changed): 6% at the median, 22% at the 95th percentile, at most 23% where the
+change was worth 5 millicores, and up to 29% below that (currency and checkout, at 3–5 millicores).
+Recordings of the same traffic on the same later days agree within that: `launch-b` and
+`launch-e300-b` (both 17 October) differ by at most 14% (frontend −1%, product-catalog −8%), and
+`launch-email300` (15 October) and `launch-e300-b` by at most 19% (frontend −12%, product-catalog
+−13%, shipping +19%), with nothing drifted. The same traffic four days apart, `launch` (13 October)
+against `launch-b` (17 October), shows drift past it in checkout (−27%), cart (−28%) and
+recommendation (−32%), with the frontend at −19%, product-catalog −22% and currency −25%. The shift
+was not a single step: against `launch-b`, runs of 13–14 October cost 7–34% more per request
+(median over services), falling over each session's runs, and on 15 October they were within ±8%.
+
 **Two recordings were void and are not scored.** The first recording of all three changes ran on
 battery: the laptop went onto battery at 18:10, and macOS's Low Power Mode doubled CPU per request
 against the baseline recorded on mains power. A first attempt at `launch-e300-2` was also cut by

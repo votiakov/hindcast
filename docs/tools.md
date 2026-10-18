@@ -30,6 +30,7 @@
 | `backtest <model.json> <dataset.json> <strategy.yaml …> [--last 14d] [--draws 30] [--md r.md] [--html r.html] [--comment pr.md] [--card card.json] [--gate]` | replays the strategies over the history: $/month, minutes out of SLO, failed requests, worst moment and why, incidents, per-endpoint results, ranking; `--gate` exits 2 if a strategy adds time out of SLO or fails more requests than the error budget over the window |
 | `headroom <model.json> [strategy.yaml]` | req/s sustained within SLO with today's endpoint mix, and what saturates next |
 | `accuracy <model.json>` | the model's accuracy records against the targets |
+| `drift <model.json> <recent-dataset.json> [--calibration dataset.json] [--threshold 0.25] [--json]` | has the system changed since calibration? Per service, CPU per request on the recent window against the calibration's data at the load both saw (or against the fitted line without `--calibration`): matches, drifted by X%, or not enough recent load to tell; exit 2 on drift ([agents.md](agents.md#check_drift-has-the-system-changed-since-calibration)) |
 | `outage <model.json> <outage-id \| list> [strategy.yaml …] [--rps N] [--role primary-db=orders-db]` | replays a public outage against the model, as built and with strategies |
 | `diff-strategy --base <dir> --head <dir> [--model model.json] [--out strategy.yaml]` | Kubernetes manifests before/after → a strategy (replicas, CPU/memory, HPAs, arch) |
 | `verify-change --model model.json --dataset dataset.json (--base <dir> --head <dir> \| --terraform-plan plan.json \| <strategy.yaml …>) [--baseline-head <dir> \| --baseline strategy.yaml \| --baseline-terraform-plan plan.json] [--comment pr.md] [--fail-on fail\|inconclusive\|never]` | `verify_change` on files, for CI: verdict and confidence, the pull-request comment, exit 2 on a failing verdict; with a baseline (a stacked pull request), the change is judged on top of it ([ci.md](ci.md#stacked-pull-requests)) |
@@ -93,12 +94,12 @@ Registered for Claude Code in `.mcp.json` (restart Claude Code in this folder an
 | `open_in_app` | `architecture`, `compare_with?` (variant), `scenario?` | URL for the app (sandbox, or side-by-side comparison playing the scenario) |
 | `backtest_strategy` | `model?`, `dataset?` (paths; default the workspace's), `strategies[]` (objects or YAML), `last?`, `draws?` | the backtest of each strategy over the recorded history: $/month, minutes out of SLO, worst moment, incidents, ranking, the model's accuracy |
 | `replay_outage` | `model?`, `outage`, `strategies?`, `rps?` | a public outage replayed against the model, as built and with strategies |
-| `connect_telemetry` … `read_cluster` | see [agents.md](agents.md#tool-reference) | twelve tools for an agent working on a live system: connect, collect, calibrate, verify (strategies, Kubernetes diffs, Terraform plans), suggest fixes and savings, headroom, the capacity review, the load test a verdict asks for, node loss, design checks, cluster snapshots, status |
+| `connect_telemetry` … `read_cluster` | see [agents.md](agents.md#tool-reference) | thirteen tools for an agent working on a live system: connect, collect, calibrate, a drift check against recent telemetry, verify (strategies, Kubernetes diffs, Terraform plans), suggest fixes and savings, headroom, the capacity review, the load test a verdict asks for, node loss, design checks, cluster snapshots, status |
 
 Prompts: `verify-infra-change` and `check-my-design` ([agents.md](agents.md#prompts)).
 
 Suggested assistant workflow for a live system: `model_status` → `connect_telemetry` → `collect_telemetry` →
-`calibrate_model` → `verify_change`, and `plan_load_test` when a verdict is inconclusive for want of evidence ([agents.md](agents.md)). For a design on paper: `import_terraform` (or `list_components` → write the spec from the user's description
+`calibrate_model` → `verify_change` (`check_drift` first when the model is more than a day old), and `plan_load_test` when a verdict is inconclusive for want of evidence ([agents.md](agents.md)). For a design on paper: `import_terraform` (or `list_components` → write the spec from the user's description
 from k8s manifests, diagrams, metrics) → confirm assumptions, request rates and SLOs with the user → `validate_architecture` → `simulate`/`analyze` the
 current state → propose variants → `compare_architectures` / `optimize_cost` → `open_in_app` to hand
 over a live demo.

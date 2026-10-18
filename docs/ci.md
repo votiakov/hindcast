@@ -23,12 +23,22 @@ ignored:
 .hindcast/*
 !.hindcast/model.json
 !.hindcast/dataset.json
+!.hindcast/drift.json
 ```
 
 They hold service names, endpoint paths and request rates, nothing more; if even that is
 sensitive, fetch them in the job instead of committing them. Refresh them on a schedule from a
 runner that can reach your Prometheus (`hindcast quickstart --prometheus … --last 7d`, then commit
 the two files); the pull-request check itself needs nothing but the repository.
+
+**Drift.** A committed model ages: the system it was fitted on changes under it. The same scheduled
+job can check that daily, `hindcast agent check_drift '{"workspace":".hindcast","last":"6h"}'`,
+and commit `.hindcast/drift.json` with the model; when it finds drift, recalibrate (the quickstart
+above) instead. The pull-request check doesn't collect anything, but it reads `drift.json` beside
+the model: a service it found changed lowers the verdict's confidence (to low where the verdict
+rests on it), and the comment opens with a line saying the system has changed since calibration
+and to recalibrate. A drift check more than a day old gets a line too. With no `drift.json`, the
+comment says nothing about drift. See [agents.md](agents.md#check_drift-has-the-system-changed-since-calibration).
 
 ## GitHub Action
 
